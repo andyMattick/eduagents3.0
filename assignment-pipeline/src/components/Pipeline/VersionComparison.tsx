@@ -1,36 +1,185 @@
 import React from 'react';
-import { TagChange } from '../../types/pipeline';
+import { TagChange, VersionAnalysis } from '../../types/pipeline';
 
 interface Props {
   original: string;
   rewritten: string;
   summary: string;
   tagChanges: TagChange[];
+  versionAnalysis?: VersionAnalysis | null;
+  onReset: () => void;
 }
 
-export function VersionComparison({ original, rewritten, summary, tagChanges }: Props) {
+export function VersionComparison({
+  original,
+  rewritten,
+  summary,
+  tagChanges,
+  versionAnalysis,
+  onReset,
+}: Props) {
   return (
-    <div>
-      <h3>Summary of Changes</h3>
-      <p>{summary}</p>
+    <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+      <h2 style={{ marginTop: 0 }}>Step 5: Version Comparison</h2>
 
-      <h4>Tag Improvements</h4>
-      <ul>
-        {tagChanges.map((tag) => (
-          <li key={tag.tag}>
-            {tag.tag}: {tag.delta > 0 ? '+' : ''}
-            {tag.delta}
-          </li>
-        ))}
-      </ul>
+      <div style={{ marginBottom: '24px' }}>
+        <h3 style={{ color: '#333' }}>Summary of Changes</h3>
+        <div
+          style={{
+            padding: '16px',
+            backgroundColor: '#e8f4f8',
+            border: '1px solid #b3e5fc',
+            borderRadius: '6px',
+            color: '#01579b',
+            lineHeight: '1.6',
+          }}
+        >
+          <p style={{ margin: 0 }}>{summary}</p>
+        </div>
+      </div>
 
-      <h4>Original</h4>
-      <pre>{original}</pre>
+      {versionAnalysis && (
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ color: '#333' }}>Overall Metrics</h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '16px',
+            }}
+          >
+            <div style={{ padding: '16px', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #ddd' }}>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                Engagement Score Change
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: versionAnalysis.engagementScoreDelta > 0 ? '#28a745' : '#dc3545' }}>
+                {versionAnalysis.engagementScoreDelta > 0 ? '+' : ''}
+                {(versionAnalysis.engagementScoreDelta * 100).toFixed(1)}%
+              </div>
+              <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                {versionAnalysis.originalEngagementScore.toFixed(2)} → {versionAnalysis.rewrittenEngagementScore.toFixed(2)}
+              </div>
+            </div>
+            <div style={{ padding: '16px', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #ddd' }}>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                Reading Time Change
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: versionAnalysis.timeToReadDelta < 0 ? '#28a745' : '#ffc107' }}>
+                {versionAnalysis.timeToReadDelta < 0 ? '' : '+'}
+                {Math.round(versionAnalysis.timeToReadDelta)}s
+              </div>
+              <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+                {Math.round(versionAnalysis.originalTimeToRead)}s → {Math.round(versionAnalysis.rewrittenTimeToRead)}s
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <h4>Rewritten</h4>
-      <pre>{rewritten}</pre>
+      {tagChanges.length > 0 && (
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ color: '#333' }}>Tag Changes</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+            {tagChanges.map((change) => (
+              <div
+                key={change.tag}
+                style={{
+                  padding: '16px',
+                  backgroundColor: 'white',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                }}
+              >
+                <h4 style={{ margin: '0 0 8px 0', color: '#333' }}>{change.tag}</h4>
+                <div
+                  style={{
+                    fontSize: '20px',
+                    fontWeight: 'bold',
+                    color: change.delta > 0 ? '#28a745' : change.delta < 0 ? '#dc3545' : '#999',
+                    marginBottom: '8px',
+                  }}
+                >
+                  {change.delta > 0 ? '↑' : change.delta < 0 ? '↓' : '→'} {(change.delta * 100).toFixed(0)}%
+                </div>
+                {change.fromConfidence !== undefined && change.toConfidence !== undefined && (
+                  <div style={{ fontSize: '12px', color: '#666' }}>
+                    {(change.fromConfidence * 100).toFixed(0)}% → {(change.toConfidence * 100).toFixed(0)}%
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '20px',
+          marginBottom: '24px',
+        }}
+      >
+        <div>
+          <h3 style={{ color: '#333' }}>Original Text</h3>
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: 'white',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              color: '#555',
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+            }}
+          >
+            {original}
+          </div>
+        </div>
+
+        <div>
+          <h3 style={{ color: '#333' }}>Rewritten Text</h3>
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: '#f0f8f0',
+              border: '2px solid #28a745',
+              borderRadius: '6px',
+              maxHeight: '300px',
+              overflowY: 'auto',
+              fontSize: '13px',
+              lineHeight: '1.6',
+              color: '#2d5016',
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+            }}
+          >
+            {rewritten}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: '24px' }}>
+        <button
+          onClick={onReset}
+          style={{
+            padding: '10px 24px',
+            backgroundColor: '#6c757d',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+          }}
+        >
+          Start Over
+        </button>
+      </div>
     </div>
   );
 }
-  );
-};
