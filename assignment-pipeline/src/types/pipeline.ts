@@ -21,6 +21,12 @@ export interface StudentFeedback {
   specificQuestions?: string[]; // Questions the student persona would ask
   whatWorked?: string; // What was done well
   whatCouldBeImproved?: string; // What could be better
+  // Student performance metrics
+  timeToCompleteMinutes?: number; // Estimated time for student to complete
+  understoodConcepts?: string[]; // Concepts the persona understood well
+  struggledWith?: string[]; // Concepts the persona struggled with
+  checkedOutAt?: string; // Where student lost engagement (task ID or section)
+  estimatedGrade?: string; // e.g., "A", "B", "C"
 }
 
 /**

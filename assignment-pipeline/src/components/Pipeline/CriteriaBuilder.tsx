@@ -26,36 +26,61 @@ const COMMON_CRITERIA = [
   'Technical Quality',
 ];
 
+// Preset criteria templates
+const CRITERIA_PRESETS = {
+  standard: {
+    label: 'Standard (3 criteria)',
+    criteria: ['Clarity', 'Accuracy', 'Completeness'],
+  },
+  detailed: {
+    label: 'Detailed (5 criteria)',
+    criteria: ['Clarity', 'Accuracy', 'Structure & Organization', 'Evidence & Support', 'Completeness'],
+  },
+  creative: {
+    label: 'Creative Work (4 criteria)',
+    criteria: ['Creativity & Originality', 'Clarity', 'Technical Quality', 'Evidence & Support'],
+  },
+  academic: {
+    label: 'Academic Essay (5 criteria)',
+    criteria: ['Clarity', 'Evidence & Support', 'Analysis & Critical Thinking', 'Structure & Organization', 'Grammar & Syntax'],
+  },
+};
+
 export function CriteriaBuilder({
   criteria,
   totalPoints,
   onChange,
   onTotalPointsChange,
 }: CriteriaBuilderProps) {
-  const [numCriteria, setNumCriteria] = useState(criteria.length || 3);
+  const [selectedPreset, setSelectedPreset] = useState<keyof typeof CRITERIA_PRESETS | null>(
+    criteria.length === 0 ? 'standard' : null
+  );
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');
 
-  // Initialize criteria if empty
+  // Initialize criteria with preset if empty
   useEffect(() => {
-    if (criteria.length === 0 && numCriteria > 0) {
-      const defaultCriteria: Criterion[] = Array(numCriteria).fill(null).map((_, i) => ({
-        name: COMMON_CRITERIA[i] || `Criterion ${i + 1}`,
-        points: Math.floor(totalPoints / numCriteria),
+    if (criteria.length === 0 && selectedPreset) {
+      const presetCriteria = CRITERIA_PRESETS[selectedPreset].criteria;
+      const pointsPerCriterion = Math.floor(totalPoints / presetCriteria.length);
+      const defaultCriteria: Criterion[] = presetCriteria.map((name) => ({
+        name,
+        points: pointsPerCriterion,
         isCustom: false,
       }));
       onChange(defaultCriteria);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedPreset]);
 
-  const handlePointsPerCriteriaChange = (numCriteria: number) => {
-    setNumCriteria(numCriteria);
-    const pointsPerCriterion = Math.floor(totalPoints / numCriteria);
-    const newCriteria: Criterion[] = Array(numCriteria).fill(null).map((_, i) => ({
-      name: criteria[i]?.name || COMMON_CRITERIA[i] || `Criterion ${i + 1}`,
+  const handlePresetChange = (presetKey: keyof typeof CRITERIA_PRESETS) => {
+    setSelectedPreset(presetKey);
+    const presetCriteria = CRITERIA_PRESETS[presetKey].criteria;
+    const pointsPerCriterion = Math.floor(totalPoints / presetCriteria.length);
+    const newCriteria: Criterion[] = presetCriteria.map((name) => ({
+      name,
       points: pointsPerCriterion,
-      isCustom: criteria[i]?.isCustom || false,
+      isCustom: false,
     }));
     onChange(newCriteria);
   };
@@ -74,24 +99,52 @@ export function CriteriaBuilder({
 
   const addCustomCriterion = () => {
     if (customName.trim()) {
-      const newCriteria = [...criteria, { name: customName.trim(), points: 0, isCustom: true }];
+      const newCriteria = [...criteria, { name: customName.trim(), points: Math.floor(totalPoints / (criteria.length + 1)), isCustom: true }];
       onChange(newCriteria);
       setCustomName('');
       setShowCustom(false);
-      setNumCriteria(newCriteria.length);
     }
   };
 
   const removeCriterion = (index: number) => {
     const newCriteria = criteria.filter((_, i) => i !== index);
     onChange(newCriteria);
-    setNumCriteria(newCriteria.length);
   };
 
   const totalAssignedPoints = criteria.reduce((sum, c) => sum + c.points, 0);
 
   return (
     <div style={{ marginBottom: '16px' }}>
+      {/* Preset Selection */}
+      {criteria.length === 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+            📊 Select a Grading Template (or customize below)
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+            {Object.entries(CRITERIA_PRESETS).map(([key, preset]) => (
+              <button
+                key={key}
+                onClick={() => handlePresetChange(key as keyof typeof CRITERIA_PRESETS)}
+                style={{
+                  padding: '12px 16px',
+                  backgroundColor: selectedPreset === key ? '#007bff' : '#f5f5f5',
+                  color: selectedPreset === key ? 'white' : '#333',
+                  border: `2px solid ${selectedPreset === key ? '#0056b3' : '#ddd'}`,
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '16px', marginBottom: '16px' }}>
         <div style={{ flex: 1 }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
@@ -110,28 +163,6 @@ export function CriteriaBuilder({
               }));
               onChange(newCriteria);
             }}
-            style={{
-              width: '100%',
-              padding: '10px',
-              borderRadius: '4px',
-              border: '1px solid #ddd',
-              fontSize: '14px',
-              fontFamily: 'Arial, sans-serif',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-            📋 Number of Criteria
-          </label>
-          <input
-            type="number"
-            min="1"
-            max="10"
-            value={numCriteria}
-            onChange={(e) => handlePointsPerCriteriaChange(parseInt(e.target.value) || 1)}
             style={{
               width: '100%',
               padding: '10px',

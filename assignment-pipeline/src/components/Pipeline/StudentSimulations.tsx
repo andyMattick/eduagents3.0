@@ -1,6 +1,7 @@
 import React from 'react';
 import { StudentFeedback } from '../../types/pipeline';
 import AccessibilityFeedback from './AccessibilityFeedback';
+import { TeacherNotesPanel } from './TeacherNotesPanel';
 
 interface StudentSimulationsProps {
   feedback: StudentFeedback[];
@@ -132,6 +133,8 @@ export function StudentSimulations({
       )}
 
       <AccessibilityFeedback feedback={feedback} />
+
+      <TeacherNotesPanel studentFeedback={feedback} isLoading={isLoading} />
 
       <div style={{ marginTop: '24px' }}>
         <button

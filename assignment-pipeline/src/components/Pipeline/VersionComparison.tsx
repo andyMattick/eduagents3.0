@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { TagChange, VersionAnalysis } from '../../types/pipeline';
+import jsPDF from 'jspdf';
 
 interface Props {
   original: string;
@@ -18,6 +19,88 @@ export function VersionComparison({
   versionAnalysis,
   onReset,
 }: Props) {
+  const [showStudentView, setShowStudentView] = useState(false);
+
+  const exportStudentViewPDF = () => {
+    const pdf = new jsPDF();
+    let yPosition = 20;
+
+    // Title
+    pdf.setFontSize(16);
+    pdf.text('Assignment', 20, yPosition);
+    yPosition += 10;
+
+    // Content
+    pdf.setFontSize(11);
+    const splitText = pdf.splitTextToSize(rewritten, 170);
+    pdf.text(splitText, 20, yPosition);
+
+    pdf.save('assignment-student-view.pdf');
+  };
+
+  if (showStudentView) {
+    return (
+      <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+        <h2 style={{ marginTop: 0 }}>📚 Student View</h2>
+        <p style={{ color: '#666', fontSize: '14px' }}>
+          This is how students will see the final assignment.
+        </p>
+
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '16px' }}>
+          <div
+            style={{
+              padding: '20px',
+              backgroundColor: '#f9f9f9',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              minHeight: '300px',
+              fontSize: '14px',
+              lineHeight: '1.8',
+              color: '#333',
+              whiteSpace: 'pre-wrap',
+              wordWrap: 'break-word',
+            }}
+          >
+            {rewritten}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={exportStudentViewPDF}
+            style={{
+              padding: '10px 24px',
+              backgroundColor: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            }}
+          >
+            📥 Download PDF
+          </button>
+          <button
+            onClick={() => setShowStudentView(false)}
+            style={{
+              padding: '10px 24px',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+            }}
+          >
+            Back to Comparison
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
       <h2 style={{ marginTop: 0 }}>Step 5: Version Comparison</h2>
@@ -163,7 +246,22 @@ export function VersionComparison({
         </div>
       </div>
 
-      <div style={{ marginTop: '24px' }}>
+      <div style={{ marginTop: '24px', display: 'flex', gap: '12px' }}>
+        <button
+          onClick={() => setShowStudentView(true)}
+          style={{
+            padding: '10px 24px',
+            backgroundColor: '#17a2b8',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+          }}
+        >
+          👁️ View Student Version
+        </button>
         <button
           onClick={onReset}
           style={{

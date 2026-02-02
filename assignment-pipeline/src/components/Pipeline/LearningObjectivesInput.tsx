@@ -1,9 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface LearningObjectivesInputProps {
   objectives: string[];
   onChange: (objectives: string[]) => void;
 }
+
+// High-quality, standards-aligned objectives
+const PRELOADED_OBJECTIVES = [
+  'Critical Thinking',
+  'Clear Communication',
+  'Analysis & Synthesis',
+  'Problem Solving',
+  'Evidence-Based Reasoning',
+  'Collaboration',
+  'Research Skills',
+  'Creativity & Innovation',
+];
 
 const COMMON_OBJECTIVES = [
   'Critical Thinking',
@@ -24,6 +36,15 @@ export function LearningObjectivesInput({ objectives, onChange }: LearningObject
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customObjective, setCustomObjective] = useState('');
 
+  // Auto-select preloaded objectives on first mount if empty
+  useEffect(() => {
+    if (objectives.length === 0) {
+      // Start with 3 key preloaded objectives
+      onChange(PRELOADED_OBJECTIVES.slice(0, 3));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const addObjective = (objective: string) => {
     if (!objectives.includes(objective) && objective.trim()) {
       onChange([...objectives, objective]);
@@ -42,38 +63,17 @@ export function LearningObjectivesInput({ objectives, onChange }: LearningObject
     }
   };
 
+  const availablePreloaded = PRELOADED_OBJECTIVES.filter(obj => !objectives.includes(obj));
+
   return (
     <div style={{ marginBottom: '16px' }}>
       <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
         🎯 Learning Objectives
       </label>
 
-      <select
-        onChange={(e) => {
-          if (e.target.value) {
-            addObjective(e.target.value);
-            e.target.value = '';
-          }
-        }}
-        style={{
-          width: '100%',
-          padding: '10px',
-          borderRadius: '4px',
-          border: '1px solid #ddd',
-          fontSize: '14px',
-          fontFamily: 'Arial, sans-serif',
-          marginBottom: '12px',
-          boxSizing: 'border-box',
-          color: '#666',
-        }}
-      >
-        <option value="">Select an objective to add...</option>
-        {COMMON_OBJECTIVES.filter(obj => !objectives.includes(obj)).map(obj => (
-          <option key={obj} value={obj}>
-            {obj}
-          </option>
-        ))}
-      </select>
+      <p style={{ fontSize: '12px', color: '#666', margin: '0 0 8px 0' }}>
+        Pre-selected standards-aligned objectives. Add or remove as needed.
+      </p>
 
       {objectives.length > 0 && (
         <div style={{ marginBottom: '12px' }}>
@@ -110,6 +110,62 @@ export function LearningObjectivesInput({ objectives, onChange }: LearningObject
           ))}
         </div>
       )}
+
+      {/* Show quick-add buttons for remaining preloaded objectives */}
+      {availablePreloaded.length > 0 && (
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#666', margin: '0 0 8px 0', fontWeight: '500' }}>
+            Quick add:
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {availablePreloaded.slice(0, 5).map((obj) => (
+              <button
+                key={obj}
+                onClick={() => addObjective(obj)}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#e8f4f8',
+                  border: '1px solid #b3dfe8',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  color: '#0066cc',
+                  fontWeight: '500',
+                }}
+              >
+                + {obj}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <select
+        onChange={(e) => {
+          if (e.target.value) {
+            addObjective(e.target.value);
+            e.target.value = '';
+          }
+        }}
+        style={{
+          width: '100%',
+          padding: '10px',
+          borderRadius: '4px',
+          border: '1px solid #ddd',
+          fontSize: '14px',
+          fontFamily: 'Arial, sans-serif',
+          marginBottom: '12px',
+          boxSizing: 'border-box',
+          color: '#666',
+        }}
+      >
+        <option value="">Select an objective to add...</option>
+        {COMMON_OBJECTIVES.filter(obj => !objectives.includes(obj)).map(obj => (
+          <option key={obj} value={obj}>
+            {obj}
+          </option>
+        ))}
+      </select>
 
       {!showCustomInput ? (
         <button
@@ -184,3 +240,4 @@ export function LearningObjectivesInput({ objectives, onChange }: LearningObject
     </div>
   );
 }
+

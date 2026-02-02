@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { PipelineStep } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
 import { AssignmentInput } from './AssignmentInput';
+import { PromptBuilder } from './PromptBuilderSimplified';
+import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
 import { TagAnalysis } from './TagAnalysis';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
 import { VersionComparison } from './VersionComparison';
+import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
   const {
@@ -26,15 +29,161 @@ export function PipelineShell() {
   } = usePipeline();
 
   const [input, setInput] = useState('');
+  const [workflowMode, setWorkflowMode] = useState<'choose' | 'input' | 'builder'>('choose');
+  const [reviewMetadata, setReviewMetadata] = useState<ReviewMetadata | null>(null);
 
-  const handleAnalyzeClick = async () => {
+  const handleAssignmentGenerated = async (content: string, metadata: AssignmentMetadata) => {
+    // Feed the generated assignment into the analysis pipeline
+    setInput(content);
+    await analyzeTextAndTags(content);
+  };
+  const handleMetadataSubmit = async (metadata: ReviewMetadata) => {
+    setReviewMetadata(metadata);
+    // Now proceed with analysis
     await analyzeTextAndTags(input);
   };
 
   const handleNextStep = async () => {
     await nextStep();
+  }
+
+  const handleReset = () => {
+    setInput('');
+    setWorkflowMode('choose');
+    reset();
   };
 
+  // For choosing workflow
+  if (workflowMode === 'choose' && step === PipelineStep.INPUT) {
+    return (
+      <div
+        style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          padding: '20px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        }}
+      >
+        <div style={{ marginBottom: '32px' }}>
+          <h1 style={{ margin: '0 0 8px 0', color: '#333' }}>
+            📝 Teacher's Assignment Studio
+          </h1>
+          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
+            Craft excellent assignments with AI assistance—your expertise, elevated
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gap: '24px',
+            marginTop: '40px',
+          }}
+        >
+          {/* Option 1: Build New Assignment */}
+          <div
+            onClick={() => setWorkflowMode('builder')}
+            style={{
+              padding: '32px',
+              backgroundColor: '#f0f7ff',
+              border: '2px solid #007bff',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 16px rgba(0, 123, 255, 0.2)';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', color: '#007bff', fontSize: '24px' }}>
+              ✨ Build New Assignment
+            </h3>
+            <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
+              Create a new assignment using AI-powered generation with smart defaults. Great for getting started quickly.
+            </p>
+            <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
+              <li>Smart defaults & presets</li>
+              <li>AI-generated content</li>
+              <li>Auto-calculated time estimates</li>
+              <li>Instant peer & accessibility review</li>
+            </ul>
+            <button
+              style={{
+                marginTop: '16px',
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+            >
+              Start Building →
+            </button>
+          </div>
+
+          {/* Option 2: Review Existing Assignment */}
+          <div
+            onClick={() => setWorkflowMode('input')}
+            style={{
+              padding: '32px',
+              backgroundColor: '#f5f5f5',
+              border: '2px solid #6c757d',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.1)';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', color: '#333', fontSize: '24px' }}>
+              🔍 Review Assignment
+            </h3>
+            <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
+              Paste or upload an existing assignment to get AI feedback from multiple student perspectives.
+            </p>
+            <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
+              <li>Simulated student feedback</li>
+              <li>Accessibility insights</li>
+              <li>AI-suggested improvements</li>
+              <li>Before/after analysis</li>
+            </ul>
+            <button
+              style={{
+                marginTop: '16px',
+                padding: '10px 20px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+            >
+              Review Assignment →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Main pipeline shell
   return (
     <div
       style={{
@@ -67,6 +216,23 @@ export function PipelineShell() {
             ))}
           </div>
         </div>
+        {step > PipelineStep.INPUT && (
+          <button
+            onClick={handleReset}
+            style={{
+              marginTop: '12px',
+              padding: '8px 16px',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '13px',
+            }}
+          >
+            ← Start Over
+          </button>
+        )}
       </div>
 
       {error && (
@@ -84,13 +250,52 @@ export function PipelineShell() {
         </div>
       )}
 
+      {/* INPUT STEP: Choose between input or builder */}
       {step === PipelineStep.INPUT && (
-        <AssignmentInput
-          value={input}
-          onChange={setInput}
-          onSubmit={handleAnalyzeClick}
-          isLoading={isLoading}
-        />
+        <>
+          {workflowMode === 'builder' && (
+            <PromptBuilder onAssignmentGenerated={handleAssignmentGenerated} isLoading={isLoading} />
+          )}
+
+          {workflowMode === 'input' && (
+            <>
+              {/* Show metadata form if assignment is loaded but metadata not filled */}
+              {input.trim() && !reviewMetadata && (
+                <ReviewMetadataForm onSubmit={handleMetadataSubmit} isLoading={isLoading} />
+              )}
+
+              {/* Show assignment input only if no metadata is being collected */}
+              {!reviewMetadata && (
+                <>
+                  <AssignmentInput
+                    value={input}
+                    onChange={setInput}
+                    onSubmit={(text) => {
+                      setInput(text);
+                      handleMetadataSubmit(reviewMetadata || { gradeLevel: [], subject: '', subjectLevel: '' });
+                    }}
+                    isLoading={isLoading}
+                  />
+                  <button
+                    onClick={() => setWorkflowMode('choose')}
+                    style={{
+                      marginTop: '12px',
+                      padding: '8px 16px',
+                      backgroundColor: '#6c757d',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                    }}
+                  >
+                    ← Back to Options
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </>
       )}
 
       {step === PipelineStep.TAG_ANALYSIS && (
@@ -127,7 +332,7 @@ export function PipelineShell() {
           summary={rewriteSummary}
           tagChanges={tagChanges}
           versionAnalysis={versionAnalysis}
-          onReset={reset}
+          onReset={handleReset}
         />
       )}
     </div>

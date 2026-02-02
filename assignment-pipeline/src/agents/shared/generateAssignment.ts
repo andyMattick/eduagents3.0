@@ -1,5 +1,25 @@
 import { AssignmentMetadata, generateTagsFromMetadata } from './assignmentMetadata';
 
+export interface GeneratedAssignment {
+  content: string;
+  metadata: AssignmentMetadata;
+  tags: string[];
+  // Rich structured data for analysis
+  assessmentQuestions?: Array<{
+    id: string;
+    text: string;
+    bloomLevel: 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
+  }>;
+  rubricCriteria?: Array<{
+    id: string;
+    name: string;
+    points: number;
+    description: string;
+  }>;
+  // Persona-specific metrics for student simulation
+  studentTimeEstimates?: Record<string, number>; // persona → minutes
+}
+
 // Mock content templates for different assignment types
 const mockExamples: Record<string, string[]> = {
   ESSAY: [
@@ -43,11 +63,7 @@ const mockExamples: Record<string, string[]> = {
  * Generates a comprehensive assignment based on structured metadata
  * Returns detailed mock content that simulates AI-generated assignments
  */
-export async function generateAssignment(metadata: AssignmentMetadata): Promise<{
-  content: string;
-  metadata: AssignmentMetadata;
-  tags: string[];
-}> {
+export async function generateAssignment(metadata: AssignmentMetadata): Promise<GeneratedAssignment> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -163,9 +179,130 @@ export async function generateAssignment(metadata: AssignmentMetadata): Promise<
 
   content += `---\n\n**Good luck!** Remember to start early, ask questions if you're stuck, and review the learning objectives before submitting.\n`;
 
+  // Generate assessment questions based on metadata
+  const assessmentQuestions = generateMockAssessmentQuestions(metadata);
+  
+  // Generate rubric criteria
+  const rubricCriteria = generateMockRubric(metadata);
+  
+  // Estimate time for different student personas
+  const studentTimeEstimates = estimateTimeByPersona(metadata.estimatedTimeMinutes || 60);
+
   return {
     content,
     metadata,
     tags,
+    assessmentQuestions,
+    rubricCriteria,
+    studentTimeEstimates,
+  };
+}
+
+/**
+ * Generate mock assessment questions aligned with Bloom's Taxonomy
+ */
+function generateMockAssessmentQuestions(metadata: AssignmentMetadata): Array<{
+  id: string;
+  text: string;
+  bloomLevel: 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
+}> {
+  const questions = [];
+  const numQuestions = 6;
+
+  const bloomLevels: Array<'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create'> = [
+    'Remember',
+    'Understand',
+    'Apply',
+    'Analyze',
+    'Evaluate',
+    'Create',
+  ];
+
+  const verbs: Record<string, string[]> = {
+    Remember: ['List', 'Recall', 'Define', 'Identify'],
+    Understand: ['Explain', 'Summarize', 'Describe', 'Discuss'],
+    Apply: ['Use', 'Demonstrate', 'Solve', 'Show'],
+    Analyze: ['Compare', 'Examine', 'Investigate', 'Distinguish'],
+    Evaluate: ['Judge', 'Assess', 'Critique', 'Defend'],
+    Create: ['Design', 'Develop', 'Compose', 'Propose'],
+  };
+
+  for (let i = 0; i < numQuestions; i++) {
+    const bloomLevel = bloomLevels[i % bloomLevels.length];
+    const verbList = verbs[bloomLevel];
+    const verb = verbList[Math.floor(Math.random() * verbList.length)];
+
+    const question = `${verb} the key concepts of ${metadata.description?.substring(0, 40)}...`;
+
+    questions.push({
+      id: `q${i + 1}`,
+      text: question,
+      bloomLevel,
+    });
+  }
+
+  return questions;
+}
+
+/**
+ * Generate mock rubric with criteria
+ */
+function generateMockRubric(metadata: AssignmentMetadata): Array<{
+  id: string;
+  name: string;
+  points: number;
+  description: string;
+}> {
+  const baseCriteria = [
+    {
+      id: 'c1',
+      name: 'Content Understanding',
+      points: 25,
+      description: 'Demonstrates clear understanding of concepts and subject matter',
+    },
+    {
+      id: 'c2',
+      name: 'Evidence & Support',
+      points: 25,
+      description: 'Uses relevant examples, data, or research to support claims',
+    },
+    {
+      id: 'c3',
+      name: 'Organization & Clarity',
+      points: 25,
+      description: 'Work is well-organized and ideas are clearly communicated',
+    },
+    {
+      id: 'c4',
+      name: 'Critical Thinking',
+      points: 25,
+      description: 'Analyzes information, makes connections, and evaluates perspectives',
+    },
+  ];
+
+  // Use existing assessment criteria if provided
+  if (metadata.assessmentCriteria && metadata.assessmentCriteria.length > 0) {
+    return metadata.assessmentCriteria.map((criterion, idx) => ({
+      id: `c${idx + 1}`,
+      name: criterion.split('(')[0].trim(),
+      points: 25,
+      description: `Evaluate ${criterion.split('(')[0].toLowerCase()}`,
+    }));
+  }
+
+  return baseCriteria;
+}
+
+/**
+ * Estimate time required by different student personas
+ */
+function estimateTimeByPersona(baseMinutes: number): Record<string, number> {
+  return {
+    'Visual Learner': Math.ceil(baseMinutes * 1.1), // Needs time for visuals
+    'Critical Reader': Math.ceil(baseMinutes * 1.2), // Reads deeply
+    'Hands-On Learner': Math.ceil(baseMinutes * 1.15), // Needs practice time
+    'Detail-Oriented Peer': Math.ceil(baseMinutes * 1.3), // Perfectionist
+    'Creative Thinker': Math.ceil(baseMinutes * 1.0), // Flows naturally
+    'Supportive Peer': Math.ceil(baseMinutes * 1.05), // Works steadily
   };
 }

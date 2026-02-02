@@ -2,10 +2,21 @@ import React, { useState } from 'react';
 import { SubjectSelector } from './SubjectSelector';
 import { LearningObjectivesInput } from './LearningObjectivesInput';
 import { CriteriaBuilder, Criterion } from './CriteriaBuilder';
+import { AssignmentPartBuilder, AssignmentPart } from './AssignmentPartBuilder';
+import { BloomDistributionSelector } from './BloomDistributionSelector';
 
 interface AssignmentBuilderProps {
   onAssignmentBuilt: (config: AssignmentConfig) => void;
   isLoading?: boolean;
+}
+
+interface BloomDistribution {
+  Remember: number;
+  Understand: number;
+  Apply: number;
+  Analyze: number;
+  Evaluate: number;
+  Create: number;
 }
 
 export interface AssignmentConfig {
@@ -16,6 +27,8 @@ export interface AssignmentConfig {
   criteria: Criterion[];
   totalPoints: number;
   estimatedTimeMinutes: number;
+  parts?: AssignmentPart[];
+  bloomDistribution?: BloomDistribution;
 }
 
 export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: AssignmentBuilderProps) {
@@ -27,6 +40,15 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
     criteria: [],
     totalPoints: 100,
     estimatedTimeMinutes: 120,
+    parts: [],
+    bloomDistribution: {
+      Remember: 15,
+      Understand: 25,
+      Apply: 25,
+      Analyze: 20,
+      Evaluate: 10,
+      Create: 5,
+    },
   });
 
   const handleSubmit = () => {
@@ -121,6 +143,20 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
           onChange={(criteria) => setConfig({ ...config, criteria })}
           onTotalPointsChange={(totalPoints) => setConfig({ ...config, totalPoints })}
         />
+
+        {/* Assignment Parts Builder */}
+        <AssignmentPartBuilder
+          parts={config.parts || []}
+          onChange={(parts) => setConfig({ ...config, parts })}
+        />
+
+        {/* Bloom Distribution Selector */}
+        {config.bloomDistribution && (
+          <BloomDistributionSelector
+            distribution={config.bloomDistribution}
+            onChange={(bloomDistribution) => setConfig({ ...config, bloomDistribution })}
+          />
+        )}
 
         {/* Time Estimate */}
         <div style={{ marginBottom: '16px' }}>

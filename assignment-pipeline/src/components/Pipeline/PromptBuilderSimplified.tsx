@@ -4,11 +4,10 @@ import {
   AssignmentType,
   GradeLevel,
   DifficultyLevel,
-  ASSIGNMENT_TYPE_LABELS,
-  GRADE_LEVEL_LABELS,
-  DIFFICULTY_LABELS,
 } from '../../agents/shared/assignmentMetadata';
 import { generateAssignment } from '../../agents/shared/generateAssignment';
+import jsPDF from 'jspdf';
+import { Document, Packer, Paragraph } from 'docx';
 
 interface PromptBuilderProps {
   onAssignmentGenerated: (content: string, metadata: AssignmentMetadata) => void;
@@ -74,15 +73,13 @@ const COMMON_CRITERIA = [
   'Depth of Analysis',
 ];
 
-const SUBMISSION_FORMATS = [
-  'Google Doc',
-  'PDF',
-  'Printed Copy',
-  'LMS Upload',
-  'Email',
-];
-
 const GRADE_LEVELS_NUMERIC = [6, 7, 8, 9, 10, 11, 12];
+
+const GRADE_BANDS = {
+  'Elementary': [3, 4, 5],
+  'Middle School': [6, 7, 8],
+  'High School': [9, 10, 11, 12],
+};
 
 // Bloom's Taxonomy verbs for each level
 const BLOOMS_VERBS = {
@@ -99,10 +96,9 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
   const [subject, setSubject] = useState('');
   const [customSubject, setCustomSubject] = useState('');
   const [title, setTitle] = useState('');
-  const [gradeLevel, setGradeLevel] = useState(9);
+  const [gradeLevel, setGradeLevel] = useState<number[]>([9]);
   const [totalPoints, setTotalPoints] = useState(100);
   const [dueDate, setDueDate] = useState('');
-  const [submissionFormats, setSubmissionFormats] = useState<string[]>([]);
 
   // Step 2: Learning Objectives
   const [learningObjectives, setLearningObjectives] = useState<string[]>([]);
@@ -127,6 +123,12 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
   const [generating, setGenerating] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Preview modal state
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'teacher' | 'student'>('teacher');
+
+
+
   const validateStep = (step: number): string[] => {
     const errors: string[] = [];
     
@@ -135,7 +137,6 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
       if (!finalSubject.trim()) errors.push('Subject is required');
       if (!title.trim()) errors.push('Title is required');
       if (!dueDate) errors.push('Due date is required');
-      if (submissionFormats.length === 0) errors.push('At least one submission format is required');
     }
     
     if (step === 2) {
@@ -165,8 +166,6 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
 
   // Generate questions with Bloom's Taxonomy distribution
   const generateBloomsQuestions = (topic: string, count: number): AssessmentQuestion[] => {
-    const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'] as const;
-    
     // Calculate distribution: 50-60% lower, 30-40% mid, 10% higher
     const lowerCount = Math.ceil(count * 0.55); // Remember + Understand
     const midCount = Math.ceil(count * 0.35); // Apply + Analyze
@@ -332,10 +331,225 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
     setCriteria(criteria.map(c => (c.id === id ? { ...c, ...updates } : c)));
   };
 
-  const handleToggleSubmissionFormat = (format: string) => {
-    setSubmissionFormats(prev =>
-      prev.includes(format) ? prev.filter(f => f !== format) : [...prev, format]
-    );
+  // Export to PDF
+  const exportToPDF = () => {
+    const finalSubject = subject === 'Other' ? customSubject : subject;
+    const doc = new jsPDF();
+    let yPosition = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+    const maxWidth = pageWidth - 2 * margin;
+
+    // Title
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, margin, yPosition);
+    yPosition += 12;
+
+    // Metadata
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Subject: ${finalSubject}`, margin, yPosition);
+    yPosition += 6;
+    doc.text(`Grade Level(s): ${gradeLevel.map(g => `${g}th`).join(', ')}`, margin, yPosition);
+    yPosition += 6;
+    doc.text(`Total Points: ${totalPoints}`, margin, yPosition);
+    yPosition += 6;
+    doc.text(`Due Date: ${dueDate || 'TBD'}`, margin, yPosition);
+    yPosition += 12;
+
+    // Learning Objectives
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Learning Objectives', margin, yPosition);
+    yPosition += 8;
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    learningObjectives.forEach(obj => {
+      const lines = doc.splitTextToSize(`• ${obj}`, maxWidth);
+      doc.text(lines, margin, yPosition);
+      yPosition += lines.length * 5;
+    });
+    yPosition += 4;
+
+    // Assignment Parts
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assignment Instructions', margin, yPosition);
+    yPosition += 8;
+
+    parts.forEach((part, idx) => {
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Part ${idx + 1}: ${part.title}`, margin, yPosition);
+      yPosition += 6;
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      const instructionLines = doc.splitTextToSize(part.instructions, maxWidth);
+      doc.text(instructionLines, margin, yPosition);
+      yPosition += instructionLines.length * 5;
+
+      if (part.includesFormula && part.formula) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Formula:', margin, yPosition);
+        yPosition += 4;
+        doc.setFont('helvetica', 'normal');
+        const formulaLines = doc.splitTextToSize(part.formula, maxWidth);
+        doc.text(formulaLines, margin, yPosition);
+        yPosition += formulaLines.length * 4;
+      }
+
+      yPosition += 4;
+
+      // Check if we need a new page
+      if (yPosition > pageHeight - 30) {
+        doc.addPage();
+        yPosition = 20;
+      }
+    });
+
+    // Grading Rubric
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Grading Rubric', margin, yPosition);
+    yPosition += 8;
+
+    doc.setFontSize(11);
+    doc.text(`This assignment is worth ${totalPoints} points total.`, margin, yPosition);
+    yPosition += 8;
+
+    // Create rubric table
+    doc.setFont('helvetica', 'bold');
+    doc.text('Criterion', margin, yPosition);
+    doc.text('Points', margin + maxWidth - 40, yPosition);
+    yPosition += 6;
+
+    doc.setFont('helvetica', 'normal');
+    criteria.forEach(c => {
+      doc.text(c.name, margin, yPosition);
+      doc.text(c.points.toString(), margin + maxWidth - 40, yPosition);
+      yPosition += 5;
+    });
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total', margin, yPosition);
+    doc.text(totalPoints.toString(), margin + maxWidth - 40, yPosition);
+    yPosition += 8;
+
+    // Assessment Questions
+    if (assessmentQuestions.length > 0) {
+      if (yPosition > pageHeight - 40) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Assessment Questions', margin, yPosition);
+      yPosition += 8;
+
+      assessmentQuestions.forEach((q, idx) => {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${idx + 1}. [${q.bloomLevel}]`, margin, yPosition);
+        yPosition += 5;
+
+        doc.setFont('helvetica', 'normal');
+        const questionLines = doc.splitTextToSize(q.text, maxWidth - 10);
+        doc.text(questionLines, margin + 5, yPosition);
+        yPosition += questionLines.length * 4;
+        yPosition += 3;
+
+        if (yPosition > pageHeight - 20) {
+          doc.addPage();
+          yPosition = 20;
+        }
+      });
+    }
+
+    // Save PDF
+    doc.save(`${title.replace(/\s+/g, '_')}_assignment.pdf`);
+  };
+
+  // Export to Word - simplified using text paragraphs
+  const exportToWord = async () => {
+    const finalSubject = subject === 'Other' ? customSubject : subject;
+
+    const docElements: Paragraph[] = [];
+
+    // Title
+    docElements.push(new Paragraph({ text: title }));
+    docElements.push(new Paragraph({ text: '' }));
+
+    // Metadata
+    docElements.push(new Paragraph({ text: `Subject: ${finalSubject}` }));
+    docElements.push(new Paragraph({ text: `Grade Level(s): ${gradeLevel.map(g => `${g}th`).join(', ')}` }));
+    docElements.push(new Paragraph({ text: `Total Points: ${totalPoints}` }));
+    docElements.push(new Paragraph({ text: `Due Date: ${dueDate || 'TBD'}` }));
+    docElements.push(new Paragraph({ text: '' }));
+
+    // Learning Objectives
+    docElements.push(new Paragraph({ text: 'Learning Objectives' }));
+    learningObjectives.forEach(obj => {
+      docElements.push(new Paragraph({ text: `• ${obj}` }));
+    });
+    docElements.push(new Paragraph({ text: '' }));
+
+    // Assignment Parts
+    docElements.push(new Paragraph({ text: 'Assignment Instructions' }));
+    docElements.push(new Paragraph({ text: '' }));
+
+    parts.forEach((part, idx) => {
+      docElements.push(new Paragraph({ text: `Part ${idx + 1}: ${part.title}` }));
+      docElements.push(new Paragraph({ text: part.instructions }));
+      
+      if (part.includesFormula && part.formula) {
+        docElements.push(new Paragraph({ text: `Formula: ${part.formula}` }));
+      }
+      docElements.push(new Paragraph({ text: '' }));
+    });
+
+    // Grading Rubric
+    docElements.push(new Paragraph({ text: 'Grading Rubric' }));
+    docElements.push(new Paragraph({ text: `This assignment is worth ${totalPoints} points total.` }));
+    docElements.push(new Paragraph({ text: '' }));
+
+    // Rubric as formatted text
+    docElements.push(new Paragraph({ text: 'Criterion | Points' }));
+    docElements.push(new Paragraph({ text: '-----------|----------' }));
+    criteria.forEach(c => {
+      docElements.push(new Paragraph({ text: `${c.name} | ${c.points}` }));
+    });
+    docElements.push(new Paragraph({ text: `Total | ${totalPoints}` }));
+    docElements.push(new Paragraph({ text: '' }));
+
+    // Assessment Questions
+    if (assessmentQuestions.length > 0) {
+      docElements.push(new Paragraph({ text: 'Assessment Questions' }));
+      assessmentQuestions.forEach((q, idx) => {
+        docElements.push(new Paragraph({ text: `${idx + 1}. [${q.bloomLevel}] ${q.text}` }));
+      });
+    }
+
+    const doc = new Document({
+      sections: [
+        {
+          children: docElements,
+        },
+      ],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, '_')}_assignment.docx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleGenerateAssignment = async () => {
@@ -354,20 +568,28 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
         .map(p => `${p.title}: ${p.instructions}`)
         .join('\n\n');
 
+      // Map numeric grades to grade level band
+      const mapGradeLevelBand = (): typeof GradeLevel[keyof typeof GradeLevel] => {
+        const minGrade = Math.min(...gradeLevel);
+        if (minGrade <= 5) return GradeLevel.ELEMENTARY;
+        if (minGrade <= 8) return GradeLevel.MIDDLE_SCHOOL;
+        return GradeLevel.HIGH_SCHOOL;
+      };
+
       const metadata: AssignmentMetadata = {
         subject: finalSubject,
         title,
         description: partsDescription,
         topic: title,
         assignmentType: AssignmentType.PROJECT,
-        gradeLevel: GradeLevel.HIGH_SCHOOL,
+        gradeLevel: mapGradeLevelBand(),
         difficultyLevel: DifficultyLevel.INTERMEDIATE,
         estimatedTimeMinutes: 0,
         learningObjectives,
         requiredElements: [],
         assessmentCriteria: criteria.map(c => `${c.name} (${c.points} pts)`),
         prerequisites: [],
-        additionalNotes: `Due Date: ${dueDate}\nSubmission Format: ${submissionFormats.join(', ')}`,
+        additionalNotes: `Due Date: ${dueDate}`,
       };
 
       const result = await generateAssignment(metadata);
@@ -516,17 +738,73 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
               style={inputStyle}
             />
 
-            {/* Grade Level */}
-            <label style={labelStyle}>Grade Level</label>
-            <select
-              value={gradeLevel}
-              onChange={(e) => setGradeLevel(parseInt(e.target.value))}
-              style={inputStyle}
-            >
-              {GRADE_LEVELS_NUMERIC.map(g => (
-                <option key={g} value={g}>{g}th Grade</option>
+            {/* Grade Levels - Multi-select */}
+            <label style={labelStyle}>Grade Levels (Select one or more)</label>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+              gap: '12px',
+              marginBottom: '16px'
+            }}>
+              {/* Grade Band Buttons */}
+              {Object.entries(GRADE_BANDS).map(([band, grades]) => (
+                <button
+                  key={band}
+                  onClick={() => {
+                    // Toggle entire band
+                    const allSelected = grades.every(g => gradeLevel.includes(g));
+                    if (allSelected) {
+                      setGradeLevel(gradeLevel.filter(g => !grades.includes(g)));
+                    } else {
+                      setGradeLevel(Array.from(new Set([...gradeLevel, ...grades])).sort((a, b) => a - b));
+                    }
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: grades.every(g => gradeLevel.includes(g)) ? '#007bff' : '#e0e0e0',
+                    color: grades.every(g => gradeLevel.includes(g)) ? 'white' : '#333',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  {band}
+                </button>
               ))}
-            </select>
+            </div>
+
+            {/* Individual Grade Level Checkboxes */}
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+              gap: '12px',
+              marginBottom: '16px',
+              padding: '12px',
+              backgroundColor: '#f9f9f9',
+              borderRadius: '4px',
+              border: '1px solid #ddd'
+            }}>
+              {GRADE_LEVELS_NUMERIC.map(g => (
+                <label key={g} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={gradeLevel.includes(g)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setGradeLevel(Array.from(new Set([...gradeLevel, g])).sort((a, b) => a - b));
+                      } else {
+                        setGradeLevel(gradeLevel.filter(gl => gl !== g));
+                      }
+                    }}
+                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                  />
+                  <span style={{ fontSize: '13px' }}>{g}th</span>
+                </label>
+              ))}
+            </div>
 
             {/* Total Points */}
             <label style={labelStyle}>Total Points</label>
@@ -546,24 +824,6 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
               onChange={(e) => setDueDate(e.target.value)}
               style={inputStyle}
             />
-
-            {/* Submission Formats */}
-            <label style={labelStyle}>Submission Format (select all that apply)</label>
-            <div style={{ marginBottom: '16px' }}>
-              {SUBMISSION_FORMATS.map(format => (
-                <div key={format} style={{ marginBottom: '8px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', fontWeight: 'normal' }}>
-                    <input
-                      type="checkbox"
-                      checked={submissionFormats.includes(format)}
-                      onChange={() => handleToggleSubmissionFormat(format)}
-                      style={{ marginRight: '8px' }}
-                    />
-                    {format}
-                  </label>
-                </div>
-              ))}
-            </div>
           </>
         )}
 
@@ -960,11 +1220,306 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
         )}
       </div>
 
+      {/* Preview Modal */}
+      {showPreview && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            maxWidth: '900px',
+            width: '90%',
+            maxHeight: '85vh',
+            overflow: 'auto',
+            padding: 0,
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+          }}>
+            {/* Preview Header */}
+            <div style={{
+              backgroundColor: '#f5f5f5',
+              borderBottom: '1px solid #ddd',
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              position: 'sticky',
+              top: 0,
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}>
+              <h3 style={{ margin: 0 }}>📋 Assignment Preview</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  onClick={exportToPDF}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                  }}
+                >
+                  📥 PDF
+                </button>
+                <button
+                  onClick={exportToWord}
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#0d6efd',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                  }}
+                >
+                  📄 Word
+                </button>
+                <button
+                  onClick={() => setShowPreview(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#666',
+                    padding: '0 8px',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Selection */}
+            <div style={{
+              borderBottom: '1px solid #ddd',
+              padding: '12px 20px',
+              display: 'flex',
+              gap: '16px',
+            }}>
+              <button
+                onClick={() => setPreviewTab('teacher')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: previewTab === 'teacher' ? 'bold' : 'normal',
+                  color: previewTab === 'teacher' ? '#007bff' : '#666',
+                  borderBottom: previewTab === 'teacher' ? '3px solid #007bff' : 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                👨‍🏫 Teacher View
+              </button>
+              <button
+                onClick={() => setPreviewTab('student')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '8px 16px',
+                  fontSize: '14px',
+                  fontWeight: previewTab === 'student' ? 'bold' : 'normal',
+                  color: previewTab === 'student' ? '#007bff' : '#666',
+                  borderBottom: previewTab === 'student' ? '3px solid #007bff' : 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                👨‍🎓 Student View
+              </button>
+            </div>
+
+            {/* Preview Content */}
+            <div style={{
+              padding: '20px',
+              fontSize: '14px',
+              lineHeight: '1.6',
+              color: '#333',
+            }}>
+              {previewTab === 'teacher' && (
+                <div>
+                  <h2>{title}</h2>
+                  <hr style={{ margin: '16px 0', borderColor: '#ddd' }} />
+                  
+                  <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                    <strong>Assignment Metadata:</strong>
+                    <table style={{ width: '100%', marginTop: '8px', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '6px', fontWeight: 'bold' }}>Subject:</td>
+                          <td style={{ padding: '6px' }}>{subject === 'Other' ? customSubject : subject}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '6px', fontWeight: 'bold' }}>Grade Level(s):</td>
+                          <td style={{ padding: '6px' }}>{gradeLevel.map(g => `${g}th`).join(', ')}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '6px', fontWeight: 'bold' }}>Due Date:</td>
+                          <td style={{ padding: '6px' }}>{dueDate || 'Not specified'}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '6px', fontWeight: 'bold' }}>Total Points:</td>
+                          <td style={{ padding: '6px' }}>{totalPoints}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <h3>Learning Objectives</h3>
+                  <ul>
+                    {learningObjectives.map((obj, idx) => (
+                      <li key={idx}>{obj}</li>
+                    ))}
+                  </ul>
+
+                  <h3>Assignment Parts</h3>
+                  {parts.map((part, idx) => (
+                    <div key={part.id} style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                      <h4>Part {idx + 1}: {part.title}</h4>
+                      <p>{part.instructions}</p>
+                      {part.includesFormula && part.formula && (
+                        <div style={{ marginTop: '8px', padding: '8px', backgroundColor: '#e8f4f8', borderRadius: '3px' }}>
+                          <strong>Formula:</strong> {part.formula}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  <h3>Grading Rubric</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ backgroundColor: '#f0f0f0', borderBottom: '2px solid #ddd' }}>
+                        <th style={{ padding: '8px', textAlign: 'left' }}>Criterion</th>
+                        <th style={{ padding: '8px', textAlign: 'right' }}>Points</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {criteria.map(c => (
+                        <tr key={c.id} style={{ borderBottom: '1px solid #ddd' }}>
+                          <td style={{ padding: '8px' }}>{c.name}</td>
+                          <td style={{ padding: '8px', textAlign: 'right' }}>{c.points}</td>
+                        </tr>
+                      ))}
+                      <tr style={{ backgroundColor: '#f9f9f9', fontWeight: 'bold' }}>
+                        <td style={{ padding: '8px' }}>Total</td>
+                        <td style={{ padding: '8px', textAlign: 'right' }}>{totalPoints}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {assessmentQuestions.length > 0 && (
+                    <>
+                      <h3 style={{ marginTop: '20px' }}>Assessment Questions</h3>
+                      <ol>
+                        {assessmentQuestions.map(q => (
+                          <li key={q.id} style={{ marginBottom: '8px', color: '#555' }}>
+                            <span style={{ fontSize: '12px', backgroundColor: '#e8f4f8', padding: '2px 6px', borderRadius: '3px', marginRight: '8px' }}>
+                              {q.bloomLevel}
+                            </span>
+                            {q.text}
+                          </li>
+                        ))}
+                      </ol>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {previewTab === 'student' && (
+                <div>
+                  <h2>{title}</h2>
+                  <hr style={{ margin: '16px 0', borderColor: '#ddd' }} />
+                  
+                  <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
+                    <strong>📌 Assignment Information</strong>
+                    <div style={{ marginTop: '8px', fontSize: '13px' }}>
+                      <div><strong>Subject:</strong> {subject === 'Other' ? customSubject : subject}</div>
+                      <div><strong>Grade Level(s):</strong> {gradeLevel.map(g => `${g}th`).join(', ')}</div>
+                      <div><strong>Due Date:</strong> {dueDate || 'Check with your teacher'}</div>
+                      <div><strong>Points Possible:</strong> {totalPoints}</div>
+                    </div>
+                  </div>
+
+                  <h3>What You'll Learn</h3>
+                  <p>By completing this assignment, you will:</p>
+                  <ul>
+                    {learningObjectives.map((obj, idx) => (
+                      <li key={idx}>{obj}</li>
+                    ))}
+                  </ul>
+
+                  <h3>Your Assignment</h3>
+                  {parts.map((part, idx) => (
+                    <div key={part.id} style={{ marginBottom: '16px' }}>
+                      <h4>Part {idx + 1}: {part.title}</h4>
+                      <p style={{ backgroundColor: '#f9f9f9', padding: '12px', borderRadius: '4px' }}>
+                        {part.instructions}
+                      </p>
+                      {part.includesFormula && part.formula && (
+                        <div style={{ marginTop: '8px', padding: '8px', backgroundColor: '#fff3e0', borderRadius: '3px', fontSize: '13px' }}>
+                          <strong>You'll use this formula:</strong> {part.formula}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  <h3>How You'll Be Graded</h3>
+                  <p>Your work will be evaluated on these criteria (out of {totalPoints} points):</p>
+                  <ul>
+                    {criteria.map(c => (
+                      <li key={c.id}>
+                        <strong>{c.name}</strong> ({c.points} points)
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div style={{ marginTop: '20px', padding: '12px', backgroundColor: '#e8f5e9', borderRadius: '4px' }}>
+                    <strong>💡 Tips for Success:</strong>
+                    <ul style={{ marginTop: '8px', fontSize: '13px' }}>
+                      <li>Start early and break the assignment into smaller steps</li>
+                      <li>Review the learning objectives frequently as you work</li>
+                      <li>Use the grading criteria to make sure you're on track</li>
+                      <li>Ask for help if you get stuck</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Buttons */}
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
         {currentStep > 1 && (
           <button onClick={handlePreviousStep} style={buttonStyle}>
             ← Previous Step
+          </button>
+        )}
+        {currentStep >= 4 && (
+          <button
+            onClick={() => setShowPreview(true)}
+            style={{
+              ...buttonStyle,
+              backgroundColor: '#6c757d',
+            }}
+          >
+            👁️ Preview Assignment
           </button>
         )}
         {currentStep < 5 && (
