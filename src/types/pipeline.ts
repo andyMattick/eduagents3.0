@@ -27,6 +27,16 @@ export interface StudentFeedback {
   struggledWith?: string[]; // Concepts the persona struggled with
   checkedOutAt?: string; // Where student lost engagement (task ID or section)
   estimatedGrade?: string; // e.g., "A", "B", "C"
+  // New: Time estimation with confidence
+  timeEstimate?: {
+    meanMinutes: number;
+    confidenceInterval95: [number, number];
+  };
+  // New: Difficulty rating
+  difficultySummary?: string;
+  // New: At-risk indicators
+  atRiskProfile?: boolean;
+  atRiskFactors?: string[];
 }
 
 /**
@@ -76,6 +86,33 @@ export interface PipelineState {
   currentStep: PipelineStep;
   isLoading: boolean;
   error?: string;
+  selectedStudentTags?: string[]; // Selected student focus areas for analysis
+  assignmentMetadata?: {
+    gradeLevel?: string;
+    subject?: string;
+    difficulty?: string;
+    type?: string;
+    bloomLevels?: Record<string, number>;
+    estimatedTimeMinutes?: number;
+  };
+  // New: Learner profile weighting
+  learnerProfileWeights?: Record<string, number>; // { profileId: weight }
+  // New: Comprehensive time estimation
+  completionTimeEstimate?: {
+    meanMinutes: number;
+    confidenceInterval95: [number, number];
+    perQuestion?: Array<{
+      index: number;
+      bloomLevel: number;
+      estimatedMinutes: number;
+      atRiskProfiles: string[];
+    }>;
+  };
+  // New: Student completion simulations
+  completionSimulations?: {
+    studentSimulations: any[]; // StudentCompletionSimulation[]
+    classSummary: any; // ClassCompletionSummary
+  };
 }
 
 /**

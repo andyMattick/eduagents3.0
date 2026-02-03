@@ -5,6 +5,7 @@ import { AssignmentInput } from './AssignmentInput';
 import { PromptBuilder } from './PromptBuilderSimplified';
 import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
 import { TagAnalysis } from './TagAnalysis';
+import { StudentTagBreakdown, StudentTagSelection } from './StudentTagBreakdown';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
 import { VersionComparison } from './VersionComparison';
@@ -24,6 +25,7 @@ export function PipelineShell() {
     versionAnalysis,
     rewrittenTags,
     analyzeTextAndTags,
+    getFeedback,
     nextStep,
     reset,
   } = usePipeline();
@@ -31,6 +33,9 @@ export function PipelineShell() {
   const [input, setInput] = useState('');
   const [workflowMode, setWorkflowMode] = useState<'choose' | 'input' | 'builder'>('choose');
   const [reviewMetadata, setReviewMetadata] = useState<ReviewMetadata | null>(null);
+  const [showStudentTagBreakdown, setShowStudentTagBreakdown] = useState(false);
+  const [assignmentGradeLevel, setAssignmentGradeLevel] = useState('6-8');
+  const [assignmentSubject, setAssignmentSubject] = useState('');
 
   const handleAssignmentGenerated = async (content: string, _metadata: AssignmentMetadata) => {
     // Feed the generated assignment into the analysis pipeline
@@ -39,18 +44,39 @@ export function PipelineShell() {
   };
   const handleMetadataSubmit = async (metadata: ReviewMetadata) => {
     setReviewMetadata(metadata);
+    // Store metadata for student tag breakdown
+    setAssignmentGradeLevel(metadata.gradeLevel || '6-8');
+    setAssignmentSubject(metadata.subject || '');
+    // Update pipeline state with metadata
     // Now proceed with analysis
     await analyzeTextAndTags(input);
   };
 
   const handleNextStep = async () => {
+    // If we're at TAG_ANALYSIS step, show student tag breakdown before continuing
+    if (step === PipelineStep.TAG_ANALYSIS && !showStudentTagBreakdown) {
+      setShowStudentTagBreakdown(true);
+      return;
+    }
     await nextStep();
-  }
+  };
+
+  const handleStudentTagSelection = async (selection: StudentTagSelection) => {
+    setShowStudentTagBreakdown(false);
+    // Call getFeedback with selected tags
+    await getFeedback(selection.tags);
+  };
 
   const handleReset = () => {
-    setInput('');
-    setWorkflowMode('choose');
-    reset();
+    const confirmed = window.confirm(
+      'Are you sure you want to start over? This will erase your current assignment and all analysis.'
+    );
+    if (confirmed) {
+      setInput('');
+      setWorkflowMode('choose');
+      setShowStudentTagBreakdown(false);
+      reset();
+    }
   };
 
   // For choosing workflow
@@ -250,11 +276,20 @@ export function PipelineShell() {
         </>
       )}
 
-      {step === PipelineStep.TAG_ANALYSIS && (
+      {step === PipelineStep.TAG_ANALYSIS && !showStudentTagBreakdown && (
         <TagAnalysis
           tags={tags}
           isLoading={isLoading}
           onNext={handleNextStep}
+        />
+      )}
+
+      {step === PipelineStep.TAG_ANALYSIS && showStudentTagBreakdown && (
+        <StudentTagBreakdown
+          gradeLevel={assignmentGradeLevel}
+          subject={assignmentSubject}
+          isLoading={isLoading}
+          onConfirm={handleStudentTagSelection}
         />
       )}
 

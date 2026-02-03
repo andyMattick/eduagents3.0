@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { SUGGESTED_OBJECTIVES_BY_SUBJECT } from '../../types/assignmentTypes';
 
 interface LearningObjectivesInputProps {
   objectives: string[];
   onChange: (objectives: string[]) => void;
+  subject?: string;
 }
 
 // High-quality, standards-aligned objectives
@@ -32,18 +34,28 @@ const COMMON_OBJECTIVES = [
   'Understanding',
 ];
 
-export function LearningObjectivesInput({ objectives, onChange }: LearningObjectivesInputProps) {
+export function LearningObjectivesInput({ objectives, onChange, subject }: LearningObjectivesInputProps) {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customObjective, setCustomObjective] = useState('');
+  const [suggestedBySubject, setSuggestedBySubject] = useState<string[]>([]);
 
-  // Auto-select preloaded objectives on first mount if empty
+  // Auto-select objectives based on subject on mount or when subject changes
   useEffect(() => {
     if (objectives.length === 0) {
-      // Start with 3 key preloaded objectives
-      onChange(PRELOADED_OBJECTIVES.slice(0, 3));
+      // Get subject-specific suggestions if available
+      let defaultObjs = PRELOADED_OBJECTIVES.slice(0, 3);
+      
+      if (subject) {
+        const subjectSuggestions = SUGGESTED_OBJECTIVES_BY_SUBJECT[subject] || 
+                                   SUGGESTED_OBJECTIVES_BY_SUBJECT.default;
+        setSuggestedBySubject(subjectSuggestions);
+        defaultObjs = subjectSuggestions.slice(0, 3);
+      }
+      
+      onChange(defaultObjs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [subject]);
 
   const addObjective = (objective: string) => {
     if (!objectives.includes(objective) && objective.trim()) {

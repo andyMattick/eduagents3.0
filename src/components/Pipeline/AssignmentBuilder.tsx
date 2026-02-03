@@ -4,25 +4,22 @@ import { LearningObjectivesInput } from './LearningObjectivesInput';
 import { CriteriaBuilder, Criterion } from './CriteriaBuilder';
 import { AssignmentPartBuilder, AssignmentPart } from './AssignmentPartBuilder';
 import { BloomDistributionSelector } from './BloomDistributionSelector';
+import { AssignmentTypeSelector } from './AssignmentTypeSelector';
+import { ASSIGNMENT_TYPES, BloomDistribution, AssignmentTypeTemplate } from '../../types/assignmentTypes';
 
 interface AssignmentBuilderProps {
   onAssignmentBuilt: (config: AssignmentConfig) => void;
   isLoading?: boolean;
 }
 
-interface BloomDistribution {
-  Remember: number;
-  Understand: number;
-  Apply: number;
-  Analyze: number;
-  Evaluate: number;
-  Create: number;
-}
-
 export interface AssignmentConfig {
   subject: string;
+  gradeLevel: string;
   title: string;
   description: string;
+  assignmentType?: string;
+  assignmentTypeTemplate?: AssignmentTypeTemplate;
+  numberOfQuestions?: number;
   learningObjectives: string[];
   criteria: Criterion[];
   totalPoints: number;
@@ -34,13 +31,16 @@ export interface AssignmentConfig {
 export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: AssignmentBuilderProps) {
   const [config, setConfig] = useState<AssignmentConfig>({
     subject: '',
+    gradeLevel: '',
     title: '',
     description: '',
+    assignmentType: '',
     learningObjectives: [],
     criteria: [],
     totalPoints: 100,
     estimatedTimeMinutes: 120,
     parts: [],
+    numberOfQuestions: 10,
     bloomDistribution: {
       Remember: 15,
       Understand: 25,
@@ -51,18 +51,38 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
     },
   });
 
+  const handleSelectAssignmentType = (template: AssignmentTypeTemplate) => {
+    setConfig((prev) => ({
+      ...prev,
+      assignmentType: template.id,
+      assignmentTypeTemplate: template,
+      description: template.defaultInstructions,
+      numberOfQuestions: template.suggestedQuestionCount,
+      estimatedTimeMinutes: template.estimatedTimeMinutes,
+      bloomDistribution: template.bloomDistribution,
+      // Update criteria to match suggested categories
+      criteria: template.suggestedRubricCategories.map((name) => ({
+        name,
+        points: Math.floor(prev.totalPoints / template.suggestedRubricCategories.length),
+        isCustom: false,
+      })),
+    }));
+  };
+
   const handleSubmit = () => {
     // Validation
     const errors: string[] = [];
     
     if (!config.subject.trim()) errors.push('Subject is required');
+    if (!config.gradeLevel.trim()) errors.push('Grade level is required');
     if (!config.title.trim()) errors.push('Title is required');
-    if (!config.description.trim()) errors.push('Description is required');
+    if (!config.description.trim()) errors.push('Instructions/Description is required');
     if (config.learningObjectives.filter(o => o.trim()).length === 0) {
       errors.push('At least one learning objective is required');
     }
     if (config.criteria.length === 0) errors.push('At least one criterion is required');
     if (config.totalPoints <= 0) errors.push('Total points must be greater than 0');
+    if (!config.assignmentType) errors.push('Please select an assignment type');
 
     if (errors.length > 0) {
       alert('Please fix the following issues:\n\n' + errors.join('\n'));
@@ -74,19 +94,54 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-      <h2 style={{ marginTop: 0 }}>Step 0: Build Your Assignment</h2>
+      <h2 style={{ marginTop: 0 }}>📚 Build Your Assignment</h2>
       <p style={{ color: '#666', fontSize: '14px' }}>
         Define the structure and expectations for your assignment using this guided builder.
       </p>
 
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '16px' }}>
-        {/* Subject Selector */}
+        {/* Subject Selector (Step 1) */}
         <SubjectSelector
           value={config.subject}
           onChange={(subject) => setConfig({ ...config, subject })}
         />
 
-        {/* Title */}
+        {/* Grade Level (Step 1.5) */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+            📊 Grade Level
+          </label>
+          <select
+            value={config.gradeLevel}
+            onChange={(e) => setConfig({ ...config, gradeLevel: e.target.value })}
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '4px',
+              border: '1px solid #ddd',
+              fontSize: '14px',
+              fontFamily: 'Arial, sans-serif',
+              boxSizing: 'border-box',
+            }}
+          >
+            <option value="">Select grade level...</option>
+            <option value="K-2">K-2</option>
+            <option value="3-5">3-5</option>
+            <option value="6-8">6-8</option>
+            <option value="9-10">9-10</option>
+            <option value="11-12">11-12</option>
+            <option value="College">College</option>
+          </select>
+        </div>
+
+        {/* Assignment Type (Step 2) */}
+        <AssignmentTypeSelector
+          selectedType={config.assignmentType}
+          onSelectType={handleSelectAssignmentType}
+          onBloomDistributionChange={(dist) => setConfig({ ...config, bloomDistribution: dist })}
+        />
+
+        {/* Title (Step 3) */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
             📝 Assignment Title
@@ -108,15 +163,15 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
           />
         </div>
 
-        {/* Description */}
+        {/* Instructions/Description (Step 4) */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
-            📄 Assignment Description
+            📄 Instructions
           </label>
           <textarea
             value={config.description}
             onChange={(e) => setConfig({ ...config, description: e.target.value })}
-            placeholder="Describe the assignment, what students should do, and what they should deliver..."
+            placeholder="Instructions for students..."
             rows={4}
             style={{
               width: '100%',
@@ -128,15 +183,45 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
               boxSizing: 'border-box',
             }}
           />
+          <p style={{ fontSize: '11px', color: '#999', margin: '4px 0 0 0' }}>
+            (Auto-populated from assignment type, edit as needed)
+          </p>
         </div>
 
-        {/* Learning Objectives */}
+        {/* Number of Questions (Step 5) */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#333' }}>
+            ❓ Number of Questions
+          </label>
+          <input
+            type="number"
+            value={config.numberOfQuestions || 10}
+            onChange={(e) => setConfig({ ...config, numberOfQuestions: parseInt(e.target.value) || 10 })}
+            min="1"
+            max="100"
+            style={{
+              width: '100%',
+              padding: '10px',
+              borderRadius: '4px',
+              border: '1px solid #ddd',
+              fontSize: '14px',
+              fontFamily: 'Arial, sans-serif',
+              boxSizing: 'border-box',
+            }}
+          />
+          <p style={{ fontSize: '11px', color: '#999', margin: '4px 0 0 0' }}>
+            Questions will be distributed across Bloom levels according to your selected distribution
+          </p>
+        </div>
+
+        {/* Learning Objectives (Step 6) */}
         <LearningObjectivesInput
           objectives={config.learningObjectives}
           onChange={(objectives) => setConfig({ ...config, learningObjectives: objectives })}
+          subject={config.subject}
         />
 
-        {/* Criteria Builder */}
+        {/* Criteria Builder (Step 7) */}
         <CriteriaBuilder
           criteria={config.criteria}
           totalPoints={config.totalPoints}
@@ -144,13 +229,13 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
           onTotalPointsChange={(totalPoints) => setConfig({ ...config, totalPoints })}
         />
 
-        {/* Assignment Parts Builder */}
+        {/* Assignment Parts Builder (Optional) */}
         <AssignmentPartBuilder
           parts={config.parts || []}
           onChange={(parts) => setConfig({ ...config, parts })}
         />
 
-        {/* Bloom Distribution Selector */}
+        {/* Bloom Distribution Selector (Already pre-filled) */}
         {config.bloomDistribution && (
           <BloomDistributionSelector
             distribution={config.bloomDistribution}
@@ -197,7 +282,7 @@ export function AssignmentBuilder({ onAssignmentBuilt, isLoading = false }: Assi
             marginTop: '16px',
           }}
         >
-          {isLoading ? 'Building Assignment...' : 'Build Assignment & Analyze'}
+          {isLoading ? 'Generating Assignment...' : '🚀 Generate Assignment'}
         </button>
       </div>
     </div>

@@ -39,52 +39,114 @@ export function VersionComparison({
   };
 
   if (showStudentView) {
+    const hasHTML = /<[^>]*>/.test(rewritten);
+
     return (
       <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
         <h2 style={{ marginTop: 0 }}>📚 Student View</h2>
         <p style={{ color: '#666', fontSize: '14px' }}>
-          This is how students will see the final assignment.
+          This is how students will see the final assignment. Print-friendly and ready for distribution.
         </p>
 
-        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', marginBottom: '16px' }}>
-          <div
-            style={{
-              padding: '20px',
-              backgroundColor: '#f9f9f9',
-              border: '1px solid #ddd',
-              borderRadius: '6px',
-              minHeight: '300px',
-              fontSize: '14px',
-              lineHeight: '1.8',
-              color: '#333',
-              whiteSpace: 'pre-wrap',
-              wordWrap: 'break-word',
-            }}
-          >
-            {rewritten}
-          </div>
+        {/* Print-Friendly Assignment View */}
+        <div
+          style={{
+            backgroundColor: 'white',
+            padding: '40px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            minHeight: '400px',
+            fontSize: '14px',
+            lineHeight: '1.8',
+            color: '#333',
+            fontFamily: 'Georgia, serif',
+            pageBreakInside: 'avoid',
+          }}
+        >
+          {hasHTML ? (
+            <div
+              dangerouslySetInnerHTML={{ __html: rewritten }}
+              style={{
+                fontSize: '14px',
+                lineHeight: '1.8',
+                color: '#333',
+              }}
+            />
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
+              {rewritten}
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
+        {/* Answer Lines for Students */}
+        {!hasHTML && (
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: '24px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              border: '1px solid #e0e0e0',
+            }}
+          >
+            <h3 style={{ margin: '0 0 16px 0', color: '#333' }}>Answer Space</h3>
+            {[1, 2, 3].map((i) => (
+              <div key={i} style={{ marginBottom: '40px' }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '12px', color: '#666' }}>Question {i}:</div>
+                <div
+                  style={{
+                    borderBottom: '2px solid #333',
+                    minHeight: '100px',
+                    marginBottom: '20px',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={exportStudentViewPDF}
             style={{
-              padding: '10px 24px',
-              backgroundColor: '#dc3545',
+              padding: '12px 24px',
+              backgroundColor: '#28a745',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
             }}
           >
-            📥 Download PDF
+            📥 Download as PDF
+          </button>
+          <button
+            onClick={() => window.print()}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            🖨️ Print
           </button>
           <button
             onClick={() => setShowStudentView(false)}
             style={{
-              padding: '10px 24px',
+              padding: '12px 24px',
               backgroundColor: '#6c757d',
               color: 'white',
               border: 'none',
@@ -94,7 +156,7 @@ export function VersionComparison({
               fontWeight: 'bold',
             }}
           >
-            Back to Comparison
+            ← Back to Comparison
           </button>
         </div>
       </div>

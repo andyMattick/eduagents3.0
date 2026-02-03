@@ -1,0 +1,417 @@
+/**
+ * CompletionPerformance Component Styles
+ * Displays individual student completion data with progress bars and performance metrics
+ */
+
+.completion-performance {
+  width: 100%;
+  padding: 20px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  margin: 20px 0;
+}
+
+.cp-header {
+  margin-bottom: 24px;
+}
+
+.cp-header h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.cp-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #666;
+}
+
+/* Profile Groups */
+.cp-student-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.cp-profile-group {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  border-left: 4px solid #2196F3;
+}
+
+.cp-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.cp-group-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-transform: capitalize;
+}
+
+.cp-group-count {
+  font-size: 13px;
+  color: #999;
+  font-weight: 500;
+}
+
+/* Students List */
+.cp-students-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Student Completion Card */
+.cp-student-card {
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 16px;
+  border-left-width: 4px;
+  border-left-style: solid;
+  transition: all 0.2s ease;
+}
+
+.cp-student-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+
+/* Card Header: Profile, Grade, Risk */
+.cpc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.cpc-profile-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cpc-profile-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-transform: capitalize;
+}
+
+/* Grade Badge */
+.cpc-grade-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  color: white;
+  font-weight: 700;
+  font-size: 18px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.cpc-grade-letter {
+  display: block;
+  line-height: 1;
+}
+
+/* Risk Badge */
+.cpc-risk-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 4px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 90px;
+  text-align: center;
+}
+
+.cpc-risk-label {
+  display: block;
+  line-height: 1.2;
+}
+
+/* Metrics */
+.cpc-metric {
+  margin-bottom: 12px;
+}
+
+.cpc-metric-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+}
+
+.cpc-metric-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+/* Progress Bar */
+.cpc-progress-bar {
+  width: 100%;
+  height: 20px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.cpc-progress-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+.cpc-progress-details {
+  font-size: 12px;
+  color: #999;
+  text-align: right;
+}
+
+/* Time Bar */
+.cpc-time-bar {
+  width: 100%;
+  height: 16px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.cpc-time-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2196F3, #1976D2);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Metrics Row */
+.cpc-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-top: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.cpc-small-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.cpc-small-label {
+  font-size: 11px;
+  color: #999;
+  text-align: center;
+  font-weight: 500;
+}
+
+.cpc-small-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* Checkout */
+.cpc-checkout {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #fff3e0;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.cpc-checkout-label {
+  color: #ff6f00;
+  font-weight: 600;
+}
+
+.cpc-checkout-point {
+  color: #ff6f00;
+  font-weight: 700;
+  background: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* Skipped Questions */
+.cpc-skipped {
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-top: 1px solid #e0e0e0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.cpc-skipped-label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.cpc-skipped-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cpc-skipped-badge {
+  display: inline-block;
+  background: #ffebee;
+  color: #c62828;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Notes */
+.cpc-notes {
+  padding: 8px;
+  background: #e3f2fd;
+  border-left: 3px solid #1976D2;
+  border-radius: 3px;
+  margin-bottom: 8px;
+}
+
+.cpc-notes-text {
+  margin: 0;
+  font-size: 13px;
+  color: #1565c0;
+  line-height: 1.4;
+}
+
+/* Performance Factors */
+.cpc-factors {
+  padding-top: 8px;
+  margin-top: 8px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.cpcf-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.cpcf-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cpcf-label {
+  font-size: 11px;
+  color: #999;
+  font-weight: 600;
+}
+
+.cpcf-bar {
+  width: 100%;
+  height: 14px;
+  background: #e0e0e0;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.cpcf-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #45a049);
+  border-radius: 2px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .completion-performance {
+    padding: 16px;
+  }
+
+  .cpc-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .cpc-grade-badge {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .cpc-risk-badge {
+    padding: 4px 8px;
+    font-size: 11px;
+    min-width: auto;
+  }
+
+  .cpc-metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .cpcf-row {
+    grid-template-columns: 1fr;
+  }
+
+  .cpc-skipped-list {
+    gap: 4px;
+  }
+
+  .cpc-skipped-badge {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .completion-performance {
+    padding: 12px;
+  }
+
+  .cp-header h3 {
+    font-size: 16px;
+  }
+
+  .cpc-metric-label {
+    font-size: 12px;
+  }
+
+  .cpc-metrics-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 6px 0;
+  }
+
+  .cpc-checkout {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+}

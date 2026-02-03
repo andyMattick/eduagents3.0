@@ -15,6 +15,10 @@ interface CriteriaBuilderProps {
 
 // Preset criteria templates
 const CRITERIA_PRESETS = {
+  balanced: {
+    label: 'Balanced (5 criteria at 20% each)',
+    criteria: ['Clarity', 'Accuracy', 'Depth', 'Organization', 'Effort'],
+  },
   standard: {
     label: 'Standard (3 criteria)',
     criteria: ['Clarity', 'Accuracy', 'Completeness'],
@@ -40,7 +44,7 @@ export function CriteriaBuilder({
   onTotalPointsChange,
 }: CriteriaBuilderProps) {
   const [selectedPreset, setSelectedPreset] = useState<keyof typeof CRITERIA_PRESETS | null>(
-    criteria.length === 0 ? 'standard' : null
+    criteria.length === 0 ? 'balanced' : null
   );
   const [showCustom, setShowCustom] = useState(false);
   const [customName, setCustomName] = useState('');

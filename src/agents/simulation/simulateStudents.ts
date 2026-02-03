@@ -8,12 +8,63 @@ export interface EnhancedStudentFeedback extends StudentFeedback {
 }
 
 /**
+ * Full payload sent to simulateStudents for verification and debugging
+ */
+export interface SimulateStudentsPayload {
+  assignmentText: string;
+  textMetadata: {
+    textLength: number;
+    wordCount: number;
+    sentenceCount: number;
+    paragraphCount: number;
+    hasEvidence: boolean;
+    hasTransitions: boolean;
+  };
+  assignmentMetadata: {
+    type: string;
+    difficulty: string;
+    gradeLevel?: string;
+    subject?: string;
+    learnerProfiles?: string[];
+  };
+  processingOptions: {
+    selectedStudentTags?: string[];
+    includeAccessibilityProfiles?: boolean;
+  };
+  timestamp: string;
+}
+
+// Global payload store for debugging/verification
+let lastSimulateStudentsPayload: SimulateStudentsPayload | null = null;
+
+/**
+ * Get the last payload sent to simulateStudents
+ * Useful for verification and debugging
+ */
+export function getLastSimulateStudentsPayload(): SimulateStudentsPayload | null {
+  return lastSimulateStudentsPayload;
+}
+
+/**
+ * Clear the stored payload
+ */
+export function clearSimulateStudentsPayload(): void {
+  lastSimulateStudentsPayload = null;
+}
+
+/**
  * Simulates detailed feedback from different student personas
  * More in-depth and constructive, like real peer feedback would be
  */
 export async function simulateStudents(
   assignmentText: string,
   assignmentMetadataTags?: string[],
+  options?: {
+    gradeLevel?: string;
+    subject?: string;
+    learnerProfiles?: string[];
+    selectedStudentTags?: string[];
+  }
 ): Promise<StudentFeedback[]> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1200));
@@ -34,10 +85,43 @@ export async function simulateStudents(
     || assignmentText.toLowerCase().includes('moreover')
     || assignmentText.toLowerCase().includes('additionally');
 
-  const feedback: StudentFeedback[] = [];
-
   const assignmentType = assignmentMetadataTags?.find(t => t.startsWith('type:'))?.split(':')[1] || 'essay';
   const difficulty = assignmentMetadataTags?.find(t => t.startsWith('difficulty:'))?.split(':')[1] || 'intermediate';
+
+  // **CONSTRUCT FULL PAYLOAD FOR VERIFICATION**
+  const payload: SimulateStudentsPayload = {
+    assignmentText: assignmentText.substring(0, 500), // First 500 chars for verification
+    textMetadata: {
+      textLength,
+      wordCount,
+      sentenceCount: sentences,
+      paragraphCount: paragraphs.length,
+      hasEvidence,
+      hasTransitions,
+    },
+    assignmentMetadata: {
+      type: assignmentType,
+      difficulty,
+      gradeLevel: options?.gradeLevel,
+      subject: options?.subject,
+      learnerProfiles: options?.learnerProfiles,
+    },
+    processingOptions: {
+      selectedStudentTags: options?.selectedStudentTags,
+      includeAccessibilityProfiles: true,
+    },
+    timestamp: new Date().toISOString(),
+  };
+
+  // Store payload globally for debugging/verification
+  lastSimulateStudentsPayload = payload;
+
+  // Log payload to console for verification
+  console.log('📊 SIMULATE STUDENTS PAYLOAD', {
+    ...payload,
+    textLength: `${payload.textMetadata.textLength} chars`,
+    wordCount: `${payload.textMetadata.wordCount} words`,
+  });
 
   // 1. Visual Learner
   feedback.push({

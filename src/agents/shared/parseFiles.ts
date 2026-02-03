@@ -4,15 +4,6 @@
  * Returns content with formatting tags preserved (HTML/Markdown)
  */
 
-// Import mammoth if available
-let mammothLib: any = null;
-try {
-  // eslint-disable-next-line global-require, import/no-dynamic-require
-  mammothLib = require('mammoth');
-} catch {
-  // Mammoth not available - will handle gracefully in parseWordFile
-}
-
 export async function parseTextFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -107,7 +98,11 @@ export async function parsePdfFile(file: File): Promise<string> {
 
 export async function parseWordFile(file: File): Promise<string> {
   try {
-    if (!mammothLib) {
+    // Dynamically import mammoth (ES module compatible)
+    let mammothLib: any;
+    try {
+      mammothLib = await import('mammoth');
+    } catch {
       throw new Error(
         'Word document support requires mammoth. Install with: npm install mammoth',
       );

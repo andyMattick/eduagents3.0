@@ -20,9 +20,12 @@ export async function rewriteAssignment(
   let rewrittenText = originalText;
   const changes: string[] = [];
 
+  // Detect if content contains HTML - if so, preserve it
+  const hasHTML = /<[^>]*>/.test(originalText);
+
   // Apply improvements based on detected tags
   if (tags.some(t => t.name === 'vague-modifiers')) {
-    // Replace vague modifiers with specific ones
+    // Replace vague modifiers with specific ones (preserve HTML tags)
     rewrittenText = rewrittenText
       .replace(/\bvery\b/gi, 'extremely')
       .replace(/\breally\b/gi, 'notably')
@@ -34,20 +37,21 @@ export async function rewriteAssignment(
   }
 
   if (tags.some(t => t.name === 'clarity')) {
-    // Add transition words if not present
+    // Add transition words if not present (preserve HTML structure)
     if (!rewrittenText.toLowerCase().includes('however')) {
-      const sentences = rewrittenText.split(/(?<=[.!?])\s+/);
-      if (sentences.length > 1) {
-        sentences[Math.floor(sentences.length / 2)]
-          = 'However, ' + sentences[Math.floor(sentences.length / 2)];
-        rewrittenText = sentences.join(' ');
+      // Split on paragraph or sentence boundaries, preserving HTML
+      const parts = rewrittenText.split(/<\/p>|\n\n/);
+      if (parts.length > 1) {
+        const midpoint = Math.floor(parts.length / 2);
+        parts[midpoint] = 'However, ' + parts[midpoint].trim();
+        rewrittenText = parts.join('\n\n');
         changes.push('Added transition words to improve clarity');
       }
     }
   }
 
   if (tags.some(t => t.name === 'transitions')) {
-    // Enhance existing transitions
+    // Enhance existing transitions (preserve HTML tags)
     rewrittenText = rewrittenText.replace(
       /\b(because|since)\b/gi,
       (match) => match.charAt(0).toUpperCase() + match.slice(1).toLowerCase(),
@@ -61,11 +65,27 @@ export async function rewriteAssignment(
 
   // Ensure we have at least one change
   if (changes.length === 0) {
-    rewrittenText = rewrittenText.replace(
-      /\.(\s+)/g,
-      '. Improved phrasing applied.$1',
-    );
+    // For HTML content, preserve structure
+    if (hasHTML) {
+      rewrittenText = rewrittenText.replace(
+        /([.!?])\s+/g,
+        '$1 ',
+      );
+    } else {
+      rewrittenText = rewrittenText.replace(
+        /\.(\s+)/g,
+        '. Improved phrasing applied.$1',
+      );
+    }
     changes.push('Enhanced overall phrasing and clarity');
+  }
+
+  // Ensure HTML is not double-escaped
+  if (rewrittenText.includes('&lt;') || rewrittenText.includes('&gt;')) {
+    // Already escaped, decode it
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = rewrittenText;
+    rewrittenText = textarea.value;
   }
 
   return {

@@ -123,60 +123,60 @@ export function AssignmentInput({
       {/* File Upload Mode */}
       {mode === 'upload' && (
         <div>
-          <div
-            style={{
-              padding: '40px',
-              marginBottom: '16px',
-              border: '2px dashed #007bff',
-              borderRadius: '8px',
-              textAlign: 'center',
-              backgroundColor: '#f0f7ff',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-            }}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.currentTarget.style.backgroundColor = '#e0edff';
-              e.currentTarget.style.borderColor = '#0056b3';
-            }}
-            onDragLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#f0f7ff';
-              e.currentTarget.style.borderColor = '#007bff';
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.currentTarget.style.backgroundColor = '#f0f7ff';
-              e.currentTarget.style.borderColor = '#007bff';
-              const files = e.dataTransfer.files;
-              if (files.length > 0) {
-                const event = {
-                  target: { files },
-                } as unknown as React.ChangeEvent<HTMLInputElement>;
-                handleFileUpload(event);
-              }
-            }}
-            onClick={() => document.getElementById('file-input')?.click()}
-          >
-            <input
-              id="file-input"
-              type="file"
-              accept=".txt,.pdf,.docx,.doc"
-              onChange={handleFileUpload}
-              style={{ display: 'none' }}
-            />
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>📤</div>
-            <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333', marginBottom: '8px' }}>
-              Drop your file here or click to browse
-            </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              Supported: .txt, .pdf, .docx
-            </div>
-          </div>
-
-          {uploadedFileName && (
+          {!uploadedFileName ? (
             <div
               style={{
-                padding: '12px',
+                padding: '40px',
+                marginBottom: '16px',
+                border: '2px dashed #007bff',
+                borderRadius: '8px',
+                textAlign: 'center',
+                backgroundColor: '#f0f7ff',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.backgroundColor = '#e0edff';
+                e.currentTarget.style.borderColor = '#0056b3';
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#f0f7ff';
+                e.currentTarget.style.borderColor = '#007bff';
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.backgroundColor = '#f0f7ff';
+                e.currentTarget.style.borderColor = '#007bff';
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                  const event = {
+                    target: { files },
+                  } as unknown as React.ChangeEvent<HTMLInputElement>;
+                  handleFileUpload(event);
+                }
+              }}
+              onClick={() => document.getElementById('file-input')?.click()}
+            >
+              <input
+                id="file-input"
+                type="file"
+                accept=".txt,.pdf,.docx,.doc"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+              <div style={{ fontSize: '48px', marginBottom: '12px' }}>📤</div>
+              <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#333', marginBottom: '8px' }}>
+                Drop your file here or click to browse
+              </div>
+              <div style={{ fontSize: '12px', color: '#666' }}>
+                Supported: .txt, .pdf, .docx
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                padding: '16px',
                 marginBottom: '16px',
                 backgroundColor: '#d4edda',
                 border: '1px solid #c3e6cb',
@@ -184,7 +184,34 @@ export function AssignmentInput({
                 color: '#155724',
               }}
             >
-              ✓ Loaded: {uploadedFileName}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>✓ File Loaded</div>
+                  <div style={{ fontSize: '13px' }}>{uploadedFileName}</div>
+                  <div style={{ fontSize: '12px', marginTop: '6px', color: '#1e5631' }}>
+                    {Math.round(value.length / 100) / 10}K characters • {value.split(/\s+/).length} words
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setUploadedFileName('');
+                    setFormattedContent('');
+                    onChange('');
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#c3e6cb',
+                    border: '1px solid #155724',
+                    borderRadius: '4px',
+                    color: '#155724',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '13px',
+                  }}
+                >
+                  🔄 Replace File
+                </button>
+              </div>
             </div>
           )}
 

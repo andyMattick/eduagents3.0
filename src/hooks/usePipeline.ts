@@ -16,6 +16,12 @@ const initialState: PipelineState = {
   currentStep: PipelineStep.INPUT,
   isLoading: false,
   error: undefined,
+  selectedStudentTags: [],
+  assignmentMetadata: {
+    gradeLevel: '6-8',
+    subject: 'General',
+    difficulty: 'intermediate',
+  },
 };
 
 export function usePipeline() {
@@ -57,19 +63,46 @@ export function usePipeline() {
     }
   }, [setLoading]);
 
-  const getFeedback = useCallback(async () => {
+  const getFeedback = useCallback(async (selectedStudentTags?: string[]) => {
     if (!state.originalText) return;
 
     setLoading(true);
     try {
-      const feedback = await simulateStudents(state.originalText);
+      // Pass full metadata to simulateStudents for payload verification
+      const feedback = await simulateStudents(
+        state.originalText,
+        [],
+        {
+          gradeLevel: state.assignmentMetadata?.gradeLevel || '6-8',
+          subject: state.assignmentMetadata?.subject || 'General',
+          learnerProfiles: selectedStudentTags,
+          selectedStudentTags: selectedStudentTags,
+        }
+      );
       // Add accessibility profiles feedback
       const accessibilityFeedback = generateAllAccessibilityFeedback(state.originalText);
       const allFeedback = [...feedback, ...accessibilityFeedback];
       
+      // If student tags provided, filter feedback to focus on those areas
+      let filteredFeedback = allFeedback;
+      if (selectedStudentTags && selectedStudentTags.length > 0) {
+        filteredFeedback = allFeedback.filter((f) => {
+          const feedbackLower = f.content.toLowerCase();
+          return selectedStudentTags.some((tag) => 
+            feedbackLower.includes(tag.toLowerCase()) ||
+            f.studentPersona.toLowerCase().includes(tag.toLowerCase())
+          );
+        });
+        // If no matches found, return all feedback (don't filter too strictly)
+        if (filteredFeedback.length === 0) {
+          filteredFeedback = allFeedback.slice(0, Math.ceil(allFeedback.length / 2));
+        }
+      }
+      
       setState(prev => ({
         ...prev,
-        studentFeedback: allFeedback,
+        studentFeedback: filteredFeedback,
+        selectedStudentTags: selectedStudentTags,
         currentStep: PipelineStep.STUDENT_SIMULATIONS,
         error: undefined,
       }));
@@ -82,7 +115,7 @@ export function usePipeline() {
     } finally {
       setLoading(false);
     }
-  }, [state.originalText, setLoading]);
+  }, [state.originalText, state.assignmentMetadata, setLoading]);
 
   const rewriteTextAndTags = useCallback(async () => {
     if (!state.originalText || state.tags.length === 0) return;
@@ -171,15 +204,20 @@ export function usePipeline() {
     tagChanges: state.tagChanges,
     isLoading: state.isLoading,
     error: state.error,
+    selectedStudentTags: state.selectedStudentTags,
+    assignmentMetadata: state.assignmentMetadata,
     versionAnalysis,
     rewrittenTags,
 
     // Actions
     analyzeTextAndTags,
+    getFeedback,
     nextStep,
     reset,
 
     // Direct setters for controlled inputs
     setOriginalText: (text: string) => setState(prev => ({ ...prev, originalText: text })),
+    setAssignmentMetadata: (metadata: PipelineState['assignmentMetadata']) =>
+      setState(prev => ({ ...prev, assignmentMetadata: metadata })),
   };
 }

@@ -70,7 +70,7 @@ export function TagAnalysis({ tags, isLoading = false, onNext }: TagAnalysisProp
           disabled={isLoading}
           style={{
             padding: '10px 24px',
-            backgroundColor: isLoading ? '#ccc' : '#28a745',
+            backgroundColor: isLoading ? '#ccc' : '#007bff',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -79,7 +79,7 @@ export function TagAnalysis({ tags, isLoading = false, onNext }: TagAnalysisProp
             fontWeight: 'bold',
           }}
         >
-          {isLoading ? 'Loading...' : 'Continue to Feedback'}
+          {isLoading ? 'Loading...' : '→ Continue to Student Analysis & Tag Breakdown'}
         </button>
       </div>
     </div>
