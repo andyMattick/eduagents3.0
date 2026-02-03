@@ -40,7 +40,7 @@ export function AssignmentInput({
   onSubmit,
   isLoading = false,
 }: AssignmentInputProps) {
-  const [mode, setMode] = useState<InputMode>('text');
+  const [mode, setMode] = useState<InputMode>('upload');
   const [uploadedFileName, setUploadedFileName] = useState('');
   const [uploadError, setUploadError] = useState('');
   const [formattedContent, setFormattedContent] = useState(''); // Store formatted HTML
@@ -79,15 +79,6 @@ export function AssignmentInput({
       {/* Tabs */}
       <div style={tabStyles.container}>
         <button
-          style={tabStyles.tab(mode === 'text')}
-          onClick={() => {
-            setMode('text');
-            setUploadError('');
-          }}
-        >
-          📝 Type Text
-        </button>
-        <button
           style={tabStyles.tab(mode === 'upload')}
           onClick={() => {
             setMode('upload');
@@ -122,48 +113,10 @@ export function AssignmentInput({
           <strong>Upload Error:</strong> {uploadError}
           {uploadError.includes('PDF parsing') && (
             <div style={{ marginTop: '8px', fontSize: '12px' }}>
-              💡 <strong>Tip:</strong> You can still use the "Type Text" tab to paste PDF content, or install
+              💡 <strong>Tip:</strong> You can paste PDF content into the upload field, or install
               PDF support with: <code>npm install pdfjs-dist</code>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Text Input Mode */}
-      {mode === 'text' && (
-        <div>
-          <textarea
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder="Paste or type your assignment text here..."
-            rows={12}
-            style={{
-              width: '100%',
-              padding: '12px',
-              fontFamily: 'monospace',
-              fontSize: '14px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              boxSizing: 'border-box',
-              marginBottom: '16px',
-            }}
-          />
-          <button
-            onClick={() => onSubmit(value)}
-            disabled={!value.trim() || isLoading}
-            style={{
-              padding: '10px 24px',
-              backgroundColor: value.trim() && !isLoading ? '#007bff' : '#ccc',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: value.trim() && !isLoading ? 'pointer' : 'not-allowed',
-              fontSize: '16px',
-              fontWeight: 'bold',
-            }}
-          >
-            {isLoading ? 'Analyzing...' : 'Analyze Assignment'}
-          </button>
         </div>
       )}
 

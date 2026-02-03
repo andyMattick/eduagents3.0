@@ -76,14 +76,15 @@ export function PipelineShell() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gridTemplateColumns: '1fr',
             gap: '24px',
             marginTop: '40px',
+            maxWidth: '500px',
           }}
         >
-          {/* Option 1: Build New Assignment */}
+          {/* Option: Build or Upload an Assignment */}
           <div
-            onClick={() => setWorkflowMode('builder')}
+            onClick={() => setWorkflowMode('input')}
             style={{
               padding: '32px',
               backgroundColor: '#f0f7ff',
@@ -102,16 +103,16 @@ export function PipelineShell() {
             }}
           >
             <h3 style={{ margin: '0 0 12px 0', color: '#007bff', fontSize: '24px' }}>
-              ✨ Build New Assignment
+              📝 Build or Upload an Assignment
             </h3>
             <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
-              Create a new assignment using AI-powered generation with smart defaults. Great for getting started quickly.
+              Create a new assignment or upload an existing one to get comprehensive feedback and analysis.
             </p>
             <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
-              <li>Smart defaults & presets</li>
-              <li>AI-generated content</li>
-              <li>Auto-calculated time estimates</li>
-              <li>Instant peer & accessibility review</li>
+              <li>Upload files or generate with AI</li>
+              <li>Student feedback from 11 perspectives</li>
+              <li>Accessibility insights</li>
+              <li>AI-suggested improvements</li>
             </ul>
             <button
               style={{
@@ -126,56 +127,7 @@ export function PipelineShell() {
                 fontWeight: 'bold',
               }}
             >
-              Start Building →
-            </button>
-          </div>
-
-          {/* Option 2: Review Existing Assignment */}
-          <div
-            onClick={() => setWorkflowMode('input')}
-            style={{
-              padding: '32px',
-              backgroundColor: '#f5f5f5',
-              border: '2px solid #6c757d',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.1)';
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', color: '#333', fontSize: '24px' }}>
-              🔍 Review Assignment
-            </h3>
-            <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
-              Paste or upload an existing assignment to get AI feedback from multiple student perspectives.
-            </p>
-            <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
-              <li>Simulated student feedback</li>
-              <li>Accessibility insights</li>
-              <li>AI-suggested improvements</li>
-              <li>Before/after analysis</li>
-            </ul>
-            <button
-              style={{
-                marginTop: '16px',
-                padding: '10px 20px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-              }}
-            >
-              Review Assignment →
+              Get Started →
             </button>
           </div>
         </div>
