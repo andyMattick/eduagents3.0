@@ -99,6 +99,7 @@ export function usePipeline() {
         }
       }
       
+      console.log('[getFeedback] About to setState - setting step to STUDENT_SIMULATIONS');
       setState(prev => ({
         ...prev,
         studentFeedback: filteredFeedback,
@@ -106,13 +107,16 @@ export function usePipeline() {
         currentStep: PipelineStep.STUDENT_SIMULATIONS,
         error: undefined,
       }));
+      console.log('[getFeedback] setState called successfully');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to simulate feedback';
+      console.error('[getFeedback] ERROR caught:', errorMessage);
       setState(prev => ({
         ...prev,
         error: errorMessage,
       }));
     } finally {
+      console.log('[getFeedback] Finally block - calling setLoading(false)');
       setLoading(false);
     }
   }, [state.originalText, state.assignmentMetadata, setLoading]);

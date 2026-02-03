@@ -173,47 +173,7 @@ export function AssignmentInput({
                 Supported: .txt, .pdf, .docx
               </div>
             </div>
-          ) : (
-            <div
-              style={{
-                padding: '16px',
-                marginBottom: '16px',
-                backgroundColor: '#d4edda',
-                border: '1px solid #c3e6cb',
-                borderRadius: '4px',
-                color: '#155724',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>✓ File Loaded</div>
-                  <div style={{ fontSize: '13px' }}>{uploadedFileName}</div>
-                  <div style={{ fontSize: '12px', marginTop: '6px', color: '#1e5631' }}>
-                    {Math.round(value.length / 100) / 10}K characters • {value.split(/\s+/).length} words
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setUploadedFileName('');
-                    setFormattedContent('');
-                    onChange('');
-                  }}
-                  style={{
-                    padding: '8px 16px',
-                    backgroundColor: '#c3e6cb',
-                    border: '1px solid #155724',
-                    borderRadius: '4px',
-                    color: '#155724',
-                    cursor: 'pointer',
-                    fontWeight: 'bold',
-                    fontSize: '13px',
-                  }}
-                >
-                  🔄 Replace File
-                </button>
-              </div>
-            </div>
-          )}
+          ) : null}
 
           {formattedContent && (
             <div

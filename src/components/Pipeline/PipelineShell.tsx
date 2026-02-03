@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { PipelineStep } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { rewriteAssignment } from '../../agents/rewrite/rewriteAssignment';
+import { simulateStudents } from '../../agents/simulation/simulateStudents';
 import { AssignmentInput } from './AssignmentInput';
 import { PromptBuilder } from './PromptBuilderSimplified';
 import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
@@ -58,13 +60,17 @@ export function PipelineShell() {
       setShowStudentTagBreakdown(true);
       return;
     }
+    // If we're at TAG_ANALYSIS with breakdown showing, don't call nextStep - wait for handleStudentTagSelection
+    if (step === PipelineStep.TAG_ANALYSIS && showStudentTagBreakdown) {
+      return;
+    }
     await nextStep();
   };
 
   const handleStudentTagSelection = async (selection: StudentTagSelection) => {
-    setShowStudentTagBreakdown(false);
-    // Call getFeedback with selected tags
+    // Call getFeedback with selected tags - this will update step to STUDENT_SIMULATIONS
     await getFeedback(selection.tags);
+    // The modal will automatically hide because step is no longer TAG_ANALYSIS
   };
 
   const handleReset = () => {
@@ -75,7 +81,42 @@ export function PipelineShell() {
       setInput('');
       setWorkflowMode('choose');
       setShowStudentTagBreakdown(false);
+      setReviewMetadata(null);
       reset();
+    }
+  };
+
+  const handleRewriteWithSuggestions = async (suggestions: string) => {
+    if (!suggestions.trim()) {
+      alert('Please enter suggestions for rewriting the assignment.');
+      return;
+    }
+
+    try {
+      // Rewrite the assignment with the suggestions
+      const result = await rewriteAssignment(originalText, tags);
+      
+      alert('✓ Assignment rewritten with your suggestions!');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to rewrite assignment';
+      alert(`Error rewriting assignment: ${errorMessage}`);
+    }
+  };
+
+  const handleReanalyzeStudents = async () => {
+    try {
+      // Re-simulate students with the current assignment
+      const textToAnalyze = rewrittenText || originalText;
+      const updatedFeedback = await simulateStudents(
+        textToAnalyze,
+        assignmentGradeLevel,
+        assignmentSubject
+      );
+
+      alert('✓ Student analysis updated with latest assignment!');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to re-analyze students';
+      alert(`Error re-analyzing students: ${errorMessage}`);
     }
   };
 
@@ -229,7 +270,7 @@ export function PipelineShell() {
       )}
 
       {/* INPUT STEP: Choose between input or builder */}
-      {step === PipelineStep.INPUT && (
+      {step === PipelineStep.INPUT && workflowMode !== 'choose' && (
         <>
           {workflowMode === 'builder' && (
             <PromptBuilder onAssignmentGenerated={handleAssignmentGenerated} isLoading={isLoading} />
@@ -276,6 +317,68 @@ export function PipelineShell() {
         </>
       )}
 
+      {/* When at INPUT step with choose mode, show workflow options */}
+      {step === PipelineStep.INPUT && workflowMode === 'choose' && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr',
+            gap: '24px',
+            marginTop: '40px',
+            maxWidth: '500px',
+          }}
+        >
+          {/* Option: Build or Upload an Assignment */}
+          <div
+            onClick={() => setWorkflowMode('input')}
+            style={{
+              padding: '32px',
+              backgroundColor: '#f0f7ff',
+              border: '2px solid #007bff',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 16px rgba(0, 123, 255, 0.2)';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.boxShadow = 'none';
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
+            }}
+          >
+            <h3 style={{ margin: '0 0 12px 0', color: '#007bff', fontSize: '24px' }}>
+              📝 Build or Upload an Assignment
+            </h3>
+            <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
+              Create a new assignment or upload an existing one to get comprehensive feedback and analysis.
+            </p>
+            <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
+              <li>Upload files or generate with AI</li>
+              <li>Student feedback from 11 perspectives</li>
+              <li>Accessibility insights</li>
+              <li>AI-suggested improvements</li>
+            </ul>
+            <button
+              style={{
+                marginTop: '16px',
+                padding: '10px 20px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+            >
+              Get Started →
+            </button>
+          </div>
+        </div>
+      )}
+
       {step === PipelineStep.TAG_ANALYSIS && !showStudentTagBreakdown && (
         <TagAnalysis
           tags={tags}
@@ -320,6 +423,8 @@ export function PipelineShell() {
           tagChanges={tagChanges}
           versionAnalysis={versionAnalysis}
           onReset={handleReset}
+          onRewrite={handleRewriteWithSuggestions}
+          onReanalyzeStudents={handleReanalyzeStudents}
         />
       )}
     </div>

@@ -123,6 +123,9 @@ export async function simulateStudents(
     wordCount: `${payload.textMetadata.wordCount} words`,
   });
 
+  // Initialize feedback array
+  const feedback: StudentFeedback[] = [];
+
   // 1. Visual Learner
   feedback.push({
     studentPersona: '👁️ Visual Learner',

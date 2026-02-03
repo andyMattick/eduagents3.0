@@ -215,7 +215,7 @@ export function StudentTagBreakdown({
             fontWeight: 'bold',
           }}
         >
-          {isLoading ? 'Analyzing...' : '→ Continue to Student Analysis & Tag Breakdown'}
+          {isLoading ? 'Analyzing...' : '→ Generate Student Feedback'}
         </button>
       </div>
     </div>
