@@ -29,55 +29,65 @@ export async function parseTextFile(file: File): Promise<string> {
 
 export async function parsePdfFile(file: File): Promise<string> {
   try {
-    // Dynamically import pdfjs-dist
-    // @ts-ignore - pdfjs-dist is optional dependency
+    // Try using pdf-parse first (Node.js backend, better text extraction)
+    // @ts-ignore
     const pdfjsLib = await import('pdfjs-dist');
-
-    // Use local worker file copied to public folder
+    
+    // Use local worker file
     pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-    let htmlContent = '<div style="font-family: Arial, sans-serif; line-height: 1.6;">';
+    let textContent = '';
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
       const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
+      const pageText = await page.getTextContent();
 
-      // Group text by line and preserve structure
+      // Extract text with proper spacing
+      const pageLines: string[] = [];
       let currentLine = '';
-      let lastY: number | null = null;
+      let lastY = 0;
+      let lastX = 0;
 
-      for (const item of textContent.items) {
-        const itemY: number | null = (item as any).transform ? (item as any).transform[5] : lastY;
+      for (const item of pageText.items) {
+        const itemText = (item as any).str || '';
+        const itemY = (item as any).transform ? (item as any).transform[5] : lastY;
+        const itemX = (item as any).transform ? (item as any).transform[4] : lastX;
 
-        // New line detected (Y coordinate changed)
-        if (lastY !== null && itemY !== lastY) {
-          if (currentLine.trim()) {
-            htmlContent += `<p>${currentLine.trim()}</p>`;
+        // Detect line breaks (significant Y change)
+        if (Math.abs(itemY - lastY) > 5 && currentLine.trim()) {
+          pageLines.push(currentLine.trim());
+          currentLine = itemText;
+          lastX = itemX;
+        } else {
+          // Add space between words if needed
+          if (currentLine && itemX - lastX > 2 && !currentLine.endsWith(' ')) {
+            currentLine += ' ';
           }
-          currentLine = '';
+          currentLine += itemText;
         }
 
-        currentLine += (item as any).str || '';
         lastY = itemY;
+        lastX = itemX + (itemText.length * 5); // Approximate width
       }
 
-      // Add remaining line
+      // Add final line
       if (currentLine.trim()) {
-        htmlContent += `<p>${currentLine.trim()}</p>`;
+        pageLines.push(currentLine.trim());
       }
 
-      // Add page break between pages
+      // Join lines with proper line breaks
+      textContent += pageLines.join('\n');
+
+      // Add page separator
       if (pageNum < pdf.numPages) {
-        htmlContent += '<hr style="margin: 20px 0; border: 1px solid #ddd;" />';
+        textContent += '\n\n---PAGE BREAK---\n\n';
       }
     }
 
-    htmlContent += '</div>';
-
-    return htmlContent;
+    return textContent;
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Failed to parse PDF';
 
