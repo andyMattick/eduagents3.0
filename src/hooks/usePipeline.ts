@@ -5,6 +5,8 @@ import { simulateStudents } from '../agents/simulation/simulateStudents';
 import { generateAllAccessibilityFeedback } from '../agents/simulation/accessibilityProfiles';
 import { rewriteAssignment } from '../agents/rewrite/rewriteAssignment';
 import { analyzeVersions, VersionAnalysis } from '../agents/analytics/analyzeVersions';
+import { extractAsteroidsFromText } from '../agents/pipelineIntegration';
+import { Asteroid } from '../types/simulation';
 
 const initialState: PipelineState = {
   originalText: '',
@@ -22,6 +24,8 @@ const initialState: PipelineState = {
     subject: 'General',
     difficulty: 'intermediate',
   },
+  asteroids: [],
+  showProblemMetadata: false,
 };
 
 export function usePipeline() {
@@ -44,12 +48,27 @@ export function usePipeline() {
 
     setLoading(true);
     try {
-      const tags = await analyzeTags(text);
+      // PHASE 2 (Hidden): Automatically generate problem metadata (asteroids)
+      // Extract problems and tag them with Bloom levels, complexity, novelty
+      const asteroids = await extractAsteroidsFromText(
+        text,
+        state.assignmentMetadata?.subject || 'General'
+      );
+
+      // For backward compatibility, generate tags from asteroids
+      const tags = asteroids.map(ast => ({
+        name: `${ast.BloomLevel}: ${ast.ProblemText.substring(0, 50)}...`,
+        confidenceScore: 0.9,
+        description: `Bloom: ${ast.BloomLevel}, Complexity: ${(ast.LinguisticComplexity * 100).toFixed(0)}%`,
+      }));
+
+      // Move to PROBLEM_ANALYSIS step to show metadata
       setState(prev => ({
         ...prev,
         originalText: text,
         tags,
-        currentStep: PipelineStep.TAG_ANALYSIS,
+        asteroids,
+        currentStep: PipelineStep.PROBLEM_ANALYSIS,
         error: undefined,
       }));
     } catch (err) {
@@ -61,7 +80,7 @@ export function usePipeline() {
     } finally {
       setLoading(false);
     }
-  }, [setLoading]);
+  }, [setLoading, state.assignmentMetadata?.subject]);
 
   const getFeedback = useCallback(async (selectedStudentTags?: string[]) => {
     if (!state.originalText) return;
@@ -179,23 +198,49 @@ export function usePipeline() {
   const nextStep = useCallback(async () => {
     switch (state.currentStep) {
       case PipelineStep.INPUT:
+        // Input step moved to ProblemAnalysis
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.PROBLEM_ANALYSIS,
+        }));
         break;
-      case PipelineStep.TAG_ANALYSIS:
+      case PipelineStep.PROBLEM_ANALYSIS:
+        // Metadata shown, proceed to class builder
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.CLASS_BUILDER,
+        }));
+        break;
+      case PipelineStep.CLASS_BUILDER:
+        // Class built, proceed to simulations
         await getFeedback();
         break;
       case PipelineStep.STUDENT_SIMULATIONS:
+        // Simulations done, proceed to rewrite
         await rewriteTextAndTags();
         break;
       case PipelineStep.REWRITE_RESULTS:
-        await compareVersions();
+        // Rewritten, proceed to export
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.EXPORT,
+        }));
         break;
-      case PipelineStep.VERSION_COMPARISON:
+      case PipelineStep.EXPORT:
+        // Export done, reset
         reset();
         break;
       default:
         break;
     }
-  }, [state.currentStep, getFeedback, rewriteTextAndTags, compareVersions, reset]);
+  }, [state.currentStep, getFeedback, rewriteTextAndTags, reset]);
+
+  const toggleProblemMetadataView = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      showProblemMetadata: !prev.showProblemMetadata,
+    }));
+  }, []);
 
   return {
     // State
@@ -212,12 +257,15 @@ export function usePipeline() {
     assignmentMetadata: state.assignmentMetadata,
     versionAnalysis,
     rewrittenTags,
+    asteroids: state.asteroids,
+    showProblemMetadata: state.showProblemMetadata,
 
     // Actions
     analyzeTextAndTags,
     getFeedback,
     nextStep,
     reset,
+    toggleProblemMetadataView,
 
     // Direct setters for controlled inputs
     setOriginalText: (text: string) => setState(prev => ({ ...prev, originalText: text })),

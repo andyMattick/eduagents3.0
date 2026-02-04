@@ -1,5 +1,6 @@
 import React from 'react';
 import { StudentFeedback } from '../../types/pipeline';
+import { Asteroid } from '../../types/simulation';
 import AccessibilityFeedback from './AccessibilityFeedback';
 import { TeacherNotesPanel } from './TeacherNotesPanel';
 import CompletionPerformance from '../Analysis/CompletionPerformance';
@@ -13,6 +14,9 @@ interface StudentSimulationsProps {
     studentSimulations: any[];
     classSummary: any;
   };
+  asteroids?: Asteroid[];
+  showProblemMetadata?: boolean;
+  onToggleProblemMetadata?: () => void;
 }
 
 const feedbackTypeColors: Record<string, string> = {
@@ -25,9 +29,12 @@ export function StudentSimulations({
   feedback,
   isLoading = false,
   onNext,
-  completionSimulations
+  completionSimulations,
+  asteroids = [],
+  showProblemMetadata = false,
+  onToggleProblemMetadata,
 }: StudentSimulationsProps) {
-  const [activeTab, setActiveTab] = React.useState<'feedback' | 'completion'>('feedback');
+  const [activeTab, setActiveTab] = React.useState<'feedback' | 'completion' | 'metadata'>('feedback');
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
@@ -37,30 +44,31 @@ export function StudentSimulations({
       </p>
 
       {/* Tab Navigation */}
-      {completionSimulations && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '8px', 
-          marginBottom: '16px',
-          borderBottom: '2px solid #e0e0e0',
-          paddingBottom: '0'
-        }}>
-          <button
-            onClick={() => setActiveTab('feedback')}
-            style={{
-              padding: '12px 16px',
-              backgroundColor: activeTab === 'feedback' ? '#28a745' : 'transparent',
-              color: activeTab === 'feedback' ? 'white' : '#666',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Student Feedback
-          </button>
+      <div style={{ 
+        display: 'flex', 
+        gap: '8px', 
+        marginBottom: '16px',
+        borderBottom: '2px solid #e0e0e0',
+        paddingBottom: '0',
+        flexWrap: 'wrap'
+      }}>
+        <button
+          onClick={() => setActiveTab('feedback')}
+          style={{
+            padding: '12px 16px',
+            backgroundColor: activeTab === 'feedback' ? '#28a745' : 'transparent',
+            color: activeTab === 'feedback' ? 'white' : '#666',
+            border: 'none',
+            borderRadius: '4px 4px 0 0',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          Student Feedback
+        </button>
+        {completionSimulations && (
           <button
             onClick={() => setActiveTab('completion')}
             style={{
@@ -77,8 +85,26 @@ export function StudentSimulations({
           >
             Completion & Performance
           </button>
-        </div>
-      )}
+        )}
+        {asteroids.length > 0 && (
+          <button
+            onClick={() => setActiveTab('metadata')}
+            style={{
+              padding: '12px 16px',
+              backgroundColor: activeTab === 'metadata' ? '#0066cc' : 'transparent',
+              color: activeTab === 'metadata' ? 'white' : '#666',
+              border: 'none',
+              borderRadius: '4px 4px 0 0',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            📋 View Problem Metadata
+          </button>
+        )}
+      </div>
 
       {/* Feedback Tab */}
       {activeTab === 'feedback' && (
@@ -210,6 +236,129 @@ export function StudentSimulations({
             </>
           )}
         </>
+      )}
+
+      {/* Problem Metadata Tab (Phase 2) */}
+      {activeTab === 'metadata' && asteroids.length > 0 && (
+        <div>
+          <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '4px', borderLeft: '4px solid #0066cc' }}>
+            <p style={{ margin: 0, fontSize: '13px', color: '#0066cc' }}>
+              <strong>Phase 2: Automated Problem Metadata</strong> — Each problem below was automatically tagged with Bloom's taxonomy level, linguistic complexity, and novelty score.
+            </p>
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+            {asteroids.map((asteroid, index) => (
+              <div
+                key={asteroid.ProblemId || index}
+                style={{
+                  padding: '16px',
+                  backgroundColor: 'white',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                <div style={{ marginBottom: '12px' }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#333', fontSize: '15px' }}>
+                    Problem {index + 1} 🎯
+                  </h4>
+                  <p style={{ margin: '8px 0', color: '#555', fontSize: '14px', lineHeight: '1.5' }}>
+                    {asteroid.ProblemText.substring(0, 150)}
+                    {asteroid.ProblemText.length > 150 ? '...' : ''}
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginTop: '12px' }}>
+                  {/* Bloom Level */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📚 BLOOM LEVEL</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#0066cc' }}>
+                      {asteroid.BloomLevel}
+                    </div>
+                  </div>
+
+                  {/* Linguistic Complexity */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📖 COMPLEXITY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#ff9800' }}>
+                        {(asteroid.LinguisticComplexity * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            backgroundColor: '#ff9800',
+                            width: `${asteroid.LinguisticComplexity * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Novelty Score */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>✨ NOVELTY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#28a745' }}>
+                        {(asteroid.NoveltyScore * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            backgroundColor: '#28a745',
+                            width: `${asteroid.NoveltyScore * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Multi-part */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔗 STRUCTURE</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: asteroid.MultiPart ? '#dc3545' : '#28a745' }}>
+                      {asteroid.MultiPart ? 'Multi-part' : 'Single part'}
+                    </div>
+                  </div>
+
+                  {/* Length */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📏 LENGTH</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#666' }}>
+                      {asteroid.ProblemLength} words
+                    </div>
+                  </div>
+
+                  {/* Similarity to Previous */}
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔄 SIMILARITY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#9c27b0' }}>
+                        {(asteroid.SimilarityToPrevious * 100).toFixed(0)}%
+                      </div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div
+                          style={{
+                            height: '100%',
+                            backgroundColor: '#9c27b0',
+                            width: `${asteroid.SimilarityToPrevious * 100}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#f0f0f0', borderRadius: '4px', fontSize: '13px', color: '#666' }}>
+            <strong>What is this?</strong> This metadata drives Phase 3 (Student Simulation). Each problem's Bloom level and complexity are used to predict how different student personas will perform, predict time-on-task, identify confusion points, and assess engagement.
+          </div>
+        </div>
       )}
 
       <AccessibilityFeedback feedback={feedback} />
