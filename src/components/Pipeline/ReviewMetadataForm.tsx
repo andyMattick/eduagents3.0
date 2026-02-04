@@ -90,12 +90,18 @@ export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetada
         borderRadius: '8px',
         maxWidth: '600px',
         margin: '0 auto',
+        border: '2px solid #28a745',
       }}
     >
-      <h2 style={{ marginTop: 0, color: '#333' }}>📋 Assignment Context</h2>
-      <p style={{ color: '#666', fontSize: '14px' }}>
-        Help us provide better feedback by telling us about this assignment:
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+        <span style={{ fontSize: '20px' }}>✓</span>
+        <div>
+          <h2 style={{ marginTop: 0, marginBottom: '4px', color: '#333' }}>Assignment Uploaded Successfully</h2>
+          <p style={{ marginTop: 0, color: '#2e7d32', fontSize: '13px', fontWeight: '500' }}>
+            Now tell us about this assignment so we can provide relevant feedback:
+          </p>
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {/* Subject Selection */}
@@ -237,18 +243,30 @@ export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetada
           type="submit"
           disabled={isLoading || gradeLevel.length === 0}
           style={{
-            padding: '12px 24px',
+            padding: '14px 32px',
             backgroundColor: isLoading || gradeLevel.length === 0 ? '#ccc' : '#28a745',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
             cursor: isLoading || gradeLevel.length === 0 ? 'not-allowed' : 'pointer',
-            fontSize: '14px',
+            fontSize: '16px',
             fontWeight: 'bold',
-            marginTop: '8px',
+            marginTop: '16px',
+            width: '100%',
+            transition: 'background-color 0.2s ease',
+          }}
+          onMouseEnter={(e) => {
+            if (!isLoading && gradeLevel.length > 0) {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isLoading && gradeLevel.length > 0) {
+              (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
+            }
           }}
         >
-          {isLoading ? 'Loading...' : 'Continue with This Assignment'}
+          {isLoading ? '⏳ Processing...' : '✓ Continue with This Assignment'}
         </button>
       </form>
     </div>

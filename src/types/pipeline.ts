@@ -8,6 +8,35 @@ export interface Tag {
 }
 
 /**
+ * Represents a student profile in the teacher's class
+ */
+export interface ClassStudentProfile {
+  id: string;
+  name: string;
+  profileType: 'standard' | 'accessibility' | 'custom';
+  basePersona?: string; // e.g., "Strong Reader", "ADHD Learner"
+  overlays: string[]; // e.g., ["adhd", "fatigue_sensitive"]
+  traits: {
+    readingLevel: number; // 0.0-1.0
+    mathFluency: number; // 0.0-1.0
+    attentionSpan: number; // 0.0-1.0
+    confidence: number; // 0.0-1.0
+  };
+}
+
+/**
+ * Represents a class built by the teacher
+ */
+export interface ClassDefinition {
+  id: string;
+  name: string;
+  gradeLevel: string;
+  subject: string;
+  studentProfiles: ClassStudentProfile[];
+  createdAt: string;
+}
+
+/**
  * Represents feedback from a simulated student persona
  * Includes both basic feedback and optional detailed commentary
  */
@@ -67,10 +96,11 @@ export interface TagChange {
  */
 export enum PipelineStep {
   INPUT = 0,
-  TAG_ANALYSIS = 1,
-  STUDENT_SIMULATIONS = 2,
-  REWRITE_RESULTS = 3,
-  VERSION_COMPARISON = 4,
+  PROBLEM_ANALYSIS = 1,  // Step 2: Show metadata, allow export
+  CLASS_BUILDER = 2,     // Step 3: Build/customize student class
+  STUDENT_SIMULATIONS = 3, // Step 4: Simulated feedback (preview)
+  REWRITE_RESULTS = 4,   // Step 5: Review & rewrite with metadata
+  EXPORT = 5,           // Step 6: Final export
 }
 
 /**
@@ -113,6 +143,14 @@ export interface PipelineState {
     studentSimulations: any[]; // StudentCompletionSimulation[]
     classSummary: any; // ClassCompletionSummary
   };
+  // New: Asteroid/Astronaut simulation data
+  asteroids?: any[]; // Asteroid[]
+  astronauts?: any[]; // Astronaut[]
+  simulationResults?: any; // AssignmentSimulationResults
+  // New: Problem metadata visibility toggle
+  showProblemMetadata?: boolean;
+  // New: Class definition
+  classDefinition?: ClassDefinition;
 }
 
 /**

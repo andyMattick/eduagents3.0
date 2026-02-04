@@ -1,16 +1,15 @@
 import { useState } from 'react';
-import { PipelineStep } from '../../types/pipeline';
+import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
 import { rewriteAssignment } from '../../agents/rewrite/rewriteAssignment';
 import { simulateStudents } from '../../agents/simulation/simulateStudents';
 import { AssignmentInput } from './AssignmentInput';
 import { PromptBuilder } from './PromptBuilderSimplified';
 import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
-import { TagAnalysis } from './TagAnalysis';
-import { StudentTagBreakdown, StudentTagSelection } from './StudentTagBreakdown';
+import { ProblemAnalysis } from './ProblemAnalysis';
+import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
-import { VersionComparison } from './VersionComparison';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
@@ -26,51 +25,54 @@ export function PipelineShell() {
     error,
     versionAnalysis,
     rewrittenTags,
+    asteroids,
+    showProblemMetadata,
     analyzeTextAndTags,
     getFeedback,
     nextStep,
     reset,
+    toggleProblemMetadataView,
+    setAssignmentMetadata,
   } = usePipeline();
 
   const [input, setInput] = useState('');
   const [workflowMode, setWorkflowMode] = useState<'choose' | 'input' | 'builder'>('choose');
   const [reviewMetadata, setReviewMetadata] = useState<ReviewMetadata | null>(null);
-  const [showStudentTagBreakdown, setShowStudentTagBreakdown] = useState(false);
   const [assignmentGradeLevel, setAssignmentGradeLevel] = useState('6-8');
   const [assignmentSubject, setAssignmentSubject] = useState('');
+  const [classDefinition, setClassDefinition] = useState<ClassDefinition | undefined>(undefined);
 
   const handleAssignmentGenerated = async (content: string, _metadata: AssignmentMetadata) => {
     // Feed the generated assignment into the analysis pipeline
-    setInput(content);
+    setInput('');
+    setWorkflowMode('choose');
     await analyzeTextAndTags(content);
   };
   const handleMetadataSubmit = async (metadata: ReviewMetadata) => {
     setReviewMetadata(metadata);
+    
     // Store metadata for student tag breakdown
-    setAssignmentGradeLevel(metadata.gradeLevel || '6-8');
+    setAssignmentGradeLevel(Array.isArray(metadata.gradeLevel) ? metadata.gradeLevel[0].toString() : '6-8');
     setAssignmentSubject(metadata.subject || '');
+    
     // Update pipeline state with metadata
-    // Now proceed with analysis
-    await analyzeTextAndTags(input);
+    setAssignmentMetadata({
+      gradeLevel: Array.isArray(metadata.gradeLevel) ? metadata.gradeLevel[0].toString() : '6-8',
+      subject: metadata.subject || '',
+      difficulty: 'intermediate',
+    });
+    
+    // Clear input state (UI will automatically hide via step change when analysis completes)
+    const textToAnalyze = input;
+    setInput('');
+    setWorkflowMode('choose');
+    
+    // Proceed with analysis - this will trigger step transition to PROBLEM_ANALYSIS
+    await analyzeTextAndTags(textToAnalyze);
   };
 
   const handleNextStep = async () => {
-    // If we're at TAG_ANALYSIS step, show student tag breakdown before continuing
-    if (step === PipelineStep.TAG_ANALYSIS && !showStudentTagBreakdown) {
-      setShowStudentTagBreakdown(true);
-      return;
-    }
-    // If we're at TAG_ANALYSIS with breakdown showing, don't call nextStep - wait for handleStudentTagSelection
-    if (step === PipelineStep.TAG_ANALYSIS && showStudentTagBreakdown) {
-      return;
-    }
     await nextStep();
-  };
-
-  const handleStudentTagSelection = async (selection: StudentTagSelection) => {
-    // Call getFeedback with selected tags - this will update step to STUDENT_SIMULATIONS
-    await getFeedback(selection.tags);
-    // The modal will automatically hide because step is no longer TAG_ANALYSIS
   };
 
   const handleReset = () => {
@@ -80,8 +82,8 @@ export function PipelineShell() {
     if (confirmed) {
       setInput('');
       setWorkflowMode('choose');
-      setShowStudentTagBreakdown(false);
       setReviewMetadata(null);
+      setClassDefinition(undefined);
       reset();
     }
   };
@@ -217,11 +219,11 @@ export function PipelineShell() {
           📝 Assignment Pipeline
         </h1>
         <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
-          Step {step + 1} of 5
+          Step {step + 1} of 6
         </p>
         <div style={{ marginTop: '8px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            {[0, 1, 2, 3, 4].map((s) => (
+            {[0, 1, 2, 3, 4, 5].map((s) => (
               <div
                 key={s}
                 style={{
@@ -379,20 +381,22 @@ export function PipelineShell() {
         </div>
       )}
 
-      {step === PipelineStep.TAG_ANALYSIS && !showStudentTagBreakdown && (
-        <TagAnalysis
-          tags={tags}
+      {step === PipelineStep.PROBLEM_ANALYSIS && (
+        <ProblemAnalysis
+          asteroids={asteroids}
           isLoading={isLoading}
           onNext={handleNextStep}
         />
       )}
 
-      {step === PipelineStep.TAG_ANALYSIS && showStudentTagBreakdown && (
-        <StudentTagBreakdown
+      {step === PipelineStep.CLASS_BUILDER && (
+        <ClassBuilder
           gradeLevel={assignmentGradeLevel}
           subject={assignmentSubject}
+          classDefinition={classDefinition}
+          onClassDefinitionChange={setClassDefinition}
           isLoading={isLoading}
-          onConfirm={handleStudentTagSelection}
+          onNext={handleNextStep}
         />
       )}
 
@@ -401,6 +405,7 @@ export function PipelineShell() {
           feedback={studentFeedback}
           isLoading={isLoading}
           onNext={handleNextStep}
+          asteroids={asteroids}
         />
       )}
 
@@ -412,20 +417,107 @@ export function PipelineShell() {
           appliedTags={rewrittenTags}
           isLoading={isLoading}
           onNext={handleNextStep}
+          asteroids={asteroids}
         />
       )}
 
-      {step === PipelineStep.VERSION_COMPARISON && (
-        <VersionComparison
-          original={originalText}
-          rewritten={rewrittenText}
-          summary={rewriteSummary}
-          tagChanges={tagChanges}
-          versionAnalysis={versionAnalysis}
-          onReset={handleReset}
-          onRewrite={handleRewriteWithSuggestions}
-          onReanalyzeStudents={handleReanalyzeStudents}
-        />
+      {step === PipelineStep.EXPORT && (
+        <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+          <h2 style={{ marginTop: 0 }}>Step 6: Export for Processing</h2>
+          <p style={{ color: '#666', fontSize: '14px', marginBottom: '16px' }}>
+            Your assignment metadata and class definition are ready to be exported. Download them as JSON or CSV to send to your external processor.
+          </p>
+          <div style={{ padding: '16px', backgroundColor: 'white', borderRadius: '6px', marginBottom: '16px' }}>
+            <h4 style={{ margin: '0 0 12px 0', color: '#333' }}>Export Options</h4>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  const data = { asteroids, classDefinition };
+                  const json = JSON.stringify(data, null, 2);
+                  const blob = new Blob([json], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `assignment-export-${new Date().toISOString().split('T')[0]}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#28a745',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                📥 Export JSON
+              </button>
+              <button
+                onClick={() => {
+                  const lines = [
+                    'Assignment Metadata + Class Definition',
+                    new Date().toISOString(),
+                    '',
+                    'ASTEROIDS (Problems):',
+                    JSON.stringify(asteroids, null, 2),
+                    '',
+                    'CLASS DEFINITION:',
+                    JSON.stringify(classDefinition, null, 2),
+                  ];
+                  const text = lines.join('\n');
+                  const blob = new Blob([text], { type: 'text/plain' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `assignment-export-${new Date().toISOString().split('T')[0]}.txt`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: '#ff9800',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                }}
+              >
+                📄 Export Text
+              </button>
+            </div>
+          </div>
+          <div style={{ padding: '12px', backgroundColor: '#e8f5e9', borderRadius: '4px', borderLeft: '4px solid #28a745' }}>
+            <p style={{ margin: 0, fontSize: '13px', color: '#2e7d32' }}>
+              <strong>✓ Export Complete!</strong> Your assignment is ready for processing. The external processor will now run detailed simulations using this metadata and class definition.
+            </p>
+          </div>
+          <div style={{ marginTop: '20px' }}>
+            <button
+              onClick={handleReset}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '600',
+              }}
+            >
+              ← Start New Assignment
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

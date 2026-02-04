@@ -175,6 +175,25 @@ export function AssignmentInput({
             </div>
           ) : null}
 
+          {uploadedFileName && (
+            <div
+              style={{
+                padding: '16px',
+                marginBottom: '16px',
+                backgroundColor: '#e8f5e9',
+                border: '2px solid #28a745',
+                borderRadius: '4px',
+                fontSize: '14px',
+                color: '#2e7d32',
+              }}
+            >
+              <strong>✓ File Uploaded: {uploadedFileName}</strong>
+              <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>
+                Ready to analyze. Please review the preview below and click "Continue with This Assignment" to proceed.
+              </p>
+            </div>
+          )}
+
           {formattedContent && (
             <div
               style={{
@@ -216,17 +235,28 @@ export function AssignmentInput({
             onClick={() => onSubmit(value)}
             disabled={!value.trim() || isLoading}
             style={{
-              padding: '10px 24px',
-              backgroundColor: value.trim() && !isLoading ? '#007bff' : '#ccc',
+              padding: '12px 32px',
+              backgroundColor: value.trim() && !isLoading ? '#28a745' : '#ccc',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
               cursor: value.trim() && !isLoading ? 'pointer' : 'not-allowed',
               fontSize: '16px',
               fontWeight: 'bold',
+              transition: 'background-color 0.2s ease',
+            }}
+            onMouseEnter={(e) => {
+              if (value.trim() && !isLoading) {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (value.trim() && !isLoading) {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
+              }
             }}
           >
-            {isLoading ? 'Analyzing...' : 'Analyze Assignment'}
+            {isLoading ? 'Processing...' : '✓ Continue with This Assignment'}
           </button>
         </div>
       )}
