@@ -266,7 +266,7 @@ export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetada
             }
           }}
         >
-          {isLoading ? '⏳ Processing...' : '✓ Continue with This Assignment'}
+          {isLoading ? '⏳ Processing...' : '✓ Analyze This Assignment'}
         </button>
       </form>
     </div>

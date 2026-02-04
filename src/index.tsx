@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
+import { inject } from '@vercel/analytics';
 import { getLastSimulateStudentsPayload, clearSimulateStudentsPayload } from './agents/simulation/simulateStudents';
 import { getLastSimulateStudentsPrompt, clearSimulateStudentsPrompt } from './agents/analysis/promptConstruction';
 import { getLastCompletionSimulation, getLastClassCompletionSummary, clearCompletionSimulation } from './agents/analysis/completionSimulation';
@@ -28,6 +29,9 @@ declare global {
 }
 
 if (typeof window !== 'undefined') {
+  // Initialize Vercel Analytics
+  inject();
+  
   window.getLastSimulateStudentsPayload = getLastSimulateStudentsPayload;
   window.clearSimulateStudentsPayload = clearSimulateStudentsPayload;
   window.getLastSimulateStudentsPrompt = getLastSimulateStudentsPrompt;

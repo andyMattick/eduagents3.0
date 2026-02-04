@@ -48,6 +48,22 @@ export function PipelineShell() {
     setWorkflowMode('choose');
     await analyzeTextAndTags(content);
   };
+
+  const handleDirectUpload = async (content: string) => {
+    // Handle direct file upload - skip metadata form and go straight to analysis
+    setInput('');
+    setWorkflowMode('choose');
+    
+    // Use default metadata for direct uploads
+    setAssignmentMetadata({
+      gradeLevel: '6-8',
+      subject: 'General',
+      difficulty: 'intermediate',
+    });
+    
+    await analyzeTextAndTags(content);
+  };
+
   const handleMetadataSubmit = async (metadata: ReviewMetadata) => {
     setReviewMetadata(metadata);
     
@@ -291,10 +307,7 @@ export function PipelineShell() {
                   <AssignmentInput
                     value={input}
                     onChange={setInput}
-                    onSubmit={(text) => {
-                      setInput(text);
-                      handleMetadataSubmit(reviewMetadata || { gradeLevel: [], subject: '', subjectLevel: '' });
-                    }}
+                    onSubmit={handleDirectUpload}
                     isLoading={isLoading}
                   />
                   <button
