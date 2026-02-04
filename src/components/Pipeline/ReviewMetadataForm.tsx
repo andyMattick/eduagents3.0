@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNotepad } from '../../hooks/useNotepad';
 
 const COMMON_SUBJECTS = [
   'Mathematics',
@@ -38,6 +39,7 @@ interface ReviewMetadataFormProps {
 }
 
 export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetadataFormProps) {
+  const { addEntry } = useNotepad();
   const [gradeLevel, setGradeLevel] = useState<number[]>([9]);
   const [subject, setSubject] = useState('Mathematics');
   const [customSubject, setCustomSubject] = useState('');
@@ -56,6 +58,12 @@ export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetada
       alert('Please enter a subject');
       return;
     }
+
+    // Add to notepad when submitting
+    addEntry(
+      `Metadata set: ${finalSubject} (${subjectLevel}) - Grades ${gradeLevel.map((g) => `${g}th`).join(', ')}`,
+      'suggestion'
+    );
 
     onSubmit({
       gradeLevel,
@@ -266,7 +274,7 @@ export function ReviewMetadataForm({ onSubmit, isLoading = false }: ReviewMetada
             }
           }}
         >
-          {isLoading ? '⏳ Processing...' : '✓ Continue with This Assignment'}
+          {isLoading ? '⏳ Processing...' : '✓ Analyze This Assignment'}
         </button>
       </form>
     </div>

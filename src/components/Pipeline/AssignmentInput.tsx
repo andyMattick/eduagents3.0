@@ -71,59 +71,46 @@ export function AssignmentInput({
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-      <h2 style={{ marginTop: 0 }}>Step 1: Enter Your Assignment</h2>
-      <p style={{ color: '#666', fontSize: '14px' }}>
-        Choose how to provide your assignment:
-      </p>
+      {!uploadedFileName ? (
+        <>
+          <div style={tabStyles.container}>
+            <button
+              style={tabStyles.tab(mode === 'upload')}
+              onClick={() => {
+                setMode('upload');
+                setUploadError('');
+              }}
+            >
+              📄 Upload File
+            </button>
+            <button
+              style={tabStyles.tab(mode === 'generate')}
+              onClick={() => {
+                setMode('generate');
+                setUploadError('');
+              }}
+            >
+              🤖 Generate with AI
+            </button>
+          </div>
 
-      {/* Tabs */}
-      <div style={tabStyles.container}>
-        <button
-          style={tabStyles.tab(mode === 'upload')}
-          onClick={() => {
-            setMode('upload');
-            setUploadError('');
-          }}
-        >
-          📄 Upload File
-        </button>
-        <button
-          style={tabStyles.tab(mode === 'generate')}
-          onClick={() => {
-            setMode('generate');
-            setUploadError('');
-          }}
-        >
-          🤖 Generate with AI
-        </button>
-      </div>
-
-      {uploadError && (
-        <div
-          style={{
-            padding: '12px',
-            marginBottom: '16px',
-            backgroundColor: '#f8d7da',
-            border: '1px solid #f5c6cb',
-            borderRadius: '4px',
-            color: '#721c24',
-            fontSize: '13px',
-          }}
-        >
-          <strong>Upload Error:</strong> {uploadError}
-          {uploadError.includes('PDF parsing') && (
-            <div style={{ marginTop: '8px', fontSize: '12px' }}>
-              💡 <strong>Tip:</strong> You can paste PDF content into the upload field, or install
-              PDF support with: <code>npm install pdfjs-dist</code>
+          {uploadError && (
+            <div
+              style={{
+                padding: '12px',
+                marginBottom: '16px',
+                backgroundColor: '#f8d7da',
+                border: '1px solid #f5c6cb',
+                borderRadius: '4px',
+                color: '#721c24',
+                fontSize: '13px',
+              }}
+            >
+              <strong>Upload Error:</strong> {uploadError}
             </div>
           )}
-        </div>
-      )}
 
-      {/* File Upload Mode */}
-      {mode === 'upload' && (
-        <div>
-          {!uploadedFileName ? (
+          {mode === 'upload' && (
             <div
               style={{
                 padding: '40px',
@@ -173,26 +160,33 @@ export function AssignmentInput({
                 Supported: .txt, .pdf, .docx
               </div>
             </div>
-          ) : null}
-
-          {uploadedFileName && (
-            <div
-              style={{
-                padding: '16px',
-                marginBottom: '16px',
-                backgroundColor: '#e8f5e9',
-                border: '2px solid #28a745',
-                borderRadius: '4px',
-                fontSize: '14px',
-                color: '#2e7d32',
-              }}
-            >
-              <strong>✓ File Uploaded: {uploadedFileName}</strong>
-              <p style={{ margin: '8px 0 0 0', fontSize: '13px' }}>
-                Ready to analyze. Please review the preview below and click "Continue with This Assignment" to proceed.
-              </p>
-            </div>
           )}
+
+          {mode === 'generate' && (
+            <PromptBuilder
+              onAssignmentGenerated={(content) => {
+                onChange(content);
+                onSubmit(content);
+              }}
+              isLoading={isLoading}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <div
+            style={{
+              padding: '16px',
+              marginBottom: '16px',
+              backgroundColor: '#e8f5e9',
+              border: '2px solid #28a745',
+              borderRadius: '4px',
+              fontSize: '14px',
+              color: '#2e7d32',
+            }}
+          >
+            <strong>✓ Ready to Analyze</strong>
+          </div>
 
           {formattedContent && (
             <div
@@ -232,44 +226,36 @@ export function AssignmentInput({
           )}
 
           <button
-            onClick={() => onSubmit(value)}
-            disabled={!value.trim() || isLoading}
+            onClick={() => {
+              console.log('Continue clicked, value length:', value?.length, 'formattedContent length:', formattedContent?.length);
+              onSubmit(formattedContent || value);
+            }}
+            disabled={!value || !value.trim() || isLoading}
             style={{
               padding: '12px 32px',
-              backgroundColor: value.trim() && !isLoading ? '#28a745' : '#ccc',
+              backgroundColor: value && value.trim() && !isLoading ? '#28a745' : '#ccc',
               color: 'white',
               border: 'none',
               borderRadius: '4px',
-              cursor: value.trim() && !isLoading ? 'pointer' : 'not-allowed',
+              cursor: value && value.trim() && !isLoading ? 'pointer' : 'not-allowed',
               fontSize: '16px',
               fontWeight: 'bold',
               transition: 'background-color 0.2s ease',
             }}
             onMouseEnter={(e) => {
-              if (value.trim() && !isLoading) {
+              if (value && value.trim() && !isLoading) {
                 (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
               }
             }}
             onMouseLeave={(e) => {
-              if (value.trim() && !isLoading) {
+              if (value && value.trim() && !isLoading) {
                 (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
               }
             }}
           >
-            {isLoading ? 'Processing...' : '✓ Continue with This Assignment'}
+            {isLoading ? 'Processing...' : '✓ Continue'}
           </button>
-        </div>
-      )}
-
-      {/* AI Generate Mode */}
-      {mode === 'generate' && (
-        <PromptBuilder
-          onAssignmentGenerated={(content) => {
-            onChange(content);
-            onSubmit(content); // Automatically submit and advance to analysis step
-          }}
-          isLoading={isLoading}
-        />
+        </>
       )}
     </div>
   );

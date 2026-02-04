@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { useNotepad } from '../../hooks/useNotepad';
 import { rewriteAssignment } from '../../agents/rewrite/rewriteAssignment';
 import { simulateStudents } from '../../agents/simulation/simulateStudents';
 import { AssignmentInput } from './AssignmentInput';
@@ -10,9 +11,15 @@ import { ProblemAnalysis } from './ProblemAnalysis';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
+import { InlineProblemEditor } from './InlineProblemEditor';
+import { ClickableTagSystem } from './ClickableTagSystem';
+import { StudentProfileCard } from './StudentProfileCard';
+import { SimulationResults } from './SimulationResults';
+import { ExportPage } from './ExportPage';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
+  const { addEntry } = useNotepad();
   const {
     step,
     originalText,
@@ -48,6 +55,22 @@ export function PipelineShell() {
     setWorkflowMode('choose');
     await analyzeTextAndTags(content);
   };
+
+  const handleDirectUpload = async (content: string) => {
+    // Handle direct file upload - skip metadata form and go straight to analysis
+    setInput('');
+    setWorkflowMode('choose');
+    
+    // Use default metadata for direct uploads
+    setAssignmentMetadata({
+      gradeLevel: '6-8',
+      subject: 'General',
+      difficulty: 'intermediate',
+    });
+    
+    await analyzeTextAndTags(content);
+  };
+
   const handleMetadataSubmit = async (metadata: ReviewMetadata) => {
     setReviewMetadata(metadata);
     
@@ -291,10 +314,7 @@ export function PipelineShell() {
                   <AssignmentInput
                     value={input}
                     onChange={setInput}
-                    onSubmit={(text) => {
-                      setInput(text);
-                      handleMetadataSubmit(reviewMetadata || { gradeLevel: [], subject: '', subjectLevel: '' });
-                    }}
+                    onSubmit={handleDirectUpload}
                     isLoading={isLoading}
                   />
                   <button

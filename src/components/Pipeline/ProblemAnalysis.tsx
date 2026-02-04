@@ -1,5 +1,6 @@
 import React from 'react';
 import { Asteroid } from '../../types/simulation';
+import { useNotepad } from '../../hooks/useNotepad';
 
 interface ProblemAnalysisProps {
   asteroids: Asteroid[];
@@ -8,7 +9,40 @@ interface ProblemAnalysisProps {
 }
 
 export function ProblemAnalysis({ asteroids, onNext, isLoading = false }: ProblemAnalysisProps) {
+  const { addEntry } = useNotepad();
   const [viewMode, setViewMode] = React.useState<'metadata' | 'html'>('metadata');
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [editText, setEditText] = React.useState('');
+  const [editedAsteroids, setEditedAsteroids] = React.useState<Map<string, Asteroid>>(new Map());
+
+  // Start editing a problem
+  const startEdit = (asteroid: Asteroid) => {
+    setEditingId(asteroid.ProblemId);
+    setEditText(asteroid.ProblemText);
+  };
+
+  // Save edited problem
+  const saveEdit = (asteroid: Asteroid) => {
+    if (!editText.trim()) return;
+
+    const updated = { ...asteroid, ProblemText: editText };
+    editedAsteroids.set(asteroid.ProblemId, updated);
+    setEditedAsteroids(new Map(editedAsteroids));
+    addEntry(`Edited problem "${editText.substring(0, 50)}..." - Text updated`, 'fix');
+    setEditingId(null);
+    setEditText('');
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditText('');
+  };
+
+  // Get display problem (edited or original)
+  const getDisplayProblem = (asteroid: Asteroid): Asteroid => {
+    return editedAsteroids.get(asteroid.ProblemId) || asteroid;
+  };
 
   // Export to JSON
   const handleExportJSON = () => {
@@ -139,111 +173,69 @@ export function ProblemAnalysis({ asteroids, onNext, isLoading = false }: Proble
       {/* Metadata View */}
       {viewMode === 'metadata' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px', marginBottom: '20px' }}>
-          {asteroids.map((asteroid, index) => (
-            <div
-              key={asteroid.ProblemId || index}
-              style={{
-                padding: '16px',
-                backgroundColor: 'white',
-                border: '1px solid #ddd',
-                borderRadius: '6px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              }}
-            >
-              <div style={{ marginBottom: '12px' }}>
-                <h4 style={{ margin: '0 0 8px 0', color: '#333', fontSize: '15px' }}>
-                  Problem {index + 1} 🎯
-                </h4>
-                <p style={{ margin: '8px 0', color: '#555', fontSize: '14px', lineHeight: '1.5' }}>
-                  {asteroid.ProblemText.substring(0, 200)}
-                  {asteroid.ProblemText.length > 200 ? '...' : ''}
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginTop: '12px' }}>
-                {/* Bloom Level */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📚 BLOOM LEVEL</div>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#0066cc' }}>
-                    {asteroid.BloomLevel}
-                  </div>
-                </div>
-
-                {/* Linguistic Complexity */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📖 COMPLEXITY</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#ff9800' }}>
-                      {(asteroid.LinguisticComplexity * 100).toFixed(0)}%
-                    </div>
-                    <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          height: '100%',
-                          backgroundColor: '#ff9800',
-                          width: `${asteroid.LinguisticComplexity * 100}%`,
-                        }}
-                      />
+          {asteroids.map((asteroid, index) => {
+            const displayProblem = getDisplayProblem(asteroid);
+            const isEditing = editingId === asteroid.ProblemId;
+            return (
+              <div key={asteroid.ProblemId || index} style={{ padding: '16px', backgroundColor: isEditing ? '#f0f7ff' : 'white', border: isEditing ? '2px solid #0066cc' : '1px solid #ddd', borderRadius: '6px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                <h4 style={{ margin: '0 0 12px 0', color: '#333', fontSize: '15px' }}>Problem {index + 1} 🎯</h4>
+                {isEditing ? (
+                  <div>
+                    <textarea value={editText} onChange={(e) => setEditText(e.target.value)} style={{ width: '100%', minHeight: '80px', padding: '8px', fontSize: '14px', fontFamily: 'inherit', border: '1px solid #0066cc', borderRadius: '4px', marginBottom: '8px', fontWeight: 500 }} />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button onClick={() => saveEdit(asteroid)} style={{ padding: '6px 12px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>✓ Save</button>
+                      <button onClick={cancelEdit} style={{ padding: '6px 12px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>✕ Cancel</button>
                     </div>
                   </div>
-                </div>
-
-                {/* Novelty Score */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>✨ NOVELTY</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#28a745' }}>
-                      {(asteroid.NoveltyScore * 100).toFixed(0)}%
-                    </div>
-                    <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          height: '100%',
-                          backgroundColor: '#28a745',
-                          width: `${asteroid.NoveltyScore * 100}%`,
-                        }}
-                      />
+                ) : (
+                  <p onClick={() => startEdit(asteroid)} style={{ margin: '0 0 12px 0', color: '#555', fontSize: '14px', lineHeight: '1.5', cursor: 'pointer', padding: '8px', borderRadius: '4px', backgroundColor: '#fafafa', transition: 'all 0.2s', border: '1px solid transparent' }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#f0f0f0'; (e.currentTarget as HTMLElement).style.borderColor = '#ddd'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = '#fafafa'; (e.currentTarget as HTMLElement).style.borderColor = 'transparent'; }}>
+                    {displayProblem.ProblemText.substring(0, 200)}{displayProblem.ProblemText.length > 200 ? '...' : ''}{editedAsteroids.has(asteroid.ProblemId) && <span style={{ marginLeft: '8px', color: '#ff922b', fontWeight: 600 }}>✎ EDITED</span>}
+                  </p>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📚 BLOOM LEVEL</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#0066cc' }}>{displayProblem.BloomLevel}</div>
+                  </div>
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📖 COMPLEXITY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#ff9800' }}>{(displayProblem.LinguisticComplexity * 100).toFixed(0)}%</div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', backgroundColor: '#ff9800', width: `${displayProblem.LinguisticComplexity * 100}%` }} />
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                {/* Multi-part */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔗 STRUCTURE</div>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: asteroid.MultiPart ? '#dc3545' : '#28a745' }}>
-                    {asteroid.MultiPart ? 'Multi-part' : 'Single part'}
-                  </div>
-                </div>
-
-                {/* Length */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📏 LENGTH</div>
-                  <div style={{ fontSize: '14px', fontWeight: '700', color: '#666' }}>
-                    {asteroid.ProblemLength} words
-                  </div>
-                </div>
-
-                {/* Similarity to Previous */}
-                <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔄 SIMILARITY</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#9c27b0' }}>
-                      {(asteroid.SimilarityToPrevious * 100).toFixed(0)}%
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>✨ NOVELTY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#28a745' }}>{(displayProblem.NoveltyScore * 100).toFixed(0)}%</div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', backgroundColor: '#28a745', width: `${displayProblem.NoveltyScore * 100}%` }} />
+                      </div>
                     </div>
-                    <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div
-                        style={{
-                          height: '100%',
-                          backgroundColor: '#9c27b0',
-                          width: `${asteroid.SimilarityToPrevious * 100}%`,
-                        }}
-                      />
+                  </div>
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔗 STRUCTURE</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: displayProblem.MultiPart ? '#dc3545' : '#28a745' }}>{displayProblem.MultiPart ? 'Multi-part' : 'Single part'}</div>
+                  </div>
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>📏 LENGTH</div>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#666' }}>{displayProblem.ProblemLength} words</div>
+                  </div>
+                  <div style={{ padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '600', color: '#666', marginBottom: '4px' }}>🔄 SIMILARITY</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '700', color: '#9c27b0' }}>{(displayProblem.SimilarityToPrevious * 100).toFixed(0)}%</div>
+                      <div style={{ flex: 1, height: '6px', backgroundColor: '#e0e0e0', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', backgroundColor: '#9c27b0', width: `${displayProblem.SimilarityToPrevious * 100}%` }} />
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
