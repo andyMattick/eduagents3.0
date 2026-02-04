@@ -155,34 +155,7 @@ export function RewriteResults({
         </div>
       </div>
 
-      {/* Applied Tags / Improvements */}
-      {appliedTags.length > 0 && (
-        <div style={{ marginBottom: '24px' }}>
-          <h3 style={{ color: '#333', marginBottom: '12px', fontSize: '15px', fontWeight: '600' }}>
-            ✨ Applied Improvements
-          </h3>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {appliedTags.map(tag => (
-              <span
-                key={tag.name}
-                title={tag.description}
-                style={{
-                  padding: '6px 12px',
-                  backgroundColor: '#007bff',
-                  color: 'white',
-                  borderRadius: '20px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  cursor: 'default',
-                }}
-              >
-                {tag.name}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
+      
       {/* View Toggle: Show HTML / Student View */}
       <div style={{ marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <button

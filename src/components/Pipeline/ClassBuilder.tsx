@@ -2,6 +2,7 @@ import React from 'react';
 import { ClassDefinition } from '../../types/pipeline';
 import { StudentProfile, ProblemProfile, ClassroomSimulationPayload } from '../../types/classroomProfiles';
 import { generateStudentProfile, generateClassroom, generateCustomClassroom } from '../../agents/simulation/generateStudentProfiles';
+import { StudentProfileCard } from './StudentProfileCard';
 
 interface ClassBuilderProps {
   gradeLevel?: string;
@@ -29,11 +30,13 @@ export function ClassBuilder({
   const [studentCount, setStudentCount] = React.useState(20);
   const [selectedStudents, setSelectedStudents] = React.useState<StudentProfile[]>([]);
   const [previewPayload, setPreviewPayload] = React.useState<ClassroomSimulationPayload | null>(null);
+  const [selectedStudentIds, setSelectedStudentIds] = React.useState<Set<string>>(new Set());
 
   // Generate classroom using standard distribution
   const handleGenerateStandard = () => {
     const students = generateClassroom();
     setSelectedStudents(students);
+    setSelectedStudentIds(new Set(students.map(s => s.StudentId)));
     setGenerationMode('auto');
   };
 
@@ -41,7 +44,19 @@ export function ClassBuilder({
   const handleGenerateCustom = () => {
     const students = generateCustomClassroom(studentCount);
     setSelectedStudents(students);
+    setSelectedStudentIds(new Set(students.map(s => s.StudentId)));
     setGenerationMode('custom');
+  };
+
+  // Toggle student selection
+  const handleToggleStudent = (studentId: string) => {
+    const newSelected = new Set(selectedStudentIds);
+    if (newSelected.has(studentId)) {
+      newSelected.delete(studentId);
+    } else {
+      newSelected.add(studentId);
+    }
+    setSelectedStudentIds(newSelected);
   };
 
   // Generate and preview payload
@@ -62,20 +77,22 @@ export function ClassBuilder({
 
   // Launch simulation
   const handleLaunchSimulation = () => {
-    if (selectedStudents.length === 0) {
-      alert('Please generate students first');
+    if (selectedStudentIds.size === 0) {
+      alert('Please select at least one student');
       return;
     }
 
+    const studentsToSimulate = selectedStudents.filter(s => selectedStudentIds.has(s.StudentId));
+
     const payload: ClassroomSimulationPayload = {
       problems: problems,
-      students: selectedStudents,
+      students: studentsToSimulate,
     };
 
     // Update class definition and proceed
     const updatedClass: ClassDefinition = {
       name: className,
-      studentProfiles: selectedStudents,
+      studentProfiles: studentsToSimulate,
     };
 
     onClassDefinitionChange(updatedClass);
@@ -134,46 +151,7 @@ export function ClassBuilder({
           🤖 Auto-Generate Standard Class (20 students)
         </button>
 
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input
-            type="number"
-            min="1"
-            max="100"
-            value={studentCount}
-            onChange={(e) => setStudentCount(Math.max(1, parseInt(e.target.value) || 20))}
-            style={{
-              width: '100px',
-              padding: '8px',
-              border: '1px solid #ddd',
-              borderRadius: '4px',
-              fontSize: '14px',
-            }}
-            placeholder="Count"
-          />
-          <button
-            onClick={handleGenerateCustom}
-            disabled={isLoading}
-            style={{
-              flex: 1,
-              padding: '10px',
-              backgroundColor: generationMode === 'custom' ? '#ff922b' : '#e0e0e0',
-              color: generationMode === 'custom' ? 'white' : '#666',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!isLoading) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#f5731b';
-            }}
-            onMouseLeave={(e) => {
-              if (generationMode === 'custom') (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#ff922b';
-            }}
-          >
-            Generate {studentCount} Custom Students
-          </button>
-        </div>
+        
       </div>
 
       {/* Student Summary */}
@@ -190,12 +168,40 @@ export function ClassBuilder({
         >
           <strong>✓ {selectedStudents.length} students generated</strong>
           <div style={{ marginTop: '8px', fontSize: '12px', color: '#333' }}>
-            {generationMode === 'auto' && (
-              <div>Standard distribution: Remember (2), Understand (4), Apply (6), Analyze (5), Evaluate (2), Create (1)</div>
-            )}
+            
             {generationMode === 'custom' && (
               <div>Custom distribution: {studentCount} students evenly distributed across Bloom levels</div>
             )}
+            
+          </div>
+        </div>
+      )}
+
+      {/* Student Profile Cards Grid */}
+      {selectedStudents.length > 0 && (
+        <div style={{ marginBottom: '20px' }}>
+          <h3 style={{ marginTop: '0', marginBottom: '12px', fontSize: '14px', fontWeight: 600, color: '#666' }}>
+            👥 Student Profiles ({selectedStudentIds.size} selected)
+          </h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: '12px',
+              marginBottom: '20px',
+              maxHeight: '600px',
+              overflowY: 'auto',
+              padding: '8px',
+            }}
+          >
+            {selectedStudents.map((student) => (
+              <StudentProfileCard
+                key={student.StudentId}
+                student={student}
+                isSelected={selectedStudentIds.has(student.StudentId)}
+                onToggle={handleToggleStudent}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -204,15 +210,15 @@ export function ClassBuilder({
       <div style={{ display: 'flex', gap: '12px' }}>
         <button
           onClick={handlePreviewPayload}
-          disabled={selectedStudents.length === 0 || isLoading}
+          disabled={selectedStudentIds.size === 0 || isLoading}
           style={{
             flex: 1,
             padding: '12px',
-            backgroundColor: selectedStudents.length > 0 ? '#6c757d' : '#ccc',
+            backgroundColor: selectedStudentIds.size > 0 ? '#6c757d' : '#ccc',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: selectedStudents.length > 0 ? 'pointer' : 'not-allowed',
+            cursor: selectedStudentIds.size > 0 ? 'pointer' : 'not-allowed',
             fontWeight: 500,
             transition: 'all 0.2s ease',
           }}
@@ -221,23 +227,23 @@ export function ClassBuilder({
         </button>
         <button
           onClick={handleLaunchSimulation}
-          disabled={selectedStudents.length === 0 || isLoading}
+          disabled={selectedStudentIds.size === 0 || isLoading}
           style={{
             flex: 1,
             padding: '12px',
-            backgroundColor: selectedStudents.length > 0 ? '#28a745' : '#ccc',
+            backgroundColor: selectedStudentIds.size > 0 ? '#28a745' : '#ccc',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: selectedStudents.length > 0 ? 'pointer' : 'not-allowed',
+            cursor: selectedStudentIds.size > 0 ? 'pointer' : 'not-allowed',
             fontWeight: 600,
             transition: 'all 0.2s ease',
           }}
           onMouseEnter={(e) => {
-            if (selectedStudents.length > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
+            if (selectedStudentIds.size > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
           }}
           onMouseLeave={(e) => {
-            if (selectedStudents.length > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
+            if (selectedStudentIds.size > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
           }}
         >
           {isLoading ? '🔄 Processing...' : '🚀 Launch Simulation'}

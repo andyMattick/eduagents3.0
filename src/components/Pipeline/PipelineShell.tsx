@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { useNotepad } from '../../hooks/useNotepad';
 import { rewriteAssignment } from '../../agents/rewrite/rewriteAssignment';
 import { simulateStudents } from '../../agents/simulation/simulateStudents';
 import { AssignmentInput } from './AssignmentInput';
@@ -10,9 +11,15 @@ import { ProblemAnalysis } from './ProblemAnalysis';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
+import { InlineProblemEditor } from './InlineProblemEditor';
+import { ClickableTagSystem } from './ClickableTagSystem';
+import { StudentProfileCard } from './StudentProfileCard';
+import { SimulationResults } from './SimulationResults';
+import { ExportPage } from './ExportPage';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
+  const { addEntry } = useNotepad();
   const {
     step,
     originalText,
