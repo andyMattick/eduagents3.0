@@ -23,7 +23,7 @@ export const InlineProblemEditor: React.FC<InlineProblemEditorProps> = ({
   onQuickNote,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(problem.ProblemText || '');
+  const [editText, setEditText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -37,14 +37,13 @@ export const InlineProblemEditor: React.FC<InlineProblemEditorProps> = ({
     if (editText.trim()) {
       onUpdate({
         ...problem,
-        ProblemText: editText,
       });
     }
     setIsEditing(false);
   };
 
   const handleCancel = () => {
-    setEditText(problem.ProblemText || '');
+    setEditText('');
     setIsEditing(false);
   };
 
@@ -75,7 +74,7 @@ export const InlineProblemEditor: React.FC<InlineProblemEditorProps> = ({
             </button>
             {onQuickNote && (
               <button
-                onClick={() => onQuickNote(problem.ProblemId || `problem_${index}`, problem.ProblemText || '')}
+                onClick={() => onQuickNote(problem.ProblemId || `problem_${index}`, '')}
                 className="inline-editor-btn inline-editor-note-btn"
                 title="Add note"
               >
@@ -105,7 +104,7 @@ export const InlineProblemEditor: React.FC<InlineProblemEditorProps> = ({
         </div>
       ) : (
         <>
-          <p className="inline-editor-text">{problem.ProblemText || '(No problem text)'}</p>
+          <p className="inline-editor-text">{`Problem #${problem.ProblemId}`}</p>
 
           <div className="inline-editor-tags">
             <span

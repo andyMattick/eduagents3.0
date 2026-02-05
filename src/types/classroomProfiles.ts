@@ -23,6 +23,7 @@ export interface ProblemProfile {
   NoveltyScore: number;            // 0.0–1.0
   CreativityScore: number;         // 0.0–1.0 (open-endedness of thinking)
   ThemeCreativity: number;         // 0.0–1.0 (fun/whimsical theme)
+  HasTips: boolean;                // true if problem includes formulas, hints, or guiding instructions
 }
 
 // ============================================

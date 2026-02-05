@@ -55,6 +55,10 @@ export function clearSimulateStudentsPayload(): void {
 /**
  * Simulates detailed feedback from different student personas
  * More in-depth and constructive, like real peer feedback would be
+ * 
+ * TODO: Phase 2 - Replace with real Asteroid × Astronaut simulation
+ * Currently: Text-based analysis with mock results
+ * Phase 2: Will use actual student profiles × problem metadata for realistic simulation
  */
 export async function simulateStudents(
   assignmentText: string,
@@ -64,6 +68,7 @@ export async function simulateStudents(
     subject?: string;
     learnerProfiles?: string[];
     selectedStudentTags?: string[];
+    asteroidCount?: number;  // Number of problems in assignment
   }
 ): Promise<StudentFeedback[]> {
   // Simulate API delay
@@ -105,6 +110,7 @@ export async function simulateStudents(
       gradeLevel: options?.gradeLevel,
       subject: options?.subject,
       learnerProfiles: options?.learnerProfiles,
+      problemCount: options?.asteroidCount,  // Number of structured problems (asteroids)
     },
     processingOptions: {
       selectedStudentTags: options?.selectedStudentTags,
@@ -121,6 +127,9 @@ export async function simulateStudents(
     ...payload,
     textLength: `${payload.textMetadata.textLength} chars`,
     wordCount: `${payload.textMetadata.wordCount} words`,
+    problemCount: payload.assignmentMetadata.problemCount || 'unknown',
+    subject: payload.assignmentMetadata.subject,
+    gradeLevel: payload.assignmentMetadata.gradeLevel,
   });
 
   // Initialize feedback array

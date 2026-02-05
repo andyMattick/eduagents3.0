@@ -89,6 +89,12 @@
   }
 }
 
+.notepad-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Content Area */
 .notepad-content {
   display: flex;

@@ -1,45 +1,39 @@
 import { useState } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
-import { useNotepad } from '../../hooks/useNotepad';
-import { rewriteAssignment } from '../../agents/rewrite/rewriteAssignment';
-import { simulateStudents } from '../../agents/simulation/simulateStudents';
+import { parseDocumentStructure } from '../../agents/analysis/documentStructureParser';
+import { previewDocument } from '../../agents/analysis/documentPreview';
+import { convertExtractedProblemsToAsteroids } from '../../agents/shared/convertExtractedToAsteroid';
+import { extractAsteroidsFromText } from '../../agents/pipelineIntegration';
 import { AssignmentInput } from './AssignmentInput';
 import { PromptBuilder } from './PromptBuilderSimplified';
 import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
+import { DocumentPreviewComponent } from '../Analysis/DocumentPreview';
+import { DocumentAnalysis } from '../Analysis/DocumentAnalysis';
 import { ProblemAnalysis } from './ProblemAnalysis';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
-import { InlineProblemEditor } from './InlineProblemEditor';
-import { ClickableTagSystem } from './ClickableTagSystem';
-import { StudentProfileCard } from './StudentProfileCard';
-import { SimulationResults } from './SimulationResults';
-import { ExportPage } from './ExportPage';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
-  const { addEntry } = useNotepad();
   const {
     step,
     originalText,
     rewrittenText,
     rewriteSummary,
-    tags,
     studentFeedback,
-    tagChanges,
     isLoading,
     error,
-    versionAnalysis,
     rewrittenTags,
     asteroids,
-    showProblemMetadata,
     analyzeTextAndTags,
-    getFeedback,
     nextStep,
     reset,
-    toggleProblemMetadataView,
     setAssignmentMetadata,
+    setAsteroids,
+    setOriginalText,
+    retestWithRewrite,
   } = usePipeline();
 
   const [input, setInput] = useState('');
@@ -48,6 +42,8 @@ export function PipelineShell() {
   const [assignmentGradeLevel, setAssignmentGradeLevel] = useState('6-8');
   const [assignmentSubject, setAssignmentSubject] = useState('');
   const [classDefinition, setClassDefinition] = useState<ClassDefinition | undefined>(undefined);
+  const [documentPreview, setDocumentPreview] = useState<any>(null);
+  const [documentStructure, setDocumentStructure] = useState<any>(null);
 
   const handleAssignmentGenerated = async (content: string, _metadata: AssignmentMetadata) => {
     // Feed the generated assignment into the analysis pipeline
@@ -85,17 +81,106 @@ export function PipelineShell() {
       difficulty: 'intermediate',
     });
     
-    // Clear input state (UI will automatically hide via step change when analysis completes)
+    // Save text for later retrieval
     const textToAnalyze = input;
+    window.sessionStorage.setItem('inputText', textToAnalyze);
+    
     setInput('');
     setWorkflowMode('choose');
     
-    // Proceed with analysis - this will trigger step transition to PROBLEM_ANALYSIS
-    await analyzeTextAndTags(textToAnalyze);
+    // Generate quick preview FIRST (before full extraction)
+    const preview = previewDocument(textToAnalyze);
+    setDocumentPreview(preview);
+    
+    // Move to DOCUMENT_PREVIEW step
+    await nextStep();
   };
 
   const handleNextStep = async () => {
+    console.log('📍 handleNextStep called, current step:', step);
     await nextStep();
+    console.log('📍 handleNextStep complete');
+  };
+
+  const handleEditAndRetest = async () => {
+    console.log('🔄 EditAndRetest: Transitioning to CLASS_BUILDER with rewritten content');
+    retestWithRewrite();
+  };
+
+  const handleDocumentAnalysisConfirm = async (structure: any) => {
+    setDocumentStructure(structure);
+    
+    // Convert all extracted problems from DocumentStructure to Asteroids
+    // Flatten all problems from all sections
+    const allExtractedProblems = structure.sections.flatMap((section: any) => section.problems);
+    
+    // Convert to Asteroid format
+    const generatedAsteroids = convertExtractedProblemsToAsteroids(
+      allExtractedProblems,
+      assignmentSubject || 'General'
+    );
+    
+    // Store asteroids in pipeline state
+    setAsteroids(generatedAsteroids);
+    
+    // Log payloads for developer inspection
+    console.log('📦 Extracted Problems → Asteroids Conversion:', {
+      totalProblems: allExtractedProblems.length,
+      asteroids: generatedAsteroids,
+      sections: structure.sections.length,
+    });
+    
+    // Proceed to next step (PROBLEM_ANALYSIS)
+    await nextStep();
+  };
+
+  const handleParseAndAnalyze = async (textToAnalyze: string) => {
+    try {
+      // Parse the document to extract problems with metadata
+      const structure = await parseDocumentStructure(textToAnalyze, {
+        documentTitle: 'Assignment',
+        gradeLevel: assignmentGradeLevel,
+        subject: assignmentSubject,
+      });
+      
+      setDocumentStructure(structure);
+      // Proceed to DOCUMENT_ANALYSIS step
+      await nextStep();
+    } catch (error) {
+      console.error('Error parsing document:', error);
+    }
+  };
+
+  const handleDocumentPreviewConfirm = async () => {
+    // Preview confirmed → Generate asteroids directly and move to PROBLEM_ANALYSIS
+    const textToAnalyze = window.sessionStorage.getItem('inputText') || '';
+    if (textToAnalyze && asteroids.length === 0) {
+      try {
+        // Extract asteroids directly from stored text
+        const newAsteroids = await extractAsteroidsFromText(
+          textToAnalyze,
+          assignmentSubject || 'General'
+        );
+        setAsteroids(newAsteroids);
+        // CRITICAL: Store original text in pipeline state for simulation engine
+        setOriginalText(textToAnalyze);
+        console.log('✅ Original text stored for simulation:', textToAnalyze.substring(0, 100) + '...');
+        // Move to PROBLEM_ANALYSIS (skipping DOCUMENT_ANALYSIS)
+        await nextStep();
+      } catch (error) {
+        console.error('Error extracting asteroids:', error);
+      }
+    }
+  };
+
+  const handleDocumentPreviewEdit = () => {
+    // Go back to input to re-upload - must reset step to INPUT
+    setDocumentPreview(null);
+    setReviewMetadata(null);
+    setInput('');
+    setDocumentStructure(null);
+    setWorkflowMode('input');
+    reset(); // Reset pipeline step back to INPUT
   };
 
   const handleReset = () => {
@@ -111,40 +196,6 @@ export function PipelineShell() {
     }
   };
 
-  const handleRewriteWithSuggestions = async (suggestions: string) => {
-    if (!suggestions.trim()) {
-      alert('Please enter suggestions for rewriting the assignment.');
-      return;
-    }
-
-    try {
-      // Rewrite the assignment with the suggestions
-      const result = await rewriteAssignment(originalText, tags);
-      
-      alert('✓ Assignment rewritten with your suggestions!');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to rewrite assignment';
-      alert(`Error rewriting assignment: ${errorMessage}`);
-    }
-  };
-
-  const handleReanalyzeStudents = async () => {
-    try {
-      // Re-simulate students with the current assignment
-      const textToAnalyze = rewrittenText || originalText;
-      const updatedFeedback = await simulateStudents(
-        textToAnalyze,
-        assignmentGradeLevel,
-        assignmentSubject
-      );
-
-      alert('✓ Student analysis updated with latest assignment!');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to re-analyze students';
-      alert(`Error re-analyzing students: ${errorMessage}`);
-    }
-  };
-
   // For choosing workflow
   if (workflowMode === 'choose' && step === PipelineStep.INPUT) {
     return (
@@ -156,11 +207,12 @@ export function PipelineShell() {
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         }}
       >
+        {/* Header */}
         <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ margin: '0 0 8px 0', color: '#333' }}>
+          <h1 style={{ margin: '0 0 8px 0', color: 'var(--text)' }}>
             📝 Teacher's Assignment Studio
           </h1>
-          <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>
             Craft excellent assignments with AI assistance—your expertise, elevated
           </p>
         </div>
@@ -202,7 +254,7 @@ export function PipelineShell() {
             </p>
             <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
               <li>Upload files or generate with AI</li>
-              <li>Student feedback from 11 perspectives</li>
+              <li>Student feedback from varying perspectives</li>
               <li>Accessibility insights</li>
               <li>AI-suggested improvements</li>
             </ul>
@@ -242,11 +294,11 @@ export function PipelineShell() {
           📝 Assignment Pipeline
         </h1>
         <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
-          Step {step + 1} of 6
+          Step {step + 1} of 8
         </p>
         <div style={{ marginTop: '8px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            {[0, 1, 2, 3, 4, 5].map((s) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => (
               <div
                 key={s}
                 style={{
@@ -378,7 +430,7 @@ export function PipelineShell() {
             </p>
             <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
               <li>Upload files or generate with AI</li>
-              <li>Student feedback from 11 perspectives</li>
+              <li>Student feedback from varying perspectives</li>
               <li>Accessibility insights</li>
               <li>AI-suggested improvements</li>
             </ul>
@@ -401,9 +453,18 @@ export function PipelineShell() {
         </div>
       )}
 
+      {step === PipelineStep.DOCUMENT_PREVIEW && documentPreview && (
+        <DocumentPreviewComponent
+          preview={documentPreview}
+          isAnalyzing={isLoading}
+          onConfirm={handleDocumentPreviewConfirm}
+          onEdit={handleDocumentPreviewEdit}
+        />
+      )}
+
       {step === PipelineStep.PROBLEM_ANALYSIS && (
         <ProblemAnalysis
-          asteroids={asteroids}
+          asteroids={asteroids || []}
           isLoading={isLoading}
           onNext={handleNextStep}
         />
@@ -425,7 +486,6 @@ export function PipelineShell() {
           feedback={studentFeedback}
           isLoading={isLoading}
           onNext={handleNextStep}
-          asteroids={asteroids}
         />
       )}
 
@@ -437,7 +497,7 @@ export function PipelineShell() {
           appliedTags={rewrittenTags}
           isLoading={isLoading}
           onNext={handleNextStep}
-          asteroids={asteroids}
+          onEditAndRetest={handleEditAndRetest}
         />
       )}
 

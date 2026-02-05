@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { TagChange, VersionAnalysis } from '../../types/pipeline';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { Document, Packer, Paragraph, HeadingLevel, TextRun } from 'docx';
+import { Document, Packer, Paragraph, HeadingLevel } from 'docx';
 
 interface Props {
   original: string;
@@ -28,7 +28,7 @@ export function VersionComparison({
   const [showStudentView, setShowStudentView] = useState(false);
   const [showHTMLView, setShowHTMLView] = useState(false);
   const [showWordPreview, setShowWordPreview] = useState(false);
-  const [wordPreviewContent, setWordPreviewContent] = useState<JSX.Element | null>(null);
+  const [wordPreviewContent, setWordPreviewContent] = useState<React.ReactNode>(null);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [teacherSuggestions, setTeacherSuggestions] = useState('');
   const [isRewriting, setIsRewriting] = useState(false);
@@ -107,7 +107,7 @@ export function VersionComparison({
         if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
           const text = el.textContent || '';
           if (text.trim()) {
-            const headingLevels: Record<string, HeadingLevel> = {
+            const headingLevels: Record<string, any> = {
               'h1': HeadingLevel.HEADING_1,
               'h2': HeadingLevel.HEADING_2,
               'h3': HeadingLevel.HEADING_3,
@@ -117,7 +117,7 @@ export function VersionComparison({
             };
             paragraphs.push(new Paragraph({
               text: text,
-              heading: headingLevels[tagName],
+              heading: headingLevels[tagName] as any,
               spacing: { before: 240, after: 120, line: 360 },
             }));
           }

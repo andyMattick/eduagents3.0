@@ -8,6 +8,7 @@
 
 import React, { useState } from 'react';
 import { useNotepad } from '../../hooks/useNotepad';
+import { ThemeToggle } from '../ThemeToggle';
 import './TeacherNotepad.css';
 
 export const TeacherNotepad: React.FC = () => {
@@ -58,13 +59,16 @@ export const TeacherNotepad: React.FC = () => {
           Teacher Notepad
           {entries.length > 0 && <span className="notepad-badge">{entries.length}</span>}
         </div>
-        <button
-          className="notepad-toggle"
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          title={isCollapsed ? 'Expand' : 'Collapse'}
-        >
-          {isCollapsed ? '▶' : '▼'}
-        </button>
+        <div className="notepad-header-actions">
+          <ThemeToggle />
+          <button
+            className="notepad-toggle"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+          >
+            {isCollapsed ? '▶' : '▼'}
+          </button>
+        </div>
       </div>
 
       {/* Content */}

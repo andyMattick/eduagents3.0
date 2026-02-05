@@ -8,6 +8,7 @@ interface RewriteResultsProps {
   appliedTags: Tag[];
   isLoading?: boolean;
   onNext: () => void;
+  onEditAndRetest?: () => void;
 }
 
 /**
@@ -19,9 +20,9 @@ export function RewriteResults({
   originalText,
   rewrittenText,
   summaryOfChanges,
-  appliedTags,
   isLoading = false,
   onNext,
+  onEditAndRetest,
 }: RewriteResultsProps) {
   const [showHtml, setShowHtml] = useState(false);
 
@@ -151,9 +152,34 @@ export function RewriteResults({
             fontSize: '14px',
           }}
         >
-          <p style={{ margin: 0 }}>{summaryOfChanges}</p>
+          {summaryOfChanges ? (
+            <p style={{ margin: 0 }}>{summaryOfChanges}</p>
+          ) : (
+            <p style={{ margin: 0, fontStyle: 'italic' }}>Generating summary of changes...</p>
+          )}
         </div>
       </div>
+
+      {!rewrittenText && !summaryOfChanges && (
+        <div
+          style={{
+            padding: '24px',
+            backgroundColor: '#fff3cd',
+            border: '2px solid #ffc107',
+            borderRadius: '6px',
+            color: '#856404',
+            marginBottom: '24px',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ margin: '0 0 12px 0', fontSize: '15px', fontWeight: '600' }}>
+            ⏳ Rewriting your assignment...
+          </p>
+          <p style={{ margin: 0, fontSize: '13px' }}>
+            The rewrite engine is analyzing your content and generating improvements. This may take a moment.
+          </p>
+        </div>
+      )}
 
       
       {/* View Toggle: Show HTML / Student View */}
@@ -223,7 +249,36 @@ export function RewriteResults({
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+        {onEditAndRetest && (
+          <button
+            onClick={onEditAndRetest}
+            disabled={isLoading}
+            style={{
+              padding: '12px 24px',
+              backgroundColor: isLoading ? '#ccc' : '#f0f0f0',
+              color: '#333',
+              border: '2px solid #0066cc',
+              borderRadius: '4px',
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              fontSize: '15px',
+              fontWeight: '600',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={e => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = '#e6f2ff';
+              }
+            }}
+            onMouseLeave={e => {
+              if (!isLoading) {
+                e.currentTarget.style.backgroundColor = '#f0f0f0';
+              }
+            }}
+          >
+            🔄 Edit & Re-test
+          </button>
+        )}
         <button
           onClick={onNext}
           disabled={isLoading}

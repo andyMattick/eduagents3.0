@@ -31,8 +31,6 @@ export function StudentSimulations({
   onNext,
   completionSimulations,
   asteroids = [],
-  showProblemMetadata = false,
-  onToggleProblemMetadata,
 }: StudentSimulationsProps) {
   const [activeTab, setActiveTab] = React.useState<'feedback' | 'completion' | 'metadata'>('feedback');
 

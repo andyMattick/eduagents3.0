@@ -1,7 +1,7 @@
 import React from 'react';
 import { ClassDefinition } from '../../types/pipeline';
 import { StudentProfile, ProblemProfile, ClassroomSimulationPayload } from '../../types/classroomProfiles';
-import { generateStudentProfile, generateClassroom, generateCustomClassroom } from '../../agents/simulation/generateStudentProfiles';
+import { generateClassroom } from '../../agents/simulation/generateStudentProfiles';
 import { StudentProfileCard } from './StudentProfileCard';
 
 interface ClassBuilderProps {
@@ -17,8 +17,6 @@ interface ClassBuilderProps {
 type GenerationMode = 'preset' | 'custom' | 'auto';
 
 export function ClassBuilder({
-  gradeLevel = 'Grade 9',
-  subject = 'General',
   classDefinition,
   onClassDefinitionChange,
   onNext,
@@ -27,10 +25,23 @@ export function ClassBuilder({
 }: ClassBuilderProps) {
   const [className, setClassName] = React.useState(classDefinition?.name || 'My Class');
   const [generationMode, setGenerationMode] = React.useState<GenerationMode>('auto');
-  const [studentCount, setStudentCount] = React.useState(20);
   const [selectedStudents, setSelectedStudents] = React.useState<StudentProfile[]>([]);
   const [previewPayload, setPreviewPayload] = React.useState<ClassroomSimulationPayload | null>(null);
   const [selectedStudentIds, setSelectedStudentIds] = React.useState<Set<string>>(new Set());
+
+  // Auto-generate students on mount for immediate simulation
+  React.useEffect(() => {
+    if (selectedStudents.length === 0) {
+      const students = generateClassroom();
+      setSelectedStudents(students);
+      setSelectedStudentIds(new Set(students.map(s => s.StudentId)));
+      setGenerationMode('auto');
+      console.log('🤖 Auto-generated classroom:', {
+        studentCount: students.length,
+        personas: students.map(s => s.StudentId),
+      });
+    }
+  }, []); // Only run on mount
 
   // Generate classroom using standard distribution
   const handleGenerateStandard = () => {
@@ -40,13 +51,7 @@ export function ClassBuilder({
     setGenerationMode('auto');
   };
 
-  // Generate classroom with custom count
-  const handleGenerateCustom = () => {
-    const students = generateCustomClassroom(studentCount);
-    setSelectedStudents(students);
-    setSelectedStudentIds(new Set(students.map(s => s.StudentId)));
-    setGenerationMode('custom');
-  };
+
 
   // Toggle student selection
   const handleToggleStudent = (studentId: string) => {
@@ -75,27 +80,55 @@ export function ClassBuilder({
     console.log('📦 Simulation Payload:', payload);
   };
 
+  // Convert StudentProfile to ClassStudentProfile
+  const convertToClassStudentProfile = (student: StudentProfile, index: number) => ({
+    id: student.StudentId || `student-${index}`,
+    name: `Student ${index + 1}`,
+    profileType: 'standard' as const,
+    overlays: student.Overlays,
+    traits: {
+      readingLevel: student.Traits.ReadingLevel,
+      mathFluency: student.Traits.MathFluency,
+      attentionSpan: 0.7,
+      confidence: 0.7,
+    },
+  });
+
   // Launch simulation
   const handleLaunchSimulation = () => {
+    console.log('🚀 LAUNCH SIMULATION CLICKED', {
+      selectedStudentCount: selectedStudentIds.size,
+      selectedStudentIds: Array.from(selectedStudentIds),
+      totalStudentsAvailable: selectedStudents.length,
+    });
+
     if (selectedStudentIds.size === 0) {
       alert('Please select at least one student');
+      console.warn('⚠️ No students selected for simulation');
       return;
     }
 
     const studentsToSimulate = selectedStudents.filter(s => selectedStudentIds.has(s.StudentId));
 
-    const payload: ClassroomSimulationPayload = {
-      problems: problems,
-      students: studentsToSimulate,
-    };
+    console.log('📚 STUDENTS TO SIMULATE:', {
+      count: studentsToSimulate.length,
+      personas: studentsToSimulate.map(s => s.StudentId),
+    });
 
     // Update class definition and proceed
     const updatedClass: ClassDefinition = {
+      id: classDefinition?.id || `class-${Date.now()}`,
       name: className,
-      studentProfiles: studentsToSimulate,
+      gradeLevel: classDefinition?.gradeLevel || 'General',
+      subject: classDefinition?.subject || 'General',
+      studentProfiles: studentsToSimulate.map((s, i) => convertToClassStudentProfile(s, i)),
+      createdAt: classDefinition?.createdAt || new Date().toISOString(),
     };
 
+    console.log('✅ ClassDefinition updated, calling onClassDefinitionChange');
     onClassDefinitionChange(updatedClass);
+    
+    console.log('✅ Calling onNext() to transition to STUDENT_SIMULATIONS');
     onNext();
   };
 
@@ -168,11 +201,9 @@ export function ClassBuilder({
         >
           <strong>✓ {selectedStudents.length} students generated</strong>
           <div style={{ marginTop: '8px', fontSize: '12px', color: '#333' }}>
-            
-            {generationMode === 'custom' && (
-              <div>Custom distribution: {studentCount} students evenly distributed across Bloom levels</div>
+            {generationMode === 'auto' && (
+              <div>Standard distribution: {selectedStudents.length} students evenly distributed across Bloom levels</div>
             )}
-            
           </div>
         </div>
       )}

@@ -96,11 +96,13 @@ export interface TagChange {
  */
 export enum PipelineStep {
   INPUT = 0,
-  PROBLEM_ANALYSIS = 1,  // Step 2: Show metadata, allow export
-  CLASS_BUILDER = 2,     // Step 3: Build/customize student class
-  STUDENT_SIMULATIONS = 3, // Step 4: Simulated feedback (preview)
-  REWRITE_RESULTS = 4,   // Step 5: Review & rewrite with metadata
-  EXPORT = 5,           // Step 6: Final export
+  DOCUMENT_PREVIEW = 1,  // NEW: Quick validation (sections, problem count)
+  DOCUMENT_ANALYSIS = 2,  // Analyze document structure & problem types
+  PROBLEM_ANALYSIS = 3,   // Show metadata, allow export
+  CLASS_BUILDER = 4,     // Build/customize student class
+  STUDENT_SIMULATIONS = 5, // Simulated feedback (preview), then EDIT step
+  REWRITE_RESULTS = 6,   // After simulation: address "how should AI change"
+  EXPORT = 7,           // Final export
 }
 
 /**
@@ -117,6 +119,7 @@ export interface PipelineState {
   isLoading: boolean;
   error?: string;
   selectedStudentTags?: string[]; // Selected student focus areas for analysis
+  documentStructure?: any; // DocumentStructure from phase 1 analysis
   assignmentMetadata?: {
     gradeLevel?: string;
     subject?: string;

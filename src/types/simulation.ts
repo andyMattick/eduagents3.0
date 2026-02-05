@@ -37,6 +37,9 @@ export interface Asteroid {
   /** 0.0-1.0: novelty = 1 - similarity (how unique is this problem?) */
   NoveltyScore: number;
 
+  /** Whether this problem includes formulas, hints, or guiding instructions */
+  HasTips?: boolean;
+
   /** Position in the assignment (1-indexed) */
   SequenceIndex?: number;
 

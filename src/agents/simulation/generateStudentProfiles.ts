@@ -9,6 +9,8 @@ import {
   StudentProfile,
   BloomComfortProfile,
   StudentTraits,
+  AccessibilityOverlay,
+  NarrativeTag,
   STANDARD_BLOOM_DISTRIBUTION,
   BLOOM_LEVELS,
   ACCESSIBILITY_OVERLAYS,
@@ -88,9 +90,9 @@ function generateStudentTraits(): StudentTraits {
  * Select random overlays for a student (0–2 overlays)
  * @returns Array of accessibility overlays
  */
-function selectRandomOverlays(): string[] {
+function selectRandomOverlays(): AccessibilityOverlay[] {
   const overlayCount = Math.floor(Math.random() * 3); // 0, 1, or 2
-  const selectedOverlays: string[] = [];
+  const selectedOverlays: AccessibilityOverlay[] = [];
 
   for (let i = 0; i < overlayCount; i++) {
     const randomOverlay = ACCESSIBILITY_OVERLAYS[
@@ -110,9 +112,9 @@ function selectRandomOverlays(): string[] {
  * Select random narrative tags (optional flavor descriptors)
  * @returns Array of narrative tags (0–3 tags)
  */
-function selectRandomNarrativeTags(): string[] {
+function selectRandomNarrativeTags(): NarrativeTag[] {
   const tagCount = Math.floor(Math.random() * 4); // 0–3 tags
-  const selectedTags: string[] = [];
+  const selectedTags: NarrativeTag[] = [];
 
   for (let i = 0; i < tagCount; i++) {
     const randomTag = NARRATIVE_TAGS[

@@ -57,9 +57,9 @@ export function usePipeline() {
 
       // For backward compatibility, generate tags from asteroids
       const tags = asteroids.map(ast => ({
-        name: `${ast.BloomLevel}: ${ast.ProblemText.substring(0, 50)}...`,
+        name: `${ast.BloomLevel}: ${ast.ProblemText.substring(0, 50)}...${ast.HasTips ? ' 💡' : ''}`,
         confidenceScore: 0.9,
-        description: `Bloom: ${ast.BloomLevel}, Complexity: ${(ast.LinguisticComplexity * 100).toFixed(0)}%`,
+        description: `Bloom: ${ast.BloomLevel}, Complexity: ${(ast.LinguisticComplexity * 100).toFixed(0)}%${ast.HasTips ? ', Has Tips/Hints' : ''}`,
       }));
 
       // Move to PROBLEM_ANALYSIS step to show metadata
@@ -83,11 +83,26 @@ export function usePipeline() {
   }, [setLoading, state.assignmentMetadata?.subject]);
 
   const getFeedback = useCallback(async (selectedStudentTags?: string[]) => {
-    if (!state.originalText) return;
+    console.log('🎮 getFeedback() INVOKED - Starting simulation');
+    if (!state.originalText) {
+      console.warn('❌ getFeedback: No originalText available');
+      return;
+    }
 
     setLoading(true);
     try {
-      // Pass full metadata to simulateStudents for payload verification
+      // Use structured asteroid data if available (Phase 2 simulation)
+      // Otherwise fall back to text analysis (Phase 1)
+      
+      console.log('🎮 SIMULATION ENGINE:', {
+        hasAsteroids: state.asteroids && state.asteroids.length > 0,
+        asteroids: state.asteroids?.length,
+        originalTextLength: state.originalText.length,
+        subject: state.assignmentMetadata?.subject,
+      });
+
+      // For now, use text-based simulation with metadata
+      // TODO: When ready, implement proper Asteroid × Astronaut simulation
       const feedback = await simulateStudents(
         state.originalText,
         [],
@@ -96,6 +111,7 @@ export function usePipeline() {
           subject: state.assignmentMetadata?.subject || 'General',
           learnerProfiles: selectedStudentTags,
           selectedStudentTags: selectedStudentTags,
+          asteroidCount: state.asteroids?.length || 0,  // Pass asteroid count for mock simulation context
         }
       );
       // Add accessibility profiles feedback
@@ -118,6 +134,11 @@ export function usePipeline() {
         }
       }
       
+      console.log('✅ SIMULATION COMPLETE:', {
+        feedbackItems: filteredFeedback.length,
+        personas: filteredFeedback.map(f => f.studentPersona),
+      });
+
       console.log('[getFeedback] About to setState - setting step to STUDENT_SIMULATIONS');
       setState(prev => ({
         ...prev,
@@ -138,7 +159,7 @@ export function usePipeline() {
       console.log('[getFeedback] Finally block - calling setLoading(false)');
       setLoading(false);
     }
-  }, [state.originalText, state.assignmentMetadata, setLoading]);
+  }, [state.originalText, state.assignmentMetadata, state.asteroids, setLoading]);
 
   const rewriteTextAndTags = useCallback(async () => {
     if (!state.originalText || state.tags.length === 0) return;
@@ -196,9 +217,20 @@ export function usePipeline() {
   }, []);
 
   const nextStep = useCallback(async () => {
+    console.log('🔄 nextStep() called at step:', state.currentStep);
     switch (state.currentStep) {
       case PipelineStep.INPUT:
-        // Input step moved to ProblemAnalysis
+        // Input step → Document preview (validate sections/problems)
+        console.log('  → INPUT → DOCUMENT_PREVIEW');
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.DOCUMENT_PREVIEW,
+        }));
+        break;
+      case PipelineStep.DOCUMENT_PREVIEW:
+        // Preview confirmed → Skip to Problem analysis (Phase 2 with metadata)
+        // DOCUMENT_ANALYSIS step removed to avoid duplication
+        console.log('  → DOCUMENT_PREVIEW → PROBLEM_ANALYSIS');
         setState(prev => ({
           ...prev,
           currentStep: PipelineStep.PROBLEM_ANALYSIS,
@@ -206,6 +238,7 @@ export function usePipeline() {
         break;
       case PipelineStep.PROBLEM_ANALYSIS:
         // Metadata shown, proceed to class builder
+        console.log('  → PROBLEM_ANALYSIS → CLASS_BUILDER');
         setState(prev => ({
           ...prev,
           currentStep: PipelineStep.CLASS_BUILDER,
@@ -213,11 +246,18 @@ export function usePipeline() {
         break;
       case PipelineStep.CLASS_BUILDER:
         // Class built, proceed to simulations
+        console.log('  → CLASS_BUILDER → Calling getFeedback()');
         await getFeedback();
         break;
       case PipelineStep.STUDENT_SIMULATIONS:
-        // Simulations done, proceed to rewrite
+        // Simulations done, generate rewrite before moving to results
+        console.log('  → STUDENT_SIMULATIONS → Triggering rewrite...');
         await rewriteTextAndTags();
+        console.log('  → Rewrite complete, transitioning to REWRITE_RESULTS');
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.REWRITE_RESULTS,
+        }));
         break;
       case PipelineStep.REWRITE_RESULTS:
         // Rewritten, proceed to export
@@ -239,6 +279,18 @@ export function usePipeline() {
     setState(prev => ({
       ...prev,
       showProblemMetadata: !prev.showProblemMetadata,
+    }));
+  }, []);
+
+  const retestWithRewrite = useCallback(() => {
+    // When user clicks "Edit & Re-test", use rewritten text for next simulation
+    // This allows them to verify the rewritten version works better with students
+    console.log('🔄 retestWithRewrite: Preparing for re-test with rewritten content');
+    setState(prev => ({
+      ...prev,
+      originalText: prev.rewrittenText, // Use the rewritten version as the new baseline
+      studentFeedback: [], // Clear feedback for fresh simulation
+      currentStep: PipelineStep.CLASS_BUILDER, // Go back to class selection
     }));
   }, []);
 
@@ -266,10 +318,13 @@ export function usePipeline() {
     nextStep,
     reset,
     toggleProblemMetadataView,
+    retestWithRewrite,
 
     // Direct setters for controlled inputs
     setOriginalText: (text: string) => setState(prev => ({ ...prev, originalText: text })),
     setAssignmentMetadata: (metadata: PipelineState['assignmentMetadata']) =>
       setState(prev => ({ ...prev, assignmentMetadata: metadata })),
+    setAsteroids: (asteroids: Asteroid[]) =>
+      setState(prev => ({ ...prev, asteroids })),
   };
 }
