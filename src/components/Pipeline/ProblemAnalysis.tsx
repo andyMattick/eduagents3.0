@@ -16,13 +16,7 @@ export function ProblemAnalysis({ asteroids, onNext, isLoading = false }: Proble
 
   // Log when asteroids are received
   React.useEffect(() => {
-    if (asteroids.length > 0) {
-      console.log('🚀 Step 3: Problem Analysis - Asteroids Received:', {
-        total: asteroids.length,
-        asteroids: asteroids,
-        note: 'View full payloads in browser console or export PDF/CSV using buttons above',
-      });
-    }
+    // Monitor asteroid changes
   }, [asteroids]);
 
   // Note: Problem editing disabled for now - team not ready for this feature

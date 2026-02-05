@@ -28,25 +28,7 @@ export function DocumentAnalysis({ structure, onConfirm, isLoading = false }: Do
   };
 
   const handleDownloadPayload = () => {
-    const payload = {
-      documentId: structure.documentId,
-      title: structure.title,
-      totalProblems: structure.totalProblems,
-      totalSubparts: structure.totalSubparts,
-      sections: structure.sections.map(s => ({
-        sectionId: s.sectionId,
-        title: s.title,
-        problemCount: s.problems.length,
-        problems: s.problems,
-      })),
-      bloomDistribution: structure.bloomDistribution,
-      estimatedTotalTimeMinutes: structure.estimatedTotalTimeMinutes,
-      metadata: structure.metadata,
-      extractedAt: new Date().toISOString(),
-    };
-
     // Show preview instead of download
-    console.log('📦 Document Structure Payload:', payload);
     setShowPayloadPreview(true);
   };
 

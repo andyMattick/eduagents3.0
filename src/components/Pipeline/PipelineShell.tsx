@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
 import { parseDocumentStructure } from '../../agents/analysis/documentStructureParser';
@@ -45,6 +45,11 @@ export function PipelineShell() {
   const [documentPreview, setDocumentPreview] = useState<any>(null);
   const [documentStructure, setDocumentStructure] = useState<any>(null);
 
+  // Debug: Log step changes
+  useEffect(() => {
+    // Monitor step changes
+  }, [step, workflowMode, asteroids, error, originalText]);
+
   const handleAssignmentGenerated = async (content: string, _metadata: AssignmentMetadata) => {
     // Feed the generated assignment into the analysis pipeline
     setInput('');
@@ -53,7 +58,7 @@ export function PipelineShell() {
   };
 
   const handleDirectUpload = async (content: string) => {
-    // Handle direct file upload - skip metadata form and go straight to analysis
+    // Handle direct file upload - skip metadata form and go straight to analysis    
     setInput('');
     setWorkflowMode('choose');
     
@@ -97,13 +102,10 @@ export function PipelineShell() {
   };
 
   const handleNextStep = async () => {
-    console.log('📍 handleNextStep called, current step:', step);
     await nextStep();
-    console.log('📍 handleNextStep complete');
   };
 
   const handleEditAndRetest = async () => {
-    console.log('🔄 EditAndRetest: Transitioning to CLASS_BUILDER with rewritten content');
     retestWithRewrite();
   };
 
@@ -123,13 +125,6 @@ export function PipelineShell() {
     // Store asteroids in pipeline state
     setAsteroids(generatedAsteroids);
     
-    // Log payloads for developer inspection
-    console.log('📦 Extracted Problems → Asteroids Conversion:', {
-      totalProblems: allExtractedProblems.length,
-      asteroids: generatedAsteroids,
-      sections: structure.sections.length,
-    });
-    
     // Proceed to next step (PROBLEM_ANALYSIS)
     await nextStep();
   };
@@ -147,7 +142,7 @@ export function PipelineShell() {
       // Proceed to DOCUMENT_ANALYSIS step
       await nextStep();
     } catch (error) {
-      console.error('Error parsing document:', error);
+      // Error parsing document
     }
   };
 
@@ -164,11 +159,10 @@ export function PipelineShell() {
         setAsteroids(newAsteroids);
         // CRITICAL: Store original text in pipeline state for simulation engine
         setOriginalText(textToAnalyze);
-        console.log('✅ Original text stored for simulation:', textToAnalyze.substring(0, 100) + '...');
         // Move to PROBLEM_ANALYSIS (skipping DOCUMENT_ANALYSIS)
         await nextStep();
       } catch (error) {
-        console.error('Error extracting asteroids:', error);
+        // Error extracting asteroids
       }
     }
   };
@@ -337,12 +331,19 @@ export function PipelineShell() {
             padding: '16px',
             marginBottom: '20px',
             backgroundColor: '#f8d7da',
-            border: '1px solid #f5c6cb',
+            border: '2px solid #f5c6cb',
             borderRadius: '4px',
             color: '#721c24',
+            fontSize: '14px',
           }}
         >
-          <strong>Error:</strong> {error}
+          <strong style={{ fontSize: '16px' }}>❌ Error:</strong> 
+          <div style={{ marginTop: '8px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {error}
+          </div>
+          <small style={{ display: 'block', marginTop: '8px', opacity: 0.8 }}>
+            Check your browser console (F12) for more details. Try uploading a different file or check the file format.
+          </small>
         </div>
       )}
 
@@ -463,11 +464,28 @@ export function PipelineShell() {
       )}
 
       {step === PipelineStep.PROBLEM_ANALYSIS && (
-        <ProblemAnalysis
-          asteroids={asteroids || []}
-          isLoading={isLoading}
-          onNext={handleNextStep}
-        />
+        <>
+          {asteroids && asteroids.length > 0 ? (
+            <ProblemAnalysis
+              asteroids={asteroids || []}
+              isLoading={isLoading}
+              onNext={handleNextStep}
+            />
+          ) : (
+            <div style={{ padding: '20px', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffc107', color: '#856404' }}>
+              <h3>⚠️ No Problems Extracted</h3>
+              <p>We couldn't extract any problems from your assignment. This might happen if:</p>
+              <ul>
+                <li>The file format wasn't recognized (try .txt, .pdf, or .docx)</li>
+                <li>The file is empty or corrupted</li>
+                <li>The content doesn't contain recognizable problem statements</li>
+              </ul>
+              <button onClick={handleReset} style={{ padding: '10px 20px', backgroundColor: '#ffc107', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
+                ← Try Another File
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {step === PipelineStep.CLASS_BUILDER && (

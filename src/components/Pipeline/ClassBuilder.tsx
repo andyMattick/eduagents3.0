@@ -36,10 +36,6 @@ export function ClassBuilder({
       setSelectedStudents(students);
       setSelectedStudentIds(new Set(students.map(s => s.StudentId)));
       setGenerationMode('auto');
-      console.log('🤖 Auto-generated classroom:', {
-        studentCount: students.length,
-        personas: students.map(s => s.StudentId),
-      });
     }
   }, []); // Only run on mount
 
@@ -77,7 +73,6 @@ export function ClassBuilder({
     };
 
     setPreviewPayload(payload);
-    console.log('📦 Simulation Payload:', payload);
   };
 
   // Convert StudentProfile to ClassStudentProfile
@@ -96,24 +91,12 @@ export function ClassBuilder({
 
   // Launch simulation
   const handleLaunchSimulation = () => {
-    console.log('🚀 LAUNCH SIMULATION CLICKED', {
-      selectedStudentCount: selectedStudentIds.size,
-      selectedStudentIds: Array.from(selectedStudentIds),
-      totalStudentsAvailable: selectedStudents.length,
-    });
-
     if (selectedStudentIds.size === 0) {
       alert('Please select at least one student');
-      console.warn('⚠️ No students selected for simulation');
       return;
     }
 
     const studentsToSimulate = selectedStudents.filter(s => selectedStudentIds.has(s.StudentId));
-
-    console.log('📚 STUDENTS TO SIMULATE:', {
-      count: studentsToSimulate.length,
-      personas: studentsToSimulate.map(s => s.StudentId),
-    });
 
     // Update class definition and proceed
     const updatedClass: ClassDefinition = {
@@ -125,10 +108,7 @@ export function ClassBuilder({
       createdAt: classDefinition?.createdAt || new Date().toISOString(),
     };
 
-    console.log('✅ ClassDefinition updated, calling onClassDefinitionChange');
     onClassDefinitionChange(updatedClass);
-    
-    console.log('✅ Calling onNext() to transition to STUDENT_SIMULATIONS');
     onNext();
   };
 

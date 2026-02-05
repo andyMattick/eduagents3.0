@@ -122,16 +122,6 @@ export async function simulateStudents(
   // Store payload globally for debugging/verification
   lastSimulateStudentsPayload = payload;
 
-  // Log payload to console for verification
-  console.log('📊 SIMULATE STUDENTS PAYLOAD', {
-    ...payload,
-    textLength: `${payload.textMetadata.textLength} chars`,
-    wordCount: `${payload.textMetadata.wordCount} words`,
-    problemCount: payload.assignmentMetadata.problemCount || 'unknown',
-    subject: payload.assignmentMetadata.subject,
-    gradeLevel: payload.assignmentMetadata.gradeLevel,
-  });
-
   // Initialize feedback array
   const feedback: StudentFeedback[] = [];
 

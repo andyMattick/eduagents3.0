@@ -6,7 +6,6 @@
 import {
   Asteroid,
   Astronaut,
-  StudentProblemInput,
   StudentAssignmentSimulation,
   AssignmentSimulationResults,
 } from '../../types/simulation';
@@ -131,7 +130,7 @@ export function generateMockStudentSimulation(
     totalTimeMinutes,
     estimatedScore,
     estimatedGrade,
-    problemResults: asteroids.map((asteroid, idx) => ({
+    problemResults: asteroids.map((asteroid) => ({
       studentId: astronaut.StudentId,
       problemId: asteroid.ProblemId,
       timeToCompleteSeconds:
@@ -243,48 +242,16 @@ export function generateMockSimulationResults(
  * Example usage and what to expect
  */
 export function demonstrateMockData() {
-  console.log('🎓 MOCK ASTEROID/ASTRONAUT SIMULATION DEMO\n');
-
   // Phase 1: Show mock asteroids
   const asteroids = generateMockAsteroids();
-  console.log('📚 PHASE 1: Asteroids (Problems Decomposed)');
-  console.log(`   Found ${asteroids.length} problems:\n`);
-  asteroids.forEach(a => {
-    console.log(`   • ${a.ProblemId}: "${a.ProblemText.substring(0, 50)}..."`);
-    console.log(`     Bloom: ${a.BloomLevel}, Complexity: ${(a.LinguisticComplexity * 100).toFixed(0)}%, Novelty: ${(a.NoveltyScore * 100).toFixed(0)}%`);
-  });
 
   // Phase 2: Show astronauts
-  console.log('\n👨‍🚀 PHASE 2: Astronauts (Student Personas)');
   const astronauts = getAllAstronauts().slice(0, 3);
-  console.log(`   Using ${astronauts.length} personas:\n`);
-  astronauts.forEach(a => {
-    console.log(`   • ${a.PersonaName}`);
-    console.log(`     Reading: ${(a.ProfileTraits.ReadingLevel * 100).toFixed(0)}%, Math: ${(a.ProfileTraits.MathFluency * 100).toFixed(0)}%, Attention: ${(a.ProfileTraits.AttentionSpan * 100).toFixed(0)}%`);
-  });
 
   // Phase 3: Show simulation results
-  console.log('\n🧠 PHASE 3 & 4: Simulation Results');
   const results = generateMockSimulationResults(asteroids, astronauts);
-  console.log(`   Simulated ${results.studentResults.length} students × ${results.asteroids.length} problems\n`);
-
-  results.studentResults.forEach(student => {
-    console.log(`   ${student.personaName}:`);
-    console.log(`     Grade: ${student.estimatedGrade} (${student.estimatedScore}%)`);
-    console.log(`     Time: ${student.totalTimeMinutes} minutes`);
-    console.log(`     Engagement: ${student.engagement.initial.toFixed(2)} → ${student.engagement.final.toFixed(2)} (${student.engagement.trend})`);
-    console.log(`     At Risk: ${student.atRisk ? '⚠️ YES' : '✅ No'}`);
-    console.log();
-  });
 
   // Phase 4: Show aggregated analytics
-  console.log('\n📊 AGGREGATED ANALYTICS:');
-  console.log(`   Average Score: ${results.aggregatedAnalytics.averageScore}%`);
-  console.log(`   Average Time: ${results.aggregatedAnalytics.averageTimeMinutes} minutes`);
-  console.log(`   Completion Rate: ${results.aggregatedAnalytics.completionRate}%`);
-  console.log(`   At-Risk Students: ${results.aggregatedAnalytics.atRiskStudentCount}`);
-  console.log(`   Common Confusion Points: ${results.aggregatedAnalytics.commonConfusionPoints.join(', ')}`);
-  console.log(`   Bloom Coverage: ${JSON.stringify(results.aggregatedAnalytics.bloomCoverage)}`);
 
   return results;
 }

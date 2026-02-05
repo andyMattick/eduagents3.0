@@ -158,13 +158,6 @@ export function constructFullPrompt(
   // Store globally for debugging
   lastSimulateStudentsPrompt = prompt;
 
-  // Log to console for visibility
-  console.log('📝 SIMULATE STUDENTS PROMPT CONSTRUCTED', {
-    systemPromptLength: systemPrompt.length,
-    userPromptLength: userPrompt.length,
-    metadata: prompt.metadata,
-    timestamp: prompt.timestamp,
-  });
 
   return prompt;
 }

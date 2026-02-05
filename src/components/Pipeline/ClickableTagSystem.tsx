@@ -135,7 +135,7 @@ export const TagSystem: React.FC<TagSystemProps> = ({
           id: 'edit-manually',
           label: 'Edit Manually',
           icon: '✎',
-          action: () => console.log('Edit Bloom level'),
+          action: () => {}, // Edit Bloom level
         },
         {
           id: 'add-note',
@@ -175,7 +175,7 @@ export const TagSystem: React.FC<TagSystemProps> = ({
           id: 'analyze',
           label: 'Analyze Struggles',
           icon: '🔍',
-          action: () => console.log('Analyzing performance'),
+          action: () => {}, // Analyze performance
         },
         {
           id: 'request-fix',
