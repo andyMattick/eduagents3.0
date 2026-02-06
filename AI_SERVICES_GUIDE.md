@@ -13,14 +13,16 @@ Users can toggle between modes at runtime via the **AI Settings button** (top-ri
 
 ## Quick Start
 
-### 1. Environment Setup (Already Done ✅)
+### 1. Environment Setup
 
 Your API key is stored in `.env.local` (NOT in git):
 
 ```env
 VITE_AI_MODE=real
-VITE_GOOGLE_API_KEY=AIzaSyB-mrXUZ0CBX2jPnkulKbfyhuoxP4IYvRo
+VITE_GOOGLE_API_KEY=your_actual_key_here
 ```
+
+⚠️ **IMPORTANT**: Replace `your_actual_key_here` with your real Google API key in `.env.local` (never commit this file)
 
 ### 2. Using in Components
 
