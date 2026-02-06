@@ -1,0 +1,189 @@
+/* Pipeline Router Component */
+
+.pipeline-router-container {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  padding: 2rem;
+  background: linear-gradient(135deg, var(--color-bg-primary) 0%, var(--color-bg-secondary, #f8f9fa) 100%);
+}
+
+.step-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.step-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+.step-header p {
+  font-size: 1.05rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* File upload area */
+.pipeline-router-container > div:not(.step-header):not(.navigation-buttons):not(.placeholder-message) {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* Navigation buttons */
+.navigation-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}
+
+.navigation-buttons button {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.navigation-buttons button:hover {
+  background: var(--color-accent-primary, #007bff);
+  color: white;
+  border-color: var(--color-accent-primary, #007bff);
+}
+
+/* Placeholder message for integration points */
+.placeholder-message {
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2rem;
+  background: var(--color-bg-card);
+  border: 2px dashed var(--color-border);
+  border-radius: 8px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.placeholder-message p {
+  margin: 0.5rem 0;
+}
+
+.placeholder-message p:first-child {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.placeholder-message .subtle {
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+/* Error state */
+.error-state {
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2rem;
+  background: var(--color-danger, #f8d7da);
+  color: var(--color-danger-text, #721c24);
+  border: 1px solid var(--color-danger-border, #f5c6cb);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.error-state h2 {
+  margin: 0 0 0.5rem 0;
+}
+
+.error-state p {
+  margin: 0;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .pipeline-router-container {
+    background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+  }
+
+  .step-header h1 {
+    color: #ffffff;
+  }
+
+  .step-header p {
+    color: #b0b0b0;
+  }
+
+  .navigation-buttons button {
+    background: #2a2a2a;
+    color: #ffffff;
+    border-color: #3a3a3a;
+  }
+
+  .navigation-buttons button:hover {
+    background: var(--color-accent-primary, #007bff);
+    border-color: var(--color-accent-primary, #007bff);
+  }
+
+  .placeholder-message {
+    background: #2a2a2a;
+    border-color: #3a3a3a;
+    color: #b0b0b0;
+  }
+
+  .placeholder-message p:first-child {
+    color: #ffffff;
+  }
+
+  .error-state {
+    background: #3a1f1f;
+    color: #ff6b6b;
+    border-color: #6b2c2c;
+  }
+
+  .error-state h2 {
+    color: #ff6b6b;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .pipeline-router-container {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+
+  .step-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .step-header p {
+    font-size: 0.95rem;
+  }
+
+  .navigation-buttons {
+    gap: 0.8rem;
+  }
+
+  .navigation-buttons button {
+    flex: 1;
+    min-width: 120px;
+    padding: 0.6rem 1rem;
+  }
+}
