@@ -113,9 +113,9 @@ export function ClassBuilder({
   };
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+    <div style={{ padding: '20px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px' }}>
       <h2 style={{ marginTop: 0 }}>🛰️ Classroom Setup</h2>
-      <p style={{ color: '#666', fontSize: '14px' }}>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
         Generate a classroom of student personas for simulation
       </p>
 
@@ -131,9 +131,12 @@ export function ClassBuilder({
           style={{
             width: '100%',
             padding: '10px',
-            border: '1px solid #ddd',
+            border: '1px solid var(--border-color)',
             borderRadius: '4px',
             fontSize: '14px',
+            backgroundColor: 'var(--bg)',
+            color: 'var(--text)',
+            caretColor: 'var(--text)',
           }}
           placeholder="e.g., Biology 101"
         />
@@ -146,8 +149,8 @@ export function ClassBuilder({
           disabled={isLoading}
           style={{
             padding: '12px',
-            backgroundColor: generationMode === 'auto' ? '#5b7cfa' : '#e0e0e0',
-            color: generationMode === 'auto' ? 'white' : '#666',
+            backgroundColor: generationMode === 'auto' ? 'var(--primary-color)' : 'var(--bg-tertiary)',
+            color: generationMode === 'auto' ? 'white' : 'var(--text-secondary)',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer',
@@ -158,7 +161,7 @@ export function ClassBuilder({
             if (!isLoading) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#4c6ef5';
           }}
           onMouseLeave={(e) => {
-            if (generationMode === 'auto') (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#5b7cfa';
+            if (generationMode === 'auto') (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--primary-color)';
           }}
         >
           🤖 Auto-Generate Standard Class (20 students)
@@ -173,14 +176,14 @@ export function ClassBuilder({
           style={{
             padding: '16px',
             marginBottom: '20px',
-            backgroundColor: '#e8f5e9',
-            border: '1px solid #28a745',
+            backgroundColor: 'var(--success-bg)',
+            border: '1px solid var(--success-color)',
             borderRadius: '4px',
             fontSize: '14px',
           }}
         >
           <strong>✓ {selectedStudents.length} students generated</strong>
-          <div style={{ marginTop: '8px', fontSize: '12px', color: '#333' }}>
+          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text)' }}>
             {generationMode === 'auto' && (
               <div>Standard distribution: {selectedStudents.length} students evenly distributed across Bloom levels</div>
             )}
@@ -191,7 +194,7 @@ export function ClassBuilder({
       {/* Student Profile Cards Grid */}
       {selectedStudents.length > 0 && (
         <div style={{ marginBottom: '20px' }}>
-          <h3 style={{ marginTop: '0', marginBottom: '12px', fontSize: '14px', fontWeight: 600, color: '#666' }}>
+          <h3 style={{ marginTop: '0', marginBottom: '12px', fontSize: '14px', fontWeight: 600, color: 'var(--text-secondary)' }}>
             👥 Student Profiles ({selectedStudentIds.size} selected)
           </h3>
           <div
@@ -225,7 +228,7 @@ export function ClassBuilder({
           style={{
             flex: 1,
             padding: '12px',
-            backgroundColor: selectedStudentIds.size > 0 ? '#6c757d' : '#ccc',
+            backgroundColor: selectedStudentIds.size > 0 ? 'var(--bg-tertiary)' : 'var(--border-color)',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -242,7 +245,7 @@ export function ClassBuilder({
           style={{
             flex: 1,
             padding: '12px',
-            backgroundColor: selectedStudentIds.size > 0 ? '#28a745' : '#ccc',
+            backgroundColor: selectedStudentIds.size > 0 ? 'var(--success-color)' : 'var(--border-color)',
             color: 'white',
             border: 'none',
             borderRadius: '4px',
@@ -254,7 +257,7 @@ export function ClassBuilder({
             if (selectedStudentIds.size > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#218838';
           }}
           onMouseLeave={(e) => {
-            if (selectedStudentIds.size > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#28a745';
+            if (selectedStudentIds.size > 0) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--success-color)';
           }}
         >
           {isLoading ? '🔄 Processing...' : '🚀 Launch Simulation'}
@@ -267,13 +270,14 @@ export function ClassBuilder({
           style={{
             marginTop: '20px',
             padding: '16px',
-            backgroundColor: '#fff',
-            border: '1px solid #ddd',
+            backgroundColor: 'var(--bg)',
+            border: '1px solid var(--border-color)',
             borderRadius: '4px',
             maxHeight: '400px',
             overflowY: 'auto',
             fontFamily: 'monospace',
             fontSize: '11px',
+            color: 'var(--text)',
           }}
         >
           <strong>Simulation Payload Preview:</strong>

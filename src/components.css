@@ -206,11 +206,14 @@
 .form-input-wrapper select {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid var(--neutral-300);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   font-family: inherit;
   font-size: 1rem;
   transition: all var(--transition-base);
+  background-color: var(--bg);
+  color: var(--text);
+  caret-color: var(--text);
 }
 
 .form-input-wrapper input:focus,
@@ -219,12 +222,12 @@
   outline: none;
   border-color: var(--primary-color);
   box-shadow: 0 0 0 3px rgba(91, 124, 250, 0.1);
-  background: white;
+  background: var(--bg);
 }
 
 .form-input-wrapper input::placeholder,
 .form-input-wrapper textarea::placeholder {
-  color: var(--neutral-400);
+  color: var(--text-tertiary);
 }
 
 .form-hint {
@@ -317,7 +320,7 @@
 
 .message.info {
   background: linear-gradient(135deg, rgba(91, 124, 250, 0.08), rgba(91, 124, 250, 0.02));
-  border-left-color: #5b7cfa;
+  border-left-color: var(--primary-color);
   color: var(--primary-color);
 }
 
@@ -513,8 +516,8 @@
   }
 
   .metric-box {
-    background: #2d3748;
-    border-color: #4b5563;
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
   }
 
   .message {
@@ -522,8 +525,8 @@
   }
 
   .tooltip-text {
-    background-color: #2d3748;
-    border: 1px solid #4b5563;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
   }
 }
 
@@ -994,19 +997,19 @@ textarea {
 .alert-success {
   background: rgba(81, 207, 102, 0.1);
   border-color: var(--success-color);
-  color: #2b6a3d;
+  color: var(--success-color);
 }
 
 .alert-warning {
   background: rgba(255, 212, 59, 0.1);
   border-color: var(--warning-color);
-  color: #7a6e00;
+  color: var(--warning-color);
 }
 
 .alert-danger {
   background: rgba(255, 107, 107, 0.1);
   border-color: var(--danger-color);
-  color: #7a2e2e;
+  color: var(--danger-color);
 }
 
 /* Step Indicator */

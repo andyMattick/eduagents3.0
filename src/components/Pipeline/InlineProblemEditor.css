@@ -79,18 +79,25 @@
   width: 100%;
   min-height: 120px;
   padding: 10px 12px;
-  border: 2px solid var(--color-primary);
+  border: 2px solid var(--primary-color);
   border-radius: 6px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   line-height: 1.6;
   resize: vertical;
   transition: all var(--transition-fast);
+  background-color: var(--bg);
+  color: var(--text);
+  caret-color: var(--text);
+}
 
-  &:focus {
-    outline: none;
-    box-shadow: 0 0 0 4px rgba(91, 124, 250, 0.15);
-  }
+.inline-editor-textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(91, 124, 250, 0.15);
+}
+
+.inline-editor-textarea::placeholder {
+  color: var(--text-tertiary);
 }
 
 .inline-editor-form-actions {
@@ -111,22 +118,23 @@
 }
 
 .inline-editor-save-btn {
-  background: var(--color-success);
+  background: var(--success-color);
   color: white;
+}
 
-  &:hover {
-    opacity: 0.9;
-    transform: translateY(-1px);
-  }
+.inline-editor-save-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .inline-editor-cancel-btn {
-  background: var(--color-neutral-200);
-  color: var(--color-neutral-700);
+  background: var(--bg-secondary);
+  color: var(--text);
+  border: 1px solid var(--border-color);
+}
 
-  &:hover {
-    background: var(--color-neutral-300);
-  }
+.inline-editor-cancel-btn:hover {
+  background: var(--border-color);
 }
 
 /* Text Display */
@@ -134,13 +142,13 @@
   margin: 0 0 12px 0;
   font-size: 14px;
   line-height: 1.6;
-  color: var(--color-neutral-800);
+  color: var(--text);
   cursor: pointer;
   transition: color var(--transition-fast);
+}
 
-  &:hover {
-    color: var(--color-primary);
-  }
+.inline-editor-text:hover {
+  color: var(--primary-color);
 }
 
 /* Tags */

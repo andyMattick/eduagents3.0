@@ -10,20 +10,23 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
+  const [theme, setTheme] = useState<Theme>('dark');
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize theme from localStorage or system preference
+  // Initialize theme from localStorage or default to dark
   useEffect(() => {
+    // Apply dark mode immediately before any rendering
+    const htmlElement = document.documentElement;
+    htmlElement.setAttribute('data-theme', 'dark');
+    
     const savedTheme = localStorage.getItem('theme') as Theme | null;
     
     let initialTheme: Theme;
     if (savedTheme) {
       initialTheme = savedTheme;
     } else {
-      // Check system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      initialTheme = prefersDark ? 'dark' : 'light';
+      // Default to dark mode
+      initialTheme = 'dark';
     }
     
     setTheme(initialTheme);

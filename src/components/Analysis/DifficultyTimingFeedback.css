@@ -4,7 +4,7 @@
   flex-direction: column;
   gap: 1.5rem;
   padding: 1.5rem;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
@@ -17,8 +17,8 @@
 
 /* Difficulty Card */
 .difficulty-card {
-  background: white;
-  border-left: 5px solid #ff9800;
+  background: var(--bg);
+  border-left: 5px solid var(--accent-color);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -26,7 +26,7 @@
 
 .difficulty-card h3 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--text);
   font-size: 1.1rem;
   font-weight: 600;
 }
@@ -48,22 +48,22 @@
 
 .difficulty-percent {
   margin: 0.5rem 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   font-weight: 500;
 }
 
 .difficulty-explanation {
   margin: 0.5rem 0 0 0;
-  color: #888;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   line-height: 1.4;
 }
 
 /* Timing Card */
 .timing-card {
-  background: white;
-  border-left: 5px solid #2196f3;
+  background: var(--bg);
+  border-left: 5px solid var(--primary-color);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -71,7 +71,7 @@
 
 .timing-card h3 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--text);
   font-size: 1.1rem;
   font-weight: 600;
 }
@@ -88,18 +88,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem;
-  background: #f0f4f8;
+  background: var(--bg-secondary);
   border-radius: 6px;
 }
 
 .time-estimate .label {
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.9rem;
 }
 
 .time-estimate .value {
-  color: #2196f3;
+  color: var(--primary-color);
   font-weight: 600;
   font-size: 1.05rem;
 }
@@ -107,13 +107,13 @@
 /* Per-Question Breakdown */
 .per-question-breakdown {
   margin-top: 1.5rem;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
   padding-top: 1rem;
 }
 
 .per-question-breakdown h4 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--text);
   font-size: 1rem;
   font-weight: 600;
 }
@@ -128,8 +128,8 @@
 
 .question-item {
   padding: 0.75rem;
-  background: #f9f9f9;
-  border-left: 3px solid #2196f3;
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--primary-color);
   border-radius: 4px;
 }
 
@@ -142,13 +142,13 @@
 
 .question-num {
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   min-width: 40px;
 }
 
 .bloom-level {
-  background: #e3f2fd;
-  color: #1565c0;
+  background: var(--bg-secondary);
+  color: var(--primary-color);
   padding: 0.25rem 0.5rem;
   border-radius: 3px;
   font-size: 0.85rem;
@@ -156,7 +156,7 @@
 }
 
 .time-estimate {
-  color: #2196f3;
+  color: var(--primary-color);
   font-weight: 600;
   margin-left: auto;
 }
@@ -164,13 +164,13 @@
 .confidence-range {
   margin-top: 0.5rem;
   font-size: 0.85rem;
-  color: #888;
+  color: var(--text-secondary);
 }
 
 .at-risk-badge {
   display: inline-block;
-  background: #ffebee;
-  color: #c62828;
+  background: var(--danger-color);
+  color: white;
   padding: 0.25rem 0.75rem;
   border-radius: 4px;
   font-weight: 500;
@@ -179,8 +179,8 @@
 
 /* At-Risk Section */
 .at-risk-section {
-  background: white;
-  border: 2px solid #ff9800;
+  background: var(--bg);
+  border: 2px solid var(--accent-color);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -188,7 +188,7 @@
 
 .at-risk-section h3 {
   margin: 0 0 1rem 0;
-  color: #e65100;
+  color: var(--danger-color);
   font-size: 1.1rem;
   font-weight: 600;
 }
@@ -202,7 +202,7 @@
 
 .profile-badge {
   background: linear-gradient(135deg, #ffe0b2, #ffb74d);
-  color: #5d4037;
+  color: var(--text);
   padding: 0.75rem 1rem;
   border-radius: 6px;
   font-weight: 500;
@@ -212,15 +212,15 @@
 
 .at-risk-message {
   margin: 0;
-  color: #e65100;
+  color: var(--danger-color);
   font-size: 0.95rem;
   line-height: 1.4;
 }
 
 /* Feedback Summary */
 .feedback-summary {
-  background: white;
-  border-left: 5px solid #4caf50;
+  background: var(--bg);
+  border-left: 5px solid var(--primary-color);
   border-radius: 8px;
   padding: 1.5rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
@@ -228,7 +228,7 @@
 
 .feedback-summary h3 {
   margin: 0 0 1rem 0;
-  color: #333;
+  color: var(--text);
   font-size: 1.1rem;
   font-weight: 600;
 }
@@ -240,26 +240,26 @@
 }
 
 .persona-item {
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   padding: 1rem;
   border-radius: 6px;
-  border-left: 3px solid #4caf50;
+  border-left: 3px solid var(--primary-color);
 }
 
 .persona-name {
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   margin-bottom: 0.5rem;
 }
 
 .persona-time {
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   margin-bottom: 0.5rem;
 }
 
 .persona-risk {
-  color: #d32f2f;
+  color: var(--danger-color);
   font-size: 0.85rem;
   font-weight: 500;
 }
@@ -299,15 +299,15 @@
 }
 
 .questions-list::-webkit-scrollbar-track {
-  background: #f0f0f0;
+  background: var(--bg-secondary);
   border-radius: 3px;
 }
 
 .questions-list::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: var(--text-tertiary);
   border-radius: 3px;
 }
 
 .questions-list::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: var(--text-secondary);
 }
