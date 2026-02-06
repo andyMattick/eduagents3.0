@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import './LearnerProfileWeighting.css';
 import { WeightedLearnerProfile, LEARNER_PROFILE_CHARACTERISTICS } from '../../agents/analysis/timeEstimation';
 
@@ -7,15 +7,6 @@ interface LearnerProfileWeightingProps {
   onWeightsChange?: (weights: Record<string, number>) => void;
   onProfilesChange?: (profiles: WeightedLearnerProfile[]) => void;
 }
-
-const ALL_PROFILES = [
-  'struggling-readers',
-  'ell',
-  'gifted',
-  'adhd',
-  'visual-learners',
-  'kinesthetic-learners',
-];
 
 export function LearnerProfileWeighting({
   selectedProfiles,
@@ -40,7 +31,6 @@ export function LearnerProfileWeighting({
     }
 
     const newWeights: Record<string, number> = {};
-    const activeProfiles = selectedProfiles.filter(p => weights[p] !== undefined);
     const newProfiles = selectedProfiles.filter(p => weights[p] === undefined);
     
     if (newProfiles.length > 0) {
@@ -175,29 +165,6 @@ export function LearnerProfileWeighting({
           {/* Visualization */}
           <div className="composition-visualization">
             <div className="pie-chart">
-              {weightedProfiles.map((profile, idx) => {
-                const startAngle = weightedProfiles
-                  .slice(0, idx)
-                  .reduce((sum, p) => sum + (p.weight / 100) * 360, 0);
-                const endAngle = startAngle + (profile.weight / 100) * 360;
-
-                return (
-                  <div
-                    key={profile.profileId}
-                    className="pie-segment"
-                    style={{
-                      background: getProfileColor(idx),
-                      width: '100%',
-                      height: '8px',
-                      flex: profile.weight,
-                    }}
-                    title={`${profile.label}: ${profile.weight.toFixed(1)}%`}
-                  />
-                );
-              })}
-            </div>
-
-            <div className="legend">
               {weightedProfiles.map((profile, idx) => (
                 <div key={profile.profileId} className="legend-item">
                   <div

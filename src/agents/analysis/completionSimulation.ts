@@ -610,10 +610,6 @@ let lastClassSummary: ClassCompletionSummary | null = null;
 export function storeCompletionSimulation(simulations: StudentCompletionSimulation[]): void {
   lastCompletionSimulation = simulations;
   lastClassSummary = simulateClassCompletion(simulations);
-  console.log('📊 COMPLETION SIMULATION:', {
-    students: simulations,
-    classSummary: lastClassSummary
-  });
 }
 
 export function getLastCompletionSimulation(): StudentCompletionSimulation[] {
@@ -627,7 +623,6 @@ export function getLastClassCompletionSummary(): ClassCompletionSummary | null {
 export function clearCompletionSimulation(): void {
   lastCompletionSimulation = [];
   lastClassSummary = null;
-  console.log('🗑️ Completion simulation cleared');
 }
 
 export function exposeCompletionSimulationToWindow(): void {

@@ -69,56 +69,6 @@ const SimpleBarChart: React.FC<{
 };
 
 /**
- * Heatmap component for problem performance
- */
-const HeatmapGrid: React.FC<{
-  data: number[][];
-  rowLabels: string[];
-  colLabels: string[];
-  title: string;
-  onCellClick?: (row: number, col: number) => void;
-}> = ({ data, rowLabels, colLabels, title, onCellClick }) => {
-  const getColor = (value: number) => {
-    if (value > 0.8) return '#51cf66';
-    if (value > 0.6) return '#ffa94d';
-    if (value > 0.4) return '#ff922b';
-    return '#ff6b6b';
-  };
-
-  return (
-    <div className="heatmap-container">
-      <h4 className="heatmap-title">{title}</h4>
-      <div className="heatmap">
-        <div className="heatmap-row header">
-          <div className="heatmap-cell label"></div>
-          {colLabels.map((label, idx) => (
-            <div key={idx} className="heatmap-cell header-cell">
-              {label}
-            </div>
-          ))}
-        </div>
-        {data.map((row, rowIdx) => (
-          <div key={rowIdx} className="heatmap-row">
-            <div className="heatmap-cell label">{rowLabels[rowIdx]}</div>
-            {row.map((value, colIdx) => (
-              <div
-                key={colIdx}
-                className="heatmap-cell"
-                style={{ backgroundColor: getColor(value) }}
-                onClick={() => onCellClick?.(rowIdx, colIdx)}
-                title={`${(value * 100).toFixed(0)}%`}
-              >
-                <span className="heatmap-value">{(value * 100).toFixed(0)}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-/**
  * Main Results Visualization Component
  */
 export const SimulationResults: React.FC<SimulationResultsProps> = ({

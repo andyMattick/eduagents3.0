@@ -1,41 +1,75 @@
 /* App Container */
 .app-container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #f9fafb 0%, #eff4ff 100%);
-  padding: 1.5rem;
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg) 100%);
   animation: fadeIn 0.5s ease-in-out;
+  transition: background var(--transition-base);
+  display: flex;
+  flex-direction: column;
 }
 
+/* Header with Tab Navigation */
 .app-header {
-  background: white;
-  border-radius: 12px;
-  padding: 2rem;
-  margin-bottom: 2rem;
+  background: var(--bg);
+  border-bottom: 2px solid var(--border-color);
   box-shadow: var(--shadow-sm);
-  border: 1px solid var(--neutral-200);
-  animation: slideDown 0.5s ease-out;
+  transition: background var(--transition-base), border-color var(--transition-base);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 
-.app-header h1 {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--neutral-900);
-  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.app-header-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1.5rem;
 }
 
-.app-subtitle {
-  color: var(--neutral-600);
+/* Tab Navigation */
+.app-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-secondary);
   font-size: 1rem;
-  margin: 0.5rem 0 0 0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.app-tab:hover {
+  color: var(--text);
+  background: var(--bg-secondary);
+}
+
+.app-tab.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  background: transparent;
+}
+
+.app-tab-icon {
+  font-size: 1.2rem;
 }
 
 .app-content {
+  flex: 1;
   max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
+  padding: 1.5rem;
   animation: slideUp 0.6s ease-out;
 }
 

@@ -227,7 +227,6 @@ export function AssignmentInput({
 
           <button
             onClick={() => {
-              console.log('Continue clicked, value length:', value?.length, 'formattedContent length:', formattedContent?.length);
               onSubmit(formattedContent || value);
             }}
             disabled={!value || !value.trim() || isLoading}

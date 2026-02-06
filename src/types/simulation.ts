@@ -37,6 +37,13 @@ export interface Asteroid {
   /** 0.0-1.0: novelty = 1 - similarity (how unique is this problem?) */
   NoveltyScore: number;
 
+  /** 0.0-1.0: prior knowledge - whether this concept appears in source materials */
+  /** high = covered in source, low = new or absent from source, affects scaffolding */
+  PriorKnowledge?: number;
+
+  /** Whether this problem includes formulas, hints, or guiding instructions */
+  HasTips?: boolean;
+
   /** Position in the assignment (1-indexed) */
   SequenceIndex?: number;
 
@@ -48,6 +55,16 @@ export interface Asteroid {
 
   /** Estimated time to solve in seconds */
   EstimatedTimeSeconds?: number;
+
+  /** Source context - if problem was generated from source, which concepts/sections? */
+  SourceContext?: {
+    /** Name of the concept from source material */
+    sourceConcept?: string;
+    /** Section or page reference from source */
+    sourceReference?: string;
+    /** How the problem was derived from source (paraphrased, exact, novel) */
+    derivationType?: 'exact-match' | 'paraphrased' | 'novel';
+  };
 }
 
 /**

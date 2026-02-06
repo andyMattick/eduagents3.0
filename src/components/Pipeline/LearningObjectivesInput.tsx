@@ -37,7 +37,6 @@ const COMMON_OBJECTIVES = [
 export function LearningObjectivesInput({ objectives, onChange, subject }: LearningObjectivesInputProps) {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [customObjective, setCustomObjective] = useState('');
-  const [suggestedBySubject, setSuggestedBySubject] = useState<string[]>([]);
 
   // Auto-select objectives based on subject on mount or when subject changes
   useEffect(() => {
@@ -48,7 +47,6 @@ export function LearningObjectivesInput({ objectives, onChange, subject }: Learn
       if (subject) {
         const subjectSuggestions = SUGGESTED_OBJECTIVES_BY_SUBJECT[subject] || 
                                    SUGGESTED_OBJECTIVES_BY_SUBJECT.default;
-        setSuggestedBySubject(subjectSuggestions);
         defaultObjs = subjectSuggestions.slice(0, 3);
       }
       

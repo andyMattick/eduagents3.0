@@ -227,6 +227,61 @@ function calculateSimilarity(text1: string, text2: string): number {
 }
 
 /**
+ * Detect if a problem includes tips, formulas, hints, or scaffolding language
+ */
+function detectTips(text: string): boolean {
+  const lowerText = text.toLowerCase();
+
+  // Formulaic expressions and math symbols
+  const formulaPatterns = [
+    /\d+\s*[+\-×÷*]/,           // Math operations: 2 + 3, 5 - 2
+    /[=≈≠<>≤≥]/,               // Comparison operators
+    /\$.*?\$/,                  // LaTeX-style math
+    /√|∫|∑|π|∞|Σ|∏/,           // Math symbols
+    /x\^2|y\^3|\^[0-9]/,        // Exponents
+    /log|sin|cos|tan|ln|exp/,   // Trig/math functions
+    /\[.*?\].*?formula/i,       // Formula in brackets
+  ];
+
+  // Directive phrases and scaffolding language
+  const directivePhrases = [
+    /use\s+(?:the\s+)?formula/i,
+    /use\s+(?:the\s+)?equation/i,
+    /use\s+(?:the\s+)?method/i,
+    /apply\s+(?:the\s+)?(?:formula|rule|theorem)/i,
+    /remember\s+that/i,
+    /recall\s+that/i,
+    /note\s+that/i,
+    /hint\s*:/i,
+    /tip\s*:/i,
+    /step\s+[0-9]/i,
+    /follow\s+these\s+steps/i,
+    /given\s+that/i,
+    /refer\s+to/i,
+    /see\s+(?:the|figure|diagram|table)/i,
+    /example/i,
+    /proof/i,
+    /derivation/i,
+  ];
+
+  // Check formula patterns
+  for (const pattern of formulaPatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+
+  // Check directive phrases
+  for (const phrase of directivePhrases) {
+    if (phrase.test(lowerText)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Generate Asteroids (tagged problems) from assignment text
  */
 export function generateAsteroids(assignmentText: string, subject?: string): Asteroid[] {
@@ -252,6 +307,7 @@ export function generateAsteroids(assignmentText: string, subject?: string): Ast
       LinguisticComplexity: calculateLinguisticComplexity(problemText),
       SimilarityToPrevious: similarityToPrevious,
       NoveltyScore: 1 - similarityToPrevious,
+      HasTips: detectTips(problemText), // Detect formulas, hints, scaffolding
       SequenceIndex: i + 1,
       Subject: subject,
       TestType: 'free_response', // Default; can be refined later
