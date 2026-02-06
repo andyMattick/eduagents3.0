@@ -1,19 +1,24 @@
 /**
- * Floating Teacher Notepad Component
+ * Teacher Notepad + Settings View
  * 
- * Persistent notepad that floats across all pipeline steps
- * Teachers can capture thoughts, observations, and refinement ideas
- * Collapsible, sticky-positioned, exportable
+ * Full-page view with tabbed interface:
+ * - Notes: Persistent notepad for capturing thoughts and observations
+ * - AI Settings: Configure AI mode (mock vs real) and API settings
+ * 
+ * Accessible via top navigation tab
  */
 
 import React, { useState } from 'react';
 import { useNotepad } from '../../hooks/useNotepad';
+import { AISettings } from '../AISettings';
 import { ThemeToggle } from '../ThemeToggle';
 import './TeacherNotepad.css';
 
+type NotepandTab = 'notes' | 'ai-settings';
+
 export const TeacherNotepad: React.FC = () => {
   const { entries, addEntry, removeEntry, clearAll, exportNotes } = useNotepad();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<NotepandTab>('notes');
   const [newText, setNewText] = useState('');
   const [newTag, setNewTag] = useState<'observation' | 'suggestion' | 'fix' | 'todo' | ''>('');
 
@@ -51,106 +56,133 @@ export const TeacherNotepad: React.FC = () => {
   };
 
   return (
-    <div className={`notepad-container ${isCollapsed ? 'collapsed' : ''}`}>
-      {/* Header */}
-      <div className="notepad-header">
-        <div className="notepad-title">
-          <span className="notepad-icon">📝</span>
-          Teacher Notepad
-          {entries.length > 0 && <span className="notepad-badge">{entries.length}</span>}
+    <div className="notepad-full-view">
+      {/* Page Header */}
+      <div className="notepad-page-header">
+        <div className="notepad-page-title">
+          <h1>{activeTab === 'notes' ? 'Teacher Notepad' : 'AI Settings'}</h1>
+          {activeTab === 'notes' && entries.length > 0 && (
+            <span className="notepad-page-badge">{entries.length} notes</span>
+          )}
         </div>
-        <div className="notepad-header-actions">
-          <ThemeToggle />
-          <button
-            className="notepad-toggle"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            title={isCollapsed ? 'Expand' : 'Collapse'}
-          >
-            {isCollapsed ? '▶' : '▼'}
-          </button>
-        </div>
+        <ThemeToggle />
+      </div>
+
+      {/* Tabs */}
+      <div className="notepad-tabs-fullpage">
+        <button
+          className={`notepad-tab-fullpage ${activeTab === 'notes' ? 'active' : ''}`}
+          onClick={() => setActiveTab('notes')}
+        >
+          📝 Notes & Observations
+        </button>
+        <button
+          className={`notepad-tab-fullpage ${activeTab === 'ai-settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ai-settings')}
+        >
+          ⚙️ AI Settings
+        </button>
       </div>
 
       {/* Content */}
-      {!isCollapsed && (
-        <div className="notepad-content">
-          {/* Input Section */}
-          <div className="notepad-input-section">
-            <textarea
-              value={newText}
-              onChange={(e) => setNewText(e.target.value)}
-              placeholder="Add a note, observation, or suggestion..."
-              className="notepad-textarea"
-              rows={3}
-            />
-            <div className="notepad-controls">
-              <select
-                value={newTag}
-                onChange={(e) => setNewTag(e.target.value as any)}
-                className="notepad-tag-select"
-              >
-                <option value="">No tag</option>
-                <option value="observation">Observation</option>
-                <option value="suggestion">Suggestion</option>
-                <option value="fix">Fix</option>
-                <option value="todo">Todo</option>
-              </select>
-              <button
-                onClick={handleAddNote}
-                disabled={!newText.trim()}
-                className="notepad-add-btn"
-              >
-                Add Note
-              </button>
+      <div className="notepad-fullpage-content">
+        {/* Notes Tab */}
+        {activeTab === 'notes' && (
+          <div className="notepad-notes-wrapper">
+            {/* Input Section */}
+            <div className="notepad-input-section">
+              <div className="notepad-input-label">
+                <label>Add New Note</label>
+              </div>
+              <textarea
+                value={newText}
+                onChange={(e) => setNewText(e.target.value)}
+                placeholder="Add a note, observation, or suggestion..."
+                className="notepad-textarea-fullpage"
+                rows={4}
+              />
+              <div className="notepad-controls-fullpage">
+                <select
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value as any)}
+                  className="notepad-tag-select"
+                >
+                  <option value="">No tag</option>
+                  <option value="observation">Observation</option>
+                  <option value="suggestion">Suggestion</option>
+                  <option value="fix">Fix</option>
+                  <option value="todo">Todo</option>
+                </select>
+                <button
+                  onClick={handleAddNote}
+                  disabled={!newText.trim()}
+                  className="notepad-add-btn"
+                >
+                  Add Note
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Notes List */}
-          <div className="notepad-list">
-            {entries.length === 0 ? (
-              <p className="notepad-empty">No notes yet. Start adding observations and ideas!</p>
-            ) : (
-              entries.map((entry) => (
-                <div key={entry.id} className="notepad-item">
-                  <div className="notepad-item-header">
-                    <div className="notepad-item-meta">
-                      {entry.tag && (
-                        <span
-                          className="notepad-tag"
-                          style={{ backgroundColor: tagColor(entry.tag) }}
-                        >
-                          {entry.tag}
-                        </span>
-                      )}
-                      <span className="notepad-time">{entry.timestamp}</span>
-                    </div>
-                    <button
-                      onClick={() => removeEntry(entry.id)}
-                      className="notepad-delete-btn"
-                      title="Delete note"
-                    >
-                      ×
+            {/* Notes List */}
+            <div className="notepad-list-fullpage">
+              <div className="notepad-list-header">
+                <h3>Notes ({entries.length})</h3>
+                {entries.length > 0 && (
+                  <div className="notepad-list-actions">
+                    <button onClick={handleExport} className="notepad-export-btn">
+                      📥 Export
+                    </button>
+                    <button onClick={clearAll} className="notepad-clear-btn">
+                      Clear All
                     </button>
                   </div>
-                  <p className="notepad-item-text">{entry.text}</p>
-                </div>
-              ))
-            )}
-          </div>
+                )}
+              </div>
 
-          {/* Footer */}
-          {entries.length > 0 && (
-            <div className="notepad-footer">
-              <button onClick={handleExport} className="notepad-export-btn">
-                📥 Export Notes
-              </button>
-              <button onClick={clearAll} className="notepad-clear-btn">
-                Clear All
-              </button>
+              {entries.length === 0 ? (
+                <p className="notepad-empty-fullpage">
+                  No notes yet. Start adding observations, ideas, and suggestions!
+                </p>
+              ) : (
+                <div className="notepad-items-grid">
+                  {entries.map((entry) => (
+                    <div key={entry.id} className="notepad-item-fullpage">
+                      <div className="notepad-item-header">
+                        <div className="notepad-item-meta">
+                          {entry.tag && (
+                            <span
+                              className="notepad-tag"
+                              style={{ backgroundColor: tagColor(entry.tag) }}
+                            >
+                              {entry.tag}
+                            </span>
+                          )}
+                          <span className="notepad-time">{entry.timestamp}</span>
+                        </div>
+                        <button
+                          onClick={() => removeEntry(entry.id)}
+                          className="notepad-delete-btn"
+                          title="Delete note"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <p className="notepad-item-text">{entry.text}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {/* AI Settings Tab */}
+        {activeTab === 'ai-settings' && (
+          <div className="notepad-ai-settings-fullpage">
+            <AISettings embedded={true} />
+          </div>
+        )}
+      </div>
     </div>
   );
 };

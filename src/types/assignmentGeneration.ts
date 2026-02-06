@@ -8,6 +8,192 @@
 import { BloomLevel } from '../agents/analysis/types';
 import { Asteroid } from './simulation';
 
+// ============================================================================
+// PHASE 3: GOAL + SOURCE FRAMEWORK
+// ============================================================================
+
+/**
+ * Phase 3 User Intent: What does the teacher want to do?
+ */
+export type Phase3Goal = 'create' | 'analyze' | 'refine';
+
+/**
+ * Phase 3 Resource Availability: Do they have source materials?
+ */
+export type Phase3Source = 'hasNotes' | 'noNotes';
+
+/**
+ * Phase 3 Input when hasNotes (user provides lesson plans, notes, slides, raw problems)
+ */
+export interface Phase3InputWithNotes {
+  source: 'hasNotes';
+  uploadedFile?: {
+    fileName: string;
+    contentType: 'pdf' | 'docx' | 'text';
+    extractedText: string;
+  };
+  gradeLevel: string;
+  subject: string;
+  /** Optional: explicit learning objectives from teacher */
+  learningObjectives?: string[];
+}
+
+/**
+ * Phase 3 Input when noNotes (user provides topic, grade, goals, problem count)
+ */
+export interface Phase3InputWithoutNotes {
+  source: 'noNotes';
+  topic: string;
+  gradeLevel: string;
+  subject: string;
+  bloomGoals?: Partial<Record<BloomLevel, number>>;
+  problemCount?: number;
+  learningObjectives?: string[];
+}
+
+/**
+ * Unified Phase 3 session context combining goal + source
+ */
+export interface Phase3Context {
+  goal: Phase3Goal;
+  source: Phase3Source;
+  input: Phase3InputWithNotes | Phase3InputWithoutNotes;
+  
+  /** Extracted intent tags (generated after input) */
+  intentTags?: AssignmentIntentTags;
+  
+  /** For create/refine: existing assignment being worked with */
+  existingAssignment?: {
+    content: string;
+    asteroids?: Asteroid[];
+  };
+
+  /** Session metadata */
+  sessionId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Phase 3 Behavior Specification: defines what system should do based on goal + source
+ */
+export interface Phase3BehaviorSpec {
+  goal: Phase3Goal;
+  source: Phase3Source;
+  
+  /** Should system extract intent from materials? */
+  extractIntent: boolean;
+  
+  /** Should system generate new problems? */
+  generateProblems: boolean;
+  
+  /** Should system evaluate existing assignment? */
+  analyzeAssignment: boolean;
+  
+  /** Should system compute novelty vs source? */
+  scoreNovelty: boolean;
+  
+  /** Should system compute prior knowledge coverage? */
+  scorePriorKnowledge: boolean;
+  
+  /** Prompt template path or ID */
+  systemPromptKey: string;
+  
+  /** Next pipeline step after processing */
+  nextStep: string;
+  
+  /** Description for UI */
+  description: string;
+}
+
+/**
+ * Behavior Matrix: defines system actions for all goal + source combinations
+ */
+export const PHASE3_BEHAVIOR_MATRIX: Record<Phase3Goal, Record<Phase3Source, Phase3BehaviorSpec>> = {
+  create: {
+    hasNotes: {
+      goal: 'create',
+      source: 'hasNotes',
+      extractIntent: true,
+      generateProblems: true,
+      analyzeAssignment: false,
+      scoreNovelty: true,
+      scorePriorKnowledge: true,
+      systemPromptKey: 'generate_from_notes',
+      nextStep: 'REVIEW_GENERATED',
+      description: 'Extract intent from notes → generate assignment → score novelty & prior knowledge vs source',
+    },
+    noNotes: {
+      goal: 'create',
+      source: 'noNotes',
+      extractIntent: false,
+      generateProblems: true,
+      analyzeAssignment: false,
+      scoreNovelty: false,
+      scorePriorKnowledge: false,
+      systemPromptKey: 'generate_from_topic',
+      nextStep: 'REVIEW_GENERATED',
+      description: 'Prompt for topic, grade, Bloom goals → generate from scratch → use default novelty/prior assumptions',
+    },
+  },
+  analyze: {
+    hasNotes: {
+      goal: 'analyze',
+      source: 'hasNotes',
+      extractIntent: true,
+      generateProblems: false,
+      analyzeAssignment: true,
+      scoreNovelty: true,
+      scorePriorKnowledge: true,
+      systemPromptKey: 'analyze_with_source',
+      nextStep: 'ANALYSIS_RESULTS',
+      description: 'Parse uploaded assignment → compare to source → run analyzeWithAI() → output Bloom, pacing, novelty, prior knowledge',
+    },
+    noNotes: {
+      goal: 'analyze',
+      source: 'noNotes',
+      extractIntent: false,
+      generateProblems: false,
+      analyzeAssignment: true,
+      scoreNovelty: false,
+      scorePriorKnowledge: false,
+      systemPromptKey: 'analyze_no_source',
+      nextStep: 'ANALYSIS_RESULTS',
+      description: 'Prompt user to paste/describe assignment → run analyzeWithAI() → output Bloom and pacing only',
+    },
+  },
+  refine: {
+    hasNotes: {
+      goal: 'refine',
+      source: 'hasNotes',
+      extractIntent: true,
+      generateProblems: true,
+      analyzeAssignment: true,
+      scoreNovelty: true,
+      scorePriorKnowledge: true,
+      systemPromptKey: 'refine_with_source',
+      nextStep: 'REFINED_ASSIGNMENT',
+      description: 'Parse assignment + source → identify gaps/redundancy → regenerate with improved spacing, scaffolding, Bloom balance',
+    },
+    noNotes: {
+      goal: 'refine',
+      source: 'noNotes',
+      extractIntent: false,
+      generateProblems: true,
+      analyzeAssignment: true,
+      scoreNovelty: false,
+      scorePriorKnowledge: false,
+      systemPromptKey: 'refine_no_source',
+      nextStep: 'REFINED_ASSIGNMENT',
+      description: 'Prompt for refinement goals (e.g., "add Apply-level problems") → regenerate assignment accordingly',
+    },
+  },
+};
+
+// ============================================================================
+// EXISTING TYPES (kept for backward compatibility)
+// ============================================================================
+
 export type AssignmentType = 'quiz' | 'warm-up' | 'exit-ticket' | 'practice-set' | 'project';
 
 export type ProblemType = 

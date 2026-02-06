@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { Phase3Goal, Phase3Source } from '../../types/assignmentGeneration';
+import { getBehaviorSpec } from '../../agents/phase3/phase3BehaviorMatrix';
 import { parseDocumentStructure } from '../../agents/analysis/documentStructureParser';
 import { previewDocument } from '../../agents/analysis/documentPreview';
 import { convertExtractedProblemsToAsteroids } from '../../agents/shared/convertExtractedToAsteroid';
 import { extractAsteroidsFromText } from '../../agents/pipelineIntegration';
 import { AssignmentInput } from './AssignmentInput';
+import { Phase3Selector } from './Phase3Selector';
 import { PromptBuilder } from './PromptBuilderSimplified';
 import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
 import { DocumentPreviewComponent } from '../Analysis/DocumentPreview';
@@ -38,6 +41,8 @@ export function PipelineShell() {
 
   const [input, setInput] = useState('');
   const [workflowMode, setWorkflowMode] = useState<'choose' | 'input' | 'builder'>('choose');
+  const [phase3Goal, setPhase3Goal] = useState<Phase3Goal | null>(null);
+  const [phase3Source, setPhase3Source] = useState<Phase3Source | null>(null);
   const [reviewMetadata, setReviewMetadata] = useState<ReviewMetadata | null>(null);
   const [assignmentGradeLevel, setAssignmentGradeLevel] = useState('6-8');
   const [assignmentSubject, setAssignmentSubject] = useState('');
@@ -49,6 +54,22 @@ export function PipelineShell() {
   useEffect(() => {
     // Monitor step changes
   }, [step, workflowMode, asteroids, error, originalText]);
+
+  /**
+   * Handle Phase 3 goal + source selection
+   * Determines which input mode user should see next
+   */
+  const handlePhase3Selection = (goal: Phase3Goal, source: Phase3Source) => {
+    setPhase3Goal(goal);
+    setPhase3Source(source);
+    
+    // Get behavior spec for this combination
+    const spec = getBehaviorSpec(goal, source);
+    
+    // For now, route to 'input' mode
+    // In production, different goals might have different next steps
+    setWorkflowMode('input');
+  };
 
   const handleAssignmentGenerated = async (content: string, _metadata: AssignmentMetadata) => {
     // Feed the generated assignment into the analysis pipeline
@@ -184,13 +205,15 @@ export function PipelineShell() {
     if (confirmed) {
       setInput('');
       setWorkflowMode('choose');
+      setPhase3Goal(null);
+      setPhase3Source(null);
       setReviewMetadata(null);
       setClassDefinition(undefined);
       reset();
     }
   };
 
-  // For choosing workflow
+  // For choosing workflow - show Phase 3 goal + source selector
   if (workflowMode === 'choose' && step === PipelineStep.INPUT) {
     return (
       <div
@@ -201,74 +224,7 @@ export function PipelineShell() {
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
         }}
       >
-        {/* Header */}
-        <div style={{ marginBottom: '32px' }}>
-          <h1 style={{ margin: '0 0 8px 0', color: 'var(--text)' }}>
-            📝 Teacher's Assignment Studio
-          </h1>
-          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '14px' }}>
-            Craft excellent assignments with AI assistance—your expertise, elevated
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr',
-            gap: '24px',
-            marginTop: '40px',
-            maxWidth: '500px',
-          }}
-        >
-          {/* Option: Build or Upload an Assignment */}
-          <div
-            onClick={() => setWorkflowMode('input')}
-            style={{
-              padding: '32px',
-              backgroundColor: '#f0f7ff',
-              border: '2px solid #007bff',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 16px rgba(0, 123, 255, 0.2)';
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.boxShadow = 'none';
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-            }}
-          >
-            <h3 style={{ margin: '0 0 12px 0', color: '#007bff', fontSize: '24px' }}>
-              📝 Build or Upload an Assignment
-            </h3>
-            <p style={{ margin: '0 0 16px 0', color: '#555', lineHeight: '1.6' }}>
-              Create a new assignment or upload an existing one to get comprehensive feedback and analysis.
-            </p>
-            <ul style={{ margin: '16px 0', paddingLeft: '20px', color: '#666', fontSize: '14px' }}>
-              <li>Upload files or generate with AI</li>
-              <li>Student feedback from varying perspectives</li>
-              <li>Accessibility insights</li>
-              <li>AI-suggested improvements</li>
-            </ul>
-            <button
-              style={{
-                marginTop: '16px',
-                padding: '10px 20px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: 'bold',
-              }}
-            >
-              Get Started →
-            </button>
-          </div>
-        </div>
+        <Phase3Selector onSelect={handlePhase3Selection} isLoading={isLoading} />
       </div>
     );
   }

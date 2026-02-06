@@ -154,6 +154,14 @@ export interface PipelineState {
   showProblemMetadata?: boolean;
   // New: Class definition
   classDefinition?: ClassDefinition;
+  // PHASE 3: Goal + Source Framework
+  phase3Context?: {
+    goal: 'create' | 'analyze' | 'refine';
+    source: 'hasNotes' | 'noNotes';
+    uploadedSourceContent?: string; // For hasNotes: extracted text from notes
+    sourceFileName?: string;
+    intentTags?: any; // AssignmentIntentTags
+  };
 }
 
 /**
