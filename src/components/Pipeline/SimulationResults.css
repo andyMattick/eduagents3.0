@@ -92,17 +92,17 @@
 
 .metric-status.healthy {
   background: rgba(81, 207, 102, 0.1);
-  color: #51cf66;
+  color: var(--success-color);
 }
 
 .metric-status.warning {
   background: rgba(255, 166, 77, 0.1);
-  color: #ffa94d;
+  color: var(--accent-color);
 }
 
 .metric-status.danger {
   background: rgba(255, 107, 107, 0.1);
-  color: #ff6b6b;
+  color: var(--danger-color);
 }
 
 /* Tabs */
@@ -471,7 +471,7 @@
 
   &.warning {
     background: rgba(255, 166, 77, 0.1);
-    color: #ffa94d;
+    color: var(--accent-color);
   }
 }
 

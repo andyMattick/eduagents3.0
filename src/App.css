@@ -177,7 +177,7 @@
 }
 
 .section.info {
-  border-left-color: #5b7cfa;
+  border-left-color: var(--primary-color);
   background: linear-gradient(135deg, rgba(91, 124, 250, 0.02) 0%, transparent 100%);
 }
 
@@ -477,21 +477,21 @@
 @media (prefers-color-scheme: dark) {
   body {
     background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
-    color: var(--neutral-100);
+    color: var(--text);
   }
 
   .card, .section {
-    background: #374151;
-    border-color: #4b5563;
+    background: var(--bg);
+    border-color: var(--border-color);
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   }
 
   code {
-    background: #4b5563;
-    color: #dbeafe;
+    background: var(--bg-secondary);
+    color: var(--text);
   }
 
   h1, h2, h3, h4, h5, h6 {
-    color: #f9fafb;
+    color: var(--text);
   }
 }

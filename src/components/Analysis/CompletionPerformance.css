@@ -6,7 +6,7 @@
 .completion-performance {
   width: 100%;
   padding: 20px;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   border-radius: 8px;
   margin: 20px 0;
 }
@@ -19,13 +19,13 @@
   margin: 0 0 8px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text);
 }
 
 .cp-subtitle {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 /* Profile Groups */
@@ -36,10 +36,10 @@
 }
 
 .cp-profile-group {
-  background: white;
+  background: var(--bg);
   border-radius: 8px;
   padding: 20px;
-  border-left: 4px solid #2196F3;
+  border-left: 4px solid var(--primary-color);
 }
 
 .cp-group-header {
@@ -48,20 +48,20 @@
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .cp-group-header h4 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text);
   text-transform: capitalize;
 }
 
 .cp-group-count {
   font-size: 13px;
-  color: #999;
+  color: var(--text-tertiary);
   font-weight: 500;
 }
 
@@ -74,8 +74,8 @@
 
 /* Student Completion Card */
 .cp-student-card {
-  background: #fafafa;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 16px;
   border-left-width: 4px;
@@ -85,7 +85,7 @@
 
 .cp-student-card:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  background: #fff;
+  background: var(--bg);
 }
 
 /* Card Header: Profile, Grade, Risk */
@@ -105,7 +105,7 @@
 .cpc-profile-name {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text);
   text-transform: capitalize;
 }
 
@@ -159,20 +159,20 @@
   margin-bottom: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: #555;
+  color: var(--text-secondary);
 }
 
 .cpc-metric-value {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text);
 }
 
 /* Progress Bar */
 .cpc-progress-bar {
   width: 100%;
   height: 20px;
-  background: #e0e0e0;
+  background: var(--border-color);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -186,7 +186,7 @@
 
 .cpc-progress-details {
   font-size: 12px;
-  color: #999;
+  color: var(--text-tertiary);
   text-align: right;
 }
 
@@ -194,7 +194,7 @@
 .cpc-time-bar {
   width: 100%;
   height: 16px;
-  background: #e0e0e0;
+  background: var(--border-color);
   border-radius: 3px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -202,7 +202,7 @@
 
 .cpc-time-fill {
   height: 100%;
-  background: linear-gradient(90deg, #2196F3, #1976D2);
+  background: linear-gradient(90deg, var(--primary-color), var(--primary-dark));
   border-radius: 3px;
   transition: width 0.3s ease;
 }
@@ -214,8 +214,8 @@
   gap: 8px;
   margin-bottom: 12px;
   padding: 8px 0;
-  border-top: 1px solid #e0e0e0;
-  border-bottom: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .cpc-small-metric {
@@ -227,7 +227,7 @@
 
 .cpc-small-label {
   font-size: 11px;
-  color: #999;
+  color: var(--text-tertiary);
   text-align: center;
   font-weight: 500;
 }
@@ -235,7 +235,7 @@
 .cpc-small-value {
   font-size: 13px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--text);
 }
 
 /* Checkout */
@@ -244,19 +244,19 @@
   align-items: center;
   gap: 8px;
   padding: 8px;
-  background: #fff3e0;
+  background: rgba(255, 152, 43, 0.1);
   border-radius: 4px;
   margin-bottom: 8px;
   font-size: 13px;
 }
 
 .cpc-checkout-label {
-  color: #ff6f00;
+  color: var(--accent-color);
   font-weight: 600;
 }
 
 .cpc-checkout-point {
-  color: #ff6f00;
+  color: var(--accent-color);
   font-weight: 700;
   background: white;
   padding: 2px 6px;
@@ -267,14 +267,14 @@
 .cpc-skipped {
   padding: 8px 0;
   margin-bottom: 8px;
-  border-top: 1px solid #e0e0e0;
-  border-bottom: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .cpc-skipped-label {
   display: block;
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 600;
   margin-bottom: 6px;
 }
@@ -287,8 +287,8 @@
 
 .cpc-skipped-badge {
   display: inline-block;
-  background: #ffebee;
-  color: #c62828;
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--danger-color);
   padding: 4px 8px;
   border-radius: 3px;
   font-size: 11px;
@@ -298,8 +298,8 @@
 /* Notes */
 .cpc-notes {
   padding: 8px;
-  background: #e3f2fd;
-  border-left: 3px solid #1976D2;
+  background: rgba(91, 124, 250, 0.1);
+  border-left: 3px solid var(--primary-color);
   border-radius: 3px;
   margin-bottom: 8px;
 }
@@ -307,7 +307,7 @@
 .cpc-notes-text {
   margin: 0;
   font-size: 13px;
-  color: #1565c0;
+  color: var(--primary-color);
   line-height: 1.4;
 }
 
@@ -315,7 +315,7 @@
 .cpc-factors {
   padding-top: 8px;
   margin-top: 8px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
 }
 
 .cpcf-row {
@@ -332,21 +332,21 @@
 
 .cpcf-label {
   font-size: 11px;
-  color: #999;
+  color: var(--text-tertiary);
   font-weight: 600;
 }
 
 .cpcf-bar {
   width: 100%;
   height: 14px;
-  background: #e0e0e0;
+  background: var(--border-color);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .cpcf-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4caf50, #45a049);
+  background: linear-gradient(90deg, var(--success-color), var(--primary-color));
   border-radius: 2px;
 }
 

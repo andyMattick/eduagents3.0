@@ -17,6 +17,7 @@ import { ProblemAnalysis } from './ProblemAnalysis';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
+import { Step8FinalReview } from './Step8FinalReview';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
 
 export function PipelineShell() {
@@ -476,102 +477,21 @@ export function PipelineShell() {
       )}
 
       {step === PipelineStep.EXPORT && (
-        <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-          <h2 style={{ marginTop: 0 }}>Step 6: Export for Processing</h2>
-          <p style={{ color: '#666', fontSize: '14px', marginBottom: '16px' }}>
-            Your assignment metadata and class definition are ready to be exported. Download them as JSON or CSV to send to your external processor.
-          </p>
-          <div style={{ padding: '16px', backgroundColor: 'white', borderRadius: '6px', marginBottom: '16px' }}>
-            <h4 style={{ margin: '0 0 12px 0', color: '#333' }}>Export Options</h4>
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => {
-                  const data = { asteroids, classDefinition };
-                  const json = JSON.stringify(data, null, 2);
-                  const blob = new Blob([json], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `assignment-export-${new Date().toISOString().split('T')[0]}.json`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#28a745',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                }}
-              >
-                📥 Export JSON
-              </button>
-              <button
-                onClick={() => {
-                  const lines = [
-                    'Assignment Metadata + Class Definition',
-                    new Date().toISOString(),
-                    '',
-                    'ASTEROIDS (Problems):',
-                    JSON.stringify(asteroids, null, 2),
-                    '',
-                    'CLASS DEFINITION:',
-                    JSON.stringify(classDefinition, null, 2),
-                  ];
-                  const text = lines.join('\n');
-                  const blob = new Blob([text], { type: 'text/plain' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `assignment-export-${new Date().toISOString().split('T')[0]}.txt`;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#ff9800',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                }}
-              >
-                📄 Export Text
-              </button>
-            </div>
-          </div>
-          <div style={{ padding: '12px', backgroundColor: '#e8f5e9', borderRadius: '4px', borderLeft: '4px solid #28a745' }}>
-            <p style={{ margin: 0, fontSize: '13px', color: '#2e7d32' }}>
-              <strong>✓ Export Complete!</strong> Your assignment is ready for processing. The external processor will now run detailed simulations using this metadata and class definition.
-            </p>
-          </div>
-          <div style={{ marginTop: '20px' }}>
-            <button
-              onClick={handleReset}
-              style={{
-                padding: '10px 24px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '16px',
-                fontWeight: '600',
-              }}
-            >
-              ← Start New Assignment
-            </button>
-          </div>
-        </div>
+        <Step8FinalReview
+          assignmentText={rewrittenText || originalText}
+          assignmentTitle="Assignment"
+          assignmentMetadata={usePipeline().state?.assignmentMetadata || {}}
+          tags={rewrittenTags || []}
+          studentFeedback={studentFeedback}
+          asteroids={asteroids}
+          onPrevious={() => {
+            // Go back to rewrite results
+            // Could implement a previousStep() function in usePipeline
+          }}
+          onComplete={() => {
+            handleReset();
+          }}
+        />
       )}
     </div>
   );

@@ -38,6 +38,30 @@
   --transition-base: 250ms ease-in-out;
   --transition-slow: 350ms ease-in-out;
   
+  /* Semantic Colors - DARK MODE DEFAULT */
+  --bg: #1a1a1a;
+  --bg-secondary: #252525;
+  --bg-tertiary: #2f2f2f;
+  --text: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #808080;
+  --border-color: #3a3a3a;
+  --button-bg: #2f2f2f;
+  --button-hover-bg: #3a3a3a;
+  --surface-bg: #1f1f1f;
+  --success-bg: #1a3a2e;
+  --error-bg: #3a1a1a;
+  --warning-bg: #3a3a1a;
+  
+  /* Adjust shadows for dark mode */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+}
+
+/* Light Mode - Override */
+[data-theme="light"] {
   /* Semantic Colors - Light Mode */
   --bg: #ffffff;
   --bg-secondary: #f9fafb;
@@ -49,26 +73,15 @@
   --button-bg: #f3f4f6;
   --button-hover-bg: #e5e7eb;
   --surface-bg: #ffffff;
-}
-
-/* Dark Mode */
-[data-theme="dark"] {
-  --bg: #1a1a1a;
-  --bg-secondary: #252525;
-  --bg-tertiary: #2f2f2f;
-  --text: #f0f0f0;
-  --text-secondary: #b0b0b0;
-  --text-tertiary: #808080;
-  --border-color: #3a3a3a;
-  --button-bg: #2f2f2f;
-  --button-hover-bg: #3a3a3a;
-  --surface-bg: #1f1f1f;
+  --success-bg: #e8f5e9;
+  --error-bg: #ffebee;
+  --warning-bg: #fff8e1;
   
-  /* Adjust shadows for dark mode */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
+  /* Light mode shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
 }
 
 html {
@@ -176,7 +189,7 @@ code {
 
 pre {
   background: var(--bg);
-  color: #e0e0e0;
+  color: var(--text);
   padding: 1.5rem;
   border-radius: 8px;
   overflow-x: auto;
@@ -351,6 +364,10 @@ input, textarea, select {
   color: var(--text);
 }
 
+input::placeholder, textarea::placeholder, select::placeholder {
+  color: var(--text-tertiary);
+}
+
 input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--primary-color);
@@ -359,4 +376,20 @@ input:focus, textarea:focus, select:focus {
 
 textarea {
   resize: vertical;
+}
+
+/* Explicit Dark Mode Support */
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: var(--bg);
+  color: var(--text);
+  border-color: var(--border-color);
+  caret-color: var(--text);
+}
+
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder,
+[data-theme="dark"] select::placeholder {
+  color: var(--text-tertiary);
 }

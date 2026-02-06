@@ -418,24 +418,24 @@
 
 .weighting-header h3 {
   margin: 0 0 0.5rem 0;
-  color: #333;
+  color: var(--text);
   font-size: 1.3rem;
   font-weight: 600;
 }
 
 .subtitle {
   margin: 0;
-  color: #666;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
 .no-profiles {
-  background: #f5f5f5;
-  border: 2px dashed #ccc;
+  background: var(--bg-secondary);
+  border: 2px dashed var(--border-color);
   border-radius: 8px;
   padding: 2rem;
   text-align: center;
-  color: #999;
+  color: var(--text-tertiary);
 }
 
 /* Profiles Container */
@@ -447,8 +447,8 @@
 }
 
 .profile-weight-item {
-  background: #f9f9f9;
-  border: 1px solid #e0e0e0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 1.5rem;
   display: flex;
@@ -458,9 +458,9 @@
 }
 
 .profile-weight-item:hover {
-  background: #fafafa;
-  border-color: #2196f3;
-  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+  background: var(--bg-tertiary);
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(91, 124, 250, 0.1);
 }
 
 .profile-info {
@@ -470,13 +470,13 @@
 
 .profile-name {
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   font-size: 1rem;
   margin-bottom: 0.35rem;
 }
 
 .profile-description {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   line-height: 1.3;
 }
@@ -539,8 +539,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: white;
-  border: 1px solid #e0e0e0;
+  background: var(--bg);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0.5rem 1rem;
   min-width: 80px;
@@ -551,7 +551,7 @@
   border: none;
   text-align: center;
   font-weight: 600;
-  color: #2196f3;
+  color: var(--primary-color);
   font-size: 1rem;
   outline: none;
 }
@@ -563,41 +563,41 @@
 }
 
 .weight-unit {
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .weight-bar {
   width: 60px;
   height: 6px;
-  background: #e0e0e0;
+  background: var(--border-color);
   border-radius: 3px;
   overflow: hidden;
   margin-left: auto;
 }
 
 .weight-bar.valid .weight-fill {
-  background: #4caf50;
+  background: var(--success-color);
 }
 
 .weight-bar.warning-under .weight-fill {
-  background: #ff9800;
+  background: var(--accent-color);
 }
 
 .weight-bar.warning-over .weight-fill {
-  background: #f44336;
+  background: var(--danger-color);
 }
 
 .weight-fill {
   height: 100%;
-  background: #2196f3;
+  background: var(--primary-color);
   transition: width 0.2s ease;
 }
 
 /* Total Weight Display */
 .total-weight {
-  background: #f0f4f8;
-  border-left: 4px solid #2196f3;
+  background: rgba(91, 124, 250, 0.1);
+  border-left: 4px solid var(--primary-color);
   border-radius: 6px;
   padding: 1rem 1.5rem;
   display: flex;
@@ -607,37 +607,37 @@
 }
 
 .total-weight.warning-under {
-  background: #fff3e0;
-  border-left-color: #ff9800;
+  background: rgba(255, 152, 43, 0.1);
+  border-left-color: var(--accent-color);
 }
 
 .total-weight.warning-over {
-  background: #ffebee;
-  border-left-color: #f44336;
+  background: rgba(255, 107, 107, 0.1);
+  border-left-color: var(--danger-color);
 }
 
 .total-weight .label {
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .total-weight .value {
   font-weight: 700;
   font-size: 1.2rem;
-  color: #2196f3;
+  color: var(--primary-color);
 }
 
 .total-weight .value.valid {
-  color: #4caf50;
+  color: var(--success-color);
 }
 
 .total-weight .value.invalid {
-  color: #f44336;
+  color: var(--danger-color);
 }
 
 .total-weight .hint {
   margin-left: auto;
-  color: #ff9800;
+  color: var(--accent-color);
   font-size: 0.9rem;
   font-weight: 500;
 }
@@ -650,7 +650,7 @@
 .pie-chart {
   width: 100%;
   height: 30px;
-  background: #f5f5f5;
+  background: var(--bg-secondary);
   border-radius: 6px;
   overflow: hidden;
   display: flex;
@@ -698,22 +698,22 @@
 }
 
 .legend-text .profile-weight {
-  color: #888;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   font-weight: 500;
 }
 
 /* Impact Summary */
 .impact-summary {
-  background: #f0f8ff;
-  border: 1px solid #b3e5fc;
+  background: rgba(91, 124, 250, 0.1);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 1.5rem;
 }
 
 .impact-summary h4 {
   margin: 0 0 1rem 0;
-  color: #0277bd;
+  color: var(--primary-color);
   font-size: 1rem;
 }
 
@@ -728,19 +728,19 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 1rem;
-  background: white;
+  background: var(--bg-secondary);
   border-radius: 6px;
-  border-left: 3px solid #2196f3;
+  border-left: 3px solid var(--primary-color);
 }
 
 .impact-item .label {
-  color: #666;
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 0.9rem;
 }
 
 .impact-item .value {
-  color: #0277bd;
+  color: var(--primary-color);
   font-weight: 700;
   font-size: 1.1rem;
 }

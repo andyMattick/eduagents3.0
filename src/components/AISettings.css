@@ -43,13 +43,13 @@
   position: absolute;
   top: 50px;
   right: 0;
-  background: white;
+  background: var(--bg);
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   width: 380px;
   max-width: 90vw;
   animation: slideInDown 0.3s ease-out;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-color);
   overflow: hidden;
 }
 
@@ -118,14 +118,14 @@
   gap: 4px;
   margin-bottom: 12px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   cursor: pointer;
 }
 
 .ai-settings-subtitle {
   font-size: 12px;
   font-weight: 400;
-  color: #999;
+  color: var(--text-secondary);
 }
 
 /* Options Grid */
@@ -137,8 +137,8 @@
 
 .ai-option {
   padding: 16px;
-  background: #f5f5f5;
-  border: 2px solid #e0e0e0;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -147,16 +147,16 @@
 }
 
 .ai-option:hover:not(.disabled) {
-  border-color: #667eea;
-  background: #f0f4ff;
+  border-color: var(--primary-color);
+  background: var(--bg-tertiary);
   transform: translateY(-2px);
 }
 
 .ai-option.selected {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-color: #667eea;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  border-color: var(--primary-color);
   color: white;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px rgba(91, 124, 250, 0.3);
 }
 
 .ai-option.disabled {
@@ -173,11 +173,13 @@
   font-weight: 600;
   font-size: 13px;
   margin-bottom: 4px;
+  color: var(--text);
 }
 
 .ai-option-description {
   font-size: 12px;
   opacity: 0.7;
+  color: var(--text-secondary);
 }
 
 .ai-option.selected .ai-option-description {
@@ -186,7 +188,7 @@
 
 /* Status Badge */
 .ai-settings-status {
-  background: #f9f9f9;
+  background: var(--bg-secondary);
   padding: 12px;
   border-radius: 8px;
 }
@@ -196,8 +198,11 @@
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: white;
-  border-left: 4px solid #667eea;
+  background: var(--bg);
+  border-left: 4px solid var(--primary-color);
+  border-radius: 4px;
+  color: var(--text);
+}
   border-radius: 4px;
   font-size: 13px;
 }
@@ -207,31 +212,31 @@
 }
 
 .badge-text {
-  color: #333;
+  color: var(--text);
 }
 
 .badge-text strong {
-  color: #667eea;
+  color: var(--primary-color);
 }
 
 /* Info Message */
 .ai-settings-info {
-  background: #f0f4ff;
+  background: var(--bg-secondary);
   padding: 12px 16px;
   border-radius: 8px;
-  border-left: 4px solid #667eea;
+  border-left: 4px solid var(--primary-color);
 }
 
 .ai-settings-info p {
   margin: 0;
   font-size: 13px;
-  color: #555;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
 /* Debug Section */
 .ai-settings-debug {
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--border-color);
   padding-top: 16px;
 }
 
@@ -241,83 +246,34 @@
 
 .ai-settings-debug summary {
   font-size: 12px;
-  color: #999;
+  color: var(--text-secondary);
   user-select: none;
   transition: color 0.2s ease;
 }
 
 .ai-settings-debug summary:hover {
-  color: #667eea;
+  color: var(--primary-color);
 }
 
 .debug-content {
   margin-top: 12px;
   padding: 12px;
-  background: #fafafa;
+  background: var(--bg-secondary);
   border-radius: 4px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-color);
   font-size: 11px;
   font-family: 'Courier New', monospace;
 }
 
 .debug-content p {
   margin: 6px 0;
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .debug-content strong {
-  color: #333;
+  color: var(--text);
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
-  .ai-settings-panel {
-    background: #2a2a2a;
-    border-color: #444;
-  }
-
-  .ai-settings-content {
-    color: #e0e0e0;
-  }
-
-  .ai-settings-label {
-    color: #e0e0e0;
-  }
-
-  .ai-option {
-    background: #333;
-    border-color: #444;
-    color: #e0e0e0;
-  }
-
-  .ai-option:hover:not(.disabled) {
-    background: #3a3a4a;
-    border-color: #667eea;
-  }
-
-  .ai-status-badge {
-    background: #333;
-  }
-
-  .ai-settings-info {
-    background: #1a3a2a;
-    color: #b0d0c0;
-  }
-
-  .ai-settings-info p {
-    color: #b0d0c0;
-  }
-
-  .debug-content {
-    background: #1a1a1a;
-    border-color: #333;
-    color: #999;
-  }
-
-  .debug-content strong {
-    color: #ddd;
-  }
-}
 
 /* Responsive */
 @media (max-width: 480px) {
