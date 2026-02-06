@@ -56,7 +56,7 @@ const AISettingsContent = ({
 
     {/* Current Status */}
     <div className="ai-settings-section ai-settings-status">
-      <div className="ai-status-badge">
+      <div className={`ai-status-badge ${currentMode === 'real' && !hasApiKey ? 'warning' : ''}`}>
         {currentMode === 'mock' ? (
           <>
             <span className="badge-icon">🔄</span>
@@ -64,11 +64,18 @@ const AISettingsContent = ({
               Using <strong>Mock AI</strong> (instant, non-factual responses)
             </span>
           </>
-        ) : (
+        ) : hasApiKey ? (
           <>
             <span className="badge-icon">✨</span>
             <span className="badge-text">
-              Using <strong>Real AI</strong> (Gemini API)
+              Using <strong>Real AI</strong> (Gemini API) - <span className="live-indicator">🟢 LIVE</span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="badge-icon">⚠️</span>
+            <span className="badge-text">
+              <strong>Real AI Selected</strong> but <strong>No API Key Configured</strong> - Falling back to Mock
             </span>
           </>
         )}
