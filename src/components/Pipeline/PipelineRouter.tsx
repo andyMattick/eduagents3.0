@@ -3,6 +3,9 @@ import { GoalSelector } from './GoalSelector';
 import { SourceSelector } from './SourceSelector';
 import { FileUploadComponent } from './FileUploadComponent';
 import { IntentCaptureComponent } from './IntentCaptureComponent';
+import { AssignmentIntentForm } from './AssignmentIntentForm';
+import { AssignmentPreview } from './AssignmentPreview';
+import { PipelineShell } from './PipelineShell';
 import './PipelineRouter.css';
 
 /**
@@ -15,7 +18,7 @@ import './PipelineRouter.css';
  * 4. Generation/Analysis
  */
 export function PipelineRouter() {
-  const { goal, hasSourceDocs, sourceFile, assignmentFile, intentData, setSourceFile, setAssignmentFile } =
+  const { goal, sourceFile, assignmentFile, intentData, setSourceFile, setAssignmentFile } =
     useUserFlow();
 
   const currentRoute = useUserFlow().getCurrentRoute();
@@ -78,9 +81,14 @@ export function PipelineRouter() {
     }
   }
 
-  // Step 3: Intent Capture Route
+  // Step 3: Intent Capture Route (no source docs)
   if (currentRoute === '/intent-capture') {
     return <IntentCaptureComponent />;
+  }
+
+  // Step 3: Source-Aware Intent Form (with source docs, create mode)
+  if (currentRoute === '/source-aware-intent') {
+    return <AssignmentIntentForm />;
   }
 
   // Step 3: Assignment Upload (analyze mode, no source docs)
@@ -105,47 +113,54 @@ export function PipelineRouter() {
   }
 
   // Step 4+: Generation/Analysis Routes
-  // These would be connected to your existing PipelineShell components
-  if (currentRoute === '/generate-assignment') {
+  // Show assignment preview after generation (source-aware create flow)
+  if (currentRoute === '/assignment-preview') {
+    return <AssignmentPreview />;
+  }
+
+  // Student creation/profile selection screen
+  if (currentRoute === '/student-creation') {
     return (
       <div className="pipeline-router-container">
         <div className="step-header">
-          <h1>✨ Generating Your Assignment</h1>
-          <p>
-            {hasSourceDocs
-              ? 'Extracting problems from your source materials...'
-              : 'Creating assignment from your learning objectives...'}
-          </p>
+          <h1>👥 Create Student Profiles</h1>
+          <p>Create or select student profiles to analyze how they interact with this assignment</p>
         </div>
+        {/* TODO: Integrate StudentProfileCreation component here */}
+        {/* This will receive generatedAssignment via useUserFlow */}
         <div className="placeholder-message">
-          <p>🔄 Connect PipelineShell here for assignment generation</p>
-          <p className="subtle">Goal: {goal}</p>
-          <p className="subtle">Has Source Docs: {hasSourceDocs ? 'Yes' : 'No'}</p>
-          {intentData && (
-            <>
-              <p className="subtle">Topic: {intentData.topic}</p>
-              <p className="subtle">Grade Level: {intentData.gradeLevel}</p>
-              <p className="subtle">Type: {intentData.assignmentType}</p>
-            </>
-          )}
+          <p>🚧 Student profile creation component coming soon</p>
+          <p>Assignment is ready to be analyzed with student personas</p>
+          <button onClick={() => window.history.back()}>← Back</button>
         </div>
       </div>
+    );
+  }
+  if (currentRoute === '/generate-assignment') {
+    return (
+      <PipelineShell
+        goal={goal === 'create' ? 'create' : undefined}
+        sourceFile={sourceFile || undefined}
+        intentData={intentData || undefined}
+        onFlowComplete={(result) => {
+          // Optional: Handle completion
+          // e.g., navigate to final review, show success message
+          console.log('Assignment generated:', result);
+        }}
+      />
     );
   }
 
   if (currentRoute === '/analyze-assignment') {
     return (
-      <div className="pipeline-router-container">
-        <div className="step-header">
-          <h1>🔍 Analyzing Your Assignment</h1>
-          <p>Testing against student personas and optimizing for clarity and engagement...</p>
-        </div>
-        <div className="placeholder-message">
-          <p>🔄 Connect PipelineShell here for assignment analysis</p>
-          <p className="subtle">Goal: {goal}</p>
-          <p className="subtle">Has Source Docs: {hasSourceDocs ? 'Yes' : 'No'}</p>
-        </div>
-      </div>
+      <PipelineShell
+        goal={'analyze'}
+        sourceFile={sourceFile || undefined}
+        assignmentFile={assignmentFile || undefined}
+        onFlowComplete={(result) => {
+          console.log('Assignment analyzed:', result);
+        }}
+      />
     );
   }
 
