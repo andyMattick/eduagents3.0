@@ -1,13 +1,13 @@
-/* Intent Capture Component */
+/* Assignment Intent Form */
 
-.intent-capture-component {
+.assignment-intent-form {
   width: 100%;
   min-height: 100vh;
   padding: 2rem;
   background: linear-gradient(135deg, var(--color-bg-primary) 0%, var(--color-bg-secondary, #f8f9fa) 100%);
 }
 
-.intent-capture-container {
+.form-container {
   max-width: 700px;
   margin: 0 auto;
   display: flex;
@@ -15,21 +15,30 @@
   gap: 2rem;
 }
 
-.intent-header {
+.form-header {
   text-align: center;
 }
 
-.intent-header h1 {
+.form-header h1 {
   font-size: 2rem;
   font-weight: 700;
   color: var(--color-text-primary);
   margin: 0 0 0.5rem 0;
 }
 
-.intent-header p {
+.form-header p {
   font-size: 1rem;
   color: var(--color-text-secondary);
+  margin: 0 0 0.5rem 0;
+}
+
+.source-hint {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
   margin: 0;
+  font-style: italic;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
 }
 
 /* API Key Warning Banner */
@@ -93,7 +102,7 @@
   background: rgba(0, 0, 0, 0.1);
 }
 
-.intent-form {
+.form-content {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -125,19 +134,30 @@
 }
 
 .textarea-input,
-.select-input {
+.select-input,
+.text-input,
+.number-input {
   padding: 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
   font-family: inherit;
   font-size: 0.95rem;
   color: var(--color-text-primary);
-  background: var(--color-bg-input, #ffffff);
+  background: var(--input-bg, #ffffff);
   transition: all 0.2s ease;
 }
 
+.textarea-input::placeholder,
+.select-input::placeholder,
+.text-input::placeholder,
+.number-input::placeholder {
+  color: var(--placeholder-color, #666666);
+}
+
 .textarea-input:focus,
-.select-input:focus {
+.select-input:focus,
+.text-input:focus,
+.number-input:focus {
   outline: none;
   border-color: var(--color-accent-primary, #007bff);
   box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
@@ -149,83 +169,213 @@
   font-family: inherit;
 }
 
-.field-hint {
+/* Inline fields for number inputs with units */
+.form-field-inline {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.form-field-inline label {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Horizontal Input Group - for side-by-side inputs */
+.input-group {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.input-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.input-block label {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+}
+
+.helper-text {
+  margin: 0;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
-  margin: 0;
+  line-height: 1.4;
   font-style: italic;
 }
 
-/* Bloom Targets Grid */
-.bloom-targets-grid {
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.number-input {
+  width: 100%;
+  max-width: 120px;
+  text-align: center;
+}
+
+.unit-label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Section Strategy Options */
+.section-strategy-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-top: 0.5rem;
 }
 
-.bloom-target-button {
+.strategy-option {
   display: flex;
   align-items: flex-start;
-  gap: 0.8rem;
+  gap: 1rem;
   padding: 1rem;
   border: 2px solid var(--color-border);
   border-radius: 8px;
   background: var(--color-bg-secondary, #f8f9fa);
   cursor: pointer;
   font-family: inherit;
-  font-size: 0.9rem;
   text-align: left;
   transition: all 0.2s ease;
+  color: var(--color-text-primary);
 }
 
-.bloom-target-button:hover {
+.strategy-option:hover {
   border-color: var(--color-accent-primary, #007bff);
   background: var(--color-bg-hover, #f0f7ff);
 }
 
-.bloom-target-button.selected {
-  border-color: var(--color-success, #28a745);
-  background: var(--color-bg-success, #f0fdf4);
+.strategy-option.selected {
+  border: 2px solid #4caf50;
+  background-color: #e6fff2;
+  color: #333333;
+  font-weight: 600;
 }
 
-.bloom-checkbox {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 2px solid var(--color-border);
-  border-radius: 4px;
-  background: white;
+.strategy-option.selected .strategy-content strong {
+  color: #333333;
+}
+
+.strategy-option.selected .strategy-content p {
+  color: #333333;
+}
+
+.strategy-icon {
+  font-size: 1.5rem;
   flex-shrink: 0;
-  margin-top: 0.1rem;
-  font-weight: 700;
-  color: var(--color-success, #28a745);
 }
 
-.bloom-target-button.selected .bloom-checkbox {
-  border-color: var(--color-success, #28a745);
-  background: var(--color-success, #28a745);
-  color: white;
-}
-
-.bloom-label {
+.strategy-content {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.3rem;
   flex: 1;
 }
 
-.bloom-label strong {
+.strategy-content strong {
   color: var(--color-text-primary);
   font-size: 0.95rem;
 }
 
-.bloom-description {
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
+.strategy-content p {
   margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.3;
+}
+
+/* Bloom Spread Note */
+.bloom-spread-note {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(76, 175, 80, 0.08);
+  border-left: 4px solid #4caf50;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+/* Dark Mode for Section Strategy */
+@media (prefers-color-scheme: dark) {
+  .strategy-option {
+    background: #1a1a1a;
+    border-color: #3a3a3a;
+    color: #ffffff;
+  }
+
+  .strategy-option:hover {
+    background: #2a2a2a;
+    border-color: #00bfff;
+  }
+
+  .strategy-option.selected {
+    background: #e6fff2;
+    border-color: #4caf50;
+    color: #333333;
+    font-weight: 600;
+  }
+
+  .strategy-option.selected .strategy-content strong {
+    color: #333333;
+  }
+
+  .strategy-option.selected .strategy-content p {
+    color: #333333;
+  }
+
+  .strategy-content strong {
+    color: #ffffff;
+  }
+
+  .strategy-content p {
+    color: #b0b0b0;
+  }
+
+  .bloom-spread-note {
+    background: rgba(76, 175, 80, 0.12);
+    border-left-color: #4caf50;
+    color: #e0e0e0;
+  }
+}
+
+/* Checkbox Field */
+.form-field-checkbox {
+  flex-direction: row;
+  align-items: center;
+}
+
+.form-field-checkbox label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  font-weight: 500;
+  margin: 0;
+}
+
+.checkbox-input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--color-accent-primary, #007bff);
+}
+
+.checkbox-label {
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
 }
 
 /* Error Container */
@@ -254,6 +404,35 @@
 .error-list p {
   margin: 0;
   font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* Success Container */
+.success-container {
+  display: flex;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+}
+
+.success-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.success-message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.success-message p {
+  margin: 0;
+  font-size: 0.95rem;
   line-height: 1.4;
 }
 
@@ -288,6 +467,12 @@
   background: var(--color-accent-secondary, #0056b3);
 }
 
+.button-primary:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .button-secondary {
   background: var(--color-bg-secondary, #e9ecef);
   color: var(--color-text-primary);
@@ -298,21 +483,32 @@
   background: var(--color-border);
 }
 
+.button-secondary:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 /* Dark Mode */
 @media (prefers-color-scheme: dark) {
-  .intent-capture-component {
+  .assignment-intent-form {
     background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
   }
 
-  .intent-header h1 {
+  .form-header h1 {
     color: #ffffff;
   }
 
-  .intent-header p {
+  .form-header p {
     color: #b0b0b0;
   }
 
-  .intent-form {
+  .source-hint {
+    color: #b0b0b0;
+    border-top-color: #3a3a3a;
+  }
+
+  .form-content {
     background: #2a2a2a;
     border-color: #3a3a3a;
   }
@@ -322,59 +518,44 @@
   }
 
   .textarea-input,
-  .select-input {
+  .select-input,
+  .text-input,
+  .number-input {
     background: #1a1a1a;
     border-color: #3a3a3a;
     color: #ffffff;
   }
 
   .textarea-input:focus,
-  .select-input:focus {
+  .select-input:focus,
+  .text-input:focus,
+  .number-input:focus {
     border-color: #00bfff;
     box-shadow: 0 0 0 3px rgba(0, 191, 255, 0.2);
   }
 
-  .field-hint {
+  .unit-label {
     color: #b0b0b0;
   }
 
-  .bloom-target-button {
-    background: #1a1a1a;
-    border-color: #3a3a3a;
+  .helper-text {
+    color: #999999;
   }
 
-  .bloom-target-button:hover {
-    background: #2a2a2a;
-    border-color: #00bfff;
-  }
-
-  .bloom-target-button.selected {
-    background: #1a2a1a;
-    border-color: #28a745;
-  }
-
-  .bloom-checkbox {
-    background: #0a0a0a;
-    border-color: #3a3a3a;
-  }
-
-  .bloom-target-button.selected .bloom-checkbox {
-    border-color: #28a745;
-    background: #28a745;
-  }
-
-  .bloom-label strong {
+  .checkbox-label {
     color: #ffffff;
-  }
-
-  .bloom-description {
-    color: #b0b0b0;
   }
 
   .error-container {
     background: #3a1f1f;
     color: #ff6b6b;
     border-color: #6b2c2c;
+  }
+
+  .success-container {
+    background: rgba(76, 175, 80, 0.2);
+    color: #81c784;
+    border-color: #4caf50;
   }
 
   .form-actions {
@@ -390,29 +571,70 @@
   .button-secondary:hover {
     background: #2a2a2a;
   }
+
+  .button-secondary:disabled {
+    background: #3a3a3a;
+    opacity: 0.5;
+  }
+
+  .button-primary:disabled {
+    background: #555;
+    opacity: 0.5;
+  }
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .intent-capture-component {
+  .assignment-intent-form {
     padding: 1rem;
   }
 
-  .intent-capture-container {
+  .form-container {
     gap: 1.5rem;
   }
 
-  .intent-form {
+  .form-content {
     padding: 1.5rem;
     gap: 1.2rem;
   }
 
-  .intent-header h1 {
+  .form-header h1 {
     font-size: 1.5rem;
   }
 
-  .bloom-targets-grid {
+  .section-strategy-options {
     grid-template-columns: 1fr;
+  }
+
+  .strategy-option {
+    flex-direction: column;
+  }
+
+  /* Stack input group vertically on mobile */
+  .input-group {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .input-block {
+    gap: 0.5rem;
+  }
+
+  .input-with-unit {
+    width: 100%;
+  }
+
+  .number-input {
+    max-width: 100%;
+  }
+
+  .form-field-inline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-field-inline label {
+    margin-bottom: 0.5rem;
   }
 
   .form-actions {

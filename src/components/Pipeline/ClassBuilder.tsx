@@ -2,6 +2,8 @@ import React from 'react';
 import { ClassDefinition } from '../../types/pipeline';
 import { StudentProfile, ProblemProfile, ClassroomSimulationPayload } from '../../types/classroomProfiles';
 import { generateClassroom } from '../../agents/simulation/generateStudentProfiles';
+import { generateMockFeedback } from '../../agents/simulation/generateMockFeedback';
+import { useUserFlow } from '../../hooks/useUserFlow';
 import { StudentProfileCard } from './StudentProfileCard';
 
 interface ClassBuilderProps {
@@ -23,6 +25,7 @@ export function ClassBuilder({
   isLoading = false,
   problems = [],
 }: ClassBuilderProps) {
+  const { generatedAssignment, setStudentFeedback, setClassDefinition: saveClassDefinition } = useUserFlow();
   const [className, setClassName] = React.useState(classDefinition?.name || 'My Class');
   const [generationMode, setGenerationMode] = React.useState<GenerationMode>('auto');
   const [selectedStudents, setSelectedStudents] = React.useState<StudentProfile[]>([]);
@@ -109,6 +112,25 @@ export function ClassBuilder({
     };
 
     onClassDefinitionChange(updatedClass);
+    
+    // Generate mock feedback for testing the rewriter
+    // Pass the enriched assignment so feedback can reference problem metadata
+    const mockFeedback = generateMockFeedback(
+      studentsToSimulate,
+      generatedAssignment || 'Assignment'
+    );
+    
+    // Store feedback and class definition in useUserFlow state
+    setStudentFeedback(mockFeedback);
+    saveClassDefinition(updatedClass);
+    
+    console.log('🎓 Mock feedback generated for', studentsToSimulate.length, 'students');
+    console.log('📊 Using enriched assignment metadata:', {
+      totalProblems: generatedAssignment?.questionCount,
+      sections: generatedAssignment?.sections.length,
+      bloomDistribution: generatedAssignment?.bloomDistribution,
+    });
+    
     onNext();
   };
 

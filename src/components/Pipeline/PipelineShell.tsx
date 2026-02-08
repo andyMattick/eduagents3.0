@@ -19,8 +19,31 @@ import { StudentSimulations } from './StudentSimulations';
 import { RewriteResults } from './RewriteResults';
 import { Step8FinalReview } from './Step8FinalReview';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
+import { parseUploadedFile } from '../../agents/shared/parseFiles';
 
-export function PipelineShell() {
+// Props for PipelineShell when connected from UserFlow
+interface PipelineShellProps {
+  // Navigation flow data
+  goal?: 'create' | 'analyze';
+  sourceFile?: File;
+  assignmentFile?: File;
+  intentData?: {
+    topic: string;
+    gradeLevel: string;
+    assignmentType: string;
+    bloomTargets: string[];
+  };
+  // Callback for when flow completes
+  onFlowComplete?: (result: any) => void;
+}
+
+export function PipelineShell({
+  goal: propsGoal,
+  sourceFile,
+  assignmentFile,
+  intentData,
+  onFlowComplete,
+}: PipelineShellProps = {}) {
   const {
     step,
     originalText,
@@ -51,10 +74,71 @@ export function PipelineShell() {
   const [documentPreview, setDocumentPreview] = useState<any>(null);
   const [documentStructure, setDocumentStructure] = useState<any>(null);
 
+  // Handle UserFlow data injection
+  useEffect(() => {
+    if (sourceFile) {
+      // Parse source file for assignment generation/analysis
+      handleSourceFileParsing(sourceFile);
+    }
+    if (assignmentFile && propsGoal === 'analyze') {
+      // Parse assignment file for analysis
+      handleAssignmentFileParsing(assignmentFile);
+    }
+    if (intentData) {
+      // Auto-populate metadata from intent data
+      setAssignmentMetadata({
+        gradeLevel: intentData.gradeLevel,
+        subject: intentData.topic,
+        difficulty: 'intermediate',
+      });
+      setAssignmentGradeLevel(intentData.gradeLevel);
+      setAssignmentSubject(intentData.topic);
+      // Auto-advance workflow
+      setWorkflowMode('input');
+    }
+  }, [sourceFile, assignmentFile, intentData, propsGoal]);
+
   // Debug: Log step changes
   useEffect(() => {
     // Monitor step changes
   }, [step, workflowMode, asteroids, error, originalText]);
+
+  /**
+   * Parse source file for assignment generation/analysis
+   */
+  const handleSourceFileParsing = async (file: File) => {
+    try {
+      const content = await parseUploadedFile(file);
+      if (content) {
+        setInput(content);
+        // In create mode with source docs, proceed to analysis
+        if (propsGoal === 'create') {
+          await analyzeTextAndTags(content);
+        }
+      }
+    } catch (err) {
+      console.error('Error parsing source file:', err);
+    }
+  };
+
+  /**
+   * Parse assignment file for analysis
+   */
+  const handleAssignmentFileParsing = async (file: File) => {
+    try {
+      const content = await parseUploadedFile(file);
+      if (content) {
+        setInput(content);
+        // For analyze mode, we need both source and assignment
+        // If we have source file too, we can proceed with analysis
+        if (sourceFile) {
+          await analyzeTextAndTags(content);
+        }
+      }
+    } catch (err) {
+      console.error('Error parsing assignment file:', err);
+    }
+  };
 
   /**
    * Handle Phase 3 goal + source selection
