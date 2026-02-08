@@ -96,40 +96,6 @@ export function SectionBuilder({ onSectionsChange, availableTopics = [] }: Secti
     }
   };
 
-  const validateSection = (index: number): boolean => {
-    const section = sections[index];
-    const sectionErrors: string[] = [];
-
-    if (!section.sectionName.trim()) {
-      sectionErrors.push('Section name is required');
-    }
-
-    if (!section.topic.trim()) {
-      sectionErrors.push('Material covered is required');
-    }
-
-    if (section.questionCount < 1 || section.questionCount > 50) {
-      sectionErrors.push('Question count must be between 1 and 50');
-    }
-
-    if (sectionErrors.length > 0) {
-      setErrors({ ...errors, [index]: sectionErrors });
-      return false;
-    }
-
-    return true;
-  };
-
-  const allSectionsValid = (): boolean => {
-    let isValid = true;
-    sections.forEach((_, index) => {
-      if (!validateSection(index)) {
-        isValid = false;
-      }
-    });
-    return isValid;
-  };
-
   return (
     <div className="section-builder">
       <div className="section-builder-header">
@@ -262,7 +228,7 @@ export function SectionBuilder({ onSectionsChange, availableTopics = [] }: Secti
                   handleSectionChange(
                     index,
                     'questionFormat',
-                    e.target.value as CustomSection['questionFormat']
+                    e.target.value
                   )
                 }
                 className="select-input"

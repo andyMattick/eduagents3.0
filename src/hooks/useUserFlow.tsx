@@ -1,14 +1,25 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import { CustomSection } from '../components/Pipeline/SectionBuilder';
 
 export type UserGoal = 'create' | 'analyze';
 
 export interface GeneratedProblem {
   id: string;
+  sectionId?: string; // optional, if grouped by section
   text: string;
   bloomLevel: 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
   questionFormat: 'multiple-choice' | 'true-false' | 'short-answer' | 'free-response' | 'fill-blank';
-  tips?: string;
   problemType?: 'procedural' | 'conceptual' | 'application' | 'mixed';
+  complexity: 'low' | 'medium' | 'high';
+  novelty: 'low' | 'medium' | 'high';
+  estimatedTimeMinutes: number; // estimated time for this problem
+  hasTip: boolean;
+  tips?: string;
+  sourceReference?: string; // optional: pointer to source doc section
+  rubric?: {
+    criteria: string[];
+    expectations: string;
+  };
 }
 
 export interface GeneratedSection {
@@ -40,7 +51,7 @@ export interface SourceAwareIntentData {
   estimatedTime?: number;
   assessmentType?: 'formative' | 'summative';
   sectionStrategy?: 'manual' | 'ai-generated';
-  customSections?: { type: string; count: number; sectionName?: string; topic?: string; includeTips?: boolean }[];
+  customSections?: CustomSection[];
   skillsAndStandards?: string[];
 }
 
@@ -84,6 +95,22 @@ export interface UserFlowState {
   extractedTags: string[];
   setExtractedTags: (tags: string[]) => void;
 
+  // Classroom Analysis & Simulation Results
+  readyForClassroomAnalysis: boolean;
+  setReadyForClassroomAnalysis: (ready: boolean) => void;
+
+  classDefinition: any;
+  setClassDefinition: (classDefinition: any) => void;
+
+  studentFeedback: any[];
+  setStudentFeedback: (feedback: any[]) => void;
+
+  readyForEditing: boolean;
+  setReadyForEditing: (ready: boolean) => void;
+
+  readyForRewrite: boolean;
+  setReadyForRewrite: (ready: boolean) => void;
+
   // Reset flow
   reset: () => void;
 
@@ -102,6 +129,11 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
   const [sourceAwareIntentData, setSourceAwareIntentData] = useState<SourceAwareIntentData | null>(null);
   const [generatedAssignment, setGeneratedAssignment] = useState<GeneratedAssignment | null>(null);
   const [extractedTags, setExtractedTags] = useState<string[]>([]);
+  const [readyForClassroomAnalysis, setReadyForClassroomAnalysis] = useState(false);
+  const [classDefinition, setClassDefinition] = useState<any>(null);
+  const [studentFeedback, setStudentFeedback] = useState<any[]>([]);
+  const [readyForEditing, setReadyForEditing] = useState(false);
+  const [readyForRewrite, setReadyForRewrite] = useState(false);
 
   const reset = () => {
     setGoal(null);
@@ -112,6 +144,11 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setSourceAwareIntentData(null);
     setGeneratedAssignment(null);
     setExtractedTags([]);
+    setReadyForClassroomAnalysis(false);
+    setClassDefinition(null);
+    setStudentFeedback([]);
+    setReadyForEditing(false);
+    setReadyForRewrite(false);
   };
 
   const getCurrentRoute = (): string => {
@@ -139,7 +176,17 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
         if (!generatedAssignment) {
           return '/generate-assignment';
         }
-        // After generation, show preview
+        // After generation, show preview or classroom analysis
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        // After simulation, allow editing or go to rewrite
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
         return '/assignment-preview';
       } else {
         // Standard intent capture (no source docs)
@@ -182,6 +229,16 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setGeneratedAssignment,
     extractedTags,
     setExtractedTags,
+    readyForClassroomAnalysis,
+    setReadyForClassroomAnalysis,
+    classDefinition,
+    setClassDefinition,
+    studentFeedback,
+    setStudentFeedback,
+    readyForEditing,
+    setReadyForEditing,
+    readyForRewrite,
+    setReadyForRewrite,
     reset,
     getCurrentRoute,
   };

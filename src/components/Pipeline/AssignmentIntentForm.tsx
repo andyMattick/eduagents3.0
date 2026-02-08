@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './AssignmentIntentForm.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection } from '../../hooks/useUserFlow';
+import { enrichAssignmentMetadata } from '../../agents/analysis/enrichAssignmentMetadata';
 import { SectionBuilder, CustomSection } from './SectionBuilder';
+import { hasAPIKeyMismatch } from '../../config/aiConfig';
 
 /**
  * Assignment Intent Form
@@ -34,11 +36,16 @@ function generateAssignmentPreview(
     // Generate single section with all questions
     const problems = Array.from({ length: questionCount }, (_, i) => ({
       id: `q${i + 1}`,
+      sectionId: 'section-0',
       text: `Question ${i + 1}: [Sample question text - would be generated from source material]`,
       bloomLevel: (['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'] as const)[i % 6],
       questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
       tips: i % 3 === 0 ? `Consider the relationship between these concepts.` : undefined,
+      hasTip: i % 3 === 0,
       problemType: (['procedural', 'conceptual', 'application'] as const)[i % 3] as any,
+      complexity: 'medium' as const,
+      novelty: 'medium' as const,
+      estimatedTimeMinutes: 5,
     }));
 
     sections = [
@@ -58,13 +65,19 @@ function generateAssignmentPreview(
         const bloomLevels: ('Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create')[] = [
           'Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'
         ];
+        const hasTip = section.includeTips;
         return {
           id: `q${questionIndex + i + 1}`,
+          sectionId: `section-${sectionIdx}`,
           text: `Question ${questionIndex + i + 1}: [Sample question text - would be generated from source material]`,
           bloomLevel: bloomLevels[i % 6],
-          questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank', 'ai-decide'] as const)[i % 6],
-          tips: section.includeTips ? `Here's a helpful tip for this ${section.problemType} question.` : undefined,
+          questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
+          tips: hasTip ? `Here's a helpful tip for this ${section.problemType} question.` : undefined,
+          hasTip,
           problemType: section.problemType as any,
+          complexity: 'medium' as const,
+          novelty: 'medium' as const,
+          estimatedTimeMinutes: 5,
         };
       });
       questionIndex += section.questionCount;
@@ -78,7 +91,7 @@ function generateAssignmentPreview(
     });
   }
 
-  return {
+  const rawAssignment: GeneratedAssignment = {
     assignmentType,
     title: `${assignmentType}: ${topic}`,
     topic,
@@ -90,10 +103,18 @@ function generateAssignmentPreview(
     organizationMode: sectionStrategy,
     timestamp: new Date().toISOString(),
   };
+
+  // Enrich the assignment with detailed metadata (complexity, novelty, rubrics, etc.)
+  return enrichAssignmentMetadata(rawAssignment);
 }
 
 export function AssignmentIntentForm() {
-  const { setSourceAwareIntentData, setGeneratedAssignment, sourceFile } = useUserFlow();
+  const { setSourceAwareIntentData, setGeneratedAssignment, sourceFile, generatedAssignment } = useUserFlow();
+  
+  console.log('🟢 AssignmentIntentForm rendered', {
+    hasSourceFile: !!sourceFile,
+    hasGeneratedAssignment: !!generatedAssignment,
+  });
 
   const [formData, setFormData] = useState({
     assignmentType: 'Quiz' as 'Test' | 'Quiz' | 'Warm-up' | 'Exit Ticket' | 'Practice Set' | 'Project' | 'Other',
@@ -102,11 +123,26 @@ export function AssignmentIntentForm() {
     estimatedTime: 30,
     assessmentType: 'formative' as 'formative' | 'summative',
     sectionStrategy: 'ai-generated' as 'manual' | 'ai-generated',
-    customSections: [] as { type: string; count: number }[],
+    customSections: [] as CustomSection[],
     skillsAndStandards: '',
   });
 
   const [errors, setErrors] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGenerated, setIsGenerated] = useState(false);
+
+  // Watch for assignment generation and show success state
+  useEffect(() => {
+    console.log('AssignmentIntentForm: useEffect triggered', {
+      generatedAssignment: !!generatedAssignment,
+      isSubmitting,
+    });
+    if (generatedAssignment && isSubmitting) {
+      console.log('✅ Assignment generated! Setting isGenerated to true');
+      setIsSubmitting(false);
+      setIsGenerated(true);
+    }
+  }, [generatedAssignment, isSubmitting]);
 
   const assignmentTypes = ['Test', 'Quiz', 'Warm-up', 'Exit Ticket', 'Practice Set', 'Project', 'Other'] as const;
 
@@ -160,6 +196,7 @@ export function AssignmentIntentForm() {
   };
 
   const handleSubmit = () => {
+    console.log('🔵 handleSubmit called');
     const newErrors: string[] = [];
 
     if (formData.assignmentType === 'Other' && !formData.otherAssignmentType.trim()) {
@@ -170,12 +207,26 @@ export function AssignmentIntentForm() {
       newErrors.push("Please add at least one section type");
     }
 
+    // Check for API key mismatch
+    if (hasAPIKeyMismatch()) {
+      console.warn('⚠️  API Key mismatch detected: Real AI selected but no API key configured');
+      newErrors.push("⚠️ Real AI is selected but no API key is configured. Will use Mock AI instead.");
+    }
+
     if (newErrors.length > 0) {
+      console.log('❌ Form errors:', newErrors);
       setErrors(newErrors);
-      return;
+      // If only API key warning, still allow submission with mock data
+      if (newErrors.length === 1 && newErrors[0].includes('Real AI')) {
+        console.log('Proceeding with mock data despite API key warning');
+      } else {
+        return;
+      }
     }
 
     setErrors([]);
+    setIsSubmitting(true);
+    console.log('⏳ isSubmitting set to true');
 
     // Build the intent data object
     const intentData = {
@@ -196,6 +247,7 @@ export function AssignmentIntentForm() {
       }),
     };
 
+    console.log('📝 Setting sourceAwareIntentData:', intentData);
     setSourceAwareIntentData(intentData);
 
     // Generate assignment preview
@@ -208,6 +260,8 @@ export function AssignmentIntentForm() {
       'Course Material' // In real implementation, would extract from source file
     );
 
+    console.log('📋 Generated assignment:', generatedAssignment);
+    console.log('🚀 Calling setGeneratedAssignment');
     setGeneratedAssignment(generatedAssignment);
   };
 
@@ -220,6 +274,24 @@ export function AssignmentIntentForm() {
           <p>Thanks for sharing your materials. Based on your notes, what kind of assignment would you like to create?</p>
           {sourceFile && <p className="source-hint">Using: <strong>{sourceFile.name}</strong></p>}
         </div>
+
+        {/* API Key Warning Banner */}
+        {hasAPIKeyMismatch() && (
+          <div className="api-key-warning-banner">
+            <div className="warning-icon">⚠️</div>
+            <div className="warning-content">
+              <strong>Real AI is selected but API key not configured.</strong>
+              <p>Using <strong>Mock AI</strong> instead. To use real AI, add your Google API key in settings.</p>
+            </div>
+            <button 
+              className="warning-dismiss"
+              onClick={() => {/* can navigate to settings */}}
+              title="Go to AI Settings"
+            >
+              ⚙️
+            </button>
+          </div>
+        )}
 
         <div className="form-content">
           {/* Assignment Type */}
@@ -251,41 +323,44 @@ export function AssignmentIntentForm() {
             )}
           </div>
 
-          {/* Question Count */}
-          <div className="form-field form-field-inline">
-            <label htmlFor="questionCount">
-              <span className="label-text">How many questions?</span>
-            </label>
-            <div className="input-with-unit">
-              <input
-                id="questionCount"
-                type="number"
-                min="1"
-                max="100"
-                value={formData.questionCount}
-                onChange={handleQuestionCountChange}
-                className="number-input"
-              />
-              <span className="unit-label">questions</span>
+          {/* Question Count & Time Estimate - Horizontal Group */}
+          <div className="input-group">
+            <div className="input-block">
+              <label htmlFor="questionCount">
+                <span className="label-text">Number of Questions</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  id="questionCount"
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={formData.questionCount}
+                  onChange={handleQuestionCountChange}
+                  className="number-input"
+                />
+                <span className="unit-label">questions</span>
+              </div>
+              <p className="helper-text">Start with 10–15 for a typical quiz</p>
             </div>
-          </div>
 
-          {/* Time Estimate */}
-          <div className="form-field form-field-inline">
-            <label htmlFor="estimatedTime">
-              <span className="label-text">How long should it take?</span>
-            </label>
-            <div className="input-with-unit">
-              <input
-                id="estimatedTime"
-                type="number"
-                min="5"
-                max="480"
-                value={formData.estimatedTime}
-                onChange={handleTimeChange}
-                className="number-input"
-              />
-              <span className="unit-label">minutes</span>
+            <div className="input-block">
+              <label htmlFor="estimatedTime">
+                <span className="label-text">Estimated Time</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  id="estimatedTime"
+                  type="number"
+                  min="5"
+                  max="480"
+                  value={formData.estimatedTime}
+                  onChange={handleTimeChange}
+                  className="number-input"
+                />
+                <span className="unit-label">minutes</span>
+              </div>
+              <p className="helper-text">Most questions take 1–3 minutes each</p>
             </div>
           </div>
 
@@ -376,14 +451,46 @@ export function AssignmentIntentForm() {
             </div>
           )}
 
+          {/* Success Message */}
+          {isGenerated && (
+            <div className="success-container">
+              <div className="success-icon">✅</div>
+              <div className="success-message">
+                <p><strong>Assignment generated successfully!</strong></p>
+                <p>Your {formData.assignmentType} is ready with {formData.questionCount} questions.</p>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="form-actions">
-            <button className="button-secondary" onClick={() => window.history.back()}>
+            <button 
+              className="button-secondary" 
+              onClick={() => window.history.back()}
+              disabled={isSubmitting}
+            >
               ← Back
             </button>
-            <button className="button-primary" onClick={handleSubmit}>
-              Generate Assignment →
-            </button>
+            {!isGenerated ? (
+              <button 
+                className="button-primary" 
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? '⏳ Generating...' : 'Generate Assignment →'}
+              </button>
+            ) : (
+              <button 
+                className="button-primary" 
+                onClick={() => {
+                  // State has been updated, router will automatically show preview on next render
+                  // Trigger a small visual feedback by scrolling to top
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                View Preview & Analyze →
+              </button>
+            )}
           </div>
         </div>
       </div>

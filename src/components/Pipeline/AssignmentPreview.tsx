@@ -1,4 +1,4 @@
-import { useUserFlow, GeneratedAssignment } from '../../hooks/useUserFlow';
+import { useUserFlow } from '../../hooks/useUserFlow';
 import './AssignmentPreview.css';
 import { useState } from 'react';
 
@@ -8,7 +8,7 @@ import { useState } from 'react';
  * before finalizing and routing to student analysis
  */
 export function AssignmentPreview() {
-  const { generatedAssignment, sourceFile } = useUserFlow();
+  const { generatedAssignment, sourceFile, setReadyForClassroomAnalysis } = useUserFlow();
   const [showBloomMetrics, setShowBloomMetrics] = useState(false);
   const [showPayloadModal, setShowPayloadModal] = useState(false);
 
@@ -116,7 +116,7 @@ export function AssignmentPreview() {
             {showBloomMetrics ? '▼' : '▶'} Bloom's Taxonomy Distribution
           </button>
 
-          {bloomMetrics && (
+          {showBloomMetrics && (
             <div className="bloom-metrics">
               <div className="bloom-chart">
                 {bloomEntries.map(([level, count]) => (
@@ -198,10 +198,7 @@ export function AssignmentPreview() {
             <button className="button-secondary" onClick={() => window.print()}>
               🖨️ Print/Export
             </button>
-            <button className="button-primary" onClick={() => {
-              // Route to student creation/analysis screen with assignment data
-              window.location.hash = '#/student-creation';
-            }}>
+            <button className="button-primary" onClick={() => setReadyForClassroomAnalysis(true)}>
               Analyze with Students →
             </button>
           </div>

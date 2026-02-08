@@ -54,6 +54,16 @@ export function getCurrentAIMode(): AIMode {
 }
 
 /**
+ * Check if user has selected Real AI but the API key is missing
+ * Returns true if there's a mismatch (warning needed)
+ */
+export function hasAPIKeyMismatch(): boolean {
+  const mode = getCurrentAIMode();
+  const config = getAIConfig();
+  return mode === 'real' && !config.googleApiKey;
+}
+
+/**
  * Is real AI enabled?
  */
 export function useRealAI(): boolean {

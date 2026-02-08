@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './IntentCaptureComponent.css';
 import { useUserFlow } from '../../hooks/useUserFlow';
+import { hasAPIKeyMismatch } from '../../config/aiConfig';
 
 interface IntentData {
   topic: string;
@@ -103,6 +104,24 @@ export function IntentCaptureComponent() {
           <h1>📋 Describe Your Assignment</h1>
           <p>Tell us about the learning objectives and structure of your assignment</p>
         </div>
+
+        {/* API Key Warning Banner */}
+        {hasAPIKeyMismatch() && (
+          <div className="api-key-warning-banner">
+            <div className="warning-icon">⚠️</div>
+            <div className="warning-content">
+              <strong>Real AI is selected but API key not configured.</strong>
+              <p>Using <strong>Mock AI</strong> instead. To use real AI, add your Google API key in settings.</p>
+            </div>
+            <button 
+              className="warning-dismiss"
+              onClick={() => {/* can navigate to settings */}}
+              title="Go to AI Settings"
+            >
+              ⚙️
+            </button>
+          </div>
+        )}
 
         <div className="intent-form">
           {/* Learning Objectives / Topic */}

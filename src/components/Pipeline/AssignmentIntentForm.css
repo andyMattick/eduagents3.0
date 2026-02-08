@@ -41,6 +41,67 @@
   border-top: 1px solid var(--color-border);
 }
 
+/* API Key Warning Banner */
+.api-key-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffe8a0 100%);
+  border: 1.5px solid #ffc107;
+  border-radius: 8px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.api-key-warning-banner .warning-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.api-key-warning-banner .warning-content {
+  flex: 1;
+}
+
+.api-key-warning-banner .warning-content strong {
+  color: #856404;
+  display: block;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.api-key-warning-banner .warning-content p {
+  margin: 0;
+  color: #87683d;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.api-key-warning-banner .warning-dismiss {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.api-key-warning-banner .warning-dismiss:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
 .form-content {
   display: flex;
   flex-direction: column;
@@ -120,6 +181,35 @@
   margin-bottom: 0;
 }
 
+/* Horizontal Input Group - for side-by-side inputs */
+.input-group {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.input-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.input-block label {
+  display: block;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: 0.95rem;
+}
+
+.helper-text {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  font-style: italic;
+}
+
 .input-with-unit {
   display: flex;
   align-items: center;
@@ -128,7 +218,8 @@
 }
 
 .number-input {
-  width: 80px;
+  width: 100%;
+  max-width: 120px;
   text-align: center;
 }
 
@@ -316,6 +407,35 @@
   line-height: 1.4;
 }
 
+/* Success Container */
+.success-container {
+  display: flex;
+  gap: 0.8rem;
+  padding: 1rem;
+  background: rgba(76, 175, 80, 0.1);
+  color: #2e7d32;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+}
+
+.success-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.success-message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+}
+
+.success-message p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
 /* Form Actions */
 .form-actions {
   display: flex;
@@ -347,6 +467,12 @@
   background: var(--color-accent-secondary, #0056b3);
 }
 
+.button-primary:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .button-secondary {
   background: var(--color-bg-secondary, #e9ecef);
   color: var(--color-text-primary);
@@ -355,6 +481,12 @@
 
 .button-secondary:hover {
   background: var(--color-border);
+}
+
+.button-secondary:disabled {
+  background: #ddd;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* Dark Mode */
@@ -406,6 +538,10 @@
     color: #b0b0b0;
   }
 
+  .helper-text {
+    color: #999999;
+  }
+
   .checkbox-label {
     color: #ffffff;
   }
@@ -414,6 +550,12 @@
     background: #3a1f1f;
     color: #ff6b6b;
     border-color: #6b2c2c;
+  }
+
+  .success-container {
+    background: rgba(76, 175, 80, 0.2);
+    color: #81c784;
+    border-color: #4caf50;
   }
 
   .form-actions {
@@ -428,6 +570,16 @@
 
   .button-secondary:hover {
     background: #2a2a2a;
+  }
+
+  .button-secondary:disabled {
+    background: #3a3a3a;
+    opacity: 0.5;
+  }
+
+  .button-primary:disabled {
+    background: #555;
+    opacity: 0.5;
   }
 }
 
@@ -458,13 +610,14 @@
     flex-direction: column;
   }
 
-  .form-field-inline {
+  /* Stack input group vertically on mobile */
+  .input-group {
     flex-direction: column;
-    align-items: flex-start;
+    gap: 1.5rem;
   }
 
-  .form-field-inline label {
-    margin-bottom: 0.5rem;
+  .input-block {
+    gap: 0.5rem;
   }
 
   .input-with-unit {
@@ -472,8 +625,16 @@
   }
 
   .number-input {
-    flex: 1;
-    width: 100%;
+    max-width: 100%;
+  }
+
+  .form-field-inline {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-field-inline label {
+    margin-bottom: 0.5rem;
   }
 
   .form-actions {
