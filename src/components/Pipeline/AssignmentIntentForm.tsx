@@ -3,7 +3,6 @@ import './AssignmentIntentForm.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection } from '../../hooks/useUserFlow';
 import { enrichAssignmentMetadata } from '../../agents/analysis/enrichAssignmentMetadata';
 import { SectionBuilder, CustomSection } from './SectionBuilder';
-import { hasAPIKeyMismatch } from '../../config/aiConfig';
 
 /**
  * Assignment Intent Form
@@ -207,21 +206,10 @@ export function AssignmentIntentForm() {
       newErrors.push("Please add at least one section type");
     }
 
-    // Check for API key mismatch
-    if (hasAPIKeyMismatch()) {
-      console.warn('⚠️  API Key mismatch detected: Real AI selected but no API key configured');
-      newErrors.push("⚠️ Real AI is selected but no API key is configured. Will use Mock AI instead.");
-    }
-
     if (newErrors.length > 0) {
       console.log('❌ Form errors:', newErrors);
       setErrors(newErrors);
-      // If only API key warning, still allow submission with mock data
-      if (newErrors.length === 1 && newErrors[0].includes('Real AI')) {
-        console.log('Proceeding with mock data despite API key warning');
-      } else {
-        return;
-      }
+      return;
     }
 
     setErrors([]);
@@ -274,24 +262,6 @@ export function AssignmentIntentForm() {
           <p>Thanks for sharing your materials. Based on your notes, what kind of assignment would you like to create?</p>
           {sourceFile && <p className="source-hint">Using: <strong>{sourceFile.name}</strong></p>}
         </div>
-
-        {/* API Key Warning Banner */}
-        {hasAPIKeyMismatch() && (
-          <div className="api-key-warning-banner">
-            <div className="warning-icon">⚠️</div>
-            <div className="warning-content">
-              <strong>Real AI is selected but API key not configured.</strong>
-              <p>Using <strong>Mock AI</strong> instead. To use real AI, add your Google API key in settings.</p>
-            </div>
-            <button 
-              className="warning-dismiss"
-              onClick={() => {/* can navigate to settings */}}
-              title="Go to AI Settings"
-            >
-              ⚙️
-            </button>
-          </div>
-        )}
 
         <div className="form-content">
           {/* Assignment Type */}
