@@ -80,8 +80,7 @@ export const exportToJSON = (
  * Generate a PDF export using html2canvas
  */
 export const exportToPDF = async (
-  htmlContent: string,
-  title: string
+  htmlContent: string
 ): Promise<string | null> => {
   try {
     // Create a temporary div with the content
@@ -285,4 +284,62 @@ export const generateHTMLPreview = (
     </body>
     </html>
   `;
+};
+
+/**
+ * Export document preview modal content as PDF
+ */
+export const exportDocumentPreviewPDF = async (
+  modalElementId: string,
+  filename: string
+): Promise<boolean> => {
+  try {
+    const modalElement = document.getElementById(modalElementId);
+    if (!modalElement) {
+      console.error('Modal element not found');
+      return false;
+    }
+
+    // Convert element to canvas
+    const canvas = await html2canvas(modalElement, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      logging: false,
+    });
+
+    // Create PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    // Calculate dimensions to fit page
+    const imgWidth = pageWidth - 20;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    let heightLeft = imgHeight;
+    let position = 10;
+
+    pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    // Download the PDF
+    pdf.save(filename);
+    return true;
+  } catch (error) {
+    console.error('Document preview PDF export failed:', error);
+    return false;
+  }
 };

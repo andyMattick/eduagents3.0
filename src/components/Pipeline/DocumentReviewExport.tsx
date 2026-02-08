@@ -10,6 +10,7 @@ export interface AsteroidProblem {
   novelty?: number;
   tips?: string;
   multipart?: boolean;
+  length?: number; // word count or estimated number of steps
 }
 
 export interface AssignmentContent {
@@ -95,7 +96,7 @@ export function DocumentReviewExport({
             assignment={assignment}
             includeMetadata={displayMetadata}
             includeTips={displayTips}
-            includeAnalytics={displayAnalytics && analysisData}
+            includeAnalytics={displayAnalytics}
             analyticsData={analysisData}
           />
         </div>
@@ -168,6 +169,11 @@ export function DocumentReviewExport({
                         {problem.novelty !== undefined && (
                           <span className="metadata-badge novelty">
                             ✨ Novelty: {(problem.novelty * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {problem.length !== undefined && (
+                          <span className="metadata-badge length">
+                            📏 {problem.length} words
                           </span>
                         )}
                       </div>

@@ -56,16 +56,18 @@ export function AssignmentEditor({
 
   const handleAddProblem = (sectionIdx: number) => {
     const newSections = [...sections];
+    const problemContent = 'New question - edit to add content';
     const newProblem: GeneratedProblem = {
       id: `q${Date.now()}`,
       sectionId: `section-${sectionIdx}`,
-      text: 'New question - edit to add content',
-      bloomLevel: 'Understand',
+      problemText: problemContent,
+      bloomLevel: 2,
       questionFormat: 'short-answer',
       problemType: 'mixed',
       complexity: 'medium',
       novelty: 'medium',
-      estimatedTimeMinutes: 5,
+      estimatedTime: 5,
+      problemLength: problemContent.trim().split(/\s+/).length,
       hasTip: false,
     };
     newSections[sectionIdx].problems.push(newProblem);
@@ -132,10 +134,10 @@ export function AssignmentEditor({
                 />
                 <input
                   type="text"
-                  value={section.topic}
-                  onChange={(e) => handleSectionChange(sectionIdx, 'topic', e.target.value)}
+                  value={section.instructions}
+                  onChange={(e) => handleSectionChange(sectionIdx, 'instructions', e.target.value)}
                   className="section-topic-input"
-                  placeholder="Topic"
+                  placeholder="Instructions"
                 />
               </div>
               <div className="section-meta">
@@ -162,8 +164,8 @@ export function AssignmentEditor({
                       <div className="problem-header">
                         <span className="problem-number">Q{problemIdx + 1}</span>
                         {hasFeedback && <span className="feedback-badge">⚠️ Feedback</span>}
-                        <span className="bloom-pill" data-bloom={problem.bloomLevel.toLowerCase()}>
-                          {problem.bloomLevel}
+                        <span className="bloom-pill" data-bloom={String(problem.bloomLevel)}>
+                          📚 Level {problem.bloomLevel}
                         </span>
                         <span className="complexity-pill">
                           {problem.complexity.charAt(0).toUpperCase() + problem.complexity.slice(1)}
@@ -175,9 +177,9 @@ export function AssignmentEditor({
                           <div className="editor-field">
                             <label>Question Text</label>
                             <textarea
-                              value={problem.text}
+                              value={problem.problemText}
                               onChange={(e) =>
-                                handleProblemChange(sectionIdx, problemIdx, 'text', e.target.value)
+                                handleProblemChange(sectionIdx, problemIdx, 'problemText', e.target.value)
                               }
                               className="text-editor"
                             />
@@ -269,12 +271,12 @@ export function AssignmentEditor({
                               <label>Est. Time (min)</label>
                               <input
                                 type="number"
-                                value={problem.estimatedTimeMinutes}
+                                value={problem.estimatedTime}
                                 onChange={(e) =>
                                   handleProblemChange(
                                     sectionIdx,
                                     problemIdx,
-                                    'estimatedTimeMinutes',
+                                    'estimatedTime',
                                     parseInt(e.target.value)
                                   )
                                 }
@@ -286,9 +288,9 @@ export function AssignmentEditor({
                           <div className="editor-field">
                             <label>Tip/Hint</label>
                             <textarea
-                              value={problem.tips || ''}
+                              value={problem.tipText || ''}
                               onChange={(e) =>
-                                handleProblemChange(sectionIdx, problemIdx, 'tips', e.target.value)
+                                handleProblemChange(sectionIdx, problemIdx, 'tipText', e.target.value)
                               }
                               placeholder="Optional hint or guidance for students"
                               className="text-editor small"

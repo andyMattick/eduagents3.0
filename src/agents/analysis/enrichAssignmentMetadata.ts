@@ -27,17 +27,11 @@ function enrichProblem(
   problemIdx: number,
   assignment: GeneratedAssignment
 ): GeneratedProblem {
-  // Determine complexity based on Bloom level
-  const complexityByBloom: Record<string, 'low' | 'medium' | 'high'> = {
-    'Remember': 'low',
-    'Understand': 'low',
-    'Apply': 'medium',
-    'Analyze': 'medium',
-    'Evaluate': 'high',
-    'Create': 'high',
-  };
-  
-  const complexity = complexityByBloom[problem.bloomLevel] || 'medium';
+  // Determine complexity based on Bloom level (1=low, 6=high)
+  const complexity: 'low' | 'medium' | 'high' = 
+    problem.bloomLevel <= 2 ? 'low' :
+    problem.bloomLevel <= 4 ? 'medium' :
+    'high';
   
   // Determine novelty based on problem type variety
   // If this problem type appears early and infrequently, it's more novel
@@ -48,15 +42,28 @@ function enrichProblem(
     'medium';
   
   // Estimate time based on complexity and question format
-  const baseTime = estimateBaseTime(problem.questionFormat);
+  const baseTime = estimateBaseTime(problem.problemType || 'multiple-choice');
   const complexityMultiplier = complexity === 'low' ? 1 : complexity === 'medium' ? 1.5 : 2;
-  const estimatedTimeMinutes = baseTime * complexityMultiplier;
+  const estimatedTime = baseTime * complexityMultiplier;
   
   // Determine if problem has a tip
-  const hasTip = !!problem.tips;
+  const hasTip = !!problem.tipText;
+  
+  // Convert numeric Bloom level to string for rubric generation
+  const bloomLevelToString = (level: number): string => {
+    const map: Record<number, string> = {
+      1: 'Remember',
+      2: 'Understand',
+      3: 'Apply',
+      4: 'Analyze',
+      5: 'Evaluate',
+      6: 'Create',
+    };
+    return map[level] || 'Understand';
+  };
   
   // Generate rubric based on Bloom level and problem type
-  const rubric = generateRubric(problem.bloomLevel, problem.problemType || 'mixed');
+  const rubric = generateRubric(bloomLevelToString(problem.bloomLevel), problem.problemType || 'mixed');
   
   // Generate source reference (would come from actual source doc in real impl)
   const sourceReference = `Section ${sectionIdx + 1}, Problem ${problemIdx + 1}`;
@@ -66,7 +73,7 @@ function enrichProblem(
     sectionId: `section-${sectionIdx}`,
     complexity,
     novelty,
-    estimatedTimeMinutes,
+    estimatedTime,
     hasTip,
     sourceReference,
     rubric,

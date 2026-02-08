@@ -212,6 +212,11 @@
   color: #e65100;
 }
 
+.metadata-badge.length {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
 /* Pagination */
 .pagination-controls {
   text-align: center;
