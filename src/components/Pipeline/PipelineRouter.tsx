@@ -3,6 +3,7 @@ import { GoalSelector } from './GoalSelector';
 import { SourceSelector } from './SourceSelector';
 import { FileUploadComponent } from './FileUploadComponent';
 import { IntentCaptureComponent } from './IntentCaptureComponent';
+import { AssignmentAnalysisComponent } from './AssignmentAnalysisComponent';
 import { AssignmentIntentForm } from './AssignmentIntentForm';
 import { AssignmentPreview } from './AssignmentPreview';
 import { ClassBuilder } from './ClassBuilder';
@@ -134,7 +135,12 @@ export function PipelineRouter() {
     );
   }
 
-  // Step 4+: Generation/Analysis Routes
+  // Step 4: Assignment Analysis (analyze mode - both with or without source docs)
+  if (currentRoute === '/assignment-analysis') {
+    return <AssignmentAnalysisComponent />;
+  }
+
+  // Step 5+: Generation/Analysis Routes
   // Show assignment preview after generation (source-aware create flow)
   if (currentRoute === '/assignment-preview') {
     return <AssignmentPreview />;
@@ -329,18 +335,7 @@ export function PipelineRouter() {
     );
   }
 
-  if (currentRoute === '/analyze-assignment') {
-    return (
-      <PipelineShell
-        goal={'analyze'}
-        sourceFile={sourceFile || undefined}
-        assignmentFile={assignmentFile || undefined}
-        onFlowComplete={(result) => {
-          console.log('Assignment analyzed:', result);
-        }}
-      />
-    );
-  }
+  // This route is removed - analyze now uses the new /assignment-analysis component
 
   // Fallback
   return (

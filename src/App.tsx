@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { PipelineShell } from './components/Pipeline/PipelineShell';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
 import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
 import { NotepadProvider } from './hooks/useNotepad';
@@ -8,11 +7,9 @@ import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
 import './App.css';
 
 type AppTab = 'pipeline' | 'notepad';
-type PipelineMode = 'router' | 'shell';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
-  const [pipelineMode, setPipelineMode] = useState<PipelineMode>('router');
   const { reset } = useUserFlow();
 
   const handleResetFlow = () => {
@@ -41,26 +38,15 @@ function AppContent() {
             </button>
           </div>
           {activeTab === 'pipeline' && (
-            <div className="app-header-controls">
-              <select
-                value={pipelineMode}
-                onChange={e => setPipelineMode(e.target.value as PipelineMode)}
-                className="mode-selector"
-              >
-                <option value="router">New Navigation Flow</option>
-                <option value="shell">Classic Pipeline</option>
-              </select>
-              <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
-                🔄 Reset
-              </button>
-            </div>
+            <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
+              🔄 Reset
+            </button>
           )}
         </div>
       </div>
 
       <div className="app-content">
-        {activeTab === 'pipeline' &&
-          (pipelineMode === 'router' ? <PipelineRouter /> : <PipelineShell />)}
+        {activeTab === 'pipeline' && <PipelineRouter />}
         {activeTab === 'notepad' && <TeacherNotepad />}
       </div>
     </div>

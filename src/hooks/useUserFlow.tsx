@@ -209,9 +209,9 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
         if (!sourceAwareIntentData) {
           return '/source-aware-intent';
         }
-        // After intent capture, show assignment preview
+        // After intent capture, generate assignment (stays on /source-aware-intent until generated)
         if (!generatedAssignment) {
-          return '/generate-assignment';
+          return '/source-aware-intent';
         }
         // After generation, show preview or classroom analysis
         if (readyForClassroomAnalysis && !studentFeedback.length) {
@@ -230,19 +230,64 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
         if (!intentData) {
           return '/intent-capture';
         }
-        return '/generate-assignment';
+        // After intent capture, generate assignment (stays on /intent-capture until generated)
+        if (!generatedAssignment) {
+          return '/intent-capture';
+        }
+        // After generation, follow same flow as source-based creation
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       }
     } else if (goal === 'analyze') {
+      // Analyze existing assignment they authored
       if (hasSourceDocs) {
+        // They have reference material to help analyze
         if (!sourceFile || !assignmentFile) {
           return '/source-upload';
         }
-        return '/analyze-assignment';
+        // Both files uploaded, now analyze and generate
+        if (!generatedAssignment) {
+          return '/assignment-analysis';
+        }
+        // After generation, show preview
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       } else {
+        // Just the assignment to analyze, no reference material
         if (!assignmentFile) {
           return '/assignment-upload';
         }
-        return '/analyze-assignment';
+        // Assignment uploaded, now analyze and generate
+        if (!generatedAssignment) {
+          return '/assignment-analysis';
+        }
+        // After generation, show preview
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       }
     }
 
