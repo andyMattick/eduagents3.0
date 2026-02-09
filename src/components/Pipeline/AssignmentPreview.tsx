@@ -1,6 +1,7 @@
 import { useUserFlow } from '../../hooks/useUserFlow';
 import './AssignmentPreview.css';
 import { useState } from 'react';
+import { exportDocumentPreviewPDF } from '../../utils/exportUtils';
 
 /**
  * Assignment Preview Component
@@ -8,9 +9,10 @@ import { useState } from 'react';
  * before finalizing and routing to student analysis
  */
 export function AssignmentPreview() {
-  const { generatedAssignment, sourceFile, setReadyForClassroomAnalysis } = useUserFlow();
+  const { generatedAssignment, sourceFile, setReadyForClassroomAnalysis, saveAssignmentVersion, assignmentVersions } = useUserFlow();
   const [showBloomMetrics, setShowBloomMetrics] = useState(false);
   const [showPayloadModal, setShowPayloadModal] = useState(false);
+  const [showDocumentPreview, setShowDocumentPreview] = useState(false);
 
   if (!generatedAssignment) {
     return (
@@ -29,7 +31,10 @@ export function AssignmentPreview() {
         {/* Header */}
         <div className="preview-header">
           <div className="header-title">
-            <h1>{generatedAssignment.title}</h1>
+            <div className="title-with-version">
+              <h1>{generatedAssignment.title}</h1>
+              <span className="version-badge">Version 1 (Pre-Analysis)</span>
+            </div>
             <p className="subtitle">{generatedAssignment.topic}</p>
           </div>
           <div className="header-meta">
@@ -68,7 +73,7 @@ export function AssignmentPreview() {
               <div className="section-header">
                 <h2 className="section-title">{section.sectionName}</h2>
                 <div className="section-meta">
-                  <span className="section-info">{section.topic}</span>
+                  <span className="section-info">{section.instructions}</span>
                   <span className="section-info">
                     {section.problems.length} {section.problems.length === 1 ? 'question' : 'questions'}
                   </span>
@@ -83,20 +88,25 @@ export function AssignmentPreview() {
                     </div>
 
                     <div className="problem-content">
-                      <p className="problem-text">{problem.text}</p>
+                      <p className="problem-text">{problem.problemText}</p>
 
-                      {section.includeTips && problem.tips && (
+                      {section.includeTips && problem.tipText && (
                         <div className="problem-tips">
                           <span className="tips-label">💡 Tip:</span>
-                          <p>{problem.tips}</p>
+                          <p>{problem.tipText}</p>
                         </div>
                       )}
 
                       <div className="problem-metadata">
-                        <span className="bloom-badge" data-level={problem.bloomLevel.toLowerCase()}>
-                          {problem.bloomLevel}
+                        <span className="bloom-badge" data-level={String(problem.bloomLevel).toLowerCase()}>
+                          📚 Level {problem.bloomLevel}
                         </span>
                         <span className="format-badge">{problem.questionFormat.replace('-', ' ')}</span>
+                        {problem.problemLength && (
+                          <span className="length-badge" title="Word count">
+                            📏 {problem.problemLength} words
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -195,15 +205,189 @@ export function AssignmentPreview() {
             ← Back to Form
           </button>
           <div className="button-group">
-            <button className="button-secondary" onClick={() => window.print()}>
-              🖨️ Print/Export
+            <button className="button-secondary" onClick={() => setShowDocumentPreview(true)}>
+              👁️ View Document Preview
             </button>
-            <button className="button-primary" onClick={() => setReadyForClassroomAnalysis(true)}>
+            <button 
+              className="button-primary" 
+              onClick={() => {
+                // Save this as Version 1 (Pre-Analysis)
+                if (generatedAssignment && assignmentVersions.length === 0) {
+                  saveAssignmentVersion(
+                    'Pre-Analysis (V1)',
+                    'Original AI-generated assignment before student analysis',
+                    generatedAssignment
+                  );
+                }
+                setReadyForClassroomAnalysis(true);
+              }}
+            >
               Analyze with Students →
             </button>
           </div>
         </div>
       </div>
+
+      {/* Document Preview Modal */}
+      {showDocumentPreview && (
+        <div className="document-preview-modal-overlay">
+          <div className="document-preview-modal">
+            <div className="modal-header">
+              <h2>{generatedAssignment.title}</h2>
+              <button
+                className="modal-close"
+                onClick={() => setShowDocumentPreview(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-content" id="document-preview-content">
+              {/* Clean Quiz Header */}
+              <div className="modal-quiz-header">
+                <p className="modal-quiz-title">{generatedAssignment.assignmentType || 'Assessment'}: {generatedAssignment.topic}</p>
+                <div className="modal-quiz-info">
+                  <span>Time: {generatedAssignment.estimatedTime} minutes</span>
+                  <span>•</span>
+                  <span>Questions: {generatedAssignment.questionCount}</span>
+                  {generatedAssignment.assessmentType && (
+                    <>
+                      <span>•</span>
+                      <span>{generatedAssignment.assessmentType === 'formative' ? 'Formative' : 'Summative'} Assessment</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Document Title */}
+              <div className="modal-document-header">
+                <h1>{generatedAssignment.title}</h1>
+                {sourceFile && (
+                  <p className="modal-assignment-instruction">
+                    Answer all questions. Show your work where applicable.
+                  </p>
+                )}
+              </div>
+
+              {/* Sections and Problems */}
+              <div className="modal-preview-content">
+                {generatedAssignment.sections.map((section, sectionIdx) => {
+                  return (
+                  <div key={sectionIdx} className="modal-section-block">
+                    {/* Section header with instructions */}
+                    <div className="modal-section-header">
+                      <h2 className="modal-section-title">{section.sectionName}</h2>
+                      <p className="modal-section-instruction">{section.instructions}</p>
+                    </div>
+
+                    {/* Problems for this section */}
+                    <div className="modal-problems-list">
+                      {section.problems.map((problem, problemIdx) => {
+                        // Calculate global problem number
+                        const globalProblemNumber = generatedAssignment.sections
+                          .slice(0, sectionIdx)
+                          .reduce((sum, s) => sum + s.problems.length, 0) + problemIdx + 1;
+
+                        // Render options for multiple choice and true/false
+                        const renderOptions = () => {
+                          if (problem.questionFormat === 'multiple-choice') {
+                            const options = ['A', 'B', 'C', 'D'];
+                            return (
+                              <div className="modal-problem-options">
+                                {options.map(option => (
+                                  <div key={option} className="modal-option-item">
+                                    <input type="radio" id={`q${globalProblemNumber}-${option}`} name={`question-${globalProblemNumber}`} disabled />
+                                    <label htmlFor={`q${globalProblemNumber}-${option}`}>{option}. _______________________________</label>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          } else if (problem.questionFormat === 'true-false') {
+                            return (
+                              <div className="modal-problem-options">
+                                <div className="modal-option-item">
+                                  <input type="radio" id={`q${globalProblemNumber}-true`} name={`question-${globalProblemNumber}`} disabled />
+                                  <label htmlFor={`q${globalProblemNumber}-true`}>True</label>
+                                </div>
+                                <div className="modal-option-item">
+                                  <input type="radio" id={`q${globalProblemNumber}-false`} name={`question-${globalProblemNumber}`} disabled />
+                                  <label htmlFor={`q${globalProblemNumber}-false`}>False</label>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        };
+
+                        // Render response space for short answer, free response, or fill-blank
+                        const renderResponseSpace = () => {
+                          if (['short-answer', 'free-response', 'fill-blank'].includes(problem.questionFormat)) {
+                            const lineCount = problem.questionFormat === 'fill-blank' ? 1 : 4;
+                            return (
+                              <div className="modal-response-space">
+                                {Array.from({ length: lineCount }).map((_, i) => (
+                                  <div key={i} className="modal-response-line" />
+                                ))}
+                              </div>
+                            );
+                          }
+                          return null;
+                        };
+
+                        return (
+                          <div key={problemIdx} className="modal-problem-item">
+                            <div className="modal-problem-number">{globalProblemNumber}.</div>
+
+                            <div className="modal-problem-content">
+                              <p className="modal-problem-text">{problem.problemText}</p>
+
+                              {/* Render options for multiple choice or true/false */}
+                              {renderOptions()}
+
+                              {/* Render response space for short answer, free response, fill-blank */}
+                              {renderResponseSpace()}
+
+                              {/* Show tip if included in section */}
+                              {section.includeTips && problem.hasTip && problem.tipText && (
+                                <div className="modal-problem-tips">
+                                  <span className="modal-tips-label">💡 Tip:</span>
+                                  <p>{problem.tipText}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button
+                className="button-secondary"
+                onClick={() => setShowDocumentPreview(false)}
+              >
+                Close
+              </button>
+              <button
+                className="button-primary"
+                onClick={async () => {
+                  const success = await exportDocumentPreviewPDF(
+                    'document-preview-content',
+                    `${generatedAssignment.title.replace(/\s+/g, '_')}_assessment.pdf`
+                  );
+                  if (success) {
+                    setShowDocumentPreview(false);
+                  }
+                }}
+              >
+                ⬇️ Download PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

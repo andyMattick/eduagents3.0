@@ -3,19 +3,24 @@ import { CustomSection } from '../components/Pipeline/SectionBuilder';
 
 export type UserGoal = 'create' | 'analyze';
 
+export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
 export interface GeneratedProblem {
   id: string;
-  sectionId?: string; // optional, if grouped by section
-  text: string;
-  bloomLevel: 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
+  sectionId?: string;
+  problemText: string;
+  problemType: 'procedural' | 'conceptual' | 'application' | 'mixed';
+  bloomLevel: BloomLevel; // 1=Remember, 2=Understand, 3=Apply, 4=Analyze, 5=Evaluate, 6=Create
   questionFormat: 'multiple-choice' | 'true-false' | 'short-answer' | 'free-response' | 'fill-blank';
-  problemType?: 'procedural' | 'conceptual' | 'application' | 'mixed';
   complexity: 'low' | 'medium' | 'high';
   novelty: 'low' | 'medium' | 'high';
-  estimatedTimeMinutes: number; // estimated time for this problem
+  estimatedTime: number; // minutes
+  problemLength: number; // word count
   hasTip: boolean;
-  tips?: string;
-  sourceReference?: string; // optional: pointer to source doc section
+  tipText?: string;
+  options?: string[]; // for multiple choice
+  correctAnswer?: string | string[]; // answer key
+  sourceReference?: string;
   rubric?: {
     criteria: string[];
     expectations: string;
@@ -23,20 +28,23 @@ export interface GeneratedProblem {
 }
 
 export interface GeneratedSection {
+  sectionId: string;
   sectionName: string;
-  topic: string;
+  instructions: string;
   problemType: 'procedural' | 'conceptual' | 'application' | 'mixed' | 'ai-decide';
   problems: GeneratedProblem[];
   includeTips: boolean;
 }
 
 export interface GeneratedAssignment {
+  assignmentId: string;
   assignmentType: string;
   title: string;
   topic: string;
   estimatedTime: number;
   questionCount: number;
   assessmentType?: 'formative' | 'summative';
+  sourceFile?: { name?: string; type?: string };
   sections: GeneratedSection[];
   bloomDistribution: Record<string, number>;
   organizationMode: 'ai-generated' | 'manual';
@@ -111,6 +119,16 @@ export interface UserFlowState {
   readyForRewrite: boolean;
   setReadyForRewrite: (ready: boolean) => void;
 
+  // Version tracking for before/after comparison
+  assignmentVersions: Array<{
+    versionNumber: number;
+    versionLabel: string; // e.g., "Pre-Analysis (V1)", "Post-Analysis (Final)"
+    content: GeneratedAssignment;
+    timestamp: string;
+    description: string;
+  }>;
+  saveAssignmentVersion: (versionLabel: string, description: string, assignment: GeneratedAssignment) => void;
+
   // Reset flow
   reset: () => void;
 
@@ -134,6 +152,24 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
   const [studentFeedback, setStudentFeedback] = useState<any[]>([]);
   const [readyForEditing, setReadyForEditing] = useState(false);
   const [readyForRewrite, setReadyForRewrite] = useState(false);
+  const [assignmentVersions, setAssignmentVersions] = useState<Array<{
+    versionNumber: number;
+    versionLabel: string;
+    content: GeneratedAssignment;
+    timestamp: string;
+    description: string;
+  }>>([]);
+
+  const saveAssignmentVersion = (versionLabel: string, description: string, assignment: GeneratedAssignment) => {
+    const newVersion = {
+      versionNumber: assignmentVersions.length + 1,
+      versionLabel,
+      content: assignment,
+      timestamp: new Date().toISOString(),
+      description,
+    };
+    setAssignmentVersions([...assignmentVersions, newVersion]);
+  };
 
   const reset = () => {
     setGoal(null);
@@ -149,6 +185,7 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setStudentFeedback([]);
     setReadyForEditing(false);
     setReadyForRewrite(false);
+    setAssignmentVersions([]);
   };
 
   const getCurrentRoute = (): string => {
@@ -172,9 +209,9 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
         if (!sourceAwareIntentData) {
           return '/source-aware-intent';
         }
-        // After intent capture, show assignment preview
+        // After intent capture, generate assignment (stays on /source-aware-intent until generated)
         if (!generatedAssignment) {
-          return '/generate-assignment';
+          return '/source-aware-intent';
         }
         // After generation, show preview or classroom analysis
         if (readyForClassroomAnalysis && !studentFeedback.length) {
@@ -193,19 +230,64 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
         if (!intentData) {
           return '/intent-capture';
         }
-        return '/generate-assignment';
+        // After intent capture, generate assignment (stays on /intent-capture until generated)
+        if (!generatedAssignment) {
+          return '/intent-capture';
+        }
+        // After generation, follow same flow as source-based creation
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       }
     } else if (goal === 'analyze') {
+      // Analyze existing assignment they authored
       if (hasSourceDocs) {
+        // They have reference material to help analyze
         if (!sourceFile || !assignmentFile) {
           return '/source-upload';
         }
-        return '/analyze-assignment';
+        // Both files uploaded, now analyze and generate
+        if (!generatedAssignment) {
+          return '/assignment-analysis';
+        }
+        // After generation, show preview
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       } else {
+        // Just the assignment to analyze, no reference material
         if (!assignmentFile) {
           return '/assignment-upload';
         }
-        return '/analyze-assignment';
+        // Assignment uploaded, now analyze and generate
+        if (!generatedAssignment) {
+          return '/assignment-analysis';
+        }
+        // After generation, show preview
+        if (readyForClassroomAnalysis && !studentFeedback.length) {
+          return '/class-builder';
+        }
+        if (studentFeedback.length > 0) {
+          if (readyForRewrite) {
+            return '/ai-rewrite-placeholder';
+          }
+          return readyForEditing ? '/edit-assignment' : '/rewrite-assignment';
+        }
+        return '/assignment-preview';
       }
     }
 
@@ -239,6 +321,8 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setReadyForEditing,
     readyForRewrite,
     setReadyForRewrite,
+    assignmentVersions,
+    saveAssignmentVersion,
     reset,
     getCurrentRoute,
   };

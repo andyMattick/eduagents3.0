@@ -199,12 +199,20 @@ export async function generateAssignment(metadata: AssignmentMetadata): Promise<
 }
 
 /**
+ * Calculate word count of a string
+ */
+function calculateWordCount(text: string): number {
+  return text.trim().split(/\s+/).length;
+}
+
+/**
  * Generate mock assessment questions aligned with Bloom's Taxonomy
  */
 function generateMockAssessmentQuestions(metadata: AssignmentMetadata): Array<{
   id: string;
   text: string;
   bloomLevel: 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create';
+  length: number;
 }> {
   const questions = [];
   const numQuestions = 6;
@@ -238,6 +246,7 @@ function generateMockAssessmentQuestions(metadata: AssignmentMetadata): Array<{
       id: `q${i + 1}`,
       text: question,
       bloomLevel,
+      length: calculateWordCount(question),
     });
   }
 

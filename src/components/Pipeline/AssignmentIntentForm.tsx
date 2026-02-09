@@ -17,7 +17,8 @@ function generateAssignmentPreview(
   estimatedTime: number,
   sectionStrategy: 'manual' | 'ai-generated',
   customSections: CustomSection[],
-  topic: string = 'Course Material'
+  topic: string = 'Course Material',
+  sourceFile?: { name?: string; type?: string }
 ): GeneratedAssignment {
   // Generate mock Bloom distribution
   const bloomDistribution: Record<string, number> = {
@@ -31,26 +32,45 @@ function generateAssignmentPreview(
 
   let sections: GeneratedSection[] = [];
 
+  // Helper function to map Bloom string to numeric level
+  const bloomStringToNumber = (bloomStr: string): 1 | 2 | 3 | 4 | 5 | 6 => {
+    const bloomMap: Record<string, 1 | 2 | 3 | 4 | 5 | 6> = {
+      'Remember': 1,
+      'Understand': 2,
+      'Apply': 3,
+      'Analyze': 4,
+      'Evaluate': 5,
+      'Create': 6,
+    };
+    return bloomMap[bloomStr] || 3;
+  };
+
   if (sectionStrategy === 'ai-generated') {
     // Generate single section with all questions
-    const problems = Array.from({ length: questionCount }, (_, i) => ({
-      id: `q${i + 1}`,
-      sectionId: 'section-0',
-      text: `Question ${i + 1}: [Sample question text - would be generated from source material]`,
-      bloomLevel: (['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'] as const)[i % 6],
-      questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
-      tips: i % 3 === 0 ? `Consider the relationship between these concepts.` : undefined,
-      hasTip: i % 3 === 0,
-      problemType: (['procedural', 'conceptual', 'application'] as const)[i % 3] as any,
-      complexity: 'medium' as const,
-      novelty: 'medium' as const,
-      estimatedTimeMinutes: 5,
-    }));
+    const problems = Array.from({ length: questionCount }, (_, i) => {
+      const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+      const problemText = `Question ${i + 1}: [Sample question text - would be generated from source material]`;
+      return {
+        id: `q${i + 1}`,
+        sectionId: 'section-0',
+        problemText,
+        bloomLevel: bloomStringToNumber(bloomLevels[i % 6]),
+        questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
+        tipText: i % 3 === 0 ? `Consider the relationship between these concepts.` : undefined,
+        hasTip: i % 3 === 0,
+        problemType: (['procedural', 'conceptual', 'application'] as const)[i % 3] as any,
+        complexity: 'medium' as const,
+        novelty: 'medium' as const,
+        estimatedTime: 5,
+        problemLength: problemText.trim().split(/\s+/).length,
+      };
+    });
 
     sections = [
       {
+        sectionId: 'section-0',
         sectionName: 'Assignment Questions',
-        topic: topic,
+        instructions: topic,
         problemType: 'ai-decide',
         problems,
         includeTips: true,
@@ -60,29 +80,30 @@ function generateAssignmentPreview(
     // Generate sections from custom sections
     let questionIndex = 0;
     sections = customSections.map((section, sectionIdx) => {
+      const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
       const sectionProblems = Array.from({ length: section.questionCount }, (_, i) => {
-        const bloomLevels: ('Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Evaluate' | 'Create')[] = [
-          'Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'
-        ];
         const hasTip = section.includeTips;
+        const problemText = `Question ${questionIndex + i + 1}: [Sample question text - would be generated from source material]`;
         return {
           id: `q${questionIndex + i + 1}`,
           sectionId: `section-${sectionIdx}`,
-          text: `Question ${questionIndex + i + 1}: [Sample question text - would be generated from source material]`,
-          bloomLevel: bloomLevels[i % 6],
+          problemText,
+          bloomLevel: bloomStringToNumber(bloomLevels[i % 6]),
           questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
-          tips: hasTip ? `Here's a helpful tip for this ${section.problemType} question.` : undefined,
+          tipText: hasTip ? `Here's a helpful tip for this ${section.problemType} question.` : undefined,
           hasTip,
           problemType: section.problemType as any,
           complexity: 'medium' as const,
           novelty: 'medium' as const,
-          estimatedTimeMinutes: 5,
+          estimatedTime: 5,
+          problemLength: problemText.trim().split(/\s+/).length,
         };
       });
       questionIndex += section.questionCount;
       return {
+        sectionId: `section-${sectionIdx}`,
         sectionName: section.sectionName,
-        topic: section.topic,
+        instructions: section.topic,
         problemType: section.problemType,
         problems: sectionProblems,
         includeTips: section.includeTips,
@@ -91,12 +112,14 @@ function generateAssignmentPreview(
   }
 
   const rawAssignment: GeneratedAssignment = {
+    assignmentId: `assignment-${Date.now()}`,
     assignmentType,
     title: `${assignmentType}: ${topic}`,
     topic,
     estimatedTime,
     questionCount,
     assessmentType: 'formative',
+    sourceFile: sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined,
     sections,
     bloomDistribution,
     organizationMode: sectionStrategy,
@@ -245,7 +268,8 @@ export function AssignmentIntentForm() {
       formData.estimatedTime,
       formData.sectionStrategy,
       formData.customSections,
-      'Course Material' // In real implementation, would extract from source file
+      'Course Material', // In real implementation, would extract from source file
+      sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined
     );
 
     console.log('📋 Generated assignment:', generatedAssignment);

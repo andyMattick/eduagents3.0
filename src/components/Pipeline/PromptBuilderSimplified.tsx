@@ -6,6 +6,7 @@ import {
   DifficultyLevel,
 } from '../../agents/shared/assignmentMetadata';
 import { generateAssignment } from '../../agents/shared/generateAssignment';
+import { GeneratedDocumentPreview } from './GeneratedDocumentPreview';
 import jsPDF from 'jspdf';
 import { Document, Packer, Paragraph } from 'docx';
 
@@ -126,6 +127,14 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
   // Preview modal state
   const [showPreview, setShowPreview] = useState(false);
   const [previewTab, setPreviewTab] = useState<'teacher' | 'student'>('teacher');
+
+  // Document generation state
+  const [generatedDocument, setGeneratedDocument] = useState<{
+    title: string;
+    content: string;
+    metadata: AssignmentMetadata;
+  } | null>(null);
+  const [showDocumentPreview, setShowDocumentPreview] = useState(false);
 
 
 
@@ -593,12 +602,29 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
       };
 
       const result = await generateAssignment(metadata);
-      onAssignmentGenerated(result.content, result.metadata);
+      
+      // Store the generated document and show preview
+      setGeneratedDocument({
+        title: result.metadata.title,
+        content: result.content,
+        metadata: result.metadata,
+      });
+      setShowDocumentPreview(true);
     } catch (err) {
       alert('Failed to generate assignment');
       console.error(err);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleContinueFromPreview = () => {
+    if (generatedDocument) {
+      // Call the parent callback to proceed to next step
+      onAssignmentGenerated(generatedDocument.content, generatedDocument.metadata);
+      // Reset preview state
+      setShowDocumentPreview(false);
+      setGeneratedDocument(null);
     }
   };
 
@@ -682,6 +708,29 @@ export function PromptBuilder({ onAssignmentGenerated, isLoading = false }: Prom
     cursor: 'pointer',
     fontSize: '12px',
   };
+
+  // If showing document preview, render that instead
+  if (showDocumentPreview && generatedDocument) {
+    return (
+      <GeneratedDocumentPreview
+        title={generatedDocument.title}
+        content={generatedDocument.content}
+        metadata={{
+          subject: generatedDocument.metadata.subject,
+          gradeLevel: generatedDocument.metadata.gradeLevel,
+          difficulty: generatedDocument.metadata.difficultyLevel,
+          estimatedTime: generatedDocument.metadata.estimatedTimeMinutes,
+        }}
+        onContinue={handleContinueFromPreview}
+        onEdit={() => {
+          setShowDocumentPreview(false);
+          setGeneratedDocument(null);
+          // User can now edit the form again
+        }}
+        isLoading={false}
+      />
+    );
+  }
 
   return (
     <div style={containerStyle}>
