@@ -27,7 +27,7 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <h1>📚 eduAgents</h1>
+          <h1>📚 Agents of Education</h1>
           <p>Transforming Assessment Into Learning</p>
         </div>
 
