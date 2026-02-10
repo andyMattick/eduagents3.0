@@ -13,27 +13,16 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =============================================================================
--- TEACHER PROFILES
--- =============================================================================
-
-CREATE TABLE IF NOT EXISTS teacher_profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email TEXT UNIQUE NOT NULL,
-  name TEXT NOT NULL,
-  school_name TEXT,
-  department TEXT,
-  profile_photo_url TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- =============================================================================
--- TEACHER ACCOUNTS (SUBSCRIPTION & USAGE)
+-- TEACHER ACCOUNTS (CONSOLIDATED - NO SEPARATE PROFILES)
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS teacher_accounts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  profile_id UUID NOT NULL UNIQUE REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  school_name TEXT,
   
   -- Subscription info
   subscription_tier TEXT NOT NULL DEFAULT 'free' 
@@ -58,12 +47,14 @@ CREATE TABLE IF NOT EXISTS teacher_accounts (
   last_login TIMESTAMP WITH TIME ZONE,
   is_verified BOOLEAN DEFAULT FALSE,
   is_email_verified BOOLEAN DEFAULT FALSE,
+  is_admin BOOLEAN DEFAULT FALSE,
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_teacher_accounts_profile_id ON teacher_accounts(profile_id);
+CREATE INDEX idx_teacher_accounts_user_id ON teacher_accounts(user_id);
+CREATE INDEX idx_teacher_accounts_email ON teacher_accounts(email);
 CREATE INDEX idx_teacher_accounts_tier ON teacher_accounts(subscription_tier);
 
 -- =============================================================================
@@ -72,7 +63,7 @@ CREATE INDEX idx_teacher_accounts_tier ON teacher_accounts(subscription_tier);
 
 CREATE TABLE IF NOT EXISTS assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  teacher_id UUID NOT NULL REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  teacher_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   
   title TEXT NOT NULL,
   subject TEXT NOT NULL,
@@ -138,7 +129,7 @@ CREATE INDEX idx_assignment_versions_created_at ON assignment_versions(created_a
 
 CREATE TABLE IF NOT EXISTS question_bank (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  teacher_id UUID NOT NULL REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  teacher_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   
   assignment_id UUID REFERENCES assignments(id) ON DELETE SET NULL,
   section_id TEXT, -- Reference to section within assignment
@@ -177,7 +168,7 @@ CREATE INDEX idx_question_bank_tags ON question_bank USING GIN(tags);
 
 CREATE TABLE IF NOT EXISTS api_call_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  teacher_id UUID NOT NULL REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  teacher_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   
   action TEXT NOT NULL 
     CHECK (action IN ('generate', 'regenerate', 'analyze', 'rewrite', 'preview')),
@@ -221,7 +212,7 @@ CREATE UNIQUE INDEX idx_monthly_usage_unique ON monthly_api_usage_reports(teache
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   session_token TEXT NOT NULL UNIQUE,
   refresh_token TEXT UNIQUE,
   
@@ -240,7 +231,7 @@ CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 
 CREATE TABLE IF NOT EXISTS subscription_changes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  teacher_id UUID NOT NULL REFERENCES teacher_profiles(id) ON DELETE CASCADE,
+  teacher_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   
   old_tier TEXT,
   new_tier TEXT NOT NULL,
@@ -258,9 +249,9 @@ CREATE INDEX idx_subscription_changes_teacher_id ON subscription_changes(teacher
 -- Teacher dashboard overview
 CREATE VIEW teacher_dashboard_overview AS
 SELECT 
-  tp.id,
-  tp.email,
-  tp.name,
+  ta.user_id AS id,
+  ta.email,
+  ta.name,
   ta.subscription_tier,
   ta.api_calls_remaining,
   ta.assignment_count,
@@ -271,18 +262,16 @@ SELECT
   COUNT(a.id) FILTER (WHERE a.status = 'finalized') AS finalized_assignments,
   COUNT(DISTINCT CASE WHEN qb.id IS NOT NULL THEN qb.id END) AS total_questions,
   MAX(a.updated_at) AS last_assignment_updated
-FROM teacher_profiles tp
-LEFT JOIN teacher_accounts ta ON ta.profile_id = tp.id
-LEFT JOIN assignments a ON a.teacher_id = tp.id
-LEFT JOIN question_bank qb ON qb.teacher_id = tp.id
-GROUP BY tp.id, tp.email, tp.name, ta.subscription_tier, ta.api_calls_remaining, 
+FROM teacher_accounts ta
+LEFT JOIN assignments a ON a.teacher_id = ta.user_id
+LEFT JOIN question_bank qb ON qb.teacher_id = ta.user_id
+GROUP BY ta.user_id, ta.email, ta.name, ta.subscription_tier, ta.api_calls_remaining, 
          ta.assignment_count, ta.question_bank_count, ta.last_login, ta.is_verified;
 
 -- =============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- =============================================================================
 
-ALTER TABLE teacher_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teacher_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE assignment_versions ENABLE ROW LEVEL SECURITY;
@@ -291,14 +280,11 @@ ALTER TABLE api_call_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_sessions ENABLE ROW LEVEL SECURITY;
 
 -- Teachers can only see their own data
-CREATE POLICY "Teachers can read own profile" ON teacher_profiles
-  FOR SELECT USING (auth.uid() = id);
-
-CREATE POLICY "Teachers can update own profile" ON teacher_profiles
-  FOR UPDATE USING (auth.uid() = id);
-
 CREATE POLICY "Teachers can read own account" ON teacher_accounts
-  FOR SELECT USING (auth.uid() = profile_id);
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Teachers can update own account" ON teacher_accounts
+  FOR UPDATE USING (auth.uid() = user_id);
 
 CREATE POLICY "Teachers can read own assignments" ON assignments
   FOR SELECT USING (auth.uid() = teacher_id);
@@ -371,12 +357,12 @@ BEGIN
     api_calls_total = api_calls_total + p_cost,
     api_calls_remaining = GREATEST(0, api_calls_remaining - p_cost),
     api_calls_used_today = api_calls_used_today + p_cost
-  WHERE profile_id = p_teacher_id;
+  WHERE user_id = p_teacher_id;
 END;
 $$ LANGUAGE PLPGSQL;
 
 -- =============================================================================
--- TRIGGERS FOR AUTOMATICUPDATES
+-- TRIGGERS FOR AUTOMATIC UPDATES
 -- =============================================================================
 
 -- Auto-update `updated_at` timestamp
@@ -387,11 +373,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE PLPGSQL;
-
-CREATE TRIGGER teacher_profiles_update_timestamp
-  BEFORE UPDATE ON teacher_profiles
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER teacher_accounts_update_timestamp
   BEFORE UPDATE ON teacher_accounts

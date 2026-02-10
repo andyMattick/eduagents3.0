@@ -12,12 +12,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   TeacherAccount,
-  TeacherProfile,
   AssignmentSummary,
   AssignmentDetail,
   QuestionBankEntry,
   QuestionBankFilter,
-  ApiCallLog,
   SubscriptionTier,
   ResourceLimitStatus,
   SUBSCRIPTION_TIERS,
@@ -55,53 +53,41 @@ export function getSupabase(): SupabaseClient {
 // ============================================================================
 
 export async function createTeacherAccount(
+  userId: string,
   email: string,
   name: string,
   schoolName?: string
 ): Promise<TeacherAccount> {
   const db = getSupabase();
 
-  // Create profile
-  const { data: profile, error: profileError } = await db
-    .from('teacher_profiles')
-    .insert({
-      email,
-      name,
-      school_name: schoolName,
-    })
-    .select()
-    .single();
-
-  if (profileError) throw profileError;
-
-  // Create account with subscription tier
+  // Create account directly in teacher_accounts (consolidated schema - no separate profiles)
   const { data: account, error: accountError } = await db
     .from('teacher_accounts')
     .insert({
-      profile_id: profile.id,
+      user_id: userId,
+      email,
+      name,
+      school_name: schoolName,
       subscription_tier: 'free',
       api_calls_remaining: SUBSCRIPTION_TIERS.free.monthlyApiLimit,
+      is_verified: false,
     })
     .select()
     .single();
 
   if (accountError) throw accountError;
 
-  return mapTeacherAccount(account, profile);
+  return mapTeacherAccount(account);
 }
 
-export async function getTeacherAccount(teacherId: string): Promise<TeacherAccount | null> {
+export async function getTeacherAccount(userId: string): Promise<TeacherAccount | null> {
   const db = getSupabase();
 
+  // Query by user_id from teacher_accounts directly (consolidated schema)
   const { data, error } = await db
     .from('teacher_accounts')
-    .select(
-      `
-      *,
-      teacher_profiles!inner(*)
-    `
-    )
-    .eq('profile_id', teacherId)
+    .select('*')
+    .eq('user_id', userId)
     .single();
 
   if (error) {
@@ -109,11 +95,11 @@ export async function getTeacherAccount(teacherId: string): Promise<TeacherAccou
     throw error;
   }
 
-  return mapTeacherAccount(data, data.teacher_profiles);
+  return mapTeacherAccount(data);
 }
 
 export async function updateSubscriptionTier(
-  teacherId: string,
+  userId: string,
   newTier: SubscriptionTier,
   paymentMethodId?: string
 ): Promise<TeacherAccount> {
@@ -122,12 +108,12 @@ export async function updateSubscriptionTier(
 
   // Log subscription change
   await db.from('subscription_changes').insert({
-    teacher_id: teacherId,
+    teacher_id: userId,
     new_tier: newTier,
     reason: 'upgrade', // Simplified; could be dynamic
   });
 
-  // Update account
+  // Update account (using user_id)
   const { data: account, error } = await db
     .from('teacher_accounts')
     .update({
@@ -136,19 +122,13 @@ export async function updateSubscriptionTier(
       payment_method_id: paymentMethodId,
       subscription_renewal_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
-    .eq('profile_id', teacherId)
+    .eq('user_id', userId)
     .select()
     .single();
 
   if (error) throw error;
 
-  const { data: profile } = await db
-    .from('teacher_profiles')
-    .select('*')
-    .eq('id', teacherId)
-    .single();
-
-  return mapTeacherAccount(account, profile);
+  return mapTeacherAccount(account);
 }
 
 // ============================================================================
@@ -273,8 +253,6 @@ export async function cloneAssignment(
   teacherId: string,
   newTitle: string
 ): Promise<AssignmentDetail> {
-  const db = getSupabase();
-
   // Get source assignment
   const source = await getAssignment(sourceAssignmentId, teacherId);
   if (!source) throw new Error('Source assignment not found');
@@ -488,20 +466,20 @@ export async function getResourceLimitStatus(teacherId: string): Promise<Resourc
 // HELPER FUNCTIONS (MAPPERS)
 // ============================================================================
 
-function mapTeacherAccount(accountData: any, profileData: any): TeacherAccount {
+function mapTeacherAccount(accountData: any): TeacherAccount {
   return {
     id: accountData.id,
     profile: {
-      id: profileData.id,
-      email: profileData.email,
-      name: profileData.name,
-      schoolName: profileData.school_name,
-      department: profileData.department,
-      profilePhotoUrl: profileData.profile_photo_url,
-      createdAt: profileData.created_at,
-      updatedAt: profileData.updated_at,
+      id: accountData.user_id,
+      email: accountData.email,
+      name: accountData.name,
+      schoolName: accountData.school_name,
+      department: accountData.department,
+      profilePhotoUrl: accountData.profile_photo_url,
+      createdAt: accountData.created_at,
+      updatedAt: accountData.updated_at,
     },
-    email: profileData.email,
+    email: accountData.email,
     subscription: {
       tier: accountData.subscription_tier,
       startDate: accountData.subscription_start_date,

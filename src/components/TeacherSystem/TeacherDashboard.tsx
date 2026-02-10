@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getTeacherAccount, listAssignments, getResourceLimitStatus } from '../../services/teacherSystemService';
 import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TIERS } from '../../types/teacherSystem';
+import { useUserFlow } from '../../hooks/useUserFlow';
 import './TeacherDashboard.css';
 
 interface TeacherDashboardProps {
@@ -15,6 +16,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'finalized'>('all');
+  const { reset } = useUserFlow();
 
   useEffect(() => {
     loadDashboardData();
@@ -167,7 +169,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
             </p>
           </div>
           <button
-            onClick={() => onNavigate('create-assignment')}
+            onClick={() => {
+              reset();
+              onNavigate('pipeline');
+            }}
             className="btn-primary"
             disabled={!canCreateAssignment}
             title={!canCreateAssignment ? `Assignment limit of ${tierConfig.maxAssignments} reached` : ''}

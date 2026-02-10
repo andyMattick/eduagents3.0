@@ -27,15 +27,18 @@ export async function signUp(request: SignUpRequest): Promise<AuthSession> {
   if (authError) throw authError;
   if (!authData.user) throw new Error('User creation failed');
 
-  // Create teacher profile and account
-  const { error: profileError } = await supabase.from('teacher_profiles').insert({
-    id: authData.user.id,
+  // Create teacher account (consolidated - no separate profiles table)
+  const { error: accountError } = await supabase.from('teacher_accounts').insert({
+    user_id: authData.user.id,
     email: request.email,
     name: request.name,
     school_name: undefined,
+    subscription_tier: 'free',
+    api_calls_remaining: 50,
+    is_verified: false,
   });
 
-  if (profileError) throw profileError;
+  if (accountError) throw accountError;
 
   // Create session
   return createSession(authData.user.id, request.email);
@@ -50,14 +53,24 @@ export async function login(request: LoginRequest): Promise<AuthSession> {
     password: request.password,
   });
 
-  if (authError) throw authError;
+  if (authError) {
+    console.error('Login error:', authError);
+    
+    // Provide more helpful error message
+    if (authError.message.includes('Invalid login credentials')) {
+      throw new Error('Invalid email or password. Please check and try again.');
+    }
+    
+    throw authError;
+  }
+  
   if (!authData.user) throw new Error('Login failed');
 
-  // Update last login
+  // Update last login (using user_id)
   await supabase
     .from('teacher_accounts')
     .update({ last_login: new Date().toISOString() })
-    .eq('profile_id', authData.user.id);
+    .eq('user_id', authData.user.id);
 
   return createSession(authData.user.id, request.email);
 }
