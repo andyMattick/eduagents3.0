@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getSupabase } from '../services/teacherSystemService';
 import { signUp, login } from '../services/authService';
-import { initializeDemoUsers } from '../services/initDemo';
 import { SignUpRequest, LoginRequest } from '../types/teacherSystem';
 
 interface AuthUser {

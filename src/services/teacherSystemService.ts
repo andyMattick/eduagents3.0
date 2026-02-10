@@ -132,6 +132,70 @@ export async function updateSubscriptionTier(
 }
 
 // ============================================================================
+// HELPER: Save Individual Problems to Question Bank
+// ============================================================================
+
+async function saveProblemsToQuestionBank(
+  db: any,
+  teacherId: string,
+  assignmentId: string,
+  sections: any[],
+  subject: string,
+  gradeLevel: string
+): Promise<void> {
+  const problemsToInsert: any[] = [];
+  
+  sections.forEach((section, sectionIdx) => {
+    if (!section.problems) return;
+    
+    section.problems.forEach((problem: any, problemIdx: number) => {
+      const problemTags: string[] = [];
+      
+      // Extract tags from problem metadata
+      if (problem.format) problemTags.push(problem.format);
+      if (problem.bloomLevel) problemTags.push(problem.bloomLevel);
+      if (problem.multiPart) problemTags.push('multi-part');
+      
+      problemsToInsert.push({
+        teacher_id: teacherId,
+        assignment_id: assignmentId,
+        section_id: section.id || `section_${sectionIdx}`,
+        problem: {
+          // Transform the problem to have a 'text' field that QuestionBank expects
+          text: problem.problemText || problem.question || '',
+          ...problem,
+          // Include full payload information
+          __payload: {
+            bloomLevel: problem.bloomLevel,
+            linguisticComplexity: problem.linguisticComplexity,
+            similarityToPrevious: problem.similarityToPrevious,
+            noveltyScore: problem.noveltyScore,
+            format: problem.format,
+            multiPart: problem.multiPart,
+            problemLength: problem.problemLength,
+          },
+        },
+        bloom_level: problem.bloomLevel || 'Unknown',
+        subject: subject,
+        grade: gradeLevel,
+        tags: problemTags,
+        usage_count: 0,
+        is_favorite: false,
+      });
+    });
+  });
+
+  // Batch insert all problems if any exist
+  if (problemsToInsert.length > 0) {
+    const { error } = await db.from('question_bank').insert(problemsToInsert);
+    if (error && error.code !== 'PGRST204') {
+      console.error('Error saving problems to question bank:', error);
+      // Don't throw - let the assignment save succeed even if problem bank fails
+    }
+  }
+}
+
+// ============================================================================
 // ASSIGNMENT OPERATIONS
 // ============================================================================
 
@@ -182,6 +246,9 @@ export async function saveAssignment(
 
     if (error) throw error;
 
+    // Save individual problems to question_bank
+    await saveProblemsToQuestionBank(db, teacherId, data.id, assignment.sections, assignment.subject, assignment.gradeLevel);
+
     // Increment assignment count
     await db
       .from('teacher_accounts')
@@ -198,6 +265,14 @@ export async function saveAssignment(
       .single();
 
     if (error) throw error;
+
+    // Update individual problems in question_bank
+    // First delete old problems for this assignment
+    await db.from('question_bank').delete().eq('assignment_id', assignment.id);
+    
+    // Then save updated problems
+    await saveProblemsToQuestionBank(db, teacherId, assignment.id, assignment.sections, assignment.subject, assignment.gradeLevel);
+
     return mapAssignmentDetail(data);
   }
 }

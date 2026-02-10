@@ -14,8 +14,14 @@ import './App.css';
 type AppTab = 'dashboard' | 'pipeline' | 'notepad';
 type AuthPage = 'signin' | 'signup';
 
+interface AssignmentContext {
+  assignmentId: string;
+  action: 'view' | 'edit' | 'clone';
+}
+
 function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
   const { reset } = useUserFlow();
   const { logout, user } = useAuth();
 
@@ -69,12 +75,25 @@ function TeacherAppContent() {
       </div>
 
       <div className="app-content">
-        {activeTab === 'dashboard' && <TeacherDashboard teacherId={user?.id || ''} onNavigate={(page) => {
-          if (page === 'pipeline') {
+        {activeTab === 'dashboard' && <TeacherDashboard teacherId={user?.id || ''} onNavigate={(page, data) => {
+          if (page === 'pipeline' || page === 'create-assignment') {
+            setAssignmentContext(null);
+            setActiveTab('pipeline');
+          } else if (page === 'view-assignment' && data?.assignmentId) {
+            setAssignmentContext({ assignmentId: data.assignmentId, action: 'view' });
+            setActiveTab('pipeline');
+          } else if (page === 'edit-assignment' && data?.assignmentId) {
+            setAssignmentContext({ assignmentId: data.assignmentId, action: 'edit' });
+            setActiveTab('pipeline');
+          } else if (page === 'clone-assignment' && data?.assignmentId) {
+            setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
             setActiveTab('pipeline');
           }
         }} />}
-        {activeTab === 'pipeline' && <PipelineRouter />}
+        {activeTab === 'pipeline' && <PipelineRouter assignmentContext={assignmentContext} onAssignmentSaved={() => {
+          setAssignmentContext(null);
+          setActiveTab('dashboard');
+        }} />}
         {activeTab === 'notepad' && <TeacherNotepad />}
       </div>
     </div>
@@ -82,7 +101,7 @@ function TeacherAppContent() {
 }
 
 function AppContent() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -107,7 +126,7 @@ function AppContent() {
   }
 
   if (user.isAdmin) {
-    return <AdminDashboard onLogout={() => {}} />;
+    return <AdminDashboard onLogout={() => logout()} />;
   }
 
   return (

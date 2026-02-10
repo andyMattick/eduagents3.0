@@ -1,4 +1,7 @@
+import { useState, useEffect } from 'react';
 import { useUserFlow } from '../../hooks/useUserFlow';
+import { useAuth } from '../../hooks/useAuth';
+import { getAssignment } from '../../services/teacherSystemService';
 import { GoalSelector } from './GoalSelector';
 import { SourceSelector } from './SourceSelector';
 import { FileUploadComponent } from './FileUploadComponent';
@@ -10,7 +13,18 @@ import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { AssignmentEditor } from './AssignmentEditor';
 import { PipelineShell } from './PipelineShell';
+import { SaveAssignmentStep } from './SaveAssignmentStep';
 import './PipelineRouter.css';
+
+interface AssignmentContext {
+  assignmentId: string;
+  action: 'view' | 'edit' | 'clone';
+}
+
+interface PipelineRouterProps {
+  onAssignmentSaved?: () => void;
+  assignmentContext?: AssignmentContext | null;
+}
 
 /**
  * PipelineRouter Component
@@ -21,7 +35,7 @@ import './PipelineRouter.css';
  * 3. Document Upload or Intent Capture
  * 4. Generation/Analysis
  */
-export function PipelineRouter() {
+export function PipelineRouter({ onAssignmentSaved, assignmentContext }: PipelineRouterProps = {}) {
   const { 
     goal, 
     sourceFile, 
@@ -35,10 +49,137 @@ export function PipelineRouter() {
     setReadyForEditing,
     setGeneratedAssignment,
     setReadyForRewrite,
+    setReadyForClassroomAnalysis,
   } =
     useUserFlow();
 
+  const { user } = useAuth();
+  const [isLoadingAssignment, setIsLoadingAssignment] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const currentRoute = useUserFlow().getCurrentRoute();
+
+  // Load assignment if assignmentContext is provided
+  useEffect(() => {
+    if (assignmentContext && user?.id) {
+      loadAssignmentForEditing();
+    }
+  }, [assignmentContext?.assignmentId]);
+
+  async function loadAssignmentForEditing() {
+    if (!assignmentContext || !user?.id) return;
+
+    try {
+      setIsLoadingAssignment(true);
+      setLoadError(null);
+      
+      // Load the assignment from database
+      const assignment = await getAssignment(assignmentContext.assignmentId, user.id);
+      
+      if (!assignment) {
+        setLoadError('Assignment not found');
+        return;
+      }
+
+      // Convert database format to GeneratedAssignment format
+      const generatedAssignment = assignment.content || assignment;
+      
+      if (assignmentContext.action === 'clone') {
+        // For clone: load it but set as new (no ID)
+        setGeneratedAssignment({
+          ...generatedAssignment,
+          id: undefined,
+          title: `${generatedAssignment.title} (Copy)`,
+        });
+        setReadyForEditing(true);
+      } else if (assignmentContext.action === 'edit') {
+        // For edit: load it as-is
+        setGeneratedAssignment(generatedAssignment);
+        setReadyForEditing(true);
+      } else {
+        // For view: load it read-only
+        setGeneratedAssignment(generatedAssignment);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load assignment');
+      console.error('Error loading assignment:', err);
+    } finally {
+      setIsLoadingAssignment(false);
+    }
+  }
+
+  // If loading assignment, show loading state
+  if (isLoadingAssignment) {
+    return (
+      <div className="pipeline-router-container">
+        <div className="loading-state">
+          <div className="spinner" />
+          <p>Loading assignment...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If assignment context exists and loaded, show the appropriate view
+  if (assignmentContext && generatedAssignment && !isLoadingAssignment) {
+    if (assignmentContext.action === 'view') {
+      // View mode: show assignment preview
+      return (
+        <div className="pipeline-router-container">
+          <div className="step-header">
+            <h1>📖 View Assignment</h1>
+            <p>{generatedAssignment.title}</p>
+          </div>
+          <AssignmentPreview />
+          <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+            <button onClick={onAssignmentSaved} className="btn-primary">
+              ← Back to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    } else if (assignmentContext.action === 'edit' || assignmentContext.action === 'clone') {
+      // Edit mode: show editor
+      return (
+        <div className="pipeline-router-container">
+          <div className="step-header">
+            <h1>✏️ {assignmentContext.action === 'clone' ? 'Clone' : 'Edit'} Assignment</h1>
+            <p>{generatedAssignment.title}</p>
+          </div>
+          <AssignmentEditor
+            assignment={generatedAssignment}
+            studentFeedback={studentFeedback}
+            onSave={(updatedAssignment) => {
+              setGeneratedAssignment(updatedAssignment);
+              console.log('💾 Assignment updated:', updatedAssignment);
+            }}
+            onNext={() => {
+              // After editing, offer to save
+              console.log('Moving to save step');
+              setReadyForRewrite(true);
+            }}
+            onBack={() => {
+              // Clear context and go back to dashboard
+              onAssignmentSaved?.();
+            }}
+          />
+        </div>
+      );
+    }
+  }
+
+  // If there's a load error, show it
+  if (loadError) {
+    return (
+      <div className="pipeline-router-container error-state">
+        <h2>⚠️ Error</h2>
+        <p>{loadError}</p>
+        <button onClick={onAssignmentSaved} className="btn-primary">
+          ← Back to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   // Log route changes for debugging
   console.log('PipelineRouter: currentRoute =', currentRoute, {
@@ -181,7 +322,7 @@ export function PipelineRouter() {
 
   // Classroom Simulation Results - Show feedback from mock simulation
   if (currentRoute === '/rewrite-assignment') {
-    const { setReadyForClassroomAnalysis } = useUserFlow();
+    const { setReadyForRewrite } = useUserFlow();
     
     return (
       <div className="pipeline-router-container">
@@ -196,8 +337,7 @@ export function PipelineRouter() {
             classSummary: {},
           }}
           onNext={() => {
-            console.log('Proceeding to rewriter');
-            setReadyForClassroomAnalysis(false); // Reset for next flow
+            setReadyForRewrite(true);
           }}
         />
         <div className="simulation-actions" style={{ marginTop: '2rem', maxWidth: '900px', margin: '2rem auto 0' }}>
@@ -240,64 +380,60 @@ export function PipelineRouter() {
           setReadyForEditing(false);
         }}
         onNext={() => {
-          console.log('Moving to rewriter');
+          console.log('Moving to next step');
           setReadyForEditing(false);
-          setReadyForRewrite(true);
+          
+          // If no student feedback yet, go to classroom analysis
+          if (studentFeedback.length === 0) {
+            setReadyForClassroomAnalysis(true);
+          } else {
+            // If they already have feedback, go to rewrite
+            setReadyForRewrite(true);
+          }
+        }}
+        onBack={() => {
+          setReadyForEditing(false);
+          // This will route back to either preview or results depending on context
         }}
       />
     );
   }
 
-  // AI Rewrite Placeholder - Will be replaced with actual rewriter when AI service is ready
+  // Final Save Step - Save assignment to database
   if (currentRoute === '/ai-rewrite-placeholder') {
+    const { reset, setReadyForRewrite } = useUserFlow();
+
+    if (!generatedAssignment) {
+      return (
+        <div className="pipeline-router-container error-state">
+          <h2>No assignment to save</h2>
+          <button onClick={() => reset()}>Start Over</button>
+        </div>
+      );
+    }
+
     return (
       <div className="pipeline-router-container">
         <div className="step-header">
-          <h1>⏳ Page 7 of 8: AI Rewrite (Coming Soon)</h1>
-          <p>When AI service is integrated, the assignment will be automatically rewritten here</p>
+          <h1>Page 7 of 8: Save Assignment</h1>
+          <p>Save your finalized assignment to your teacher dashboard</p>
         </div>
-        <div style={{
-          maxWidth: '900px',
-          margin: '2rem auto',
-          padding: '2rem',
-          background: 'var(--color-bg-card)',
-          borderRadius: '12px',
-          border: '1px solid var(--color-border)',
-          textAlign: 'center',
-        }}>
-          <h2>🤖 AI Rewrite Engine</h2>
-          <p style={{ fontSize: '1.1rem', marginBottom: '1.5rem' }}>
-            The AI rewriter will process the assignment and student feedback to:
-          </p>
-          <ul style={{
-            textAlign: 'left',
-            display: 'inline-block',
-            fontSize: '1rem',
-          }}>
-            <li>✨ Simplify complex language</li>
-            <li>🎯 Break down multi-part problems</li>
-            <li>📊 Balance difficulty distribution</li>
-            <li>♿ Generate accessible variants</li>
-            <li>💡 Add targeted scaffolding</li>
-          </ul>
-          <p style={{ marginTop: '2rem', color: 'var(--color-text-secondary)' }}>
-            <strong>Status:</strong> Awaiting AI service integration
-          </p>
-          <div style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-            <button
-              className="button-secondary"
-              onClick={() => setReadyForEditing(true)}
-            >
-              ← Edit Assignment Again
-            </button>
-            <button
-              className="button-primary"
-              onClick={() => console.log('Ready for AI rewrite when service is available')}
-            >
-              Continue (AI Service Ready Soon)
-            </button>
-          </div>
-        </div>
+        <SaveAssignmentStep
+          assignment={generatedAssignment}
+          onSaveComplete={() => {
+            reset();
+            // Call callback to notify parent that save is complete
+            if (onAssignmentSaved) {
+              onAssignmentSaved();
+            } else {
+              // Fallback: full page redirect if no callback provided
+              setTimeout(() => {
+                window.location.href = '/';
+              }, 1000);
+            }
+          }}
+          onCancel={() => setReadyForRewrite(false)}
+        />
       </div>
     );
   }

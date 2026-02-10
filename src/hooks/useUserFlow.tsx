@@ -214,6 +214,9 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
           return '/source-aware-intent';
         }
         // After generation, show preview or classroom analysis
+        if (generatedAssignment && readyForEditing && !studentFeedback.length) {
+          return '/edit-assignment';
+        }
         if (readyForClassroomAnalysis && !studentFeedback.length) {
           return '/class-builder';
         }
@@ -235,6 +238,9 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
           return '/intent-capture';
         }
         // After generation, follow same flow as source-based creation
+        if (generatedAssignment && readyForEditing && !studentFeedback.length) {
+          return '/edit-assignment';
+        }
         if (readyForClassroomAnalysis && !studentFeedback.length) {
           return '/class-builder';
         }
