@@ -8,6 +8,7 @@ interface AssignmentEditorProps {
   studentFeedback: StudentFeedback[];
   onSave: (updatedAssignment: GeneratedAssignment) => void;
   onNext: () => void;
+  onBack?: () => void;
 }
 
 export function AssignmentEditor({
@@ -15,6 +16,7 @@ export function AssignmentEditor({
   studentFeedback,
   onSave,
   onNext,
+  onBack,
 }: AssignmentEditorProps) {
   const [sections, setSections] = useState(assignment.sections);
   const [hasChanges, setHasChanges] = useState(false);
@@ -342,7 +344,16 @@ export function AssignmentEditor({
 
       <div className="editor-footer">
         <div className="action-buttons">
-          <button className="button-secondary" onClick={() => window.history.back()}>
+          <button 
+            className="button-secondary" 
+            onClick={() => {
+              if (onBack) {
+                onBack();
+              } else {
+                window.history.back();
+              }
+            }}
+          >
             ← Back to Results
           </button>
           <button
@@ -351,7 +362,6 @@ export function AssignmentEditor({
               handleSaveChanges();
               onNext();
             }}
-            disabled={!hasChanges}
           >
             {hasChanges ? '💾 Save & Continue' : 'Continue to Rewrite'}
           </button>

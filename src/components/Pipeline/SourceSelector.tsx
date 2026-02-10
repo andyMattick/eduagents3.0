@@ -6,7 +6,7 @@ import { useUserFlow } from '../../hooks/useUserFlow';
  * User chooses whether they have source documents available
  */
 export function SourceSelector() {
-  const { goal, setHasSourceDocs } = useUserFlow();
+  const { goal, setHasSourceDocs, setGoal } = useUserFlow();
 
   if (!goal) {
     return null;
@@ -19,7 +19,7 @@ export function SourceSelector() {
       <div className="source-selector-container">
         {/* Header */}
         <div className="source-selector-header">
-          <button className="back-button" onClick={() => window.history.back()}>
+          <button className="back-button" onClick={() => setGoal(null)}>
             ← Back
           </button>
           <h1>{createMode ? 'Where will we start?' : 'Do you have source materials?'}</h1>

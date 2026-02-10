@@ -9,7 +9,7 @@ import { exportDocumentPreviewPDF } from '../../utils/exportUtils';
  * before finalizing and routing to student analysis
  */
 export function AssignmentPreview() {
-  const { generatedAssignment, sourceFile, setReadyForClassroomAnalysis, saveAssignmentVersion, assignmentVersions } = useUserFlow();
+  const { generatedAssignment, sourceFile, setReadyForClassroomAnalysis, setReadyForEditing, saveAssignmentVersion, assignmentVersions } = useUserFlow();
   const [showBloomMetrics, setShowBloomMetrics] = useState(false);
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showDocumentPreview, setShowDocumentPreview] = useState(false);
@@ -207,6 +207,12 @@ export function AssignmentPreview() {
           <div className="button-group">
             <button className="button-secondary" onClick={() => setShowDocumentPreview(true)}>
               👁️ View Document Preview
+            </button>
+            <button 
+              className="button-secondary"
+              onClick={() => setReadyForEditing(true)}
+            >
+              ✏️ Edit Problems
             </button>
             <button 
               className="button-primary" 
