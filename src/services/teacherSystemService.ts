@@ -268,11 +268,10 @@ export async function saveAssignment(
 
     // Update individual problems in question_bank
     // First delete old problems for this assignment
-    await db.from('question_bank').delete().eq('assignment_id', assignment.id);
+    await db.from('question_bank').delete().eq('assignment_id', assignment.id!);
     
     // Then save updated problems
-    const gradeLevel = (assignment.gradeLevel as string) || '9-12';
-    await saveProblemsToQuestionBank(db, teacherId, assignment.id, assignment.sections, assignment.subject, gradeLevel);
+    await saveProblemsToQuestionBank(db, teacherId, assignment.id!, assignment.sections, assignment.subject, (assignment.gradeLevel || '9-12') as string);
 
     return mapAssignmentDetail(data);
   }

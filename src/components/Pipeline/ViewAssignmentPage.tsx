@@ -178,12 +178,11 @@ export function ViewAssignmentPage({ assignment, onBack }: ViewAssignmentPagePro
         <div className="matching-layout">
           <div className="matching-column">
             <div className="column-header">Prompts</div>
-            {(problem.prompts || []).map((prompt: string, i: number) => (
-              <div key={i} className="matching-item">
-                <span className="matching-label">{i + 1}.</span>
-                <span className="matching-text">{prompt}</span>
+            {problem.problemText && (
+              <div className="matching-item">
+                <span className="matching-text">{problem.problemText}</span>
               </div>
-            ))}
+            )}
           </div>
           <div className="matching-column">
             <div className="column-header">Answers</div>

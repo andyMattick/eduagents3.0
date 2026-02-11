@@ -254,11 +254,8 @@ export function QuestionFeedbackAnalysis({
                     <span className="metric-badge">
                       ⏱️ {Math.round(pf.metrics.avgTimeSeconds)}s
                     </span>
-                    <span className={`difficulty-indicator difficulty-${
-                      (pf.problem.complexity || 0) > 0.66 ? 'high' :
-                      (pf.problem.complexity || 0) > 0.33 ? 'medium' : 'low'
-                    }`}>
-                      {(pf.problem.complexity || 0).toFixed(2)}
+                    <span className={`difficulty-indicator difficulty-${pf.problem.complexity || 'medium'}`}>
+                      {pf.problem.complexity || 'medium'}
                     </span>
                   </div>
                 </div>

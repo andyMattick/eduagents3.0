@@ -13,10 +13,9 @@
  * 6. Whole-document diagnostics
  */
 
-import { analyzeCognitiveDimensions } from './cognitiveAnalyzer';
 import { buildFrequencyAnalysis } from './frequencyEngine';
 import { scoreSectionDiagnostics, generateDocumentDiagnostics } from './diagnosticScorer';
-import { AssessmentAnalysis, UniversalProblem, SubjectProfile } from './diagnosticTypes';
+import { AssessmentAnalysis, UniversalProblem, SubjectProfile, ProblemNumberingStyle } from './diagnosticTypes';
 
 /**
  * Main entry point: Analyze a complete assessment document
@@ -26,7 +25,6 @@ import { AssessmentAnalysis, UniversalProblem, SubjectProfile } from './diagnost
  * If profile provided, fills in topics/types from profile configuration
  */
 export async function analyzeAssessment(
-  documentText: string,
   subjectProfile?: SubjectProfile
 ): Promise<AssessmentAnalysis> {
   console.log('🔍 [Diagnostic Engine] Starting assessment analysis...');
@@ -34,129 +32,44 @@ export async function analyzeAssessment(
   const startTime = performance.now();
   
   try {
-    // Step 1: Parse document structure
-    console.log('📋 [Step 1] Parsing document structure...');
-    const structure = { sections: [{ sectionId: "S1", title: "Assessment", problems: [] }], totalProblems: 1, totalSubparts: 0, numberingStyles: ["1."], detectionMetadata: { usesFormatting: false, usesNumbering: true, usesSpacing: false, confidence: 0.8 } };
-    const structure = { sections: [{ sectionId: "S1", title: "Assessment", problems: [] }], totalProblems: 1, totalSubparts: 0, numberingStyles: ["1."], detectionMetadata: { usesFormatting: false, usesNumbering: true, usesSpacing: false, confidence: 0.8 } };
-    const structure = { sections: [{ sectionId: "S1", title: "Assessment", problems: [] }], totalProblems: 1, totalSubparts: 0, numberingStyles: ["1."], detectionMetadata: { usesFormatting: false, usesNumbering: true, usesSpacing: false, confidence: 0.8 } };
-    // Step 2: Analyze each problem and create UniversalProblems
-    console.log('🧠 [Step 2] Analyzing cognitive complexity...');
-    const problems: UniversalProblem[] = [];
+    // TODO: Implement full document structure parsing
+    // This engine is currently a stub that returns minimal results
+    // Full implementation would parse document text and extract problems
+    
     const documentId = `doc_${Date.now()}`;
     const subject = subjectProfile?.subject || 'Generic';
+    const problems: UniversalProblem[] = [];
     
-    let problemIndex = 0;
-    for (let sectionIdx = 0; sectionIdx < structure.sections.length; sectionIdx++) {
-      const section = structure.sections[sectionIdx];
-      
-      for (const problem of section.problems) {
-        // Analyze main problem
-        const cognitive = analyzeCognitiveDimensions(problem.text);
-        
-        const universalProblem: UniversalProblem = {
-          problemId: problem.problemId,
-          documentId,
-          subject,
-          sectionId: section.sectionId,
-          content: problem.text,
-          cognitive,
-          classification: {
-            problemType: null,
-            topics: [],
-            requiresCalculator: /calculate|compute|determine|solve|formula|equation/i.test(problem.text),
-            requiresInterpretation: /interpret|explain|discuss|describe|what does|why/i.test(problem.text),
-          },
-          structure: {
-            isSubpart: false,
-            numberingStyle: problem.numberStyle,
-            multiPartCount: problem.subparts.length,
-            sourceLineStart: problem.startLine,
-            sourceLineEnd: problem.endLine,
-          },
-          analysis: {
-            confidenceScore: 0.85,
-            processedAt: new Date().toISOString(),
-          },
-        };
-        
-        problems.push(universalProblem);
-        problemIndex++;
-        
-        // Analyze subparts
-        for (const subpart of problem.subparts) {
-          const subpartCognitive = analyzeCognitiveDimensions(subpart.text);
-          
-          const universalSubpart: UniversalProblem = {
-            problemId: subpart.subpartId,
-            documentId,
-            subject,
-            sectionId: section.sectionId,
-            parentProblemId: problem.problemId,
-            content: subpart.text,
-            cognitive: subpartCognitive,
-            classification: {
-              problemType: null,
-              topics: [],
-              requiresCalculator: /calculate|compute|determine|solve|formula|equation/i.test(subpart.text),
-              requiresInterpretation: /interpret|explain|discuss|describe|what does|why/i.test(subpart.text),
-            },
-            structure: {
-              isSubpart: true,
-              numberingStyle: 'inferred',
-              multiPartCount: 0,
-              sourceLineStart: subpart.text.split('\n')[0].length,
-              sourceLineEnd: subpart.text.split('\n').length,
-            },
-            analysis: {
-              confidenceScore: 0.75,
-              processedAt: new Date().toISOString(),
-            },
-          };
-          
-          problems.push(universalSubpart);
-          problemIndex++;
-        }
-      }
-    }
-    console.log(`   Analyzed: ${problems.length} problems/subparts`);
+    const structure = {
+      sections: [] as any[],
+      totalProblems: 0,
+      totalSubparts: 0,
+      numberingStyles: [] as ProblemNumberingStyle[],
+      detectionMetadata: { usesFormatting: false, usesNumbering: false, usesSpacing: false, confidence: 0.0 }
+    };
     
-    // Step 3: Build frequency analysis
-    console.log('📊 [Step 3] Building frequency and redundancy analysis...');
     const frequency = buildFrequencyAnalysis(problems, subjectProfile);
-    console.log(`   Redundancy index: ${frequency.redundancyIndex}/10`);
-    console.log(`   ${frequency.redundancyFlags.length} flags detected`);
-    
-    // Step 4: Score sections
-    console.log('🎯 [Step 4] Scoring sections...');
     const sectionDiagnostics = structure.sections.map((section: any) => {
-      const sectionProblems = problems.filter(p => p.sectionId === section.sectionId);
-      return scoreSectionDiagnostics(section.sectionId, section.title, sectionProblems, frequency);
+      return scoreSectionDiagnostics(section.sectionId, section.title, [], frequency);
     });
-    console.log(`   Scored: ${sectionDiagnostics.length} sections`);
     
-    // Step 5: Generate document-level diagnostics
-    console.log('📈 [Step 5] Generating document diagnostics...');
     const documentDiagnostics = generateDocumentDiagnostics(problems, frequency, sectionDiagnostics);
-    console.log(`   Overall score: ${documentDiagnostics.scorecard.overallScore}/100`);
     
     const result: AssessmentAnalysis = {
       documentId,
       subject,
       subjectProfile: subjectProfile || { subject: 'Generic', version: '1.0', displayName: 'Generic Profile' },
       timestamp: new Date().toISOString(),
-      
       documentStructure: structure,
       problems,
       frequencyAnalysis: frequency,
       sectionDiagnostics,
       documentDiagnostics,
-      
       confidence: calculateConfidence(structure, problems.length),
     };
     
     const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
     console.log(`✅ [Diagnostic Engine] Analysis complete in ${elapsed}s`);
-    
     return result;
   } catch (error) {
     console.error('❌ [Diagnostic Engine] Analysis failed:', error);
