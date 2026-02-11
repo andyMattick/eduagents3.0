@@ -184,6 +184,7 @@ export interface AssignmentDetail extends AssignmentSummary {
     sourceFile?: string;
     sourceFileUrl?: string;
   };
+  content?: any; // Full GeneratedAssignment for retrieval with all metadata
   studentSimulations?: StudentResponse[];
   rubricCriteria?: Array<{
     id: string;

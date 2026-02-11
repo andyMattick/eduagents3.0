@@ -13,6 +13,7 @@ export function AssignmentPreview() {
   const [showBloomMetrics, setShowBloomMetrics] = useState(false);
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showDocumentPreview, setShowDocumentPreview] = useState(false);
+  const [showDocumentStats, setShowDocumentStats] = useState(false);
 
   if (!generatedAssignment) {
     return (
@@ -21,6 +22,40 @@ export function AssignmentPreview() {
       </div>
     );
   }
+
+  const handleExportPDF = async () => {
+    try {
+      const htmlContent = document.getElementById('document-preview-content')?.innerHTML || '';
+      if (htmlContent) {
+        const dataUrl = await exportDocumentPreviewPDF(htmlContent);
+        if (dataUrl) {
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = `${generatedAssignment.title || 'assignment'}.pdf`;
+          link.click();
+        }
+      }
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('Failed to export PDF');
+    }
+  };
+
+  const handleExportJSON = () => {
+    try {
+      const jsonData = JSON.stringify(generatedAssignment, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${generatedAssignment.title || 'assignment'}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('JSON export failed:', error);
+      alert('Failed to export JSON');
+    }
+  };
 
   const bloomEntries = Object.entries(generatedAssignment.bloomDistribution);
   const maxBloomValue = Math.max(...bloomEntries.map(([_, count]) => count));
@@ -150,6 +185,175 @@ export function AssignmentPreview() {
           )}
         </div>
 
+        {/* Document Statistics */}
+        <div className="preview-footer">
+          <button
+            type="button"
+            className="metrics-toggle"
+            onClick={() => setShowDocumentStats(true)}
+          >
+            📊 Document Statistics & Analysis
+          </button>
+        </div>
+
+        {showDocumentStats && (
+          <div className="document-stats-panel">
+            <div className="stats-grid">
+              {/* Basic Metrics */}
+              <div className="stats-section">
+                <h3>Assignment Overview</h3>
+                <div className="stat-row">
+                  <span className="stat-label">Total Questions:</span>
+                  <span className="stat-value">{generatedAssignment.questionCount}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Total Sections:</span>
+                  <span className="stat-value">{generatedAssignment.sections.length}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Estimated Duration:</span>
+                  <span className="stat-value">{generatedAssignment.estimatedTime} minutes</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Assessment Type:</span>
+                  <span className="stat-value">{generatedAssignment.assessmentType || 'General'}</span>
+                </div>
+              </div>
+
+              {/* Complexity Analysis */}
+              <div className="stats-section">
+                <h3>Complexity Analysis</h3>
+                {(() => {
+                  const complexityScores = generatedAssignment.sections.flatMap(s =>
+                    s.problems.map(p => p.rawComplexity || (typeof p.complexity === 'string' ? 0.5 : p.complexity) || 0.5)
+                  );
+                  const avgComplexity = complexityScores.reduce((a, b) => a + b, 0) / complexityScores.length || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Average Complexity:</span>
+                        <span className="stat-value">{avgComplexity.toFixed(2)}/1.0</span>
+                      </div>
+                      <div className="complexity-breakdown">
+                        <div className="complexity-bar">
+                          <div className="complexity-fill" style={{ width: `${avgComplexity * 100}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Novelty Analysis */}
+              <div className="stats-section">
+                <h3>Novelty & Variety</h3>
+                {(() => {
+                  const noveltyScores = generatedAssignment.sections.flatMap(s =>
+                    s.problems.map(p => p.rawNovelty || (typeof p.novelty === 'string' ? 0.5 : p.novelty) || 0.5)
+                  );
+                  const avgNovelty = noveltyScores.reduce((a, b) => a + b, 0) / noveltyScores.length || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Average Novelty:</span>
+                        <span className="stat-value">{avgNovelty.toFixed(2)}/1.0</span>
+                      </div>
+                      <div className="novelty-breakdown">
+                        <div className="novelty-bar">
+                          <div className="novelty-fill" style={{ width: `${avgNovelty * 100}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Word Count */}
+              <div className="stats-section">
+                <h3>Content Length</h3>
+                {(() => {
+                  const totalWords = generatedAssignment.sections.reduce((sectionSum, section) =>
+                    sectionSum + section.problems.reduce((problemSum, problem) =>
+                      problemSum + (problem.problemLength || problem.problemText?.split(/\s+/).length || 0),
+                      0
+                    ),
+                    0
+                  );
+                  const avgWordsPerQuestion = totalWords / generatedAssignment.questionCount || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Total Words:</span>
+                        <span className="stat-value">{totalWords}</span>
+                      </div>
+                      <div className="stat-row">
+                        <span className="stat-label">Avg Words/Question:</span>
+                        <span className="stat-value">{avgWordsPerQuestion.toFixed(0)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Question Type Distribution */}
+              <div className="stats-section">
+                <h3>Question Types</h3>
+                {(() => {
+                  const typeCount: Record<string, number> = {};
+                  generatedAssignment.sections.forEach(section => {
+                    section.problems.forEach(problem => {
+                      const type = problem.questionFormat || 'unknown';
+                      typeCount[type] = (typeCount[type] || 0) + 1;
+                    });
+                  });
+                  return (
+                    <div className="type-list">
+                      {Object.entries(typeCount).map(([type, count]) => (
+                        <div key={type} className="type-item">
+                          <span className="type-name">{type.replace('-', ' ')}:</span>
+                          <span className="type-count">{count} ({((count / generatedAssignment.questionCount) * 100).toFixed(0)}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Tips Summary */}
+              <div className="stats-section">
+                <h3>Support Resources</h3>
+                {(() => {
+                  const problemsWithTips = generatedAssignment.sections.reduce((sum, section) =>
+                    sum + section.problems.filter(p => p.hasTip && p.tipText).length,
+                    0
+                  );
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Problems with Tips:</span>
+                        <span className="stat-value">{problemsWithTips}/{generatedAssignment.questionCount}</span>
+                      </div>
+                      <div className="stat-row">
+                        <span className="stat-label">Tip Coverage:</span>
+                        <span className="stat-value">{((problemsWithTips / generatedAssignment.questionCount) * 100).toFixed(0)}%</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Close button */}
+            <button
+              type="button"
+              className="metrics-toggle close-stats"
+              onClick={() => setShowDocumentStats(false)}
+            >
+              ▲ Hide Statistics
+            </button>
+          </div>
+        )}
+
         {/* No Analysis Disclaimer */}
         <div className="preview-disclaimer">
           <span className="disclaimer-icon">⚠️</span>
@@ -207,6 +411,20 @@ export function AssignmentPreview() {
           <div className="button-group">
             <button className="button-secondary" onClick={() => setShowDocumentPreview(true)}>
               👁️ View Document Preview
+            </button>
+            <button 
+              className="button-secondary"
+              onClick={handleExportPDF}
+              title="Export assignment as PDF"
+            >
+              📄 Export PDF
+            </button>
+            <button 
+              className="button-secondary"
+              onClick={handleExportJSON}
+              title="Export assignment data as JSON"
+            >
+              💾 Export Data
             </button>
             <button 
               className="button-secondary"

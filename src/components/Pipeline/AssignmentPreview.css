@@ -1407,6 +1407,129 @@
   }
 }
 
+/* Document Statistics Panel */
+.document-stats-panel {
+  padding: 2rem;
+  background: var(--color-bg-secondary);
+  border-top: 2px solid var(--color-border);
+  border-bottom: 2px solid var(--color-border);
+  margin: 1rem 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.stats-section {
+  padding: 1.5rem;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text-primary);
+}
+
+.stats-section h3 {
+  margin: 0 0 1rem 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--color-border, #eee);
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.stat-value {
+  font-weight: 700;
+  color: var(--color-text-primary);
+  padding: 0.2rem 0.6rem;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+}
+
+/* Progress Bars */
+.complexity-breakdown,
+.novelty-breakdown {
+  margin-top: 0.8rem;
+}
+
+.complexity-bar,
+.novelty-bar {
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.complexity-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffc107, #ff9800);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.novelty-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #66bb6a);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Type List */
+.type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.type-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.type-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  text-transform: capitalize;
+}
+
+.type-count {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+/* Close Stats Button */
+.close-stats {
+  width: 100%;
+  margin-top: 1rem;
+}
+
 /* Print Styles */
 @media print {
   .assignment-preview {

@@ -14,6 +14,7 @@ import { StudentSimulations } from './StudentSimulations';
 import { AssignmentEditor } from './AssignmentEditor';
 import { PipelineShell } from './PipelineShell';
 import { SaveAssignmentStep } from './SaveAssignmentStep';
+import { ViewAssignmentPage } from './ViewAssignmentPage';
 import './PipelineRouter.css';
 
 interface AssignmentContext {
@@ -50,6 +51,8 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     setGeneratedAssignment,
     setReadyForRewrite,
     setReadyForClassroomAnalysis,
+    getCurrentRoute,
+    reset,
   } =
     useUserFlow();
 
@@ -57,7 +60,7 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   const [isLoadingAssignment, setIsLoadingAssignment] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const currentRoute = useUserFlow().getCurrentRoute();
+  const currentRoute = getCurrentRoute();
 
   // Load assignment if assignmentContext is provided
   useEffect(() => {
@@ -123,20 +126,12 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   // If assignment context exists and loaded, show the appropriate view
   if (assignmentContext && generatedAssignment && !isLoadingAssignment) {
     if (assignmentContext.action === 'view') {
-      // View mode: show assignment preview
+      // View mode: show dedicated view page with stats and export
       return (
-        <div className="pipeline-router-container">
-          <div className="step-header">
-            <h1>📖 View Assignment</h1>
-            <p>{generatedAssignment.title}</p>
-          </div>
-          <AssignmentPreview />
-          <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-            <button onClick={onAssignmentSaved} className="btn-primary">
-              ← Back to Dashboard
-            </button>
-          </div>
-        </div>
+        <ViewAssignmentPage
+          assignment={generatedAssignment}
+          onBack={onAssignmentSaved || (() => {})}
+        />
       );
     } else if (assignmentContext.action === 'edit' || assignmentContext.action === 'clone') {
       // Edit mode: show editor
@@ -401,8 +396,6 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Final Save Step - Save assignment to database
   if (currentRoute === '/ai-rewrite-placeholder') {
-    const { reset, setReadyForRewrite } = useUserFlow();
-
     if (!generatedAssignment) {
       return (
         <div className="pipeline-router-container error-state">
@@ -421,7 +414,7 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
         <SaveAssignmentStep
           assignment={generatedAssignment}
           onSaveComplete={() => {
-            reset();
+            // Don't reset state here - let parent navigate
             // Call callback to notify parent that save is complete
             if (onAssignmentSaved) {
               onAssignmentSaved();

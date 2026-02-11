@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { getSupabase } from '../services/teacherSystemService';
 import { signUp, login } from '../services/authService';
+import { setAIModeByRole } from '../config/aiConfig';
 import { SignUpRequest, LoginRequest } from '../types/teacherSystem';
 
 interface AuthUser {
@@ -41,6 +42,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .single();
 
           const isAdmin = accountError ? false : (accountData?.is_admin || false);
+          
+          // Auto-set AI mode based on role: admin=real, non-admin=mock
+          setAIModeByRole(isAdmin);
           
           setUser({
             id: data.session.user.id,
@@ -103,6 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const isAdmin = accountError ? false : (accountData?.is_admin || false);
         
+        // Auto-set AI mode based on role: admin=real, non-admin=mock
+        setAIModeByRole(isAdmin);
+        
         setUser({
           id: data.session.user.id,
           email: data.session.user.email || '',
@@ -123,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
       const supabase = getSupabase();
       await supabase.auth.signOut();
+      // Reset to mock AI when logging out
+      setAIModeByRole(false);
       setUser(null);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Logout failed';

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import './AssignmentIntentForm.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection } from '../../hooks/useUserFlow';
 import { enrichAssignmentMetadata } from '../../agents/analysis/enrichAssignmentMetadata';
+import { getWriterService } from '../../config/aiConfig';
+import { useRealAI } from '../../config/aiConfig';
 import { SectionBuilder, CustomSection } from './SectionBuilder';
 
 /**
@@ -9,6 +11,149 @@ import { SectionBuilder, CustomSection } from './SectionBuilder';
  * Collects assignment specifications when creating from source documents
  * (Used when goal === "create" AND hasSourceDocs === true)
  */
+
+// Helper function to convert AI-generated problems into assignment structure
+function generateAssignmentPreviewFromAI(
+  assignmentType: string,
+  questionCount: number,
+  estimatedTime: number,
+  sectionStrategy: 'manual' | 'ai-generated',
+  customSections: CustomSection[],
+  topic: string,
+  sourceFile: { name?: string; type?: string } | undefined,
+  aiProblems: Array<{
+    text: string;
+    bloomLevel: string;
+    questionType?: string;
+    complexity?: number;
+    novelty?: number;
+    tipText?: string | null;
+    hasTips?: boolean;
+  }>,
+  customTitle?: string
+): GeneratedAssignment {
+  const bloomDistribution: Record<string, number> = {
+    'Remember': 0,
+    'Understand': 0,
+    'Apply': 0,
+    'Analyze': 0,
+    'Evaluate': 0,
+    'Create': 0,
+  };
+
+  // Map bloom string to number
+  const bloomStringToNumber = (bloomStr: string): 1 | 2 | 3 | 4 | 5 | 6 => {
+    const bloomMap: Record<string, 1 | 2 | 3 | 4 | 5 | 6> = {
+      'Remember': 1,
+      'Understand': 2,
+      'Apply': 3,
+      'Analyze': 4,
+      'Evaluate': 5,
+      'Create': 6,
+    };
+    return bloomMap[bloomStr] || 3;
+  };
+
+  // Map complexity score to complexity label
+  const complexityToLabel = (score?: number): 'low' | 'medium' | 'high' => {
+    if (!score && score !== 0) return 'medium';
+    if (score < 0.33) return 'low';
+    if (score < 0.67) return 'medium';
+    return 'high';
+  };
+
+  // Map novelty score to novelty label
+  const noveltyToLabel = (score?: number): 'low' | 'medium' | 'high' => {
+    if (!score && score !== 0) return 'medium';
+    if (score < 0.4) return 'low';
+    if (score < 0.7) return 'medium';
+    return 'high';
+  };
+
+  // Convert AI problems to question format
+  const problems = aiProblems.slice(0, questionCount).map((problem, i) => {
+    const bloomLevel = bloomStringToNumber(problem.bloomLevel);
+    bloomDistribution[problem.bloomLevel] = (bloomDistribution[problem.bloomLevel] || 0) + 1;
+
+    // Use actual question type from AI, or default format
+    const questionFormatMap: Record<string, any> = {
+      'multiple-choice': 'multiple-choice',
+      'true-false': 'true-false',
+      'short-answer': 'short-answer',
+      'essay': 'free-response',
+      'matching': 'fill-blank',
+    };
+    const questionFormat = (questionFormatMap[problem.questionType?.toLowerCase() || ''] ||
+      (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5]) as any;
+
+    const wordCount = problem.text.split(/\s+/).length;
+
+    return {
+      id: `q${i + 1}`,
+      sectionId: `section-${problem.questionType?.toLowerCase() || 'other'}`,
+      problemText: problem.text,
+      bloomLevel,
+      questionFormat,
+      tipText: problem.hasTips && problem.tipText ? problem.tipText : undefined,
+      hasTip: !!(problem.hasTips && problem.tipText),
+      problemType: complexityToLabel(problem.complexity),
+      complexity: complexityToLabel(problem.complexity),
+      novelty: noveltyToLabel(problem.novelty),
+      estimatedTime: Math.round(3 + (problem.complexity || 0.5) * 7 + wordCount / 50),
+      problemLength: wordCount,
+      rawComplexity: problem.complexity,
+      rawNovelty: problem.novelty,
+    } as any;
+  });
+
+  // Group problems by question type into sections
+  const questionTypeMap = new Map<string, typeof problems>();
+  const questionTypeOrder = ['multiple-choice', 'true-false', 'short-answer', 'matching', 'essay', 'free-response'];
+
+  problems.forEach(problem => {
+    const type = problem.questionFormat;
+    if (!questionTypeMap.has(type)) {
+      questionTypeMap.set(type, []);
+    }
+    questionTypeMap.get(type)!.push(problem);
+  });
+
+  // Create sections organized by question type
+  const sections: GeneratedSection[] = Array.from(questionTypeMap.entries())
+    .sort((a, b) => {
+      const aIdx = questionTypeOrder.indexOf(a[0]);
+      const bIdx = questionTypeOrder.indexOf(b[0]);
+      return aIdx - bIdx;
+    })
+    .map(([type, typeProblems]) => ({
+      sectionId: `section-${type}`,
+      sectionName: `${type.replace('-', ' ').charAt(0).toUpperCase() + type.replace('-', ' ').slice(1)} Questions`,
+      instructions: `Answer the following ${type.replace('-', ' ')} questions`,
+      problemType: type,
+      problems: typeProblems.map(p => ({ ...p, sectionId: `section-${type}` })) as any,
+      includeTips: true,
+    }));
+
+  // Bloom distribution counts (no percentages - just raw counts)
+  const totalQuestions = problems.length;
+
+  const rawAssignment: GeneratedAssignment = {
+    assignmentId: `assignment-${Date.now()}`,
+    assignmentType,
+    title: customTitle || `${assignmentType}: ${topic}`,
+    topic,
+    estimatedTime,
+    questionCount: totalQuestions,
+    assessmentType: 'formative',
+    sourceFile: sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined,
+    sections,
+    bloomDistribution,
+    organizationMode: sectionStrategy,
+    timestamp: new Date().toISOString(),
+  };
+
+  return enrichAssignmentMetadata(rawAssignment);
+}
 
 // Helper function to generate mock assignment data based on form inputs
 function generateAssignmentPreview(
@@ -18,7 +163,8 @@ function generateAssignmentPreview(
   sectionStrategy: 'manual' | 'ai-generated',
   customSections: CustomSection[],
   topic: string = 'Course Material',
-  sourceFile?: { name?: string; type?: string }
+  sourceFile?: { name?: string; type?: string },
+  customTitle?: string
 ): GeneratedAssignment {
   // Generate mock Bloom distribution
   const bloomDistribution: Record<string, number> = {
@@ -114,7 +260,7 @@ function generateAssignmentPreview(
   const rawAssignment: GeneratedAssignment = {
     assignmentId: `assignment-${Date.now()}`,
     assignmentType,
-    title: `${assignmentType}: ${topic}`,
+    title: customTitle || `${assignmentType}: ${topic}`,
     topic,
     estimatedTime,
     questionCount,
@@ -141,12 +287,13 @@ export function AssignmentIntentForm() {
   const [formData, setFormData] = useState({
     assignmentType: 'Quiz' as 'Test' | 'Quiz' | 'Warm-up' | 'Exit Ticket' | 'Practice Set' | 'Project' | 'Other',
     otherAssignmentType: '',
-    questionCount: 10,
     estimatedTime: 30,
-    assessmentType: 'formative' as 'formative' | 'summative',
+    customQuestionCount: null as number | null, // null = use auto-calculated
+    customAssessmentType: null as 'formative' | 'summative' | null, // null = use auto-calculated
     sectionStrategy: 'ai-generated' as 'manual' | 'ai-generated',
     customSections: [] as CustomSection[],
-    skillsAndStandards: '',
+    optionalFeedback: '',
+    assignmentTitle: '', // Custom title (optional)
   });
 
   const [errors, setErrors] = useState<string[]>([]);
@@ -168,6 +315,62 @@ export function AssignmentIntentForm() {
 
   const assignmentTypes = ['Test', 'Quiz', 'Warm-up', 'Exit Ticket', 'Practice Set', 'Project', 'Other'] as const;
 
+  // Auto-calculate settings based on assignment type and time
+  const calculateAutoSettings = () => {
+    const type = formData.assignmentType === 'Other' ? formData.otherAssignmentType : formData.assignmentType;
+    const time = formData.estimatedTime;
+    
+    // Default: ~3 minutes per question
+    let questionCount = formData.customQuestionCount !== null ? formData.customQuestionCount : Math.max(1, Math.round(time / 3));
+    
+    // Most types default to summative; only a few are formative
+    // But allow override with customAssessmentType
+    let assessmentType: 'formative' | 'summative' = formData.customAssessmentType !== null ? formData.customAssessmentType : 'summative';
+    
+    // Set defaults if not overridden
+    if (formData.customAssessmentType === null) {
+      switch (type) {
+        case 'Quiz':
+        case 'Warm-up':
+        case 'Exit Ticket':
+        case 'Practice Set':
+          assessmentType = 'formative';
+          break;
+        default:
+          assessmentType = 'summative';
+          break;
+      }
+    }
+
+    // Type-specific question count adjustments
+    if (formData.customQuestionCount === null) {
+      switch (type) {
+        case 'Quiz':
+          questionCount = Math.max(5, Math.min(20, questionCount));
+          break;
+        case 'Test':
+          questionCount = Math.max(5, Math.min(30, questionCount));
+          break;
+        case 'Warm-up':
+          questionCount = Math.min(5, questionCount);
+          break;
+        case 'Exit Ticket':
+          questionCount = Math.min(3, questionCount);
+          break;
+        case 'Project':
+          questionCount = 1;
+          break;
+        case 'Practice Set':
+          questionCount = Math.max(10, questionCount);
+          break;
+      }
+    }
+    
+    return { questionCount, assessmentType };
+  };
+
+  const { questionCount, assessmentType } = calculateAutoSettings();
+
   const handleAssignmentTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData({
       ...formData,
@@ -182,20 +385,34 @@ export function AssignmentIntentForm() {
     });
   };
 
-  const handleQuestionCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    setFormData({ ...formData, questionCount: Math.max(1, Math.min(100, value)) });
-  };
-
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = parseInt(e.target.value) || 0;
-    setFormData({ ...formData, estimatedTime: Math.max(5, Math.min(480, value)) });
+    let value = e.target.value.trim();
+    
+    // Allow empty input (user still typing)
+    if (value === '') {
+      setFormData({ ...formData, estimatedTime: 0 });
+      return;
+    }
+    
+    // Parse as integer
+    const numValue = parseInt(value, 10);
+    
+    // Only update if it's a valid number
+    if (!isNaN(numValue)) {
+      const clampedValue = Math.max(5, Math.min(480, numValue));
+      setFormData({ ...formData, estimatedTime: clampedValue });
+    }
   };
 
-  const handleAssessmentTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData({
-      ...formData,
-      assessmentType: e.target.value as 'formative' | 'summative',
+  const handleCustomQuestionCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(e.target.value) || null;
+    setFormData({ ...formData, customQuestionCount: value !== null && value > 0 ? value : null });
+  };
+
+  const handleAssessmentTypeToggle = (type: 'formative' | 'summative') => {
+    setFormData({ 
+      ...formData, 
+      customAssessmentType: formData.customAssessmentType === type ? null : type 
     });
   };
 
@@ -213,11 +430,15 @@ export function AssignmentIntentForm() {
     });
   };
 
-  const handleSkillsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setFormData({ ...formData, skillsAndStandards: e.target.value });
+  const handleFeedbackChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setFormData({ ...formData, optionalFeedback: e.target.value });
   };
 
-  const handleSubmit = () => {
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, assignmentTitle: e.target.value });
+  };
+
+  const handleSubmit = async () => {
     console.log('🔵 handleSubmit called');
     const newErrors: string[] = [];
 
@@ -225,8 +446,8 @@ export function AssignmentIntentForm() {
       newErrors.push("Please specify what type of assignment this is");
     }
 
-    if (formData.sectionStrategy === 'manual' && formData.customSections.length === 0) {
-      newErrors.push("Please add at least one section type");
+    if (!formData.estimatedTime || formData.estimatedTime < 5) {
+      newErrors.push("Please enter an estimated time (at least 5 minutes)");
     }
 
     if (newErrors.length > 0) {
@@ -239,42 +460,113 @@ export function AssignmentIntentForm() {
     setIsSubmitting(true);
     console.log('⏳ isSubmitting set to true');
 
-    // Build the intent data object
-    const intentData = {
-      assignmentType: formData.assignmentType,
-      ...(formData.otherAssignmentType && { otherAssignmentType: formData.otherAssignmentType }),
-      questionCount: formData.questionCount,
-      estimatedTime: formData.estimatedTime,
-      assessmentType: formData.assessmentType,
-      sectionStrategy: formData.sectionStrategy,
-      ...(formData.sectionStrategy === 'manual' && formData.customSections.length > 0 && {
-        customSections: formData.customSections,
-      }),
-      ...(formData.skillsAndStandards && {
-        skillsAndStandards: formData.skillsAndStandards
-          .split('\n')
-          .map(s => s.trim())
-          .filter(s => s),
-      }),
-    };
+    try {
+      const { questionCount: autoQuestionCount, assessmentType: autoAssessmentType } = calculateAutoSettings();
+      const finalQuestionCount = formData.customQuestionCount !== null ? formData.customQuestionCount : autoQuestionCount;
+      const finalAssessmentType = formData.customAssessmentType !== null ? formData.customAssessmentType : autoAssessmentType;
+      
+      const intentData = {
+        assignmentType: formData.assignmentType === 'Other' ? formData.otherAssignmentType : formData.assignmentType,
+        questionCount: finalQuestionCount,
+        estimatedTime: formData.estimatedTime,
+        assessmentType: finalAssessmentType,
+        sectionStrategy: formData.sectionStrategy,
+        ...(formData.sectionStrategy === 'manual' && formData.customSections.length > 0 && {
+          customSections: formData.customSections,
+        }),
+        ...(formData.optionalFeedback && {
+          skillsAndStandards: formData.optionalFeedback
+            .split('\n')
+            .map(s => s.trim())
+            .filter(s => s),
+        }),
+      };
 
-    console.log('📝 Setting sourceAwareIntentData:', intentData);
-    setSourceAwareIntentData(intentData);
+      console.log('📝 Setting sourceAwareIntentData (auto-configured):', intentData);
+      setSourceAwareIntentData(intentData);
 
-    // Generate assignment preview
-    const generatedAssignment = generateAssignmentPreview(
-      formData.assignmentType === 'Other' ? formData.otherAssignmentType : formData.assignmentType,
-      formData.questionCount,
-      formData.estimatedTime,
-      formData.sectionStrategy,
-      formData.customSections,
-      'Course Material', // In real implementation, would extract from source file
-      sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined
-    );
+      // Read source file content if available
+      let sourceText: string | undefined;
+      if (sourceFile) {
+        console.log('📄 Reading source file:', sourceFile.name);
+        try {
+          sourceText = await sourceFile.text();
+          console.log(`📄 Source file read successfully (${sourceText.length} chars)`);
+        } catch (readError) {
+          console.warn('⚠️ Failed to read source file:', readError);
+        }
+      }
 
-    console.log('📋 Generated assignment:', generatedAssignment);
-    console.log('🚀 Calling setGeneratedAssignment');
-    setGeneratedAssignment(generatedAssignment);
+      // Try to generate real assignment with AI if enabled
+      let generatedAssignment;
+      
+      // DEBUG: Check if real AI is enabled
+      const isRealAI = useRealAI();
+      console.log('🔍 DEBUG: useRealAI() =', isRealAI);
+      
+      if (isRealAI) {
+        console.log('🤖 Using REAL AI to generate questions...');
+        try {
+          const writer = getWriterService();
+          console.log('🔍 DEBUG: writer service =', writer);
+          const topic = sourceFile?.name || 'Course Material';
+          
+          const response = await (writer as any).generate(
+            topic,
+            { Apply: 0.3, Analyze: 0.2, Create: 0.2, Understand: 0.2, Remember: 0.1 }, // Bloom goals
+            finalQuestionCount,
+            sourceText // Pass the source material content!
+          );
+
+          console.log('✅ Real AI generated problems:', response);
+
+          // Convert AI response to GeneratedSection format
+          generatedAssignment = generateAssignmentPreviewFromAI(
+            intentData.assignmentType,
+            finalQuestionCount,
+            formData.estimatedTime,
+            formData.sectionStrategy,
+            formData.customSections,
+            topic,
+            sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined,
+            response.problems,
+            formData.assignmentTitle
+          );
+        } catch (aiError) {
+          console.error('❌ Real AI generation FAILED:', aiError);
+          console.error('Full error:', aiError);
+          generatedAssignment = generateAssignmentPreview(
+            intentData.assignmentType,
+            finalQuestionCount,
+            formData.estimatedTime,
+            formData.sectionStrategy,
+            formData.customSections,
+            sourceFile?.name || 'Course Material',
+            sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined,
+            formData.assignmentTitle
+          );
+        }
+      } else {
+        console.log('📝 Using MOCK AI generation (real AI not enabled)');
+        // Use mock generation
+        generatedAssignment = generateAssignmentPreview(
+          intentData.assignmentType,
+          finalQuestionCount,
+          formData.estimatedTime,
+          formData.sectionStrategy,
+          formData.customSections,
+          sourceFile?.name || 'Course Material',
+          sourceFile ? { name: sourceFile.name, type: sourceFile.type } : undefined,
+          formData.assignmentTitle
+        );
+      }
+
+      console.log('📋 Generated assignment:', generatedAssignment);
+      console.log('🚀 Calling setGeneratedAssignment');
+      setGeneratedAssignment(generatedAssignment);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -283,12 +575,12 @@ export function AssignmentIntentForm() {
         {/* Header */}
         <div className="form-header">
           <h1>📋 What Kind of Assignment?</h1>
-          <p>Thanks for sharing your materials. Based on your notes, what kind of assignment would you like to create?</p>
+          <p>Just tell us the type and how long it should take. We'll handle the rest.</p>
           {sourceFile && <p className="source-hint">Using: <strong>{sourceFile.name}</strong></p>}
         </div>
 
         <div className="form-content">
-          {/* Assignment Type */}
+          {/* Assignment Type - REQUIRED */}
           <div className="form-field">
             <label htmlFor="assignmentType">
               <span className="label-text">Assignment Type</span>
@@ -317,67 +609,107 @@ export function AssignmentIntentForm() {
             )}
           </div>
 
-          {/* Question Count & Time Estimate - Horizontal Group */}
-          <div className="input-group">
-            <div className="input-block">
-              <label htmlFor="questionCount">
-                <span className="label-text">Number of Questions</span>
-              </label>
-              <div className="input-with-unit">
-                <input
-                  id="questionCount"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={formData.questionCount}
-                  onChange={handleQuestionCountChange}
-                  className="number-input"
-                />
-                <span className="unit-label">questions</span>
-              </div>
-              <p className="helper-text">Start with 10–15 for a typical quiz</p>
-            </div>
-
-            <div className="input-block">
-              <label htmlFor="estimatedTime">
-                <span className="label-text">Estimated Time</span>
-              </label>
-              <div className="input-with-unit">
-                <input
-                  id="estimatedTime"
-                  type="number"
-                  min="5"
-                  max="480"
-                  value={formData.estimatedTime}
-                  onChange={handleTimeChange}
-                  className="number-input"
-                />
-                <span className="unit-label">minutes</span>
-              </div>
-              <p className="helper-text">Most questions take 1–3 minutes each</p>
-            </div>
-          </div>
-
-          {/* Assessment Type */}
+          {/* Assignment Title - OPTIONAL */}
           <div className="form-field">
-            <label htmlFor="assessmentType">
-              <span className="label-text">Assessment Type</span>
+            <label htmlFor="assignmentTitle">
+              <span className="label-text">Title (optional - leave blank for auto-generated)</span>
             </label>
-            <select
-              id="assessmentType"
-              value={formData.assessmentType}
-              onChange={handleAssessmentTypeChange}
-              className="select-input"
-            >
-              <option value="formative">Formative (checking for understanding)</option>
-              <option value="summative">Summative (assessing mastery)</option>
-            </select>
+            <input
+              id="assignmentTitle"
+              type="text"
+              value={formData.assignmentTitle}
+              onChange={handleTitleChange}
+              placeholder={`e.g., "Chapter 5: The Renaissance Assessment"`}
+              className="text-input"
+            />
           </div>
 
-          {/* Section Strategy */}
+          {/* Estimated Time - REQUIRED */}
+          <div className="form-field">
+            <label htmlFor="estimatedTime">
+              <span className="label-text">Estimated Time</span>
+              <span className="required">*</span>
+            </label>
+            <div className="input-with-unit">
+              <input
+                id="estimatedTime"
+                type="text"
+                inputMode="numeric"
+                min="5"
+                max="480"
+                value={formData.estimatedTime || ''}
+                onChange={handleTimeChange}
+                className="number-input"
+                placeholder="30"
+              />
+              <span className="unit-label">minutes</span>
+            </div>
+            <p className="helper-text">
+              💡 With {formData.estimatedTime} minutes, we'll generate approximately <strong>{questionCount} questions</strong> ({assessmentType === 'summative' ? 'summative test' : 'formative assessment'})
+            </p>
+          </div>
+
+          {/* Optional: Custom Question Count */}
+          <div className="form-field">
+            <label htmlFor="customQuestionCount">
+              <span className="label-text">Optional: Override number of questions</span>
+            </label>
+            <div className="input-with-unit">
+              <input
+                id="customQuestionCount"
+                type="number"
+                min="1"
+                max="100"
+                placeholder={`Default: ${questionCount}`}
+                value={formData.customQuestionCount !== null ? formData.customQuestionCount : ''}
+                onChange={handleCustomQuestionCountChange}
+                className="number-input"
+              />
+              <span className="unit-label">questions</span>
+            </div>
+            <p className="helper-text">
+              Leave empty for AI-optimized defaults. The AI will organize questions into different problem types and difficulty levels to best match your students' learning needs.
+            </p>
+          </div>
+
+          {/* Optional: Assessment Type Toggle */}
           <div className="form-field">
             <label>
-              <span className="label-text">How would you like to organize the problems?</span>
+              <span className="label-text">Optional: Assessment type</span>
+            </label>
+            <div className="section-strategy-options">
+              <button
+                type="button"
+                className={`strategy-option ${formData.customAssessmentType === 'formative' ? 'selected' : ''}`}
+                onClick={() => handleAssessmentTypeToggle('formative')}
+              >
+                <div className="strategy-icon">📝</div>
+                <div className="strategy-content">
+                  <strong>Formative</strong>
+                  <p>Checking for understanding</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className={`strategy-option ${formData.customAssessmentType === 'summative' ? 'selected' : ''}`}
+                onClick={() => handleAssessmentTypeToggle('summative')}
+              >
+                <div className="strategy-icon">✅</div>
+                <div className="strategy-content">
+                  <strong>Summative</strong>
+                  <p>Assessing mastery</p>
+                </div>
+              </button>
+            </div>
+            <p className="helper-text">
+              Leave unselected to use defaults based on assignment type. Currently set to: <strong>{assessmentType}</strong>
+            </p>
+          </div>
+
+          {/* Optional: Section Organization */}
+          <div className="form-field">
+            <label>
+              <span className="label-text">Optional: Organize into sections</span>
             </label>
             <div className="section-strategy-options">
               <button
@@ -388,7 +720,7 @@ export function AssignmentIntentForm() {
                 <div className="strategy-icon">🤖</div>
                 <div className="strategy-content">
                   <strong>AI Organizes Sections</strong>
-                  <p>I'll let AI decide problem types and distribution</p>
+                  <p>AI decides problem types and distribution</p>
                 </div>
               </button>
               <button
@@ -399,15 +731,10 @@ export function AssignmentIntentForm() {
                 <div className="strategy-icon">✏️</div>
                 <div className="strategy-content">
                   <strong>I'll Organize Sections</strong>
-                  <p>I want to specify problem types and how many of each</p>
+                  <p>Specify problem types and questions per section</p>
                 </div>
               </button>
             </div>
-            {formData.sectionStrategy === 'ai-generated' && (
-              <div className="bloom-spread-note">
-                Most questions will focus on core skills like explaining, applying, and analyzing. A few will challenge students to justify, design, or critique — and will include support if needed.
-              </div>
-            )}
           </div>
 
           {/* Section Builder - Shows when "I'll Organize Sections" is selected */}
@@ -418,19 +745,20 @@ export function AssignmentIntentForm() {
             />
           )}
 
-          {/* Skills and Standards */}
+          {/* Optional Feedback/Notes */}
           <div className="form-field">
-            <label htmlFor="skillsAndStandards">
-              <span className="label-text">Any specific skills or standards to emphasize?</span>
+            <label htmlFor="optionalFeedback">
+              <span className="label-text">Optional: Any specific preferences or constraints?</span>
             </label>
             <textarea
-              id="skillsAndStandards"
-              value={formData.skillsAndStandards}
-              onChange={handleSkillsChange}
-              placeholder="Optional: List skills, standards, or competencies (one per line)"
+              id="optionalFeedback"
+              value={formData.optionalFeedback}
+              onChange={handleFeedbackChange}
+              placeholder="Optional: Add any specific skills, standards, learning objectives, or other preferences (one per line)"
               rows={3}
               className="textarea-input"
             />
+            <p className="helper-text">Leave empty for AI-optimized defaults. Without feedback, the AI will create a balanced mix of question types and difficulty levels to support diverse learners.</p>
           </div>
 
           {/* Error Messages */}
@@ -451,8 +779,120 @@ export function AssignmentIntentForm() {
               <div className="success-icon">✅</div>
               <div className="success-message">
                 <p><strong>Assignment generated successfully!</strong></p>
-                <p>Your {formData.assignmentType} is ready with {formData.questionCount} questions.</p>
+                <p>Your {formData.assignmentType} is ready with {formData.customQuestionCount !== null ? formData.customQuestionCount : questionCount} {(formData.customQuestionCount !== null ? formData.customQuestionCount : questionCount) === 1 ? 'question' : 'questions'} ({assessmentType}).</p>
               </div>
+            </div>
+          )}
+
+          {/* Generated Assignment Preview - Shows all questions with tags */}
+          {isGenerated && generatedAssignment && (
+            <div style={{
+              marginTop: '2rem',
+              padding: '1.5rem',
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '8px',
+              maxHeight: '400px',
+              overflowY: 'auto',
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '1rem', color: 'var(--color-text-primary)' }}>
+                📋 Generated Questions Preview ({generatedAssignment.questionCount} total)
+              </h3>
+              
+              {/* Bloom Distribution Summary */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '0.8rem',
+                marginBottom: '1.5rem',
+                fontSize: '0.9rem',
+              }}>
+                {Object.entries(generatedAssignment.bloomDistribution).map(([level, count]) => (
+                  <div key={level} style={{
+                    padding: '0.6rem',
+                    background: 'var(--color-bg-card)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '4px',
+                    textAlign: 'center',
+                    color: 'var(--color-text-primary)',
+                  }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>{count}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)' }}>{level}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Problems by Section */}
+              {generatedAssignment.sections.map((section, sIdx) => (
+                <div key={sIdx} style={{ marginBottom: '1.5rem' }}>
+                  <h4 style={{
+                    margin: '0 0 0.8rem 0',
+                    fontSize: '0.95rem',
+                    fontWeight: '600',
+                    color: 'var(--color-text-primary)',
+                    paddingBottom: '0.5rem',
+                    borderBottom: '1px solid var(--color-border)',
+                  }}>
+                    {section.sectionName} ({section.problems.length} problems)
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                    {section.problems.map((problem, pIdx) => (
+                      <div key={pIdx} style={{
+                        padding: '0.8rem',
+                        background: 'var(--color-bg-card)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '4px',
+                        fontSize: '0.85rem',
+                        color: 'var(--color-text-primary)',
+                      }}>
+                        <div style={{ fontWeight: '600', marginBottom: '0.4rem', display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                          <span>Q{section.problems.length > 1 ? `${sIdx + 1}.${pIdx + 1}` : pIdx + 1}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                            Level {problem.bloomLevel} • {problem.questionFormat.replace('-', ' ')}
+                          </span>
+                        </div>
+                        <p style={{ margin: '0.3rem 0', lineHeight: '1.4' }}>
+                          {problem.problemText.substring(0, 120)}
+                          {problem.problemText.length > 120 ? '...' : ''}
+                        </p>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                          {problem.complexity && (
+                            <span style={{
+                              fontSize: '0.75rem',
+                              padding: '0.2rem 0.4rem',
+                              background: 'rgba(0,0,0,0.1)',
+                              borderRadius: '3px',
+                            }}>
+                              Complexity: {typeof problem.complexity === 'string' ? problem.complexity : (problem.complexity || 0).toFixed(2)}
+                            </span>
+                          )}
+                          {problem.novelty && (
+                            <span style={{
+                              fontSize: '0.75rem',
+                              padding: '0.2rem 0.4rem',
+                              background: 'rgba(0,0,0,0.1)',
+                              borderRadius: '3px',
+                            }}>
+                              Novelty: {typeof problem.novelty === 'string' ? problem.novelty : (problem.novelty || 0).toFixed(2)}
+                            </span>
+                          )}
+                          {problem.hasTip && (
+                            <span style={{
+                              fontSize: '0.75rem',
+                              padding: '0.2rem 0.4rem',
+                              background: 'rgba(255, 193, 7, 0.2)',
+                              borderRadius: '3px',
+                              color: 'var(--color-text-primary)',
+                            }}>
+                              💡 Has tip
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
@@ -471,7 +911,7 @@ export function AssignmentIntentForm() {
                 onClick={handleSubmit}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? '⏳ Generating...' : 'Generate Assignment →'}
+                {isSubmitting ? `⏳ ${useRealAI() ? '🤖 AI' : 'Mock'} Generating...` : 'Generate Assignment →'}
               </button>
             ) : (
               <button 

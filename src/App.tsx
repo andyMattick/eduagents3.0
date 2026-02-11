@@ -6,6 +6,7 @@ import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
 import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
+import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
@@ -133,6 +134,7 @@ function AppContent() {
     <NotepadProvider>
       <UserFlowProvider>
         <TeacherAppContent />
+        <APICallNotifier />
       </UserFlowProvider>
     </NotepadProvider>
   );

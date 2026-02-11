@@ -148,7 +148,7 @@ async function saveProblemsToQuestionBank(
   sections.forEach((section, sectionIdx) => {
     if (!section.problems) return;
     
-    section.problems.forEach((problem: any, problemIdx: number) => {
+    section.problems.forEach((problem: any) => {
       const problemTags: string[] = [];
       
       // Extract tags from problem metadata
@@ -247,7 +247,7 @@ export async function saveAssignment(
     if (error) throw error;
 
     // Save individual problems to question_bank
-    await saveProblemsToQuestionBank(db, teacherId, data.id, assignment.sections, assignment.subject, assignment.gradeLevel);
+    await saveProblemsToQuestionBank(db, teacherId, data.id, assignment.sections, assignment.subject, assignment.gradeLevel || '9-12');
 
     // Increment assignment count
     await db
@@ -271,7 +271,7 @@ export async function saveAssignment(
     await db.from('question_bank').delete().eq('assignment_id', assignment.id);
     
     // Then save updated problems
-    await saveProblemsToQuestionBank(db, teacherId, assignment.id, assignment.sections, assignment.subject, assignment.gradeLevel);
+    await saveProblemsToQuestionBank(db, teacherId, assignment.id, assignment.sections, assignment.subject, assignment.gradeLevel || '9-12');
 
     return mapAssignmentDetail(data);
   }
@@ -614,12 +614,23 @@ function mapAssignmentDetail(data: any): AssignmentDetail {
     version: data.version,
     isTemplate: data.is_template,
     tags: data.tags || [],
-    specifications: data.specifications || {},
+    specifications: data.specifications || {
+      title: data.title,
+      instructions: '',
+      subject: data.subject,
+      gradeLevel: data.grade_level,
+      assignmentType: data.assignment_type,
+      assessmentType: 'general',
+      estimatedTime: data.estimated_time_minutes,
+      difficulty: 'medium',
+    },
     sections: content.sections || [],
     metadata: {
       bloomDistribution: data.bloom_distribution,
       sourceFile: data.source_file_name,
     },
+    // Preserve the full GeneratedAssignment in content field
+    content: content,
   };
 }
 
