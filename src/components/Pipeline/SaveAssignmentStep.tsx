@@ -89,37 +89,10 @@ export function SaveAssignmentStep({
 
   const handleExportPDF = async () => {
     try {
-      // Build the assignment preview HTML
-      const htmlContent = `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-          <h1>${assignment.title}</h1>
-          <p><strong>Type:</strong> ${assignment.assignmentType}</p>
-          <p><strong>Estimated Time:</strong> ${assignment.estimatedTime} minutes</p>
-          <p><strong>Topic:</strong> ${assignment.topic}</p>
-          <hr />
-          ${assignment.sections.map((section, sIdx) => `
-            <div style="margin-bottom: 20px;">
-              <h2>${section.sectionName || `Section ${sIdx + 1}`}</h2>
-              ${section.instructions ? `<p style="background: #f5f5f5; padding: 10px; border-radius: 4px;">${section.instructions}</p>` : ''}
-              ${section.problems.map((problem, pIdx) => `
-                <div style="margin-bottom: 15px; padding: 10px; border-left: 3px solid #0066cc;">
-                  <strong>Q${pIdx + 1}:</strong> ${problem.problemText || ''}
-                  ${problem.options && problem.options.length > 0 ? `
-                    <ul style="margin: 10px 0;">
-                      ${problem.options.map((opt, oIdx) => `<li>${String.fromCharCode(65 + oIdx)}. ${opt}</li>`).join('')}
-                    </ul>
-                  ` : ''}
-                </div>
-              `).join('')}
-            </div>
-          `).join('')}
-        </div>
-      `;
-
-      const dataUrl = await exportDocumentPreviewPDF(htmlContent);
-      if (dataUrl) {
+      const success = await exportDocumentPreviewPDF('document-preview-container', assignment.title || 'assignment');
+      if (success) {
+        // PDF was exported successfully by the function
         const link = document.createElement('a');
-        link.href = dataUrl;
         link.download = `${assignment.title || 'assignment'}.pdf`;
         link.click();
       }

@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { StudentFeedback } from '../../types/pipeline';
-import { GeneratedAssignment, GeneratedSection, GeneratedProblem } from '../../hooks/useUserFlow';
+import { GeneratedAssignment, GeneratedProblem } from '../../hooks/useUserFlow';
 import './QuestionFeedbackAnalysis.css';
 
 interface QuestionFeedbackAnalysisProps {
@@ -63,10 +63,10 @@ export function QuestionFeedbackAnalysis({
           studentPersona: f.studentPersona,
           content: f.content,
           feedbackType: f.feedbackType,
-          studentTags: f.studentTags || [],
+          relevantTags: f.relevantTags || [],
           timeTakenSeconds: (f.timeToCompleteMinutes || 0) * 60,
           confusionLevel: 0.5, // Placeholder
-          engagementScore: 0.7, // Placeholder
+          engagementScore: f.engagementScore || 0.7,
         }));
 
         // Calculate metrics
@@ -102,7 +102,7 @@ export function QuestionFeedbackAnalysis({
   const allStudentTags = useMemo(() => {
     const tags = new Set<string>();
     feedback.forEach(f => {
-      f.studentTags?.forEach(tag => tags.add(tag));
+      f.relevantTags?.forEach((tag: string) => tags.add(tag));
     });
     return Array.from(tags).sort();
   }, [feedback]);
@@ -134,7 +134,8 @@ export function QuestionFeedbackAnalysis({
         'Low Complexity': [],
       };
       filtered.forEach(pf => {
-        const complexity = pf.problem.rawComplexity || 0.5;
+        const complexityMap = { low: 0.33, medium: 0.66, high: 0.99 };
+        const complexity = complexityMap[pf.problem.complexity || 'medium'] || 0.5;
         if (complexity > 0.66) {
           grouped['High Complexity'].push(pf);
         } else if (complexity > 0.33) {
@@ -254,10 +255,10 @@ export function QuestionFeedbackAnalysis({
                       ⏱️ {Math.round(pf.metrics.avgTimeSeconds)}s
                     </span>
                     <span className={`difficulty-indicator difficulty-${
-                      (pf.problem.rawComplexity || 0.5) > 0.66 ? 'high' :
-                      (pf.problem.rawComplexity || 0.5) > 0.33 ? 'medium' : 'low'
+                      (pf.problem.complexity || 0) > 0.66 ? 'high' :
+                      (pf.problem.complexity || 0) > 0.33 ? 'medium' : 'low'
                     }`}>
-                      {(pf.problem.rawComplexity || 0.5).toFixed(2)}
+                      {(pf.problem.complexity || 0).toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -270,8 +271,7 @@ export function QuestionFeedbackAnalysis({
                       <div className="problem-text">{pf.problem.problemText}</div>
                       <div className="problem-tags">
                         {pf.problem.bloomLevel && <span className="tag bloom">{pf.problem.bloomLevel}</span>}
-                        {pf.problem.format && <span className="tag format">{pf.problem.format}</span>}
-                        {pf.problem.multiPart && <span className="tag multipart">Multi-part</span>}
+                        {pf.problem.questionFormat && <span className="tag format">{pf.problem.questionFormat}</span>}
                       </div>
                     </div>
 

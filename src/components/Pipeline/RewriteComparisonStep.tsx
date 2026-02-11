@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { GeneratedAssignment } from '../../hooks/useUserFlow';
 import { StudentFeedback } from '../../types/pipeline';
 import { useRewrite } from '../../hooks/useRewrite';
@@ -34,14 +34,11 @@ export function RewriteComparisonStep({
   isLoading = false,
 }: RewriteComparisonStepProps) {
   const [viewMode, setViewMode] = useState<'metrics' | 'side-by-side' | 'details'>('metrics');
-  const [showRewritePrompt, setShowRewritePrompt] = useState(false);
   const { performRewrite, isRewriting, rewriteError } = useRewrite();
 
   // Handle "Rewrite Again" - calls AI to generate another improved version
   const handleRewriteAgain = async () => {
     if (!originalAssignment) return;
-
-    setShowRewritePrompt(false);
     const result = await performRewrite(rewrittenAssignment, rewrittenFeedback || originalFeedback);
 
     if (result) {
@@ -55,13 +52,20 @@ export function RewriteComparisonStep({
   const calculateMetrics = (): Metric[] => {
     const origProblems = originalAssignment.sections.flatMap(s => s.problems);
     const origWords = origProblems.reduce((sum, p) => sum + (p.problemText?.split(/\s+/).length || 0), 0);
-    const origComplexity = origProblems.reduce((sum, p) => sum + (p.rawComplexity || 0.5), 0) / origProblems.length;
-    const origNovelty = origProblems.reduce((sum, p) => sum + (p.rawNovelty || 0.5), 0) / origProblems.length;
+    const scoreToNum = (score: string | number | undefined): number => {
+      if (typeof score === 'number') return score;
+      if (score === 'high') return 0.75;
+      if (score === 'medium') return 0.5;
+      if (score === 'low') return 0.25;
+      return 0.5;
+    };
+    const origComplexity = origProblems.reduce((sum, p) => sum + scoreToNum(p.complexity), 0) / origProblems.length;
+    const origNovelty = origProblems.reduce((sum, p) => sum + scoreToNum(p.novelty), 0) / origProblems.length;
 
     const rewriteProblems = rewrittenAssignment.sections.flatMap(s => s.problems);
     const rewriteWords = rewriteProblems.reduce((sum, p) => sum + (p.problemText?.split(/\s+/).length || 0), 0);
-    const rewriteComplexity = rewriteProblems.reduce((sum, p) => sum + (p.rawComplexity || 0.5), 0) / rewriteProblems.length;
-    const rewriteNovelty = rewriteProblems.reduce((sum, p) => sum + (p.rawNovelty || 0.5), 0) / rewriteProblems.length;
+    const rewriteComplexity = rewriteProblems.reduce((sum, p) => sum + scoreToNum(p.complexity), 0) / rewriteProblems.length;
+    const rewriteNovelty = rewriteProblems.reduce((sum, p) => sum + scoreToNum(p.novelty), 0) / rewriteProblems.length;
 
     return [
       {

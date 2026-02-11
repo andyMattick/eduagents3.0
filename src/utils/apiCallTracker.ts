@@ -29,10 +29,7 @@ export function trackAPICall(
 
   // Show alert that API call is starting
   console.log(`🔌 API CALL: ${service}.${method}()`);
-  if (typeof window !== 'undefined' && window.alert) {
-    // Don't block the app with alert - just log to console instead
-    console.log(`📡 Making API request to ${service}...`);
-  }
+  console.log(`📡 Making API request to ${service}...`);
 
   return callback()
     .then((result) => {
