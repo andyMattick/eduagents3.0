@@ -8,6 +8,15 @@
  * - Subscription and token tiers
  */
 
+import {
+  UniversalProblem,
+  Astronaut,
+  StudentProblemInput,
+  StudentProblemOutput,
+  StudentAssignmentSimulation,
+  AssignmentSimulationBatch,
+} from './universalPayloads';
+
 // ============================================================================
 // SUBSCRIPTION & API USAGE TIERS
 // ============================================================================
@@ -33,7 +42,7 @@ export const SUBSCRIPTION_TIERS: Record<SubscriptionTier, SubscriptionTierConfig
     monthlyApiLimit: 50,
     maxAssignments: 5,
     maxQuestionsPerAssignment: 10,
-    questionBankEnabled: false,
+    questionBankEnabled: true,
     advancedAnalyticsEnabled: false,
     prioritySupport: false,
     priceMonthly: 0,
@@ -134,9 +143,37 @@ export interface AssignmentProblem {
   estimatedTimeMinutes?: number;
   tags?: string[];
   metadata?: {
+    complexityLevel?: number; // 1-5 scale (mathematical/cognitive complexity)
     linguisticComplexity?: number; // 0.0-1.0
     noveltyScore?: number; // 0.0-1.0
     multiPart?: boolean;
+  };
+}
+
+// ============================================================================
+// UNIVERSAL PROBLEM VERSIONING - New payload format support
+// ============================================================================
+
+export interface ProblemVersion {
+  problemId: string;
+  version: string; // e.g., "1.0"
+  problem: UniversalProblem;
+  createdAt: string;
+  createdBy: string; // 'analyzer', 'rewriter', 'teacher'
+  changeDescription?: string;
+}
+
+export interface AssignmentProblemVersioned {
+  problemId: string;
+  currentVersion: string;
+  versions: ProblemVersion[];
+  immutableFields: {
+    problemId: string;
+    cognitive: string; // JSON string of cognitive metadata (locked)
+    classification: string; // JSON string of classification metadata (locked)
+  };
+  mutableFields: {
+    content: string;
   };
 }
 
@@ -147,6 +184,8 @@ export interface Section {
   instructions?: string;
   problems: AssignmentProblem[];
   order: number;
+  // New: Support for UniversalProblems
+  universalProblems?: UniversalProblem[];
 }
 
 export interface AssignmentSummary {
@@ -236,6 +275,53 @@ export interface QuestionBankFilter {
   isFavorite?: boolean;
   createdAfter?: string; // ISO date
   createdBefore?: string; // ISO date
+}
+
+// ============================================================================
+// ASTRONAUT MANAGEMENT - Student profiles for simulation
+// ============================================================================
+
+export interface TeacherAstronautLibrary {
+  teacherId: string;
+  astronauts: Astronaut[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedAstronautProfile {
+  id: string;
+  teacherId: string;
+  astronaut: Astronaut;
+  isTemplate: boolean; // Can be used as template for other teachers
+  createdAt: string;
+  updatedAt: string;
+  usageCount: number; // How many times used in simulations
+}
+
+export interface AstronautFilter {
+  overlays?: string[]; // Filter by accessibility overlay
+  narrativeTags?: string[];
+  gradeLevel?: string;
+  isAccessibilityProfile?: boolean;
+  searchText?: string;
+}
+
+// ============================================================================
+// SIMULATION RESULTS - Batch simulation outputs
+// ============================================================================
+
+export interface AssignmentSimulationResult {
+  id: string;
+  assignmentId: string;
+  teacherId: string;
+  simulationBatch: AssignmentSimulationBatch;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface SimulationHistory {
+  assignmentId: string;
+  simulations: AssignmentSimulationResult[];
 }
 
 // ============================================================================

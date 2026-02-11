@@ -18,7 +18,9 @@ export interface AIConfig {
  * Get AI configuration from environment variables
  */
 export function getAIConfig(): AIConfig {
-  const mode: AIMode = (import.meta.env.VITE_AI_MODE || 'mock') as AIMode;
+  const isDevMode = import.meta.env.DEV;
+  const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
+  const mode: AIMode = envMode || (isDevMode ? 'real' : 'mock');
   const googleApiKey = import.meta.env.VITE_GOOGLE_API_KEY;
 
   return {
@@ -30,8 +32,13 @@ export function getAIConfig(): AIConfig {
 
 /**
  * Global AI mode (can be overridden at runtime for testing)
+ * In dev mode, always defaults to 'real' unless explicitly set in env
  */
-let globalAIMode: AIMode = (import.meta.env.VITE_AI_MODE || 'mock') as AIMode;
+let globalAIMode: AIMode = (() => {
+  const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
+  if (envMode) return envMode;
+  return import.meta.env.DEV ? 'real' : 'mock';
+})();
 
 /**
  * Set AI mode at runtime (with page reload)
@@ -45,13 +52,17 @@ export function setAIMode(mode: AIMode): void {
 
 /**
  * Set AI mode based on user role (for auth flow - no reload)
- * Admin users get real AI, non-admin users get mock AI
+ * Dev mode: real AI (for development)
+ * Admin users: real AI
+ * Everything else: mock AI
  */
 export function setAIModeByRole(isAdmin: boolean): void {
-  const mode: AIMode = isAdmin ? 'real' : 'mock';
+  const isDevMode = import.meta.env.DEV;
+  const mode: AIMode = (isDevMode || isAdmin) ? 'real' : 'mock';
   globalAIMode = mode;
   localStorage.setItem('aiMode', mode);
-  console.log(`🔐 AI Mode set to '${mode}' for ${isAdmin ? 'admin' : 'teacher'} user`);
+  const reason = isDevMode ? 'development' : (isAdmin ? 'admin' : 'teacher');
+  console.log(`🔐 AI Mode set to '${mode}' for ${reason} user`);
 }
 
 /**

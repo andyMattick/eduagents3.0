@@ -6,13 +6,14 @@ import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
 import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
+import { QuestionBank } from './components/TeacherSystem/QuestionBank';
 import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
 import './App.css';
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad';
+type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'question-bank';
 type AuthPage = 'signin' | 'signup';
 
 interface AssignmentContext {
@@ -61,6 +62,13 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📋</span>
               Notepad & Settings
             </button>
+            <button
+              className={`app-tab ${activeTab === 'question-bank' ? 'active' : ''}`}
+              onClick={() => setActiveTab('question-bank')}
+            >
+              <span className="app-tab-icon">🏦</span>
+              Question Bank
+            </button>
           </div>
           <div className="app-header-actions">
             {activeTab === 'pipeline' && (
@@ -89,6 +97,8 @@ function TeacherAppContent() {
           } else if (page === 'clone-assignment' && data?.assignmentId) {
             setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
             setActiveTab('pipeline');
+          } else if (page === 'question-bank') {
+            setActiveTab('question-bank');
           }
         }} />}
         {activeTab === 'pipeline' && <PipelineRouter assignmentContext={assignmentContext} onAssignmentSaved={() => {
@@ -96,6 +106,7 @@ function TeacherAppContent() {
           setActiveTab('dashboard');
         }} />}
         {activeTab === 'notepad' && <TeacherNotepad />}
+        {activeTab === 'question-bank' && <QuestionBank teacherId={user?.id || ''} />}
       </div>
     </div>
   );

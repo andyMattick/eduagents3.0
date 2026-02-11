@@ -7,6 +7,9 @@
  * - Question bank operations
  * - API usage tracking
  * - Subscription management
+ * - Universal Problem storage and versioning
+ * - Astronaut (student profile) management
+ * - Simulation result tracking
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -19,7 +22,20 @@ import {
   SubscriptionTier,
   ResourceLimitStatus,
   SUBSCRIPTION_TIERS,
+  SavedAstronautProfile,
+  AstronautFilter,
+  AssignmentSimulationResult,
+  SimulationHistory,
 } from '../types/teacherSystem';
+import {
+  UniversalProblem,
+  Astronaut,
+  StudentProblemInput,
+  StudentProblemOutput,
+  StudentAssignmentSimulation,
+  AssignmentSimulationBatch,
+  validateProblemInvariants,
+} from '../types/universalPayloads';
 
 // ============================================================================
 // SUPABASE CLIENT SINGLETON
@@ -654,6 +670,613 @@ function mapQuestionBankEntry(data: any): QuestionBankEntry {
   };
 }
 
+// ============================================================================
+// UNIVERSAL PROBLEM OPERATIONS
+// ============================================================================
+
+export async function saveUniversalProblem(
+  teacherId: string,
+  problem: UniversalProblem,
+  assignmentId?: string
+): Promise<UniversalProblem> {
+  const db = getSupabase();
+
+  const data = {
+    problem_id: problem.problemId,
+    document_id: problem.documentId,
+    subject: problem.subject,
+    section_id: problem.sectionId,
+    parent_problem_id: problem.parentProblemId,
+    content: problem.content,
+    cognitive: problem.cognitive,
+    classification: problem.classification,
+    structure: problem.structure,
+    analysis: problem.analysis,
+    version: problem.version || '1.0',
+    assignment_id: assignmentId,
+    teacher_id: teacherId,
+  };
+
+  const { data: saved, error } = await db
+    .from('universal_problems')
+    .insert(data)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return mapUniversalProblem(saved);
+}
+
+export async function getUniversalProblem(problemId: string): Promise<UniversalProblem | null> {
+  const db = getSupabase();
+
+  const { data, error } = await db
+    .from('universal_problems')
+    .select('*')
+    .eq('problem_id', problemId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapUniversalProblem(data) : null;
+}
+
+export async function updateUniversalProblemContent(
+  problemId: string,
+  newContent: string,
+  newVersion: string,
+  teacherId: string
+): Promise<UniversalProblem> {
+  const db = getSupabase();
+
+  // Get current problem
+  const current = await getUniversalProblem(problemId);
+  if (!current) throw new Error(`Problem ${problemId} not found`);
+
+  // Update content and version
+  const { data, error } = await db
+    .from('universal_problems')
+    .update({
+      content: newContent,
+      version: newVersion,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('problem_id', problemId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Log version change
+  await logProblemVersion(current.problemId, newVersion, newContent, teacherId, 'rewriter', 'Content updated');
+
+  return mapUniversalProblem(data);
+}
+
+async function logProblemVersion(
+  problemId: string,
+  version: string,
+  content: string,
+  createdBy: string,
+  createdType: string,
+  changeDescription: string
+): Promise<void> {
+  const db = getSupabase();
+
+  // Get universal_problem_id
+  const { data: problem } = await db
+    .from('universal_problems')
+    .select('id')
+    .eq('problem_id', problemId)
+    .single();
+
+  if (!problem) return;
+
+  const { error } = await db.from('problem_versions').insert({
+    universal_problem_id: problem.id,
+    version_number: version,
+    created_by: createdType,
+    change_description: changeDescription,
+    problem_snapshot: { problemId, content, version },
+    immutable_fields_locked: true,
+  });
+
+  if (error) console.error('Failed to log problem version:', error);
+}
+
+// ============================================================================
+// ASTRONAUT OPERATIONS
+// ============================================================================
+
+export async function saveAstronautProfile(
+  teacherId: string,
+  astronaut: Astronaut,
+  isTemplate: boolean = false
+): Promise<SavedAstronautProfile> {
+  const db = getSupabase();
+
+  const data = {
+    student_id: astronaut.studentId,
+    persona_name: astronaut.personaName,
+    teacher_id: teacherId,
+    is_template: isTemplate,
+    overlays: astronaut.overlays,
+    narrative_tags: astronaut.narrativeTags,
+    profile_traits: astronaut.profileTraits,
+    grade_level: astronaut.gradeLevel,
+    is_accessibility_profile: astronaut.isAccessibilityProfile,
+  };
+
+  const { data: saved, error } = await db
+    .from('astronauts')
+    .insert(data)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return mapSavedAstronautProfile(saved);
+}
+
+export async function getAstronautProfile(id: string): Promise<SavedAstronautProfile | null> {
+  const db = getSupabase();
+
+  const { data, error } = await db
+    .from('astronauts')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapSavedAstronautProfile(data) : null;
+}
+
+export async function listAstronauts(
+  teacherId: string,
+  filters?: AstronautFilter
+): Promise<SavedAstronautProfile[]> {
+  const db = getSupabase();
+
+  let query = db.from('astronauts').select('*').eq('teacher_id', teacherId);
+
+  if (filters?.overlays?.length) {
+    query = query.contains('overlays', filters.overlays);
+  }
+  if (filters?.gradeLevel) {
+    query = query.eq('grade_level', filters.gradeLevel);
+  }
+  if (filters?.isAccessibilityProfile !== undefined) {
+    query = query.eq('is_accessibility_profile', filters.isAccessibilityProfile);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(mapSavedAstronautProfile);
+}
+
+export async function deleteAstronautProfile(id: string): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db.from('astronauts').delete().eq('id', id);
+
+  if (error) throw error;
+}
+
+// ============================================================================
+// SIMULATION OPERATIONS
+// ============================================================================
+
+export async function saveSimulationBatch(
+  assignmentId: string,
+  teacherId: string,
+  batch: AssignmentSimulationBatch
+): Promise<AssignmentSimulationResult> {
+  const db = getSupabase();
+
+  // Create simulation batch record
+  const { data: batchData, error: batchError } = await db
+    .from('simulation_batches')
+    .insert({
+      assignment_id: assignmentId,
+      teacher_id: teacherId,
+      batch_name: `Simulation ${new Date().toISOString()}`,
+      timestamp: batch.timestamp,
+      astronaut_ids: batch.studentSimulations.map((s) => s.studentId),
+      results_summary: batch.classSummary,
+    })
+    .select()
+    .single();
+
+  if (batchError) throw batchError;
+
+  // Save individual student simulations
+  for (const studentSim of batch.studentSimulations) {
+    const { error: simError } = await db.from('student_assignment_simulations').insert({
+      simulation_batch_id: batchData.id,
+      astronaut_id: studentSim.studentId, // Must match astronaut ID
+      assignment_id: assignmentId,
+      simulation_results: studentSim,
+      total_time_minutes: studentSim.totalTimeMinutes,
+      estimated_score: studentSim.estimatedScore,
+      estimated_grade: studentSim.estimatedGrade,
+      at_risk: studentSim.atRisk,
+    });
+
+    if (simError) console.error('Failed to save student simulation:', simError);
+  }
+
+  return {
+    id: batchData.id,
+    assignmentId,
+    teacherId,
+    simulationBatch: batch,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function getSimulationHistory(
+  assignmentId: string,
+  teacherId: string
+): Promise<SimulationHistory> {
+  const db = getSupabase();
+
+  const { data, error } = await db
+    .from('simulation_batches')
+    .select('*')
+    .eq('assignment_id', assignmentId)
+    .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  const simulations = (data || []).map((batch) => ({
+    id: batch.id,
+    assignmentId: batch.assignment_id,
+    teacherId: batch.teacher_id,
+    simulationBatch: {
+      assignmentId: batch.assignment_id,
+      timestamp: batch.timestamp,
+      studentSimulations: [],
+      classSummary: batch.results_summary,
+    },
+    createdAt: batch.created_at,
+  }));
+
+  return {
+    assignmentId,
+    simulations,
+  };
+}
+
+export async function getLatestSimulation(assignmentId: string): Promise<AssignmentSimulationResult | null> {
+  const db = getSupabase();
+
+  const { data, error } = await db
+    .from('simulation_batches')
+    .select('*')
+    .eq('assignment_id', assignmentId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    assignmentId: data.assignment_id,
+    teacherId: data.teacher_id,
+    simulationBatch: {
+      assignmentId: data.assignment_id,
+      timestamp: data.timestamp,
+      studentSimulations: [],
+      classSummary: data.results_summary,
+    },
+    createdAt: data.created_at,
+  };
+}
+
+// ============================================================================
+// INVARIANT ENFORCEMENT
+// ============================================================================
+
+export async function validateAndEnforceInvariants(
+  original: UniversalProblem,
+  updated: UniversalProblem
+): Promise<{ valid: boolean; violations: string[] }> {
+  const result = validateProblemInvariants(original, updated);
+
+  if (!result.valid) {
+    const db = getSupabase();
+    // Log violation
+    await db.from('invariant_violations').insert({
+      problem_id: original.problemId,
+      violation_type: 'immutable_field_changed',
+      violation_description: result.violations.join('; '),
+      original_value: original,
+      attempted_value: updated,
+      detected_by: 'system',
+    });
+  }
+
+  return result;
+}
+
+// ============================================================================
+// MAPPING FUNCTIONS
+// ============================================================================
+
+function mapUniversalProblem(data: any): UniversalProblem {
+  return {
+    problemId: data.problem_id,
+    documentId: data.document_id,
+    subject: data.subject,
+    sectionId: data.section_id,
+    parentProblemId: data.parent_problem_id,
+    content: data.content,
+    cognitive: data.cognitive,
+    classification: data.classification,
+    structure: data.structure,
+    analysis: data.analysis,
+    version: data.version,
+  };
+}
+
+function mapSavedAstronautProfile(data: any): SavedAstronautProfile {
+  return {
+    id: data.id,
+    teacherId: data.teacher_id,
+    astronaut: {
+      studentId: data.student_id,
+      personaName: data.persona_name,
+      overlays: data.overlays || [],
+      narrativeTags: data.narrative_tags || [],
+      profileTraits: data.profile_traits,
+      gradeLevel: data.grade_level,
+      isAccessibilityProfile: data.is_accessibility_profile,
+    },
+    isTemplate: data.is_template,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    usageCount: data.usage_count,
+  };
+}
+
+// ============================================================================
+// PROBLEM BANK OPERATIONS (Full UniversalProblem Storage)
+// ============================================================================
+// These functions handle storage of complete UniversalProblem objects with
+// immutable field locking to prevent schema drift and ID instability.
+
+export async function saveToProblemBank(
+  teacherId: string,
+  problem: UniversalProblem,
+  isFavorite: boolean = false,
+  sourceAssignmentId?: string
+): Promise<string> {
+  const db = getSupabase();
+
+  // Validate problem before storing
+  const validation = validateProblemInvariants(problem);
+  if (!validation.isValid) {
+    throw new Error(`Problem validation failed: ${validation.errors.join(', ')}`);
+  }
+
+  const { data, error } = await db
+    .from('problem_bank')
+    .insert({
+      teacher_id: teacherId,
+      problem: problem,
+      is_favorite: isFavorite,
+      usage_count: 0,
+      used_in_assignment_ids: [],
+      source_assignment_id: sourceAssignmentId,
+      immutable_lock: {
+        isLocked: false,
+        lockedAt: null,
+        lockedReason: null,
+        lockedLayers: {
+          cognitive: false,
+          classification: false,
+          structure: false,
+        },
+      },
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id;
+}
+
+export async function getProblemBankEntry(
+  entryId: string,
+  teacherId?: string
+): Promise<any | null> {
+  const db = getSupabase();
+
+  let query = db
+    .from('problem_bank')
+    .select('*')
+    .eq('id', entryId);
+
+  if (teacherId) {
+    query = query.eq('teacher_id', teacherId);
+  }
+
+  const { data, error } = await query.single();
+
+  if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows found
+  return data || null;
+}
+
+interface ProblemBankFilter {
+  isFavoriteOnly?: boolean;
+  subject?: string;
+  gradeLevel?: number;
+  bloomLevel?: string;
+}
+
+export async function searchProblemBank(
+  teacherId: string,
+  filters?: ProblemBankFilter,
+  limit: number = 100,
+  offset: number = 0
+): Promise<any[]> {
+  const db = getSupabase();
+
+  let query = db
+    .from('problem_bank')
+    .select('*')
+    .eq('teacher_id', teacherId)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (filters?.isFavoriteOnly) {
+    query = query.eq('is_favorite', true);
+  }
+
+  if (filters?.subject) {
+    query = query.eq('problem->>subject', filters.subject);
+  }
+
+  if (filters?.bloomLevel) {
+    query = query.eq('problem->cognitive->>bloomLevel', filters.bloomLevel);
+  }
+
+  const { data, error } = await query;
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function assembleProblemForAssignment(
+  entryId: string,
+  newProblemId: string,
+  newSectionId: string,
+  newAssignmentId: string,
+  teacherId?: string
+): Promise<UniversalProblem> {
+  const db = getSupabase();
+
+  // Fetch the problem bank entry
+  const entry = await getProblemBankEntry(entryId, teacherId);
+  if (!entry) {
+    throw new Error(`Problem bank entry ${entryId} not found`);
+  }
+
+  const originalProblem = entry.problem as UniversalProblem;
+
+  // Create re-sequenced problem (preserve cognitive/classification, update IDs)
+  const resequencedProblem: UniversalProblem = {
+    ...originalProblem,
+    problemId: newProblemId,
+    sectionId: newSectionId,
+  };
+
+  // Log the assembly operation
+  const { data: assemblyRecord, error: assemblyError } = await db
+    .from('problem_bank_assembly')
+    .insert({
+      teacher_id: teacherId,
+      problem_bank_entry_id: entryId,
+      original_problem_id: originalProblem.problemId,
+      new_problem_id: newProblemId,
+      new_section_id: newSectionId,
+      assignment_id: newAssignmentId,
+      resequencing_map: {
+        oldProblemId: originalProblem.problemId,
+        newProblemId: newProblemId,
+        oldSectionId: originalProblem.sectionId,
+        newSectionId: newSectionId,
+      },
+      validation_status: 'passed',
+    })
+    .select('id')
+    .single();
+
+  if (assemblyError) throw assemblyError;
+
+  // Update problem bank entry usage
+  const { error: updateError } = await db
+    .from('problem_bank')
+    .update({
+      usage_count: entry.usage_count + 1,
+      used_in_assignment_ids: [...(entry.used_in_assignment_ids || []), newAssignmentId],
+      last_used: new Date().toISOString(),
+    })
+    .eq('id', entryId);
+
+  if (updateError) throw updateError;
+
+  return resequencedProblem;
+}
+
+export async function lockProblemAsImmutable(
+  entryId: string,
+  reason: string = 'Analyzer completed'
+): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db
+    .from('problem_bank')
+    .update({
+      immutable_lock: {
+        isLocked: true,
+        lockedAt: new Date().toISOString(),
+        lockedReason: reason,
+        lockedLayers: {
+          cognitive: true,
+          classification: true,
+          structure: true,
+        },
+      },
+    })
+    .eq('id', entryId);
+
+  if (error) throw error;
+}
+
+export async function logImmutabilityViolation(
+  entryId: string,
+  fieldName: string,
+  attemptedValue: any,
+  reason: string,
+  teacherId: string
+): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db
+    .from('immutability_violations')
+    .insert({
+      teacher_id: teacherId,
+      problem_bank_entry_id: entryId,
+      field_name: fieldName,
+      attempted_value: attemptedValue,
+      reason: reason,
+    });
+
+  if (error) throw error;
+}
+
+export async function getProblemBankAssemblyHistory(
+  entryId: string,
+  limit: number = 50
+): Promise<any[]> {
+  const db = getSupabase();
+
+  const { data, error } = await db
+    .from('problem_bank_assembly')
+    .select('*')
+    .eq('problem_bank_entry_id', entryId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return data || [];
+}
+
 export default {
   initializeSupabase,
   getSupabase,
@@ -670,4 +1293,27 @@ export default {
   updateQuestionBankEntry,
   logApiCall,
   getResourceLimitStatus,
+  // Universal Problems
+  saveUniversalProblem,
+  getUniversalProblem,
+  updateUniversalProblemContent,
+  // Astronauts
+  saveAstronautProfile,
+  getAstronautProfile,
+  listAstronauts,
+  deleteAstronautProfile,
+  // Simulations
+  saveSimulationBatch,
+  getSimulationHistory,
+  getLatestSimulation,
+  // Invariant Enforcement
+  validateAndEnforceInvariants,
+  // Problem Bank (Full UniversalProblem Storage)
+  saveToProblemBank,
+  getProblemBankEntry,
+  searchProblemBank,
+  assembleProblemForAssignment,
+  lockProblemAsImmutable,
+  logImmutabilityViolation,
+  getProblemBankAssemblyHistory,
 };

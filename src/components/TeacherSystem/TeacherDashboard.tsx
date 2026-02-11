@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getTeacherAccount, listAssignments, getResourceLimitStatus } from '../../services/teacherSystemService';
+import { getTeacherAccount, listAssignments, getResourceLimitStatus, deleteAssignment } from '../../services/teacherSystemService';
 import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TIERS } from '../../types/teacherSystem';
 import { useUserFlow } from '../../hooks/useUserFlow';
 import './TeacherDashboard.css';
@@ -9,6 +9,11 @@ interface TeacherDashboardProps {
   onNavigate: (page: string, data?: any) => void;
 }
 
+interface DeleteConfirmation {
+  assignmentId: string;
+  assignmentTitle: string;
+}
+
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, onNavigate }) => {
   const [account, setAccount] = useState<TeacherAccount | null>(null);
   const [assignments, setAssignments] = useState<AssignmentSummary[]>([]);
@@ -16,6 +21,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'finalized'>('all');
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const { reset } = useUserFlow();
 
   useEffect(() => {
@@ -39,6 +47,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleDeleteAssignment(assignmentId: string) {
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      await deleteAssignment(assignmentId, teacherId);
+      
+      // Remove from local state
+      setAssignments(assignments.filter(a => a.id !== assignmentId));
+      setDeleteConfirmation(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete assignment');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function openDeleteConfirmation(assignmentId: string, assignmentTitle: string) {
+    setDeleteConfirmation({ assignmentId, assignmentTitle });
+    setDeleteError(null);
+  }
+
+  function closeDeleteConfirmation() {
+    setDeleteConfirmation(null);
+    setDeleteError(null);
   }
 
   if (isLoading) {
@@ -283,6 +317,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                   >
                     View
                   </button>
+                  <button
+                    onClick={() => openDeleteConfirmation(assignment.id, assignment.title)}
+                    className="btn-secondary btn-sm btn-delete"
+                    title="Delete this assignment"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
@@ -328,6 +369,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
           </button>
         </div>
       </section>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation && (
+        <div className="modal-overlay" onClick={closeDeleteConfirmation}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete Assignment?</h2>
+            <p>
+              Are you sure you want to delete <strong>{deleteConfirmation.assignmentTitle}</strong>? This action cannot be undone.
+            </p>
+            {deleteError && (
+              <div className="error-message">
+                <p>Error: {deleteError}</p>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                onClick={closeDeleteConfirmation}
+                className="btn-secondary"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteAssignment(deleteConfirmation.assignmentId)}
+                className="btn-danger"
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
