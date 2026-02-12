@@ -129,14 +129,17 @@ export interface TagChange {
  * Represents a single step in the pipeline
  */
 export enum PipelineStep {
-  INPUT = 0,
-  DOCUMENT_PREVIEW = 1,  // Quick validation (sections, problem count)
-  DOCUMENT_ANALYSIS = 2,  // Analyze document structure & problem types
-  PROBLEM_ANALYSIS = 3,   // Show metadata, allow export
-  DOCUMENT_NOTES = 4,    // Show document + teacher notes + inferred metadata
-  PHILOSOPHER_REVIEW = 5,    // Show analysis results, accept/reject before rewrite
-  REWRITE_RESULTS = 6,   // After analysis accepted: rewrite results
-  EXPORT = 7,            // Final export
+  INPUT = 0,              // Mission setup (grade, subject, type)
+  DOCUMENT_PREVIEW = 1,   // Quick validation (sections, problem count)
+  PROBLEM_ANALYSIS = 2,   // Show metadata per problem (Foundry)
+  DOCUMENT_NOTES = 3,     // Document-level notes before simulation
+  WRITER_OUTPUT = 4,      // Show raw generated assignment before atomization (NEW)
+  STUDENT_SIMULATIONS = 5, // Detailed simulation feedback per persona
+  OBSERVATORY = 6,        // Summary-only view of simulation results (NEW)
+  PHILOSOPHER_REVIEW = 7, // Ranked feedback + visual analytics
+  REWRITE_RESULTS = 8,    // Side-by-side original vs rewritten
+  VERSION_COMPARISON = 9, // Version comparison metrics
+  EXPORT = 10,            // Final export & save
 }
 
 /**

@@ -17,7 +17,9 @@ import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
 import { DocumentPreviewComponent } from '../Analysis/DocumentPreview';
 import { DocumentAnalysis } from '../Analysis/DocumentAnalysis';
 import { ProblemAnalysis } from './ProblemAnalysis';
-import { StudentSimulations } from './StudentSimulations';
+import { DockwardWriterOutput } from './DockwardWriterOutput';
+import { ObservableLoadingModal } from './ObservableLoadingModal';
+import { PhilosopherReview } from './PhilosopherReview';
 import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
 import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
 import { RewriteResults } from './RewriteResults';
@@ -145,6 +147,88 @@ export function PipelineShell({
     }
   }, [step, user?.id]);
 
+  // ============================================
+  // OBSERVATORY HELPER FUNCTIONS
+  // ============================================
+  
+  const generateConfusionHotspots = (feedback: any[], asteroids: any[]) => {
+    if (!feedback || feedback.length === 0) return [];
+    
+    // Aggregate confusion signals by problem
+    const confusionByProblem: Record<string, { signals: number; personas: string[] }> = {};
+    
+    feedback.forEach(f => {
+      if (f.struggledWith && Array.isArray(f.struggledWith)) {
+        f.struggledWith.forEach((problemRef: string) => {
+          if (!confusionByProblem[problemRef]) {
+            confusionByProblem[problemRef] = { signals: 0, personas: [] };
+          }
+          confusionByProblem[problemRef].signals++;
+          if (!confusionByProblem[problemRef].personas.includes(f.studentPersona)) {
+            confusionByProblem[problemRef].personas.push(f.studentPersona);
+          }
+        });
+      }
+    });
+    
+    // Convert to hotspot format
+    return Object.entries(confusionByProblem)
+      .map(([problemId, data]) => {
+        const asteroid = asteroids?.find(a => a.ProblemId === problemId || a.id === problemId);
+        return {
+          problemId,
+          problemText: asteroid?.ProblemText || asteroid?.problemText || `Problem ${problemId}`,
+          confusionScore: Math.min(data.signals / feedback.length, 1),
+          affectedPersonas: data.personas,
+        };
+      })
+      .sort((a, b) => b.confusionScore - a.confusionScore);
+  };
+  
+  const generateFatigueSummary = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) {
+      return 'No simulation data available.';
+    }
+    
+    const avgFatigue = feedback.reduce((sum, f) => sum + (f.atRiskProfile?.fatigues || 0), 0) / feedback.length;
+    
+    if (avgFatigue < 0.3) {
+      return '✅ Low fatigue expected. Students should remain engaged throughout.';
+    } else if (avgFatigue < 0.6) {
+      return '⚠️ Moderate fatigue. Some students may experience energy drop towards the end.';
+    } else {
+      return '🚨 High fatigue risk. Assignment may be too long or demanding. Consider breaking it into sections or reducing complexity.';
+    }
+  };
+  
+  const calculateSuccessRate = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return 0;
+    const successes = feedback.filter(f =>
+      (f.timeToCompleteMinutes && f.timeToCompleteMinutes > 0) ||
+      (f.successMetric !== undefined && f.successMetric > 0)
+    ).length;
+    return successes / feedback.length;
+  };
+  
+  const calculateAtRiskCount = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return 0;
+    return feedback.filter(f => f.atRiskProfile === true || f.atRisk === true).length;
+  };
+  
+  const calculateAvgCompletionTime = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return undefined;
+    const times = feedback
+      .filter(f => f.timeToCompleteMinutes && f.timeToCompleteMinutes > 0)
+      .map(f => f.timeToCompleteMinutes);
+    if (times.length === 0) return undefined;
+    return times.reduce((a, b) => a + b, 0) / times.length;
+  };
+  
+
+  // ============================================
+  // FILE PARSING & HANDLERS
+  // ============================================
+  
   /**
    * Parse source file for assignment generation/analysis
    */
@@ -883,6 +967,9 @@ export function PipelineShell({
           </div>
         </div>
       )}
+
+      {/* Observable Loading Modal - shows while Space Camp analyzes */}
+      <ObservableLoadingModal isLoading={isLoading && step === PipelineStep.DOCUMENT_NOTES} />
 
       {step === PipelineStep.PHILOSOPHER_REVIEW && (
         <div style={{ padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #999' }}>

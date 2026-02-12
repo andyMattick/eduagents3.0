@@ -322,7 +322,14 @@ export function usePipeline() {
         }));
         break;
       case PipelineStep.DOCUMENT_PREVIEW:
-        // Preview confirmed → Skip to Problem analysis (Phase 2 with metadata)
+        // Preview confirmed → Writer output (show raw generated text)
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.WRITER_OUTPUT,
+        }));
+        break;
+      case PipelineStep.WRITER_OUTPUT:
+        // Writer output reviewed → Problem analysis (Foundry - canonicalization)
         setState(prev => ({
           ...prev,
           currentStep: PipelineStep.PROBLEM_ANALYSIS,
@@ -336,8 +343,8 @@ export function usePipeline() {
         }));
         break;
       case PipelineStep.DOCUMENT_NOTES:
-        // Notes captured, metadata confirmed. Space Camp executes backend (no UI)
-        // Proceed directly to PHILOSOPHER_REVIEW to show results
+        // Notes captured, metadata confirmed. Run simulation and go directly to Philosopher
+        await getFeedback(state.selectedStudentTags);
         setState(prev => ({
           ...prev,
           currentStep: PipelineStep.PHILOSOPHER_REVIEW,
@@ -363,10 +370,17 @@ export function usePipeline() {
         // Export done, reset
         reset();
         break;
+      case PipelineStep.VERSION_COMPARISON:
+        // Version comparison done, move to export
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.EXPORT,
+        }));
+        break;
       default:
         break;
     }
-  }, [state.currentStep, getFeedback, rewriteTextAndTags, reset]);
+  }, [state.currentStep, getFeedback, rewriteTextAndTags, reset, state.selectedStudentTags]);
 
   const toggleProblemMetadataView = useCallback(() => {
     setState(prev => ({
