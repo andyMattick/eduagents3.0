@@ -1,0 +1,450 @@
+/* Launchpad — Unified Mission Setup Screen */
+
+.launchpad {
+  width: 100%;
+  min-height: 100vh;
+  padding: 2rem;
+  background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+}
+
+.launchpad-container {
+  width: 100%;
+  max-width: 800px;
+  background: #1a1a1a;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  animation: slideUp 0.5s ease-out;
+  border: 1px solid #333333;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Header */
+.launchpad-header {
+  padding: 3rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-align: center;
+}
+
+.rocket-icon {
+  font-size: 48px;
+  margin-bottom: 1rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+.launchpad-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.launchpad-header p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.95;
+}
+
+/* Progress Bar */
+.launchpad-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: #0d0d0d;
+  border-bottom: 1px solid #333333;
+  gap: 0.5rem;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.4;
+  transition: all 0.3s ease;
+}
+
+.step.active,
+.step.complete {
+  opacity: 1;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #333333;
+  color: #aaaaaa;
+  font-weight: 700;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.step.active .step-number {
+  background: #667eea;
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.step.complete .step-number {
+  background: #28a745;
+  color: white;
+}
+
+.step-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #aaaaaa;
+  white-space: nowrap;
+}
+
+.step-line {
+  width: 24px;
+  height: 2px;
+  background: #333333;
+}
+
+/* Step Content */
+.launchpad-step {
+  padding: 3rem 2rem;
+  min-height: 400px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.launchpad-step h2 {
+  margin: 0 0 1rem 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.step-description {
+  margin: 0 0 2rem 0;
+  font-size: 14px;
+  color: #cccccc;
+  line-height: 1.6;
+}
+
+/* Choice Grid */
+.launchpad-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.launchpad-choice {
+  padding: 1.5rem;
+  border: 2px solid #333333;
+  border-radius: 12px;
+  background: #242424;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.launchpad-choice:hover {
+  border-color: #667eea;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
+  transform: translateY(-4px);
+}
+
+.launchpad-choice.selected {
+  border-color: #667eea;
+  background: #1a2844;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+}
+
+.choice-icon {
+  font-size: 40px;
+  margin-bottom: 1rem;
+}
+
+.choice-title {
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 0.5rem;
+}
+
+.choice-description {
+  color: #aaaaaa;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Form */
+.launchpad-form {
+  background: #0d0d0d;
+  padding: 2rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  border: 1px solid #333333;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-row:last-child {
+  margin-bottom: 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.form-group select,
+.form-group input {
+  padding: 0.75rem;
+  border: 1px solid #333333;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  background: #1a1a1a;
+  color: #ffffff;
+}
+
+.form-group select:focus,
+.form-group input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Upload */
+.launchpad-upload {
+  margin-bottom: 2rem;
+}
+
+.upload-box {
+  display: block;
+  cursor: pointer;
+  border: 2px dashed #333333;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.upload-box input {
+  display: none;
+}
+
+.upload-box:hover {
+  border-color: #667eea;
+  background: #1a2844;
+}
+
+.upload-icon {
+  font-size: 48px;
+  margin-bottom: 1rem;
+}
+
+.upload-text strong {
+  display: block;
+  color: #ffffff;
+  font-size: 16px;
+  margin-bottom: 0.5rem;
+}
+
+.upload-text p {
+  margin: 0;
+  color: #aaaaaa;
+  font-size: 12px;
+}
+
+/* Summary */
+.launchpad-summary {
+  background: #0d0d0d;
+  padding: 2rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  border: 1px solid #333333;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  border-bottom: 1px solid #333333;
+  font-size: 14px;
+}
+
+.summary-item:last-child {
+  border-bottom: none;
+}
+
+.summary-label {
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.summary-value {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* Errors */
+.launchpad-errors {
+  background: rgba(196, 28, 59, 0.1);
+  border: 1px solid #c41c3b;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+}
+
+.error-item {
+  color: #ff6b9d;
+  font-size: 13px;
+  margin-bottom: 0.5rem;
+}
+
+.error-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Buttons */
+.launchpad-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.launchpad-back,
+.launchpad-next,
+.launchpad-launch {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.launchpad-back {
+  background: #333333;
+  color: #ffffff;
+}
+
+.launchpad-back:hover {
+  background: #444444;
+}
+
+.launchpad-next,
+.launchpad-launch {
+  background: #667eea;
+  color: white;
+}
+
+.launchpad-next:hover,
+.launchpad-launch:hover {
+  background: #5568d3;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  transform: translateY(-2px);
+}
+
+.launchpad-launch {
+  font-size: 16px;
+  padding: 0.875rem 2rem;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .launchpad {
+    padding: 1rem;
+  }
+
+  .launchpad-header {
+    padding: 2rem 1rem;
+  }
+
+  .rocket-icon {
+    font-size: 36px;
+  }
+
+  .launchpad-header h1 {
+    font-size: 22px;
+  }
+
+  .launchpad-step {
+    padding: 2rem 1rem;
+  }
+
+  .launchpad-progress {
+    padding: 1rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .step-label {
+    font-size: 10px;
+  }
+
+  .launchpad-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .launchpad-buttons {
+    flex-direction: column;
+  }
+
+  .launchpad-back,
+  .launchpad-next,
+  .launchpad-launch {
+    width: 100%;
+  }
+}

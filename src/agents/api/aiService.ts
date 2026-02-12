@@ -767,7 +767,7 @@ const useRealAPI = import.meta.env.VITE_AI_MODE === 'real' || (import.meta.env.D
 export const aiService = new AIServiceManager({
   implementation: useRealAPI ? 'real' : 'mock',
   apiKey: googleApiKey,
-  apiUrl: process.env.REACT_APP_API_URL,
+  apiUrl: import.meta.env.VITE_REACT_APP_API_URL,
 });
 
 export default aiService;

@@ -155,6 +155,11 @@ function generateAssignmentPreviewFromAI(
     timestamp: new Date().toISOString(),
   };
 
+  console.log('📦 generateAssignmentPreviewFromAI returning:', {
+    title: rawAssignment.title,
+    sections: rawAssignment.sections.length,
+    problems: rawAssignment.sections.flatMap(s => s.problems).length,
+  });
   return enrichAssignmentMetadata(rawAssignment);
 }
 
@@ -169,6 +174,15 @@ function generateAssignmentPreview(
   sourceFile?: { name?: string; type?: string },
   customTitle?: string
 ): GeneratedAssignment {
+  console.log('📦 generateAssignmentPreview called with:', {
+    assignmentType,
+    questionCount,
+    estimatedTime,
+    sectionStrategy,
+    topic,
+    customTitle,
+    sourceFile
+  });
   // Generate mock Bloom distribution
   const bloomDistribution: Record<string, number> = {
     'Remember': Math.ceil(questionCount * 0.20),
@@ -367,6 +381,11 @@ function generateAssignmentPreview(
     timestamp: new Date().toISOString(),
   };
 
+  console.log('📦 generateAssignmentPreview returning:', {
+    title: rawAssignment.title,
+    sections: rawAssignment.sections.length,
+    problems: rawAssignment.sections.flatMap(s => s.problems).length,
+  });
   // Enrich the assignment with detailed metadata (complexity, novelty, rubrics, etc.)
   return enrichAssignmentMetadata(rawAssignment);
 }
@@ -405,6 +424,8 @@ export function AssignmentIntentForm() {
       console.log('✅ Assignment generated! Setting isGenerated to true');
       setIsSubmitting(false);
       setIsGenerated(true);
+      // Scroll to top to show the "View Preview" message
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     }
   }, [generatedAssignment, isSubmitting]);
 
@@ -657,8 +678,41 @@ export function AssignmentIntentForm() {
       }
 
       console.log('📋 Generated assignment:', generatedAssignment);
-      console.log('🚀 Calling setGeneratedAssignment');
+      console.log('🚀 Calling setGeneratedAssignment with:', {
+        title: generatedAssignment?.title,
+        sections: generatedAssignment?.sections.length,
+        problems: generatedAssignment?.sections?.flatMap(s => s.problems).length
+      });
       setGeneratedAssignment(generatedAssignment);
+      console.log('✅ setGeneratedAssignment called successfully');
+      
+      // Show brief success toast
+      if (window.top === window) {
+        const successMsg = document.createElement('div');
+        successMsg.style.cssText = `
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          background: #28a745;
+          color: white;
+          padding: 1rem 1.5rem;
+          border-radius: 8px;
+          z-index: 10000;
+          animation: slideIn 0.3s ease-out;
+          font-weight: 600;
+        `;
+        successMsg.textContent = '✅ Assignment generated successfully!';
+        document.body.appendChild(successMsg);
+        setTimeout(() => successMsg.remove(), 3000);
+      }
+      
+      // Scroll to show preview
+      setTimeout(() => {
+        const previewElement = document.querySelector('.assignment-preview');
+        if (previewElement) {
+          previewElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
     } finally {
       setIsSubmitting(false);
     }
@@ -666,6 +720,61 @@ export function AssignmentIntentForm() {
 
   return (
     <div className="assignment-intent-form">
+      {/* Loading Overlay */}
+      {isSubmitting && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 999,
+          backdropFilter: 'blur(3px)',
+        }}>
+          <div style={{
+            backgroundColor: '#1a1a1a',
+            border: '1px solid #333333',
+            padding: '2rem',
+            borderRadius: '12px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              fontSize: '48px',
+              marginBottom: '1rem',
+              animation: 'spin 2s linear infinite',
+            }}>⏳</div>
+            <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '0.5rem', color: '#ffffff' }}>
+              {useRealAI() ? '🤖 AI is generating...' : '📝 Generating...'}
+            </div>
+            <div style={{ fontSize: '14px', color: '#aaaaaa' }}>
+              This may take a moment. Please don't close the page.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes slideIn {
+          from {
+            transform: translateX(400px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+
       <div className="form-container">
         {/* Header */}
         <div className="form-header">
@@ -1023,6 +1132,47 @@ export function AssignmentIntentForm() {
           </div>
         </div>
       </div>
+
+      {/* Debug output */}
+      {isGenerated && (
+        <div style={{
+          position: 'fixed',
+          top: '2rem',
+          right: '2rem',
+          padding: '1.5rem',
+          backgroundColor: '#4caf50',
+          color: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          fontSize: '16px',
+          fontWeight: '600',
+          zIndex: 1000,
+          animation: 'slideIn 0.4s ease-out',
+          maxWidth: '300px',
+        }}>
+          <div style={{ marginBottom: '0.5rem' }}>✅ Assignment Generated!</div>
+          <div style={{ fontSize: '13px', opacity: 0.9, marginBottom: '1rem' }}>
+            {generatedAssignment?.title}
+          </div>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>
+            {generatedAssignment?.sections.length || 0} sections • {generatedAssignment?.sections?.flatMap(s => s.problems).length || 0} questions
+          </div>
+        </div>
+      )}
+
+      {/* Add keyframe animation to document */}
+      <style>{`
+        @keyframes slideIn {
+          from {
+            transform: translateX(400px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
 }

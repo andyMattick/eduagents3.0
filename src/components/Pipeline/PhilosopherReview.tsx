@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { TeacherFeedbackOptions, FeedbackItem } from '../../types/pipeline';
+import { PhilosophersVisualsPanel } from './PhilosophersVisualsPanel';
 import styles from './PhilosopherReview.module.css';
 
 interface PhilosopherReviewProps {
@@ -198,9 +199,21 @@ export function PhilosopherReview({
       )}
 
       {/* Visualizations Tab */}
-      {activeTab === 'visualizations' && analysis.visualizations && (
+      {activeTab === 'visualizations' && (
         <div className={styles.visualizationSection}>
-          <div className={styles.chartGrid}>
+          {/* New Interactive Visualizations Panel */}
+          <PhilosophersVisualsPanel
+            feedback={analysis?.rankedFeedback}
+            studentFeedback={analysis?.selectedFeedback}
+          />
+
+          {/* Legacy visualization section - if data exists */}
+          {analysis.visualizations && Object.keys(analysis.visualizations).length > 0 && (
+            <div style={{ marginTop: '2rem' }}>
+              <h3 style={{ marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '2px solid #e9ecef' }}>
+                Legacy Visualizations
+              </h3>
+              <div className={styles.chartGrid}>
             {analysis.visualizations.clusterHeatMap && (
               <div className={styles.chartContainer}>
                 <h3 className={styles.chartTitle}>Cluster Heat Map</h3>
@@ -297,6 +310,8 @@ export function PhilosopherReview({
               </div>
             )}
           </div>
+            </div>
+          )}
         </div>
       )}
 

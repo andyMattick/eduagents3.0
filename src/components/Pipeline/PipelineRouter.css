@@ -187,3 +187,34 @@
     padding: 0.6rem 1rem;
   }
 }
+
+/* Rewrite Page Layout */
+.rewrite-page-wrapper {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.rewrite-feedback-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.rewrite-notes-section {
+  display: flex;
+  flex-direction: column;
+}
+
+@media (max-width: 1400px) {
+  .rewrite-page-wrapper {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .rewrite-page-wrapper {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}

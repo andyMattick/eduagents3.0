@@ -1,8 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getSupabase } from '../services/teacherSystemService';
-import { signUp, login } from '../services/authService';
 import { setAIModeByRole } from '../config/aiConfig';
-import { SignUpRequest, LoginRequest } from '../types/teacherSystem';
 
 interface AuthUser {
   id: string;
@@ -14,8 +11,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   error: string | null;
-  signUp: (request: SignUpRequest) => Promise<void>;
-  login: (request: LoginRequest) => Promise<void>;
+  signIn: (email: string, isAdmin: boolean) => void;
   logout: () => Promise<void>;
 }
 
@@ -26,132 +22,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if user is already logged in
+  // Check localStorage for saved user
   useEffect(() => {
-    const checkAuth = async () => {
+    const savedUser = localStorage.getItem('testUser');
+    if (savedUser) {
       try {
-        const supabase = getSupabase();
-        const { data } = await supabase.auth.getSession();
-        
-        if (data.session?.user) {
-          // Fetch teacher account from database to get is_admin flag
-          const { data: accountData, error: accountError } = await supabase
-            .from('teacher_accounts')
-            .select('is_admin')
-            .eq('user_id', data.session.user.id)
-            .single();
-
-          const isAdmin = accountError ? false : (accountData?.is_admin || false);
-          
-          // Auto-set AI mode based on role: admin=real, non-admin=mock
-          setAIModeByRole(isAdmin);
-          
-          setUser({
-            id: data.session.user.id,
-            email: data.session.user.email || '',
-            isAdmin,
-          });
-        }
-
-        // Demo users disabled - they make 422 errors in StrictMode
-        // Users can sign up/log in normally
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        // Restore AI mode based on admin status
+        setAIModeByRole(parsed.isAdmin);
       } catch (err) {
-        console.error('Auth check failed:', err);
-      } finally {
-        setIsLoading(false);
+        console.error('Failed to restore user:', err);
       }
-    };
-
-    checkAuth();
+    }
+    setIsLoading(false);
   }, []);
 
-  const handleSignUp = async (request: SignUpRequest) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      
-      await signUp(request);
-      
-      // After signup, log them in
-      await handleLogin({
-        email: request.email,
-        password: request.password,
-      });
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
-      setError(errorMsg);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogin = async (request: LoginRequest) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      
-      await login(request);
-      
-      // Get user info after login
-      const supabase = getSupabase();
-      const { data } = await supabase.auth.getSession();
-      
-      if (data.session?.user) {
-        // Fetch teacher account from database to get is_admin flag
-        const { data: accountData, error: accountError } = await supabase
-          .from('teacher_accounts')
-          .select('is_admin')
-          .eq('user_id', data.session.user.id)
-          .single();
-
-        const isAdmin = accountError ? false : (accountData?.is_admin || false);
-        
-        // Auto-set AI mode based on role: admin=real, non-admin=mock
-        setAIModeByRole(isAdmin);
-        
-        setUser({
-          id: data.session.user.id,
-          email: data.session.user.email || '',
-          isAdmin,
-        });
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMsg);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSignIn = (email: string, isAdmin: boolean) => {
+    const newUser: AuthUser = {
+      id: 'user-' + Math.random().toString(36).slice(2, 9),
+      email,
+      isAdmin,
+    };
+    
+    setUser(newUser);
+    localStorage.setItem('testUser', JSON.stringify(newUser));
+    setAIModeByRole(isAdmin);
+    setError(null);
   };
 
   const handleLogout = async () => {
-    try {
-      setError(null);
-      const supabase = getSupabase();
-      await supabase.auth.signOut();
-      // Reset to mock AI when logging out
-      setAIModeByRole(false);
-      setUser(null);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Logout failed';
-      setError(errorMsg);
-    }
+    setUser(null);
+    localStorage.removeItem('testUser');
+    setError(null);
   };
 
-  const value: AuthContextType = {
-    user,
-    isLoading,
-    error,
-    signUp: handleSignUp,
-    login: handleLogin,
-    logout: handleLogout,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider 
+      value={{
+        user,
+        isLoading,
+        error,
+        signIn: handleSignIn,
+        logout: handleLogout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-export function useAuth(): AuthContextType {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within AuthProvider');

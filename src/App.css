@@ -595,3 +595,50 @@
   color: #c33;
 }
 
+/* AI Status Indicator */
+.ai-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.ai-status-indicator:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.ai-status-icon {
+  font-size: 1rem;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Dark mode for AI status */
+@media (prefers-color-scheme: dark) {
+  .ai-status-indicator {
+    background: #242424;
+    border-color: #333333;
+    color: #aaaaaa;
+  }
+
+  .ai-status-indicator:hover {
+    border-color: #667eea;
+    color: #ffffff;
+  }
+}

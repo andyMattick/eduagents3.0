@@ -189,9 +189,9 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
   };
 
   const getCurrentRoute = (): string => {
-    // Step 1: No goal selected
+    // Step 0: No goal selected - show unified Launchpad
     if (!goal) {
-      return '/goal-selection';
+      return '/launchpad';
     }
 
     // Step 2: No source doc decision made
@@ -297,7 +297,7 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    return '/goal-selection';
+    return '/launchpad';
   };
 
   const value: UserFlowState = {

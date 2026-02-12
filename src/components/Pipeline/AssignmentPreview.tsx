@@ -1,6 +1,6 @@
 import { useUserFlow } from '../../hooks/useUserFlow';
 import './AssignmentPreview.css';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { exportDocumentPreviewPDF } from '../../utils/exportUtils';
 
 /**
@@ -14,6 +14,18 @@ export function AssignmentPreview() {
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showDocumentPreview, setShowDocumentPreview] = useState(false);
   const [showDocumentStats, setShowDocumentStats] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  // Fade in animation
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+  console.log('📄 AssignmentPreview rendered with:', {
+    hasGeneratedAssignment: !!generatedAssignment,
+    assignmentTitle: generatedAssignment?.title,
+    problemCount: generatedAssignment?.sections.length,
+  });
 
   if (!generatedAssignment) {
     return (
@@ -61,7 +73,7 @@ export function AssignmentPreview() {
   const maxBloomValue = Math.max(...bloomEntries.map(([_, count]) => count));
 
   return (
-    <div className="assignment-preview">
+    <div className={`assignment-preview ${isVisible ? 'visible' : ''}`} style={{ animation: isVisible ? 'fadeIn 0.4s ease-in' : 'none' }}>
       <div className="preview-container">
         {/* Header */}
         <div className="preview-header">

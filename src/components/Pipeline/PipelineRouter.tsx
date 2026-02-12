@@ -13,10 +13,12 @@ import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
 import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
 import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
+import { RewriterNotesPanel } from './RewriterNotesPanel';
 import { AssignmentEditor } from './AssignmentEditor';
 import { PipelineShell } from './PipelineShell';
 import { SaveAssignmentStep } from './SaveAssignmentStep';
 import { ViewAssignmentPage } from './ViewAssignmentPage';
+import { Launchpad } from './Launchpad';
 import './PipelineRouter.css';
 
 interface AssignmentContext {
@@ -63,6 +65,18 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const currentRoute = getCurrentRoute();
+
+  // Debug: Log route changes
+  useEffect(() => {
+    console.log('🛣️ PipelineRouter route changed:', {
+      currentRoute,
+      goal,
+      hasSourceDocs: sourceFile ? 'yes' : 'no',
+      hasGeneratedAssignment: !!generatedAssignment,
+      studentFeedback: studentFeedback.length,
+      sourceAwareIntentData: !!sourceAwareIntentData,
+    });
+  }, [currentRoute]);
 
   // Load assignment if assignmentContext is provided
   useEffect(() => {
@@ -183,6 +197,11 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     sourceAwareIntentData: !!sourceAwareIntentData,
     generatedAssignment: !!generatedAssignment,
   });
+
+  // Unified Launchpad: Consolidates mission setup (goal, source, metadata, upload, review)
+  if (currentRoute === '/launchpad') {
+    return <Launchpad />;
+  }
 
   // Step 1: Goal Selection
   if (currentRoute === '/goal-selection') {
@@ -353,15 +372,35 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     
     console.log('   Generated asteroids:', asteroids);
     
+    const problemCount = generatedAssignment?.sections.flatMap(s => s.problems).length || 0;
+    
     return (
-      <ProblemsAndFeedbackViewer
-        asteroids={asteroids}
-        studentFeedback={studentFeedback}
-        isLoading={false}
-        onNext={() => {
-          setReadyForRewrite(true);
-        }}
-      />
+      <div className="pipeline-router-container">
+        <div className="rewrite-page-wrapper">
+          {/* Feedback Viewer */}
+          <div className="rewrite-feedback-section">
+            <ProblemsAndFeedbackViewer
+              asteroids={asteroids}
+              studentFeedback={studentFeedback}
+              isLoading={false}
+              onNext={() => {
+                setReadyForRewrite(true);
+              }}
+            />
+          </div>
+          
+          {/* Rewriter Notes Panel */}
+          <div className="rewrite-notes-section">
+            <RewriterNotesPanel 
+              problemCount={problemCount}
+              onNotesChange={(notes) => {
+                console.log('📝 Rewriter notes updated:', notes);
+                // Notes can be saved to state or used directly for rewriting
+              }}
+            />
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -485,7 +524,20 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     <div className="pipeline-router-container">
       <div className="error-state">
         <h2>⚠️ Unknown Route</h2>
-        <p>Current route: {currentRoute}</p>
+        <p><strong>Current route:</strong> {currentRoute}</p>
+        <div style={{ marginTop: '2rem', fontSize: '12px', backgroundColor: '#f5f5f5', padding: '1rem', borderRadius: '8px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <strong>Debug State:</strong>
+          {JSON.stringify({
+            currentRoute,
+            goal,
+            hasSourceDocs: !!sourceFile,
+            hasGeneratedAssignment: !!generatedAssignment,
+            generatedAssignmentTitle: generatedAssignment?.title,
+            studentFeedbackCount: studentFeedback.length,
+            sourceAwareIntentData: !!sourceAwareIntentData,
+          }, null, 2)}
+        </div>
+        <p style={{ marginTop: '1rem', color: '#666', fontSize: '14px' }}>Please check the browser console for more details</p>
       </div>
     </div>
   );

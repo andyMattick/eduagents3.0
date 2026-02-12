@@ -1,20 +1,18 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { SignIn } from './components/Auth/SignIn';
-import { SignUp } from './components/Auth/SignUp';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
 import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
-import { QuestionBank } from './components/TeacherSystem/QuestionBank';
 import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
+import { getCurrentAIMode } from './config/aiConfig';
 import './App.css';
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'question-bank';
-type AuthPage = 'signin' | 'signup';
+type AppTab = 'dashboard' | 'pipeline' | 'notepad';
 
 interface AssignmentContext {
   assignmentId: string;
@@ -59,18 +57,20 @@ function TeacherAppContent() {
               className={`app-tab ${activeTab === 'notepad' ? 'active' : ''}`}
               onClick={() => setActiveTab('notepad')}
             >
-              <span className="app-tab-icon">📋</span>
-              Notepad & Settings
-            </button>
-            <button
-              className={`app-tab ${activeTab === 'question-bank' ? 'active' : ''}`}
-              onClick={() => setActiveTab('question-bank')}
-            >
-              <span className="app-tab-icon">🏦</span>
-              Question Bank
+              <span className="app-tab-icon">📔</span>
+              Notepad
             </button>
           </div>
           <div className="app-header-actions">
+            {/* AI Status Indicator */}
+            <div className="ai-status-indicator">
+              <span className="ai-status-icon">
+                {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
+              </span>
+              <span className="ai-status-label">
+                {getCurrentAIMode() === 'real' ? 'AI Live' : 'Mock AI'}
+              </span>
+            </div>
             {activeTab === 'pipeline' && (
               <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
                 🔄 Reset
@@ -97,8 +97,6 @@ function TeacherAppContent() {
           } else if (page === 'clone-assignment' && data?.assignmentId) {
             setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
             setActiveTab('pipeline');
-          } else if (page === 'question-bank') {
-            setActiveTab('question-bank');
           }
         }} />}
         {activeTab === 'pipeline' && <PipelineRouter assignmentContext={assignmentContext} onAssignmentSaved={() => {
@@ -106,14 +104,13 @@ function TeacherAppContent() {
           setActiveTab('dashboard');
         }} />}
         {activeTab === 'notepad' && <TeacherNotepad />}
-        {activeTab === 'question-bank' && <QuestionBank teacherId={user?.id || ''} />}
       </div>
     </div>
   );
 }
 
 function AppContent() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, logout, signIn } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -127,13 +124,10 @@ function AppContent() {
 
   if (!user) {
     return (
-      <>
-        {authPage === 'signin' ? (
-          <SignIn onSignUpClick={() => setAuthPage('signup')} />
-        ) : (
-          <SignUp onSignInClick={() => setAuthPage('signin')} />
-        )}
-      </>
+      <SignIn 
+        onSignUpClick={() => setAuthPage('signup')}
+        onSignIn={signIn}
+      />
     );
   }
 

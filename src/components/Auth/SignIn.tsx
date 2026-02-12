@@ -1,26 +1,22 @@
 import React, { useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import './SignIn.css';
 
 interface SignInProps {
   onSignUpClick: () => void;
+  onSignIn: (email: string, isAdmin: boolean) => void;
 }
 
-export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
-  const { login, isLoading, error } = useAuth();
+export const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError(null);
+    setIsLoading(true);
 
-    try {
-      await login({ email, password });
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Login failed');
-    }
+    // Simple email-based login: admin if email contains "admin"
+    const isAdmin = email.toLowerCase().includes('admin');
+    onSignIn(email, isAdmin);
   };
 
   return (
@@ -34,12 +30,6 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
         <form onSubmit={handleSubmit} className="auth-form">
           <h2>Sign In</h2>
 
-          {(localError || error) && (
-            <div className="auth-error">
-              {localError || error}
-            </div>
-          )}
-
           <div className="form-group">
             <label htmlFor="email">Email</label>
             <input
@@ -50,56 +40,28 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={isLoading}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              disabled={isLoading}
+              autoFocus
             />
           </div>
 
           <button
             type="submit"
             className="auth-button"
-            disabled={isLoading}
+            disabled={isLoading || !email}
           >
             {isLoading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
-        <div className="auth-footer">
-          <p>
-            Don't have an account?{' '}
-            <button
-              type="button"
-              onClick={onSignUpClick}
-              className="auth-link"
-              disabled={isLoading}
-            >
-              Sign Up
-            </button>
-          </p>
-        </div>
-
         <div className="auth-demo">
-          <p className="demo-label">Demo Credentials:</p>
-          <code>teacher@example.com / password</code>
-          <code>admin@example.com / password</code>
+          <p className="demo-label">Quick Test Accounts:</p>
+          <code>teacher@example.com</code>
+          <code>admin@example.com</code>
           <p style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '8px' }}>
-            💡 Check browser console (F12) for demo setup status
+            💡 Type "admin" in email for admin panel
           </p>
         </div>
       </div>
     </div>
   );
 };
-
-export default SignIn;

@@ -2,6 +2,7 @@ import React from 'react';
 import { StudentFeedback } from '../../types/pipeline';
 import { Asteroid } from '../../types/simulation';
 import { GeneratedAssignment } from '../../hooks/useUserFlow';
+import { SpaceCampBlackBox } from './SpaceCampBlackBox';
 import AccessibilityFeedback from './AccessibilityFeedback';
 import { TeacherNotesPanel } from './TeacherNotesPanel';
 import CompletionPerformance from '../Analysis/CompletionPerformance';
@@ -37,6 +38,11 @@ export function StudentSimulations({
   assignment,
 }: StudentSimulationsProps) {
   const [activeTab, setActiveTab] = React.useState<'feedback' | 'questions' | 'completion' | 'metadata'>('questions');
+
+  // SECURITY: Show black-box loading during simulation (hide all internals)
+  if (isLoading) {
+    return <SpaceCampBlackBox isRunning={true} />;
+  }
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
