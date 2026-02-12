@@ -11,6 +11,8 @@ import { AssignmentIntentForm } from './AssignmentIntentForm';
 import { AssignmentPreview } from './AssignmentPreview';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
+import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
+import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
 import { AssignmentEditor } from './AssignmentEditor';
 import { PipelineShell } from './PipelineShell';
 import { SaveAssignmentStep } from './SaveAssignmentStep';
@@ -317,37 +319,49 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Classroom Simulation Results - Show feedback from mock simulation
   if (currentRoute === '/rewrite-assignment') {
-    const { setReadyForRewrite } = useUserFlow();
+    console.log('📍 /rewrite-assignment route - preparing props for ProblemsAndFeedbackViewer');
+    console.log('   generatedAssignment:', generatedAssignment);
+    console.log('   studentFeedback:', studentFeedback);
+    
+    const bloomLevelMap: Record<number, string> = {
+      1: 'Remember',
+      2: 'Understand',
+      3: 'Apply',
+      4: 'Analyze',
+      5: 'Evaluate',
+      6: 'Create'
+    };
+    
+    const complexityMap: Record<string, number> = {
+      'low': 0.3,
+      'medium': 0.5,
+      'high': 0.8
+    };
+    
+    const noveltyMap: Record<string, number> = {
+      'low': 0.2,
+      'medium': 0.5,
+      'high': 0.8
+    };
+    
+    const asteroids = generatedAssignment?.sections.flatMap(s => s.problems.map(p => ({
+      BloomLevel: bloomLevelMap[p.bloomLevel as number] || 'Understand',
+      LinguisticComplexity: complexityMap[p.complexity as string] || 0.5,
+      ProblemText: p.problemText,
+      NoveltyScore: noveltyMap[p.novelty as string] || 0.5,
+    }))) || [];
+    
+    console.log('   Generated asteroids:', asteroids);
     
     return (
-      <div className="pipeline-router-container">
-        <div className="step-header">
-          <h1>Page 6 of 8: Student Simulation Results</h1>
-          <p>Review simulated student feedback and prepare assignment improvements</p>
-        </div>
-        <StudentSimulations
-          feedback={studentFeedback}
-          completionSimulations={{
-            studentSimulations: [],
-            classSummary: {},
-          }}
-          onNext={() => {
-            setReadyForRewrite(true);
-          }}
-        />
-        <div className="simulation-actions" style={{ marginTop: '2rem', maxWidth: '900px', margin: '2rem auto 0' }}>
-          <button
-            className="button-secondary"
-            onClick={() => setReadyForEditing(true)}
-            style={{ marginRight: '1rem' }}
-          >
-            ✏️ Edit Assignment
-          </button>
-          <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
-            Review and modify specific problems or sections based on student feedback
-          </p>
-        </div>
-      </div>
+      <ProblemsAndFeedbackViewer
+        asteroids={asteroids}
+        studentFeedback={studentFeedback}
+        isLoading={false}
+        onNext={() => {
+          setReadyForRewrite(true);
+        }}
+      />
     );
   }
 

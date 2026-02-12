@@ -5,6 +5,7 @@ import { enrichAssignmentMetadata } from '../../agents/analysis/enrichAssignment
 import { getWriterService } from '../../config/aiConfig';
 import { useRealAI } from '../../config/aiConfig';
 import { SectionBuilder, CustomSection } from './SectionBuilder';
+import { selectAppropriateFormat, validateProblemBloomAlignment, formatValidationReport } from '../../agents/analysis/bloomConstraints';
 
 /**
  * Assignment Intent Form
@@ -191,17 +192,73 @@ function generateAssignmentPreview(
     return bloomMap[bloomStr] || 3;
   };
 
+  // Helper function to generate realistic problem text by Bloom level
+  const generateProblemText = (bloomLevel: string, topicStr: string): string => {
+    const templates: Record<string, string[]> = {
+      'Remember': [
+        `What is the definition of ${topicStr}?`,
+        `Identify the main characteristics of ${topicStr}.`,
+        `List the key facts about ${topicStr}.`,
+        `Name the important elements in ${topicStr}.`,
+        `What is the primary concept of ${topicStr}?`,
+      ],
+      'Understand': [
+        `Explain what ${topicStr} means in your own words.`,
+        `Describe how ${topicStr} relates to common knowledge.`,
+        `Summarize the main ideas about ${topicStr}.`,
+        `What is the significance of ${topicStr}?`,
+        `How would you describe ${topicStr} to someone unfamiliar with it?`,
+      ],
+      'Apply': [
+        `How would you apply ${topicStr} to solve a real-world problem?`,
+        `Use the principles of ${topicStr} to analyze this scenario.`,
+        `Demonstrate how ${topicStr} can be used in practice.`,
+        `Apply your understanding of ${topicStr} to create a solution.`,
+        `In what practical situations would ${topicStr} be applicable?`,
+      ],
+      'Analyze': [
+        `Compare and contrast different aspects of ${topicStr}.`,
+        `Break down ${topicStr} into its component parts.`,
+        `Analyze the causes and effects related to ${topicStr}.`,
+        `What patterns do you notice when examining ${topicStr}?`,
+        `How do the elements of ${topicStr} relate to each other?`,
+      ],
+      'Evaluate': [
+        `Evaluate the effectiveness of different approaches to ${topicStr}.`,
+        `Judge the validity of claims about ${topicStr}.`,
+        `Assess the strengths and weaknesses of ${topicStr}.`,
+        `What is your informed opinion about ${topicStr}?`,
+        `Critique the following approach to ${topicStr}.`,
+      ],
+      'Create': [
+        `Design a new approach to ${topicStr}.`,
+        `Compose an original solution that addresses ${topicStr}.`,
+        `Create a unique perspective on ${topicStr}.`,
+        `Develop a novel method for understanding ${topicStr}.`,
+        `Synthesize your knowledge to propose new ideas about ${topicStr}.`,
+      ]
+    };
+    const bloomTemplates = templates[bloomLevel] || templates['Remember'];
+    return bloomTemplates[Math.floor(Math.random() * bloomTemplates.length)];
+  };
+
   if (sectionStrategy === 'ai-generated') {
     // Generate single section with all questions
     const problems = Array.from({ length: questionCount }, (_, i) => {
       const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
-      const problemText = `Question ${i + 1}: [Sample question text - would be generated from source material]`;
+      const currentBloomLevel = bloomLevels[i % 6];
+      const problemText = generateProblemText(currentBloomLevel, topic);
+      const bloomNum = bloomStringToNumber(currentBloomLevel);
+      // Use constraint-aware format selection
+      const preferredFormat = (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5];
+      const approvedFormat = selectAppropriateFormat(currentBloomLevel as any, preferredFormat);
+      
       return {
         id: `q${i + 1}`,
         sectionId: 'section-0',
         problemText,
-        bloomLevel: bloomStringToNumber(bloomLevels[i % 6]),
-        questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
+        bloomLevel: bloomNum,
+        questionFormat: approvedFormat as any,
         tipText: i % 3 === 0 ? `Consider the relationship between these concepts.` : undefined,
         hasTip: i % 3 === 0,
         problemType: (['procedural', 'conceptual', 'application'] as const)[i % 3] as any,
@@ -211,6 +268,21 @@ function generateAssignmentPreview(
         problemLength: problemText.trim().split(/\s+/).length,
       };
     });
+
+    // Validate Bloom-format alignment
+    const bloomLevelNames = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+    const validationReport = validateProblemBloomAlignment(
+      problems.map((p) => ({
+        bloomLevel: bloomLevelNames[p.bloomLevel - 1] as any,
+        questionFormat: p.questionFormat,
+        problemText: p.problemText,
+      }))
+    );
+    if (!validationReport.valid) {
+      console.warn('🚨 Bloom Constraint Violations:\n' + formatValidationReport(validationReport));
+    } else {
+      console.log('✅ ' + formatValidationReport(validationReport));
+    }
 
     sections = [
       {
@@ -229,13 +301,19 @@ function generateAssignmentPreview(
       const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
       const sectionProblems = Array.from({ length: section.questionCount }, (_, i) => {
         const hasTip = section.includeTips;
-        const problemText = `Question ${questionIndex + i + 1}: [Sample question text - would be generated from source material]`;
+        const currentBloomLevel = bloomLevels[i % 6];
+        const bloomNum = bloomStringToNumber(currentBloomLevel);
+        const problemText = generateProblemText(currentBloomLevel, section.problemType);
+        // Use constraint-aware format selection
+        const preferredFormat = (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5];
+        const approvedFormat = selectAppropriateFormat(currentBloomLevel as any, preferredFormat);
+        
         return {
           id: `q${questionIndex + i + 1}`,
           sectionId: `section-${sectionIdx}`,
           problemText,
-          bloomLevel: bloomStringToNumber(bloomLevels[i % 6]),
-          questionFormat: (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5],
+          bloomLevel: bloomNum,
+          questionFormat: approvedFormat as any,
           tipText: hasTip ? `Here's a helpful tip for this ${section.problemType} question.` : undefined,
           hasTip,
           problemType: section.problemType as any,
@@ -245,6 +323,20 @@ function generateAssignmentPreview(
           problemLength: problemText.trim().split(/\s+/).length,
         };
       });
+      
+      // Validate Bloom-format alignment for this section
+      const bloomLevelNames = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+      const validationReport = validateProblemBloomAlignment(
+        sectionProblems.map((p) => ({
+          bloomLevel: bloomLevelNames[p.bloomLevel - 1] as any,
+          questionFormat: p.questionFormat,
+          problemText: p.problemText,
+        }))
+      );
+      if (!validationReport.valid) {
+        console.warn(`🚨 Section "${section.sectionName}" has Bloom violations:\n` + formatValidationReport(validationReport));
+      }
+      
       questionIndex += section.questionCount;
       return {
         sectionId: `section-${sectionIdx}`,

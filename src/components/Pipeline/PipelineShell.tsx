@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { useAuth } from '../../hooks/useAuth';
 import { Phase3Goal, Phase3Source } from '../../types/assignmentGeneration';
 import { getBehaviorSpec } from '../../agents/phase3/phase3BehaviorMatrix';
 import { parseDocumentStructure } from '../../agents/analysis/documentStructureParser';
 import { previewDocument } from '../../agents/analysis/documentPreview';
 import { convertExtractedProblemsToAsteroids } from '../../agents/shared/convertExtractedToAsteroid';
 import { extractAsteroidsFromText } from '../../agents/pipelineIntegration';
+import { saveAsteroidsToProblemBank } from '../../agents/shared/saveProblemsToProblemBank';
 import { AssignmentInput } from './AssignmentInput';
 import { Phase3Selector } from './Phase3Selector';
 import { PromptBuilder } from './PromptBuilderSimplified';
@@ -16,6 +18,8 @@ import { DocumentAnalysis } from '../Analysis/DocumentAnalysis';
 import { ProblemAnalysis } from './ProblemAnalysis';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
+import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
+import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
 import { RewriteResults } from './RewriteResults';
 import { Step8FinalReview } from './Step8FinalReview';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
@@ -44,6 +48,8 @@ export function PipelineShell({
   intentData,
   onFlowComplete,
 }: PipelineShellProps = {}) {
+  const { user } = useAuth();
+  
   const {
     step,
     originalText,
@@ -54,6 +60,7 @@ export function PipelineShell({
     error,
     rewrittenTags,
     asteroids,
+    assignmentMetadata,
     analyzeTextAndTags,
     nextStep,
     reset,
@@ -61,6 +68,13 @@ export function PipelineShell({
     setAsteroids,
     setOriginalText,
     retestWithRewrite,
+    captureRewriteNotes,
+    reanalyzeWithSamePersonas,
+    prepareForRewrite,
+    markAsSaved,
+    studentFeedbackNotes,
+    rewriteHistory,
+    hasUnsavedChanges,
   } = usePipeline();
 
   const [input, setInput] = useState('');
@@ -73,6 +87,10 @@ export function PipelineShell({
   const [classDefinition, setClassDefinition] = useState<ClassDefinition | undefined>(undefined);
   const [documentPreview, setDocumentPreview] = useState<any>(null);
   const [documentStructure, setDocumentStructure] = useState<any>(null);
+  
+  // Generate document ID and assignment ID once for this pipeline session
+  const [documentId] = useState(() => `doc_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+  const [assignmentId] = useState(() => `assign_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
 
   // Handle UserFlow data injection
   useEffect(() => {
@@ -295,6 +313,88 @@ export function PipelineShell({
       setReviewMetadata(null);
       setClassDefinition(undefined);
       reset();
+    }
+  };
+
+  const handleCompleteSaveProblems = async (result: { successCount: number; failureCount: number; savedProblemIds: string[] }) => {
+    if (!user || !user.id || !asteroids || asteroids.length === 0) {
+      console.warn('Cannot save problems: missing user, asteroids, or IDs');
+      return;
+    }
+
+    try {
+      // First, save the full assignment with rewritten text and metadata
+      const assignmentToSave = {
+        id: assignmentId,
+        title: `Assignment_${new Date().toISOString().slice(0, 10)}`,
+        subject: assignmentSubject || 'General',
+        gradeLevel: assignmentMetadata?.gradeLevel || '6-8',
+        assignmentType: 'rewritten-assignment',
+        status: 'draft' as const,
+        sections: [{
+          id: 'S1',
+          title: 'Rewritten Assignment',
+          instructions: '',
+          problems: asteroids.map((ast, idx) => ({
+            id: ast.ProblemId || `P${idx + 1}`,
+            text: ast.ProblemText,
+            points: 1,
+          })),
+          order: 0,
+        }],
+        estimatedTimeMinutes: asteroids.length * 5, // Rough estimate
+        specifications: {
+          title: `Assignment_${new Date().toISOString().slice(0, 10)}`,
+          instructions: rewriteSummary || 'Rewritten assignment',
+          subject: assignmentSubject || 'General',
+          gradeLevel: assignmentMetadata?.gradeLevel || '6-8',
+          assignmentType: 'rewritten-assignment',
+          assessmentType: 'general',
+          estimatedTime: asteroids.length * 5,
+          difficulty: assignmentMetadata?.difficulty || 'medium',
+        },
+        metadata: {
+          bloomDistribution: {},
+          rewriteSummary: rewriteSummary,
+          studentFeedbackNotes: studentFeedbackNotes,
+          rewriteHistory: rewriteHistory,
+        },
+        isTemplate: false,
+        tags: [],
+        sourceFileName: 'pipeline-generated',
+        version: 1,
+      };
+
+      // Save assignment to Supabase
+      const { saveAssignment } = await import('../../services/teacherSystemService');
+      await saveAssignment(user.id, assignmentToSave as any);
+      console.log('✓ Assignment saved to database');
+
+      // Then save problems to problem bank
+      const saveResult = await saveAsteroidsToProblemBank({
+        teacherId: user.id,
+        asteroids,
+        documentId,
+        assignmentId,
+        subject: assignmentSubject || 'General',
+        sectionId: 'S1',
+        createdBy: user.id,
+      });
+
+      console.log('✓ Problems saved to problem bank:', saveResult);
+      
+      // Call the parent flow completion callback if provided
+      if (onFlowComplete) {
+        onFlowComplete({
+          type: 'assignment_completed',
+          assignmentId,
+          documentId,
+          saveResult,
+        });
+      }
+    } catch (error) {
+      console.error('Error saving assignment/problems:', error);
+      // Don't re-throw - allow the flow to continue even if save fails
     }
   };
 
@@ -541,11 +641,23 @@ export function PipelineShell({
       )}
 
       {step === PipelineStep.STUDENT_SIMULATIONS && (
-        <StudentSimulations
-          feedback={studentFeedback}
-          isLoading={isLoading}
-          onNext={handleNextStep}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '20px', padding: '20px' }}>
+          <ProblemsAndFeedbackViewer
+            asteroids={asteroids || []}
+            studentFeedback={studentFeedback}
+            isLoading={isLoading}
+            onNext={() => {
+              // Prepare for rewrite (capture personas)
+              prepareForRewrite();
+              handleNextStep();
+            }}
+          />
+          <RewriteNotesCapturePanel
+            existingNotes={studentFeedbackNotes}
+            onNotesChange={captureRewriteNotes}
+            isLoading={isLoading}
+          />
+        </div>
       )}
 
       {step === PipelineStep.REWRITE_RESULTS && (
@@ -557,6 +669,11 @@ export function PipelineShell({
           isLoading={isLoading}
           onNext={handleNextStep}
           onEditAndRetest={handleEditAndRetest}
+          onReanalyze={() => {
+            // Reanalyze the rewritten text with same student personas
+            reanalyzeWithSamePersonas(rewrittenText);
+          }}
+          hasUnsavedChanges={hasUnsavedChanges}
         />
       )}
 
@@ -568,6 +685,9 @@ export function PipelineShell({
           tags={rewrittenTags || []}
           studentFeedback={studentFeedback}
           asteroids={asteroids}
+          sourceDocumentId={documentId}
+          assignmentId={assignmentId}
+          teacherId={user?.id}
           onPrevious={() => {
             // Go back to rewrite results
             // Could implement a previousStep() function in usePipeline
@@ -575,6 +695,7 @@ export function PipelineShell({
           onComplete={() => {
             handleReset();
           }}
+          onCompleteSaveProblems={handleCompleteSaveProblems}
         />
       )}
     </div>

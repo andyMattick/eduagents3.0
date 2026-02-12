@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './IntentCaptureComponent.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection, GeneratedProblem } from '../../hooks/useUserFlow';
+import { selectAppropriateFormat, validateProblemBloomAlignment, formatValidationReport } from '../../agents/analysis/bloomConstraints';
 
 interface BloomDistribution {
   remember: number;
@@ -37,6 +38,7 @@ const GRADE_LEVELS = [
 ];
 
 const ASSIGNMENT_TYPES = [
+  'Essay',
   'Quiz',
   'Practice Set',
   'Homework',
@@ -126,6 +128,52 @@ function generateAssignmentFromIntent(
     questionsPerBloom['apply'] = (questionsPerBloom['apply'] || 0) + diff;
   }
 
+  // Generate realistic problem text templates by Bloom level
+  const problemTemplates: Record<string, string[]> = {
+    remember: [
+      `What is the definition of ${topic}?`,
+      `Identify the main characteristics of ${topic}.`,
+      `List the key facts about ${topic}.`,
+      `Name the important elements in ${topic}.`,
+      `What is the primary concept of ${topic}?`,
+    ],
+    understand: [
+      `Explain what ${topic} means in your own words.`,
+      `Describe how ${topic} relates to common knowledge.`,
+      `Summarize the main ideas about ${topic}.`,
+      `What is the relationship between the different aspects of ${topic}?`,
+      `How would you describe ${topic} to someone unfamiliar with it?`,
+    ],
+    apply: [
+      `How would you apply ${topic} to solve a real-world problem?`,
+      `Use the principles of ${topic} to analyze this scenario.`,
+      `Demonstrate how ${topic} can be used in practice.`,
+      `Apply your understanding of ${topic} to create a solution.`,
+      `In what practical situations would ${topic} be applicable?`,
+    ],
+    analyze: [
+      `Compare and contrast different aspects of ${topic}.`,
+      `Break down ${topic} into its component parts.`,
+      `Analyze the causes and effects of factors in ${topic}.`,
+      `What patterns do you notice when examining ${topic}?`,
+      `How do the elements of ${topic} relate to each other?`,
+    ],
+    evaluate: [
+      `Evaluate the effectiveness of different approaches to ${topic}.`,
+      `Judge the validity of claims about ${topic}.`,
+      `Assess the strengths and weaknesses of ${topic}.`,
+      `What is your informed opinion about ${topic}?`,
+      `Critique the following approach to ${topic}.`,
+    ],
+    create: [
+      `Design a new approach to ${topic}.`,
+      `Compose an original solution that addresses ${topic}.`,
+      `Create a unique perspective on ${topic}.`,
+      `Develop a novel method for understanding ${topic}.`,
+      `Synthesize your knowledge to propose new ideas about ${topic}.`,
+    ],
+  };
+
   // Create questions distributed by Bloom level
   let qIndex = 0;
   bloomLevels.forEach(bloomLevel => {
@@ -144,19 +192,27 @@ function generateAssignmentFromIntent(
 
       const complexity = diffRatio < 0.33 ? 'low' : diffRatio < 0.66 ? 'medium' : 'high';
 
+      // Generate realistic problem text based on Bloom level
+      const bloomTemplates = problemTemplates[bloomLevel.toLowerCase()] || problemTemplates.remember;
+      const problemText = bloomTemplates[Math.floor(Math.random() * bloomTemplates.length)];
+
+      // Use constraint-aware format selection to ensure Bloom alignment
+      const preferredFormat = useQuestionTypes[qIndex % useQuestionTypes.length];
+      const approvedFormat = selectAppropriateFormat(bloomLevel as any, preferredFormat);
+
       const problem: GeneratedProblem = {
         id: `q${qIndex + 1}`,
         sectionId: `section-${Math.floor(qIndex / (questionCount / numSections))}`,
-        problemText: `Question ${qIndex + 1}. [${bloomLevel.charAt(0).toUpperCase() + bloomLevel.slice(1)} level - ${topic}]`,
+        problemText: problemText,
         problemType: problemTypes[qIndex % problemTypes.length],
         bloomLevel: bloomNum,
-        questionFormat: useQuestionTypes[qIndex % useQuestionTypes.length] as typeof questionFormats[number],
+        questionFormat: approvedFormat as typeof questionFormats[number],
         complexity: complexity as 'low' | 'medium' | 'high',
         novelty: 'medium',
         estimatedTime: bloomNum <= 2 ? 2 : bloomNum <= 4 ? 3 : 5,
         problemLength: complexity === 'low' ? 15 : complexity === 'medium' ? 25 : 35,
         hasTip: tipsEnabled && bloomNum > 2,
-        tipText: tipsEnabled && bloomNum > 2 ? `Think about the ${bloomLevel === 'apply' ? 'steps' : 'connections'} involved.` : undefined,
+        tipText: tipsEnabled && bloomNum > 2 ? `Think about the ${bloomLevel === 'apply' ? 'steps involved' : bloomLevel === 'analyze' ? 'patterns and connections' : 'key concepts'}.` : undefined,
         options: ['Option A', 'Option B', 'Option C', 'Option D'],
         correctAnswer: 'Option B',
       };
@@ -165,6 +221,23 @@ function generateAssignmentFromIntent(
       qIndex++;
     }
   });
+
+  // Validate Bloom-format alignment for all problems
+  const bloomLevelNames = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+  const validationReport = validateProblemBloomAlignment(
+    allProblems.map((p, idx) => ({
+      bloomLevel: bloomLevelNames[p.bloomLevel - 1] as any,
+      questionFormat: p.questionFormat,
+      problemText: p.problemText,
+    }))
+  );
+
+  // Log validation results
+  if (!validationReport.valid) {
+    console.warn('🚨 Bloom Constraint Violations:\n' + formatValidationReport(validationReport));
+  } else {
+    console.log('✅ ' + formatValidationReport(validationReport));
+  }
 
   // Create sections with problems distributed evenly
   const problemsPerSection = Math.ceil(questionCount / numSections);

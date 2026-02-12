@@ -162,6 +162,18 @@ export interface PipelineState {
     sourceFileName?: string;
     intentTags?: any; // AssignmentIntentTags
   };
+  // Rewrite Tracking
+  studentFeedbackNotes?: string; // Accumulated notes about what to change
+  activeStudentPersonas?: string[]; // Personas used in current simulation (for re-analysis)
+  rewriteHistory?: Array<{
+    iteration: number;
+    timestamp: string;
+    originalText: string;
+    rewrittenText: string;
+    notes: string;
+    feedbackFromPersonas: string[];
+  }>;
+  hasUnsavedChanges?: boolean; // Track if changes have been made but not saved
 }
 
 /**

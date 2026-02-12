@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS problem_bank (
   -- Source Tracking
   source_assignment_id UUID,
   source_document_id TEXT,
+  original_problem_id TEXT, -- Copy of problem.problemId for deduplication
   
   -- Metadata
   notes TEXT,
@@ -48,7 +49,10 @@ CREATE TABLE IF NOT EXISTS problem_bank (
   -- Constraints
   CONSTRAINT valid_problem_id CHECK ((problem->>'problemId') ~ '^[A-Za-z0-9]+_P\d+(_[a-z])?$'),
   CONSTRAINT valid_bloom_level CHECK ((problem->'cognitive'->>'bloomsLevel') IN ('Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create')),
-  CONSTRAINT valid_complexity CHECK ((problem->'cognitive'->>'complexityLevel')::INT BETWEEN 1 AND 5)
+  CONSTRAINT valid_complexity CHECK ((problem->'cognitive'->>'complexityLevel')::INT BETWEEN 1 AND 5),
+  -- Unique constraint for upsert: (teacher_id, source_document_id, original_problem_id)
+  -- Ensures only latest version of each problem is stored
+  CONSTRAINT unique_problem_per_document UNIQUE (teacher_id, source_document_id, original_problem_id) WHERE source_document_id IS NOT NULL
 );
 
 -- Index for teacher access

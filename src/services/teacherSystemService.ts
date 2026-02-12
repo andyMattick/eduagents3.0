@@ -222,13 +222,17 @@ export async function saveAssignment(
   const db = getSupabase();
   const isNew = !assignment.id;
 
-  // Check assignment limits
+  // Check assignment limits (skip in dev mode, for admin, or for demo account)
   if (isNew) {
     const account = await getTeacherAccount(teacherId);
     if (!account) throw new Error('Teacher account not found');
 
+    const isDevMode = import.meta.env.DEV;
+    const isDemoAccount = account.email === 'teacher@example.com';
     const tierConfig = SUBSCRIPTION_TIERS[account.subscription.tier];
-    if (account.assignmentCount >= tierConfig.maxAssignments) {
+    
+    // Skip limit check in dev mode, for admin users, or for demo account
+    if (!isDevMode && !account.isAdmin && !isDemoAccount && account.assignmentCount >= tierConfig.maxAssignments) {
       throw new Error(
         `Assignment limit of ${tierConfig.maxAssignments} reached. Upgrade your subscription to create more.`
       );
@@ -269,7 +273,7 @@ export async function saveAssignment(
     await db
       .from('teacher_accounts')
       .update({ assignment_count: (await db.from('assignments').select('id').eq('teacher_id', teacherId)).data?.length || 1 })
-      .eq('profile_id', teacherId);
+      .eq('user_id', teacherId);
 
     return mapAssignmentDetail(data);
   } else {
@@ -410,7 +414,7 @@ export async function addToQuestionBank(
         await db.from('question_bank').select('id').eq('teacher_id', teacherId)
       ).data?.length || 1,
     })
-    .eq('profile_id', teacherId);
+    .eq('user_id', teacherId);
 
   return mapQuestionBankEntry(data);
 }
@@ -495,7 +499,7 @@ export async function logApiCall(
     const { data: account } = await db
       .from('teacher_accounts')
       .select('*')
-      .eq('profile_id', teacherId)
+      .eq('user_id', teacherId)
       .single();
 
     await db
@@ -505,7 +509,7 @@ export async function logApiCall(
         api_calls_remaining: Math.max(0, (account?.api_calls_remaining || 0) - cost),
         api_calls_used_today: (account?.api_calls_used_today || 0) + cost,
       })
-      .eq('profile_id', teacherId);
+      .eq('user_id', teacherId);
   }
 }
 
@@ -528,19 +532,24 @@ export async function getResourceLimitStatus(teacherId: string): Promise<Resourc
     .select('id', { count: 'exact', head: true })
     .eq('teacher_id', teacherId);
 
+  // Check if limits should be ignored
+  const isDevMode = import.meta.env.DEV;
+  const isDemoAccount = account.email === 'teacher@example.com';
+  const shouldIgnoreLimits = isDevMode || account.isAdmin || isDemoAccount;
+
   return {
     tier: account.subscription.tier,
     assignmentLimit: {
       current: assignments.count || 0,
       max: tierConfig.maxAssignments,
       percentageUsed: ((assignments.count || 0) / tierConfig.maxAssignments) * 100,
-      canCreate: (assignments.count || 0) < tierConfig.maxAssignments,
+      canCreate: shouldIgnoreLimits || (assignments.count || 0) < tierConfig.maxAssignments,
     },
     apiCallLimit: {
       current: account.apiUsage.totalCalls,
       max: tierConfig.monthlyApiLimit,
       percentageUsed: (account.apiUsage.totalCalls / tierConfig.monthlyApiLimit) * 100,
-      canCall: account.apiUsage.callsRemaining > 0,
+      canCall: shouldIgnoreLimits || account.apiUsage.callsRemaining > 0,
     },
     questionBankLimit: tierConfig.questionBankEnabled
       ? {
@@ -589,6 +598,7 @@ function mapTeacherAccount(accountData: any): TeacherAccount {
     questionBankCount: accountData.question_bank_count,
     lastLogin: accountData.last_login,
     isVerified: accountData.is_verified,
+    isAdmin: accountData.is_admin,
   };
 }
 
@@ -1090,6 +1100,67 @@ export async function saveToProblemBank(
   return data.id;
 }
 
+/**
+ * Upsert problem to problem_bank, avoiding duplicates across rewrites.
+ * If problem already exists (same teacher + document + problemId), updates it.
+ * Otherwise creates new entry.
+ * 
+ * Only the latest version is kept per (teacher_id, source_document_id, original_problem_id).
+ */
+export async function upsertProblemToProblemBank(
+  teacherId: string,
+  problem: UniversalProblem,
+  sourceDocumentId: string,
+  sourceAssignmentId: string,
+  createdBy: string
+): Promise<string> {
+  const db = getSupabase();
+
+  // Validate problem before storing
+  const validation = validateProblemInvariants(problem);
+  if (!validation.isValid) {
+    throw new Error(`Problem validation failed: ${validation.errors.join(', ')}`);
+  }
+
+  const problemId = problem.problemId;
+
+  // Upsert: use ON CONFLICT to update if already exists
+  const { data, error } = await db
+    .from('problem_bank')
+    .upsert(
+      {
+        teacher_id: teacherId,
+        problem: problem,
+        original_problem_id: problemId,
+        source_document_id: sourceDocumentId,
+        source_assignment_id: sourceAssignmentId,
+        created_by: createdBy,
+        is_favorite: false,
+        usage_count: 0,
+        used_in_assignment_ids: [],
+        immutable_lock: {
+          isLocked: false,
+          lockedAt: null,
+          lockedReason: null,
+          lockedLayers: {
+            cognitive: false,
+            classification: false,
+            structure: false,
+          },
+        },
+      },
+      {
+        onConflict: 'unique_problem_per_document',
+        ignoreDuplicates: false,
+      }
+    )
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id;
+}
+
 export async function getProblemBankEntry(
   entryId: string,
   teacherId?: string
@@ -1310,6 +1381,7 @@ export default {
   validateAndEnforceInvariants,
   // Problem Bank (Full UniversalProblem Storage)
   saveToProblemBank,
+  upsertProblemToProblemBank,
   getProblemBankEntry,
   searchProblemBank,
   assembleProblemForAssignment,

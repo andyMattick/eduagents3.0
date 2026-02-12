@@ -122,6 +122,7 @@ export interface TeacherAccount {
   questionBankCount: number;
   lastLogin?: string;
   isVerified: boolean;
+  isAdmin?: boolean; // Admin flag for unlimited assignments
   metadata?: Record<string, any>;
 }
 

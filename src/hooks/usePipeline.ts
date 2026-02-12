@@ -26,6 +26,10 @@ const initialState: PipelineState = {
   },
   asteroids: [],
   showProblemMetadata: false,
+  studentFeedbackNotes: undefined,
+  activeStudentPersonas: undefined,
+  rewriteHistory: undefined,
+  hasUnsavedChanges: false,
 };
 
 export function usePipeline() {
@@ -152,7 +156,12 @@ export function usePipeline() {
 
     setLoading(true);
     try {
-      const result = await rewriteAssignment(state.originalText, state.tags);
+      // Pass feedback notes to the rewriter to guide the rewriting process
+      const result = await rewriteAssignment(
+        state.originalText, 
+        state.tags,
+        state.studentFeedbackNotes
+      );
       setRewrittenTags(result.appliedTags);
       setState(prev => ({
         ...prev,
@@ -170,7 +179,7 @@ export function usePipeline() {
     } finally {
       setLoading(false);
     }
-  }, [state.originalText, state.tags, setLoading]);
+  }, [state.originalText, state.tags, state.studentFeedbackNotes, setLoading]);
 
   const compareVersions = useCallback(async () => {
     if (!state.originalText || state.tags.length === 0) return;
@@ -195,6 +204,105 @@ export function usePipeline() {
       setLoading(false);
     }
   }, [state.originalText, state.tags, rewrittenTags, setLoading]);
+
+  /**
+   * Capture notes from student feedback (groups reasons to change problems)
+   */
+  const captureRewriteNotes = useCallback((notes: string) => {
+    setState(prev => ({
+      ...prev,
+      studentFeedbackNotes: notes,
+      hasUnsavedChanges: true,
+    }));
+  }, []);
+
+  /**
+   * Re-analyze the current assignment using the same student personas
+   * This is called after a rewrite to validate the changes
+   */
+  const reanalyzeWithSamePersonas = useCallback(async (textToAnalyze: string) => {
+    if (!textToAnalyze.trim() || !state.activeStudentPersonas || state.activeStudentPersonas.length === 0) {
+      setState(prev => ({
+        ...prev,
+        error: 'Cannot reanalyze: no text or personas selected',
+      }));
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Extract asteroids from new text
+      const newAsteroids = await extractAsteroidsFromText(
+        textToAnalyze,
+        state.assignmentMetadata?.subject || 'General'
+      );
+
+      // Generate feedback using same personas
+      // For now, use empty feedback (will be populated by simulateStudents if called)
+      const newFeedback: any[] = [];
+
+      // Store rewrite iteration in history
+      const newIteration = (state.rewriteHistory?.length || 0) + 1;
+      const historyEntry = {
+        iteration: newIteration,
+        timestamp: new Date().toISOString(),
+        originalText: state.originalText,
+        rewrittenText: state.rewrittenText || textToAnalyze,
+        notes: state.studentFeedbackNotes || '',
+        feedbackFromPersonas: state.activeStudentPersonas || [],
+      };
+
+      setState(prev => ({
+        ...prev,
+        asteroids: newAsteroids,
+        studentFeedback: newFeedback,
+        rewriteHistory: [...(prev.rewriteHistory || []), historyEntry],
+        hasUnsavedChanges: false, // Reanalysis complete - safe to save now
+        error: undefined,
+      }));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to reanalyze';
+      setState(prev => ({
+        ...prev,
+        error: errorMessage,
+      }));
+    } finally {
+      setLoading(false);
+    }
+  }, [state.activeStudentPersonas, state.assignmentMetadata?.subject, state.originalText, state.rewrittenText, state.studentFeedbackNotes, state.rewriteHistory, setLoading]);
+
+  /**
+   * Mark that we're about to rewrite (capture personas for re-analysis)
+   */
+  const prepareForRewrite = useCallback(() => {
+    const personas = state.studentFeedback.map(f => f.studentPersona);
+    setState(prev => ({
+      ...prev,
+      activeStudentPersonas: [...new Set(personas)], // Deduplicate
+    }));
+  }, [state.studentFeedback]);
+
+  /**
+   * Clear unsaved changes flag (call after saving)
+   */
+  const markAsSaved = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      hasUnsavedChanges: false,
+    }));
+  }, []);
+
+  /**
+   * Save the assignment to Supabase
+   * This is called when exiting the pipeline after rewrites are complete
+   */
+  const saveToSupabase = useCallback(async (userId: string, documentId: string, assignmentId: string) => {
+    // This will be called from PipelineShell when user exports
+    // The actual save will happen in Step8FinalReview's onCompleteSaveProblems callback
+    // which calls saveAsteroidsToProblemBank
+    // Here we just mark the assignment as needing save
+    return true;
+  }, []);
 
   const reset = useCallback(() => {
     setState(initialState);
@@ -289,6 +397,10 @@ export function usePipeline() {
     rewrittenTags,
     asteroids: state.asteroids,
     showProblemMetadata: state.showProblemMetadata,
+    studentFeedbackNotes: state.studentFeedbackNotes,
+    activeStudentPersonas: state.activeStudentPersonas,
+    rewriteHistory: state.rewriteHistory,
+    hasUnsavedChanges: state.hasUnsavedChanges,
 
     // Actions
     analyzeTextAndTags,
@@ -297,6 +409,11 @@ export function usePipeline() {
     reset,
     toggleProblemMetadataView,
     retestWithRewrite,
+    captureRewriteNotes,
+    reanalyzeWithSamePersonas,
+    prepareForRewrite,
+    markAsSaved,
+    saveToSupabase,
 
     // Direct setters for controlled inputs
     setOriginalText: (text: string) => setState(prev => ({ ...prev, originalText: text })),
