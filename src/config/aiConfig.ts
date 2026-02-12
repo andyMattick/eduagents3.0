@@ -5,6 +5,7 @@
  */
 
 import { buildAssignmentGenerationInstruction, AssignmentGenerationContext } from '../agents/shared/assignmentInstructions';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export type AIMode = 'mock' | 'real';
 
@@ -210,55 +211,37 @@ function getMockAIService(serviceType: 'analyzer' | 'writer') {
 // REAL AI SERVICES (using Google Generative AI)
 // ============================================================================
 
-// Helper to try different model names and API versions
-async function callGoogleAPI(
+// Helper to call Google Generative AI using the official client
+async function callGoogleGenerativeAI(
   apiKey: string,
   prompt: string,
-  modelNames: string[] = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro']
+  modelName: string = 'gemini-1.5-flash'
 ): Promise<any> {
-  let lastError: Error | null = null;
+  try {
+    const client = new GoogleGenerativeAI(apiKey);
+    const model = client.getGenerativeModel({ model: modelName });
 
-  // Try both v1 and v1beta API versions
-  const apiVersions = ['v1beta', 'v1'];
+    console.log(`📡 Calling Google Generative AI with model: ${modelName}`);
 
-  for (const apiVersion of apiVersions) {
-    for (const modelName of modelNames) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`;
-        console.log(`📡 Trying ${apiVersion} - model: ${modelName}`);
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [{ text: prompt }],
-              },
-            ],
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(`❌ ${apiVersion}/${modelName} failed: ${response.status}`);
-          lastError = new Error(`${response.status}: ${errorText}`);
-          continue; // Try next model
-        }
-
-        const data = await response.json();
-        console.log(`✅ ${apiVersion}/${modelName} succeeded`);
-        return data;
-      } catch (error) {
-        console.warn(`❌ ${apiVersion}/${modelName} error:`, error);
-        lastError = error as Error;
-        continue; // Try next model
-      }
-    }
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    
+    console.log(`✅ ${modelName} succeeded`);
+    
+    return {
+      text: response.text(),
+      candidates: [
+        {
+          content: {
+            parts: [{ text: response.text() }],
+          },
+        },
+      ],
+    };
+  } catch (error) {
+    console.error(`❌ ${modelName} failed:`, error);
+    throw error;
   }
-
-  throw new Error(
-    `All Google AI models failed. Last error: ${lastError?.message || 'Unknown'}`
-  );
 }
 
 function getRealAIService(serviceType: 'analyzer' | 'writer') {
@@ -269,7 +252,11 @@ function getRealAIService(serviceType: 'analyzer' | 'writer') {
     return getMockAIService(serviceType);
   }
 
+  const keyPreview = config.googleApiKey.substring(0, 10) + '...' + config.googleApiKey.substring(config.googleApiKey.length - 4);
   console.log(`✅ [REAL AI] Using Google Generative AI (Gemini) - ${serviceType} service`);
+  console.log(`   API Key: ${keyPreview}`);
+  console.log(`   Mode: ${config.useRealAI ? 'REAL' : 'MOCK'}`);
+  console.log(`📝 Ensure the Google Generative Language API is enabled in your Google Cloud console`);
 
   if (serviceType === 'analyzer') {
     return {
@@ -298,7 +285,7 @@ Respond in JSON format only:
   "recommendations": ["rec1", "rec2", "rec3"]
 }`;
 
-          const data = await callGoogleAPI(config.googleApiKey!, prompt);
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-flash');
           const content = data.candidates[0]?.content?.parts[0]?.text || '{}';
 
           // Parse JSON response
@@ -400,7 +387,7 @@ Create problems DIRECTLY from this source material. Questions should reference c
   "summary": "Generated X problems with Y% Apply level, Z% Understand level..."
 }`;
 
-          const data = await callGoogleAPI(config.googleApiKey!, prompt);
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-flash');
           const content = data.candidates[0]?.content?.parts[0]?.text || '{}';
 
           // Parse JSON response

@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.38.4",
     "@vercel/analytics": "^1.6.1",
     "docx": "^9.5.1",

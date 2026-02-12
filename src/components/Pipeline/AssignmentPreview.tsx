@@ -104,49 +104,36 @@ export function AssignmentPreview() {
         {/* Sections and Problems */}
         <div className="preview-content">
           {generatedAssignment.sections.map((section, sectionIdx) => (
-            <div key={sectionIdx} className="section-block">
+            <div className="section-block" key={`section-${sectionIdx}`}>
               <div className="section-header">
-                <h2 className="section-title">{section.sectionName}</h2>
-                <div className="section-meta">
-                  <span className="section-info">{section.instructions}</span>
-                  <span className="section-info">
-                    {section.problems.length} {section.problems.length === 1 ? 'question' : 'questions'}
-                  </span>
-                </div>
+                <h2>{section.sectionName}</h2>
+                {section.instructions && <p className="section-instructions">{section.instructions}</p>}
               </div>
 
-              <div className="problems-list">
+              <ol className="problem-list">
                 {section.problems.map((problem, problemIdx) => (
-                  <div key={problemIdx} className="problem-item">
-                    <div className="problem-number">
-                      {sectionIdx === 0 ? problemIdx + 1 : `${sectionIdx}.${problemIdx + 1}`}
+                  <li className="problem-item" key={`problem-${sectionIdx}-${problemIdx}`}>
+                    <div className="problem-metadata">
+                      {problem.tags?.length > 0 && (
+                        <div className="problem-tags">
+                          {problem.tags.map((tag, tagIdx) => (
+                            <span className="tag" key={`tag-${tagIdx}`}>{tag}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
                     <div className="problem-content">
                       <p className="problem-text">{problem.problemText}</p>
-
                       {section.includeTips && problem.tipText && (
                         <div className="problem-tips">
                           <span className="tips-label">💡 Tip:</span>
                           <p>{problem.tipText}</p>
                         </div>
                       )}
-
-                      <div className="problem-metadata">
-                        <span className="bloom-badge" data-level={String(problem.bloomLevel).toLowerCase()}>
-                          📚 Level {problem.bloomLevel}
-                        </span>
-                        <span className="format-badge">{problem.questionFormat.replace('-', ' ')}</span>
-                        {problem.problemLength && (
-                          <span className="length-badge" title="Word count">
-                            📏 {problem.problemLength} words
-                          </span>
-                        )}
-                      </div>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
           ))}
         </div>

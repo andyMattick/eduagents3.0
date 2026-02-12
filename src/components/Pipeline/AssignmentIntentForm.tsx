@@ -88,6 +88,7 @@ function generateAssignmentPreviewFromAI(
       (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5]) as any;
 
     const wordCount = problem.text.split(/\s+/).length;
+    const complexityLabel = complexityToLabel(problem.complexity);
 
     return {
       id: `q${i + 1}`,
@@ -97,13 +98,14 @@ function generateAssignmentPreviewFromAI(
       questionFormat,
       tipText: problem.hasTips && problem.tipText ? problem.tipText : undefined,
       hasTip: !!(problem.hasTips && problem.tipText),
-      problemType: complexityToLabel(problem.complexity),
-      complexity: complexityToLabel(problem.complexity),
+      problemType: complexityLabel,
+      complexity: complexityLabel,
       novelty: noveltyToLabel(problem.novelty),
       estimatedTime: Math.round(3 + (problem.complexity || 0.5) * 7 + wordCount / 50),
       problemLength: wordCount,
       rawComplexity: problem.complexity,
       rawNovelty: problem.novelty,
+      tags: [problem.bloomLevel, complexityLabel, questionFormat.replace('-', ' ')],
     } as any;
   });
 
@@ -321,6 +323,7 @@ function generateAssignmentPreview(
           novelty: 'medium' as const,
           estimatedTime: 5,
           problemLength: problemText.trim().split(/\s+/).length,
+          tags: [currentBloomLevel, 'medium', approvedFormat.replace('-', ' ')],
         };
       });
       

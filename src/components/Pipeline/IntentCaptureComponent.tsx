@@ -2,6 +2,7 @@ import { useState } from 'react';
 import './IntentCaptureComponent.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection, GeneratedProblem } from '../../hooks/useUserFlow';
 import { selectAppropriateFormat, validateProblemBloomAlignment, formatValidationReport } from '../../agents/analysis/bloomConstraints';
+import { getWriterService, useRealAI } from '../../config/aiConfig';
 
 interface BloomDistribution {
   remember: number;
@@ -73,6 +74,111 @@ const DEFAULT_BLOOM_DISTRIBUTION: BloomDistribution = {
   evaluate: 5,
   create: 5,
 };
+
+/**
+ * Convert AI-generated problems to GeneratedAssignment format
+ */
+function convertAIProblemsToAssignment(
+  intent: IntentData,
+  aiProblems: Array<{
+    text: string;
+    bloomLevel: string;
+    questionType?: string;
+    complexity?: number;
+    novelty?: number;
+    tipText?: string | null;
+    hasTips?: boolean;
+  }>
+): GeneratedAssignment {
+  const bloomStringToNumber = (bloomStr: string): 1 | 2 | 3 | 4 | 5 | 6 => {
+    const bloomMap: Record<string, 1 | 2 | 3 | 4 | 5 | 6> = {
+      'Remember': 1,
+      'Understand': 2,
+      'Apply': 3,
+      'Analyze': 4,
+      'Evaluate': 5,
+      'Create': 6,
+    };
+    return bloomMap[bloomStr] || 2;
+  };
+
+  // Convert problems to GeneratedProblem format
+  const problems: GeneratedProblem[] = aiProblems.slice(0, intent.questionCount).map((problem, i) => {
+    const bloomLevel = bloomStringToNumber(problem.bloomLevel);
+    const questionFormat = 
+      (['multiple-choice', 'true-false', 'short-answer', 'free-response', 'fill-blank'] as const)[i % 5];
+    const approvedFormat = selectAppropriateFormat(problem.bloomLevel as any, questionFormat);
+    
+    return {
+      id: `q${i + 1}`,
+      sectionId: `section-${Math.floor(i / (intent.questionCount / intent.numSections))}`,
+      problemText: problem.text,
+      bloomLevel,
+      questionFormat: approvedFormat as any,
+      tipText: problem.hasTips && problem.tipText ? problem.tipText : undefined,
+      hasTip: !!(problem.hasTips && problem.tipText),
+      problemType: (problem.questionType?.toLowerCase() || 'procedural') as any,
+      complexity: 'medium' as const,
+      novelty: 'medium' as const,
+      estimatedTime: 5,
+      problemLength: problem.text.split(/\s+/).length,
+      tags: [problem.bloomLevel, 'medium', approvedFormat.replace('-', ' ')],
+    };
+  });
+
+  // Group into sections
+  const problemsPerSection = Math.ceil(intent.questionCount / intent.numSections);
+  const sections: GeneratedSection[] = [];
+  
+  for (let s = 0; s < intent.numSections; s++) {
+    const startIdx = s * problemsPerSection;
+    const endIdx = Math.min(startIdx + problemsPerSection, problems.length);
+    const sectionProblems = problems.slice(startIdx, endIdx);
+    
+    // Update section IDs
+    sectionProblems.forEach(p => {
+      p.sectionId = `section-${s}`;
+    });
+    
+    sections.push({
+      sectionId: `section-${s}`,
+      sectionName: intent.numSections > 1 ? `Section ${s + 1}: ${intent.topic.substring(0, 30)}` : intent.assignmentType,
+      instructions: `This section covers ${intent.topic}. Please answer all questions to the best of your ability.`,
+      problemType: 'ai-decide',
+      problems: sectionProblems,
+      includeTips: intent.tipsEnabled,
+    });
+  }
+
+  // Calculate Bloom distribution from actual problems
+  const bloomDistribution: Record<string, number> = {
+    'Remember': 0,
+    'Understand': 0,
+    'Apply': 0,
+    'Analyze': 0,
+    'Evaluate': 0,
+    'Create': 0,
+  };
+  
+  problems.forEach(p => {
+    const levelNames = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+    bloomDistribution[levelNames[p.bloomLevel - 1]]++;
+  });
+
+  return {
+    assignmentId: `assignment-${Date.now()}`,
+    assignmentType: intent.assignmentType,
+    title: intent.title,
+    topic: intent.topic,
+    estimatedTime: intent.estimatedDurationMinutes || 45,
+    questionCount: problems.length,
+    assessmentType: 'formative',
+    sections,
+    bloomDistribution,
+    organizationMode: 'ai-generated',
+    timestamp: new Date().toISOString(),
+  };
+}
 
 /**
  * Generate a comprehensive assignment from teacher intentions
@@ -215,6 +321,7 @@ function generateAssignmentFromIntent(
         tipText: tipsEnabled && bloomNum > 2 ? `Think about the ${bloomLevel === 'apply' ? 'steps involved' : bloomLevel === 'analyze' ? 'patterns and connections' : 'key concepts'}.` : undefined,
         options: ['Option A', 'Option B', 'Option C', 'Option D'],
         correctAnswer: 'Option B',
+        tags: [bloomLevel, complexity, approvedFormat.replace('-', ' ')],
       };
 
       allProblems.push(problem);
@@ -338,9 +445,8 @@ export function IntentCaptureComponent() {
         : [...prev.preferredQuestionTypes, typeId],
     }));
   };
-
   // Validation and submission
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const newErrors: string[] = [];
 
     if (!intent.title.trim()) {
@@ -383,20 +489,71 @@ export function IntentCaptureComponent() {
 
     // Generate the assignment
     try {
-      const generatedAssignment = generateAssignmentFromIntent(
-        intent.title,
-        intent.topic,
-        intent.gradeLevel,
-        intent.assignmentType,
-        intent.bloomDistribution,
-        intent.numSections,
-        intent.questionCount,
-        intent.preferredQuestionTypes,
-        intent.tipsEnabled,
-        intent.difficultyRange
-      );
+      let generatedAssignment: GeneratedAssignment;
+      
+      // Check if real AI is enabled
+      const isRealAI = useRealAI();
+      console.log('🔍 DEBUG: useRealAI() =', isRealAI);
+      
+      if (isRealAI) {
+        console.log('🤖 Using REAL AI to generate from intent...');
+        try {
+          const writer = getWriterService();
+          const bloomGoals = {
+            Remember: intent.bloomDistribution.remember,
+            Understand: intent.bloomDistribution.understand,
+            Apply: intent.bloomDistribution.apply,
+            Analyze: intent.bloomDistribution.analyze,
+            Evaluate: intent.bloomDistribution.evaluate,
+            Create: intent.bloomDistribution.create,
+          };
+          
+          const response = await (writer as any).generate(
+            intent.topic,
+            bloomGoals,
+            intent.questionCount
+          );
 
-      console.log('✅ Generated assignment from intent:', generatedAssignment);
+          console.log('✅ Real AI generated problems:', response);
+
+          // Convert AI response to GeneratedAssignment
+          generatedAssignment = convertAIProblemsToAssignment(
+            intent,
+            response.problems
+          );
+        } catch (aiError) {
+          console.error('❌ Real AI generation FAILED:', aiError);
+          // Fall back to mock
+          generatedAssignment = generateAssignmentFromIntent(
+            intent.title,
+            intent.topic,
+            intent.gradeLevel,
+            intent.assignmentType,
+            intent.bloomDistribution,
+            intent.numSections,
+            intent.questionCount,
+            intent.preferredQuestionTypes,
+            intent.tipsEnabled,
+            intent.difficultyRange
+          );
+        }
+      } else {
+        console.log('📝 Using MOCK AI generation (real AI not enabled)');
+        generatedAssignment = generateAssignmentFromIntent(
+          intent.title,
+          intent.topic,
+          intent.gradeLevel,
+          intent.assignmentType,
+          intent.bloomDistribution,
+          intent.numSections,
+          intent.questionCount,
+          intent.preferredQuestionTypes,
+          intent.tipsEnabled,
+          intent.difficultyRange
+        );
+      }
+
+      console.log('✅ Generated assignment:', generatedAssignment);
       setGeneratedAssignment(generatedAssignment);
       setIsGenerated(true);
 
