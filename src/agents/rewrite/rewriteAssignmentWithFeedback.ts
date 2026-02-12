@@ -226,41 +226,37 @@ Now provide the FULL rewritten assignment in the JSON format specified above. Re
 }
 
 /**
- * Calls Claude API to rewrite the assignment
- * This is the REAL implementation that does intelligent rewriting
+ * Calls mock rewriter (Claude API disabled)
+ * Returns template responses for development
  */
 async function callClaudeForRewrite(prompt: string): Promise<string> {
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.REACT_APP_ANTHROPIC_API_KEY || '',
-        'anthropic-version': '2023-06-01',
+  // Claude API is disabled. Return mock response.
+  // To use real rewriter, use /api/rewrite endpoint with Gemini instead.
+  console.log('📝 Rewriter in MOCK mode (Claude API disabled)');
+  
+  // Extract problem count from prompt
+  const problemMatches = prompt.match(/Problem \d+:/g);
+  const problemCount = problemMatches?.length || 3;
+
+  const mockRewriteResponse = {
+    title: '[Mock Rewrite] Updated Assignment',
+    sections: [
+      {
+        sectionName: 'Section 1',
+        instructions: '[MOCK] Updated instructions for clarity',
+        problems: Array.from({ length: Math.min(problemCount, 5) }, (_, i) => ({
+          problemText: `[MOCK REWRITE] Problem ${i + 1} has been clarified for better student understanding`,
+          format: 'Multiple Choice',
+          bloomLevel: 'Understand' as const,
+          options: ['Option A', 'Option B', 'Option C', 'Option D'],
+          clarifications: 'Simplified wording and added context',
+        })),
       },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 4000,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-      }),
-    });
+    ],
+    summaryOfChanges: `[MOCK] Simplified ${problemCount} problems. Reduced cognitive load. Improved clarity.`,
+  };
 
-    if (!response.ok) {
-      console.error('Claude API error:', await response.text());
-      return '';
-    }
-
-    const data = await response.json();
-    return data.content[0]?.text || '';
-  } catch (error) {
-    console.error('Error calling Claude API:', error);
-    return '';
-  }
+  return JSON.stringify(mockRewriteResponse);
 }
 
 /**

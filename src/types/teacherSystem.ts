@@ -480,3 +480,94 @@ export interface ResourceLimitStatus {
     canAdd: boolean;
   };
 }
+
+// ============================================================================
+// ASSESSMENT SUBMISSIONS & POST-ANALYSIS
+// ============================================================================
+
+export interface AssessmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  studentName: string;
+  submittedAt: string; // ISO timestamp
+  completionTimeMinutes: number;
+  
+  // Per-problem results
+  problemResults: ProblemSubmissionResult[];
+  
+  // Overall score
+  totalScore: number; // 0-100
+  correctCount: number;
+  totalProblems: number;
+}
+
+export interface ProblemSubmissionResult {
+  problemId: string;
+  problemText: string;
+  timeSpentSeconds: number;
+  isCorrect: boolean;
+  studentResponse: string;
+  mistakeType?: 'conceptual' | 'procedural' | 'careless' | 'no_attempt';
+  feedback?: string;
+}
+
+export interface AssessmentStats {
+  assignmentId: string;
+  totalSubmissions: number;
+  
+  // Score metrics
+  scoreRange: {
+    min: number;
+    max: number;
+    average: number;
+    median: number;
+  };
+  
+  // Time metrics
+  timeRange: {
+    minMinutes: number;
+    maxMinutes: number;
+    averageMinutes: number;
+    medianMinutes: number;
+  };
+  
+  // Per-problem difficulty analysis
+  problemStats: Array<{
+    problemId: string;
+    problemText: string;
+    totalAttempts: number;
+    correctCount: number;
+    correctPercentage: number; // 0-100
+    averageTimeSeconds: number;
+    missedByStudents: string[]; // student IDs who missed it
+    commonMistakeTypes: Array<{
+      type: 'conceptual' | 'procedural' | 'careless' | 'no_attempt';
+      count: number;
+    }>;
+  }>;
+  
+  // Bloom distribution effectiveness
+  bloomPerformance: Record<string, {
+    averageCorrectPercentage: number;
+    problemCount: number;
+  }>;
+  
+  // Recommendations
+  recommendations: {
+    problemsNeedingRework: string[]; // problem IDs
+    bloomLevelsNeedingRebalance: string[];
+    suggestedActions: string[]; // e.g., "simplify language", "add scaffolding"
+  };
+}
+
+export interface AssessmentAnalysisJob {
+  id: string;
+  assignmentId: string;
+  jobType: 'train-writer' | 'rewrite-assessment';
+  stats: AssessmentStats;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  resultAssignmentId?: string; // ID of rewritten assignment if applicable
+}

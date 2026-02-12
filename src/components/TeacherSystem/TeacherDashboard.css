@@ -729,6 +729,33 @@
   background-color: #ffebee;
 }
 
+.btn-results {
+  color: #667eea;
+  border-color: #667eea;
+  background-color: #f0f4ff;
+}
+
+.btn-results:hover:not(:disabled) {
+  background-color: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.btn-back {
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-back:hover {
+  background-color: #f0f4ff;
+}
+
 /* ============================================================================
    MEDIA QUERIES
    ============================================================================ */

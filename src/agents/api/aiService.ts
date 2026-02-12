@@ -399,6 +399,204 @@ class MockAIService implements IAIService {
 }
 
 /**
+ * Gemini AI Service for Writer/Generator
+ * Calls Google Generative AI (Gemini) for real assignment generation
+ */
+class GeminiAIService implements IAIService {
+  private apiKey: string;
+  private timeout: number;
+
+  constructor(config: { apiKey: string; timeout?: number }) {
+    this.apiKey = config.apiKey;
+    this.timeout = config.timeout || 30000;
+  }
+
+  async generateAssignment(params: {
+    prompt: string;
+    type: string;
+    gradeLevel: string;
+    subject: string;
+    wordCount?: number;
+  }): Promise<string> {
+    const systemPrompt = `You are an expert educational assessment designer. Create a ${params.type} assignment for ${params.subject} at grade level ${params.gradeLevel}.`;
+    
+    const userPrompt = `Create an assignment based on this prompt: "${params.prompt}"
+    
+    Format: ${params.type}
+    Subject: ${params.subject}
+    Grade Level: ${params.gradeLevel}
+    ${params.wordCount ? `Target word count: ${params.wordCount}` : ''}
+    
+    Provide a complete, well-structured assignment with clear instructions.`;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: userPrompt }],
+              },
+            ],
+            generationConfig: {
+              maxOutputTokens: 2000,
+              temperature: 0.7,
+            },
+            safetySettings: [
+              {
+                category: 'HARM_CATEGORY_UNSPECIFIED',
+                threshold: 'BLOCK_NONE',
+              },
+            ],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        console.error('Gemini API error:', response.status);
+        throw new Error(`Gemini API returned ${response.status}`);
+      }
+
+      const data = await response.json();
+      const text =
+        data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return text || `Assignment: ${params.prompt}`;
+    } catch (error) {
+      console.error('Error calling Gemini for generateAssignment:', error);
+      throw error;
+    }
+  }
+
+  async generateAssignmentQuestions(params: {
+    prompt: string;
+    assignmentType?: string;
+    gradeLevel?: string;
+    subject?: string;
+    count?: number;
+  }): Promise<string[]> {
+    const userPrompt = `Generate ${params.count || 5} ${params.assignmentType || 'essay'} questions for a ${params.subject || 'general'} assignment at ${params.gradeLevel || 'high school'} level.
+    
+    Based on this topic: "${params.prompt}"
+    
+    Return ONLY the questions, one per line, with no numbering or formatting.`;
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: userPrompt }],
+              },
+            ],
+            generationConfig: { maxOutputTokens: 1000, temperature: 0.7 },
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      return text
+        .split('\n')
+        .filter(q => q.trim().length > 0)
+        .slice(0, params.count || 5);
+    } catch (error) {
+      console.error('Error calling Gemini for generateAssignmentQuestions:', error);
+      throw error;
+    }
+  }
+
+  // Remaining methods fall back to mock implementations
+  async analyzeTags(params: {
+    text: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<Array<{ name: string; confidenceScore: number; description: string }>> {
+    // Use mock for tagging (already highly optimized in MockAIService)
+    const mock = new MockAIService();
+    return mock.analyzeTags(params);
+  }
+
+  async breakDownProblems(params: {
+    text: string;
+    assignmentType?: string;
+  }): Promise<Array<{ id: string; text: string }>> {
+    const mock = new MockAIService();
+    return mock.breakDownProblems(params);
+  }
+
+  async simulateStudentInteraction(params: {
+    studentProfile: Record<string, unknown>;
+    problem: Record<string, unknown>;
+  }): Promise<{
+    timeOnTask: number;
+    confusionSignals: number;
+    engagementScore: number;
+    perceivedSuccess: number;
+  }> {
+    const mock = new MockAIService();
+    return mock.simulateStudentInteraction(params);
+  }
+
+  async analyzeStudentWork(params: {
+    studentWork: string;
+    assignmentPrompt: string;
+    rubric?: Record<string, unknown>;
+  }): Promise<{
+    feedback: string;
+    strengths: string[];
+    improvements: string[];
+    score?: number;
+  }> {
+    const mock = new MockAIService();
+    return mock.analyzeStudentWork(params);
+  }
+
+  async generateStudentFeedback(params: {
+    studentProfile: string;
+    simulationResults: Record<string, unknown>;
+    problems: Array<{ id: string; text: string }>;
+  }): Promise<Array<{
+    studentPersona: string;
+    feedbackType: 'strength' | 'weakness' | 'suggestion';
+    content: string;
+  }>> {
+    const mock = new MockAIService();
+    return mock.generateStudentFeedback(params);
+  }
+
+  async rewriteAssignment(params: {
+    originalText: string;
+    tags: Array<{ name: string; description: string }>;
+    targetChanges?: string[];
+  }): Promise<{
+    rewrittenText: string;
+    summaryOfChanges: string;
+  }> {
+    const mock = new MockAIService();
+    return mock.rewriteAssignment(params);
+  }
+
+  async generateAccessibilityVariant(params: {
+    originalText: string;
+    overlay: string;
+  }): Promise<string> {
+    const mock = new MockAIService();
+    return mock.generateAccessibilityVariant(params);
+  }
+}
+
+/**
  * Real API implementation (placeholder)
  * To be implemented when backend is available
  */
@@ -488,13 +686,25 @@ class AIServiceManager implements IAIService {
   }
 
   private createImplementation(config: AIServiceConfig): IAIService {
-    if (config.implementation === 'real' && config.apiKey && config.apiUrl) {
-      return new RealAIService({
-        apiKey: config.apiKey,
-        apiUrl: config.apiUrl,
-        timeout: config.timeout,
-      });
+    if (config.implementation === 'real' && config.apiKey) {
+      // Prefer Gemini (Google API) if apiKey looks like Google API key
+      if (config.apiKey.startsWith('AIza')) {
+        console.log('🔌 Using Gemini AI for Writer/Generator');
+        return new GeminiAIService({
+          apiKey: config.apiKey,
+          timeout: config.timeout,
+        });
+      }
+      // Fall back to generic RealAIService for custom backends
+      if (config.apiUrl) {
+        return new RealAIService({
+          apiKey: config.apiKey,
+          apiUrl: config.apiUrl,
+          timeout: config.timeout,
+        });
+      }
     }
+    console.log('📝 Using Mock AI (no real API key configured)');
     return new MockAIService();
   }
 
@@ -551,9 +761,12 @@ class AIServiceManager implements IAIService {
 }
 
 // Default export: singleton instance
+const googleApiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
+const useRealAPI = import.meta.env.VITE_AI_MODE === 'real' || (import.meta.env.DEV && !!googleApiKey);
+
 export const aiService = new AIServiceManager({
-  implementation: process.env.REACT_APP_USE_REAL_API === 'true' ? 'real' : 'mock',
-  apiKey: process.env.REACT_APP_API_KEY,
+  implementation: useRealAPI ? 'real' : 'mock',
+  apiKey: googleApiKey,
   apiUrl: process.env.REACT_APP_API_URL,
 });
 

@@ -1348,6 +1348,107 @@ export async function getProblemBankAssemblyHistory(
   return data || [];
 }
 
+// ============================================================================
+// ASSESSMENT POST-ANALYSIS
+// ============================================================================
+
+export async function submitAssessmentResults(
+  teacherId: string,
+  assignmentId: string,
+  submission: any
+): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db
+    .from('assessment_submissions')
+    .insert({
+      teacher_id: teacherId,
+      assignment_id: assignmentId,
+      student_id: submission.studentId,
+      student_name: submission.studentName,
+      submitted_at: new Date().toISOString(),
+      completion_time_minutes: submission.completionTimeMinutes,
+      total_score: submission.totalScore,
+      correct_count: submission.correctCount,
+      total_problems: submission.totalProblems,
+      problem_results: submission.problemResults,
+    });
+
+  if (error) throw error;
+}
+
+export async function getAssessmentStats(
+  assignmentId: string
+): Promise<any> {
+  // Mock implementation - in production, this would aggregate real submission data
+  // For now, returns a sample stats structure
+  return {
+    assignmentId,
+    totalSubmissions: 0,
+    scoreRange: {
+      min: 0,
+      max: 100,
+      average: 0,
+      median: 0,
+    },
+    timeRange: {
+      minMinutes: 0,
+      maxMinutes: 0,
+      averageMinutes: 0,
+      medianMinutes: 0,
+    },
+    problemStats: [],
+    bloomPerformance: {},
+    recommendations: {
+      problemsNeedingRework: [],
+      bloomLevelsNeedingRebalance: [],
+      suggestedActions: [],
+    },
+  };
+}
+
+export async function createRewriteJob(
+  assignmentId: string,
+  teacherId: string,
+  stats: any
+): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db
+    .from('assessment_analysis_jobs')
+    .insert({
+      assignment_id: assignmentId,
+      teacher_id: teacherId,
+      job_type: 'rewrite-assessment',
+      stats,
+      status: 'queued',
+      created_at: new Date().toISOString(),
+    });
+
+  if (error) throw error;
+}
+
+export async function createTrainWriterJob(
+  assignmentId: string,
+  teacherId: string,
+  stats: any
+): Promise<void> {
+  const db = getSupabase();
+
+  const { error } = await db
+    .from('assessment_analysis_jobs')
+    .insert({
+      assignment_id: assignmentId,
+      teacher_id: teacherId,
+      job_type: 'train-writer',
+      stats,
+      status: 'queued',
+      created_at: new Date().toISOString(),
+    });
+
+  if (error) throw error;
+}
+
 export default {
   initializeSupabase,
   getSupabase,
@@ -1388,4 +1489,9 @@ export default {
   lockProblemAsImmutable,
   logImmutabilityViolation,
   getProblemBankAssemblyHistory,
+  // Assessment Post-Analysis
+  submitAssessmentResults,
+  getAssessmentStats,
+  createRewriteJob,
+  createTrainWriterJob,
 };

@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
-import { Tag, PipelineStep, PipelineState } from '../types/pipeline';
+import { Tag, PipelineStep, PipelineState, DocumentMetadata } from '../types/pipeline';
 import { analyzeTags } from '../agents/analysis/analyzeTags';
 import { simulateStudents } from '../agents/simulation/simulateStudents';
 import { generateAllAccessibilityFeedback } from '../agents/simulation/accessibilityProfiles';
 import { rewriteAssignment } from '../agents/rewrite/rewriteAssignment';
 import { analyzeVersions, VersionAnalysis } from '../agents/analytics/analyzeVersions';
 import { extractAsteroidsFromText } from '../agents/pipelineIntegration';
+import { inferDocumentMetadata } from '../agents/analysis/inferDocumentMetadata';
 import { Asteroid } from '../types/simulation';
 
 const initialState: PipelineState = {
@@ -30,6 +31,7 @@ const initialState: PipelineState = {
   activeStudentPersonas: undefined,
   rewriteHistory: undefined,
   hasUnsavedChanges: false,
+  documentMetadata: undefined,
 };
 
 export function usePipeline() {
@@ -52,30 +54,29 @@ export function usePipeline() {
 
     setLoading(true);
     try {
-      // PHASE 2 (Hidden): Automatically generate problem metadata (asteroids)
-      // Extract problems and tag them with Bloom levels, complexity, novelty
+      // Step 1: Infer document metadata from text
+      const inferred = await inferDocumentMetadata(text, []);
+      
+      // Step 2: Extract asteroids (problems with metadata) 
       const asteroids = await extractAsteroidsFromText(
         text,
         state.assignmentMetadata?.subject || 'General'
       );
 
-      if (!asteroids || asteroids.length === 0) {
-        // No asteroids extracted - continue with empty array
-      }
-
-      // For backward compatibility, generate tags from asteroids
+      // Convert asteroids to tags for display
       const tags = asteroids.map(ast => ({
         name: `${ast.BloomLevel}: ${ast.ProblemText.substring(0, 50)}...${ast.HasTips ? ' 💡' : ''}`,
         confidenceScore: 0.9,
         description: `Bloom: ${ast.BloomLevel}, Complexity: ${(ast.LinguisticComplexity * 100).toFixed(0)}%${ast.HasTips ? ', Has Tips/Hints' : ''}`,
       }));
 
-      // Move to PROBLEM_ANALYSIS step to show metadata
+      // Move to PROBLEM_ANALYSIS step to show metadata and asteroids
       setState(prev => ({
         ...prev,
         originalText: text,
         tags,
         asteroids,
+        documentMetadata: inferred,
         currentStep: PipelineStep.PROBLEM_ANALYSIS,
         error: undefined,
       }));
@@ -88,7 +89,7 @@ export function usePipeline() {
     } finally {
       setLoading(false);
     }
-  }, [setLoading, state.assignmentMetadata?.subject]);
+  }, [state.assignmentMetadata?.subject]);
 
   const getFeedback = useCallback(async (selectedStudentTags?: string[]) => {
     if (!state.originalText) {
@@ -156,11 +157,12 @@ export function usePipeline() {
 
     setLoading(true);
     try {
-      // Pass feedback notes to the rewriter to guide the rewriting process
+      // Pass feedback notes and teacher notes to the rewriter to guide the rewriting process
       const result = await rewriteAssignment(
         state.originalText, 
         state.tags,
-        state.studentFeedbackNotes
+        state.studentFeedbackNotes,
+        state.persistentTeacherNotes
       );
       setRewrittenTags(result.appliedTags);
       setState(prev => ({
@@ -179,7 +181,7 @@ export function usePipeline() {
     } finally {
       setLoading(false);
     }
-  }, [state.originalText, state.tags, state.studentFeedbackNotes, setLoading]);
+  }, [state.originalText, state.tags, state.studentFeedbackNotes, state.persistentTeacherNotes, setLoading]);
 
   const compareVersions = useCallback(async () => {
     if (!state.originalText || state.tags.length === 0) return;
@@ -321,29 +323,33 @@ export function usePipeline() {
         break;
       case PipelineStep.DOCUMENT_PREVIEW:
         // Preview confirmed → Skip to Problem analysis (Phase 2 with metadata)
-        // DOCUMENT_ANALYSIS step removed to avoid duplication
         setState(prev => ({
           ...prev,
           currentStep: PipelineStep.PROBLEM_ANALYSIS,
         }));
         break;
       case PipelineStep.PROBLEM_ANALYSIS:
-        // Metadata shown, proceed to class builder
+        // Metadata shown, proceed to document notes (teacher review)
         setState(prev => ({
           ...prev,
-          currentStep: PipelineStep.CLASS_BUILDER,
+          currentStep: PipelineStep.DOCUMENT_NOTES,
         }));
         break;
-      case PipelineStep.CLASS_BUILDER:
-        // Class built, proceed to simulations
-        await getFeedback();
-        break;
-      case PipelineStep.STUDENT_SIMULATIONS:
-        // Simulations done, generate rewrite before moving to results
-        await rewriteTextAndTags();
+      case PipelineStep.DOCUMENT_NOTES:
+        // Notes captured, metadata confirmed. Space Camp executes backend (no UI)
+        // Proceed directly to PHILOSOPHER_REVIEW to show results
         setState(prev => ({
           ...prev,
-          currentStep: PipelineStep.REWRITE_RESULTS,
+          currentStep: PipelineStep.PHILOSOPHER_REVIEW,
+        }));
+        break;
+      case PipelineStep.PHILOSOPHER_REVIEW:
+        // Philosopher analysis reviewed - outcome handled by handlePhilosopherReviewOutcome
+        // This case shouldn't normally be called directly; use handlePhilosopherReviewOutcome instead
+        // But as a fallback, move to export if called without outcome handler
+        setState(prev => ({
+          ...prev,
+          currentStep: PipelineStep.EXPORT,
         }));
         break;
       case PipelineStep.REWRITE_RESULTS:
@@ -368,6 +374,36 @@ export function usePipeline() {
       showProblemMetadata: !prev.showProblemMetadata,
     }));
   }, []);
+
+  /**
+   * Handle Philosopher Review decision:
+   * - If accepted: Generate rewrite and move to REWRITE_RESULTS
+   * - If rejected: Move directly to EXPORT (no rewrite)
+   */
+  const handlePhilosopherReviewOutcome = useCallback(async (accepted: boolean) => {
+    if (accepted) {
+      // Generate rewrite based on the analysis
+      await rewriteTextAndTags();
+      setState(prev => ({
+        ...prev,
+        philosopherAnalysis: {
+          ...(prev.philosopherAnalysis || {}),
+          acceptedByTeacher: true,
+        },
+        currentStep: PipelineStep.REWRITE_RESULTS,
+      }));
+    } else {
+      // Skip rewrite, go straight to export
+      setState(prev => ({
+        ...prev,
+        philosopherAnalysis: {
+          ...(prev.philosopherAnalysis || {}),
+          acceptedByTeacher: false,
+        },
+        currentStep: PipelineStep.EXPORT,
+      }));
+    }
+  }, [rewriteTextAndTags]);
 
   const retestWithRewrite = useCallback(() => {
     // When user clicks "Edit & Re-test", use rewritten text for next simulation
@@ -401,11 +437,15 @@ export function usePipeline() {
     activeStudentPersonas: state.activeStudentPersonas,
     rewriteHistory: state.rewriteHistory,
     hasUnsavedChanges: state.hasUnsavedChanges,
+    teacherNotes: state.teacherNotes,
+    philosopherAnalysis: state.philosopherAnalysis,
+    documentMetadata: state.documentMetadata,
 
     // Actions
     analyzeTextAndTags,
     getFeedback,
     nextStep,
+    handlePhilosopherReviewOutcome,
     reset,
     toggleProblemMetadataView,
     retestWithRewrite,
@@ -421,5 +461,13 @@ export function usePipeline() {
       setState(prev => ({ ...prev, assignmentMetadata: metadata })),
     setAsteroids: (asteroids: Asteroid[]) =>
       setState(prev => ({ ...prev, asteroids })),
+    setTeacherNotes: (notes: string) =>
+      setState(prev => ({ ...prev, teacherNotes: notes })),
+    setPersistentTeacherNotes: (notes: any) =>
+      setState(prev => ({ ...prev, persistentTeacherNotes: notes })),
+    setPhilosopherAnalysis: (analysis: PipelineState['philosopherAnalysis']) =>
+      setState(prev => ({ ...prev, philosopherAnalysis: analysis })),
+    setDocumentMetadata: (metadata: DocumentMetadata | undefined) =>
+      setState(prev => ({ ...prev, documentMetadata: metadata })),
   };
 }

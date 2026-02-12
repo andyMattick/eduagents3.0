@@ -1,4 +1,5 @@
 import { Tag } from '../../types/pipeline';
+import { TeacherNote } from '../../types/teacherNotes';
 
 export interface RewriteResult {
   rewrittenText: string;
@@ -7,14 +8,16 @@ export interface RewriteResult {
 }
 
 /**
- * Rewrites an assignment based on student feedback notes and problem-specific suggestions
- * Notes should contain specific reasons why problems need to be changed
+ * Rewrites an assignment based on student feedback notes and teacher notes
+ * Teacher notes provide explicit direction for changes
+ * Feedback notes contain implicit guidance from student persona simulations
  * Returns the rewritten text along with a summary of changes
  */
 export async function rewriteAssignment(
   originalText: string,
   tags: Tag[],
   feedbackNotes?: string,
+  teacherNotes?: any, // OrganizedTeacherNotes
 ): Promise<RewriteResult> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1200));
@@ -22,8 +25,48 @@ export async function rewriteAssignment(
   let rewrittenText = originalText;
   const changes: string[] = [];
 
-  // If feedback notes are provided, use them to drive specific changes
-  if (feedbackNotes && feedbackNotes.trim()) {
+  // Process teacher notes first (explicit guidance takes precedence)
+  if (teacherNotes) {
+    // Check document-level notes
+    if (teacherNotes.documentLevel && teacherNotes.documentLevel.length > 0) {
+      const docNotes = teacherNotes.documentLevel.map((n: TeacherNote) => n.note).join(' ');
+      const notesLower = docNotes.toLowerCase();
+
+      // Apply changes based on teacher note categories and keywords
+      if (notesLower.includes('clarity') || notesLower.includes('unclear')) {
+        rewrittenText = simplifyLanguage(rewrittenText);
+        changes.push('Clarified wording based on teacher feedback');
+      }
+
+      if (notesLower.includes('difficult') || notesLower.includes('hard')) {
+        rewrittenText = reduceComplexity(rewrittenText);
+        changes.push('Reduced complexity as requested');
+      }
+
+      if (notesLower.includes('ambiguous') || notesLower.includes('vague')) {
+        rewrittenText = addSpecificity(rewrittenText);
+        changes.push('Added specificity per teacher notes');
+      }
+
+      if (notesLower.includes('multi-part') || notesLower.includes('break')) {
+        rewrittenText = breakUpMultiPart(rewrittenText);
+        changes.push('Broke up questions per teacher guidance');
+      }
+
+      if (notesLower.includes('scaffold') || notesLower.includes('hints')) {
+        rewrittenText = addScaffolding(rewrittenText);
+        changes.push('Added scaffolding per teacher notes');
+      }
+    }
+
+    // Check problem-level notes
+    if (teacherNotes.byProblem && Object.keys(teacherNotes.byProblem).length > 0) {
+      changes.push('Addressed problem-specific teacher notes');
+    }
+  }
+
+  // If feedback notes are provided and no teacher notes made changes, use them to drive specific changes
+  if (feedbackNotes && feedbackNotes.trim() && changes.length === 0) {
     // Extract key themes from notes
     const notesLower = feedbackNotes.toLowerCase();
     

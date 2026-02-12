@@ -87,25 +87,15 @@ function generateStudentTraits(): StudentTraits {
 }
 
 /**
- * Select random overlays for a student (0–2 overlays)
- * @returns Array of accessibility overlays
+ * Select overlays for a student
+ * NOTE: Overlays are now applied strategically by overlayStrategy.ts
+ * This function returns an empty array. Strategic overlays are assigned later.
+ * @returns Empty array (overlays applied by Space Camp simulation)
  */
 function selectRandomOverlays(): AccessibilityOverlay[] {
-  const overlayCount = Math.floor(Math.random() * 3); // 0, 1, or 2
-  const selectedOverlays: AccessibilityOverlay[] = [];
-
-  for (let i = 0; i < overlayCount; i++) {
-    const randomOverlay = ACCESSIBILITY_OVERLAYS[
-      Math.floor(Math.random() * ACCESSIBILITY_OVERLAYS.length)
-    ];
-    
-    // Avoid duplicates
-    if (!selectedOverlays.includes(randomOverlay)) {
-      selectedOverlays.push(randomOverlay);
-    }
-  }
-
-  return selectedOverlays;
+  // Overlays are now applied deterministically based on problem characteristics
+  // See: src/agents/simulation/overlayStrategy.ts
+  return [];
 }
 
 /**

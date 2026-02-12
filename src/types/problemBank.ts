@@ -44,6 +44,17 @@ export interface ProblemBankEntry {
   usedInAssignmentIds: string[]; // Which assignments used this
   lastUsed?: string; // ISO timestamp
   
+  // Success metrics (populated after simulation)
+  successMetrics?: {
+    averageSuccessRate: number; // 0-1, aggregate across all simulations
+    averageConfusionSignals: number; // avg confusion score
+    averageEngagementScore: number; // 0-1
+    totalStudentsExposed: number; // How many students solved/encountered this
+    flaggedAsProblematic: boolean; // Teacher or system marked it as unsuccessful
+    problemDescription?: string; // What went wrong (e.g., "High confusion, low engagement")
+    suggestedImprovements?: string[]; // What to fix
+  };
+  
   // Source tracking
   sourceAssignmentId?: string; // Where it came from (if imported)
   sourceDocumentId?: string; // Which document it was extracted from
@@ -101,6 +112,18 @@ export interface ImmutabilityViolationLog {
   timestamp: string; // ISO
   reason: string; // Why it was attempted
   blocked: boolean; // Whether the change was prevented
+}
+
+/**
+ * Problem similarity search result
+ * Used to find similar problems that may have failed
+ */
+export interface SimilarProblemResult {
+  entryId: string;
+  problem: UniversalProblem;
+  similarity: number; // 0-1, higher = more similar
+  successMetrics?: any;
+  reason: string; // Why it was considered similar
 }
 
 /**

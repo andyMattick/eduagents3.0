@@ -56,6 +56,24 @@ export interface Asteroid {
   /** Estimated time to solve in seconds */
   EstimatedTimeSeconds?: number;
 
+  /** 1-5 complexity rating (independent of linguistic complexity; combines cognitive load + skill level) */
+  ComplexityLevel?: 1 | 2 | 3 | 4 | 5;
+
+  /** 0.0-1.0: how much procedural knowledge (vs conceptual) does solving require? */
+  ProceduralWeight?: number;
+
+  /** Number of logical reasoning steps required to solve (estimate) */
+  ReasoningStepsRequired?: number;
+
+  /** Reference to parent section if this problem is part of a section */
+  SectionId?: string;
+
+  /** If this problem is a subpart of another, reference to parent problem ID */
+  ParentProblemId?: string;
+
+  /** Topics/concepts covered by this problem */
+  Topics?: string[];
+
   /** Source context - if problem was generated from source, which concepts/sections? */
   SourceContext?: {
     /** Name of the concept from source material */
