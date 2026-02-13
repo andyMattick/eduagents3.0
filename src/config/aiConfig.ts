@@ -6,7 +6,7 @@
  */
 
 import { buildAssignmentGenerationInstruction, AssignmentGenerationContext } from '../agents/shared/assignmentInstructions';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 export interface AIConfig {
   googleApiKey: string;
@@ -135,23 +135,28 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
   try {
     console.log(`📡 [AI WRAPPER] Calling Gemini ${modelName}...`);
 
-    const client = new GoogleGenerativeAI(apiKey);
-    const model = client.getGenerativeModel({ model: modelName });
+    const ai = new GoogleGenAI({ apiKey });
     
-    const result = await model.generateContent({
-      contents: [{
-        role: 'user',
-        parts: [{ text: prompt }],
-      }],
-      generationConfig: {
-        maxOutputTokens: maxTokens,
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: {
         temperature: 0.7,
+        maxOutputTokens: maxTokens,
       },
     });
-    const response = result.response;
+
+    // Extract text from response - handle both response.text() and response.text property
+    let text: string = '';
+    if (typeof (response as any).text === 'function') {
+      text = (response as any).text();
+    } else if (typeof (response as any).text === 'string') {
+      text = (response as any).text;
+    } else if ((response as any).candidates?.[0]?.content?.parts?.[0]?.text) {
+      text = (response as any).candidates[0].content.parts[0].text;
+    }
 
     // Strict validation: response must have text
-    const text = response.text();
     if (!text || text.trim().length === 0) {
       throw new Error('AI wrapper: API returned empty response');
     }
