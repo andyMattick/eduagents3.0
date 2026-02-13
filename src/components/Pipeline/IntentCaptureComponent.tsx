@@ -496,7 +496,7 @@ export function IntentCaptureComponent() {
       console.log('🔍 DEBUG: useRealAI() =', isRealAI);
       
       if (isRealAI) {
-        console.log('🤖 Using REAL AI to generate from intent...');
+        console.log('🤖 Using Gemini API to generate from intent...');
         try {
           const writer = getWriterService();
           const bloomGoals = {
@@ -514,7 +514,7 @@ export function IntentCaptureComponent() {
             intent.questionCount
           );
 
-          console.log('✅ Real AI generated problems:', response);
+          console.log('✅ Gemini API generated problems:', response);
 
           // Convert AI response to GeneratedAssignment
           generatedAssignment = convertAIProblemsToAssignment(
@@ -522,7 +522,7 @@ export function IntentCaptureComponent() {
             response.problems
           );
         } catch (aiError) {
-          console.error('❌ Real AI generation FAILED:', aiError);
+          console.error('❌ Gemini API generation FAILED:', aiError);
           // Fall back to mock
           generatedAssignment = generateAssignmentFromIntent(
             intent.title,
@@ -538,7 +538,7 @@ export function IntentCaptureComponent() {
           );
         }
       } else {
-        console.log('📝 Using MOCK AI generation (real AI not enabled)');
+        console.log('📝 Using Mock AI generation (Gemini API not enabled)');
         generatedAssignment = generateAssignmentFromIntent(
           intent.title,
           intent.topic,

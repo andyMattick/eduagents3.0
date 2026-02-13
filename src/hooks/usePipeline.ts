@@ -7,6 +7,8 @@ import { rewriteAssignment } from '../agents/rewrite/rewriteAssignment';
 import { analyzeVersions, VersionAnalysis } from '../agents/analytics/analyzeVersions';
 import { extractAsteroidsFromText } from '../agents/pipelineIntegration';
 import { inferDocumentMetadata } from '../agents/analysis/inferDocumentMetadata';
+import { callPhilosopherWithVisualizations, PhilosopherPayload } from '../agents/analysis/philosophers';
+import { UniversalProblem } from '../types/universalPayloads';
 import { Asteroid } from '../types/simulation';
 
 const initialState: PipelineState = {
@@ -33,6 +35,55 @@ const initialState: PipelineState = {
   hasUnsavedChanges: false,
   documentMetadata: undefined,
 };
+
+/**
+ * Convert an Asteroid to UniversalProblem format for the Philosopher engine
+ */
+function asteroidToUniversalProblem(asteroid: Asteroid, documentId: string, subject: string): UniversalProblem {
+  return {
+    // Identity
+    problemId: asteroid.ProblemId,
+    documentId,
+    subject,
+    sectionId: asteroid.SectionId || 'general',
+
+    // Content
+    content: asteroid.ProblemText,
+
+    // Cognitive layer
+    cognitive: {
+      bloomLevel: asteroid.BloomLevel,
+      linguisticComplexity: asteroid.LinguisticComplexity,
+      noveltyScore: asteroid.NoveltyScore,
+      priorKnowledge: asteroid.PriorKnowledge || 0,
+    },
+
+    // Classification layer
+    classification: {
+      primaryCategory: asteroid.Subject || 'general',
+      secondaryCategories: asteroid.Topics || [],
+      testType: asteroid.TestType || 'short_answer',
+      reasoning: 'extracted',
+    },
+
+    // Structure
+    structure: {
+      multiPart: asteroid.MultiPart,
+      problemLength: asteroid.ProblemLength,
+      estimatedTimeSeconds: asteroid.EstimatedTimeSeconds || Math.max(30, asteroid.ProblemLength * 3),
+      sequenceIndex: asteroid.SequenceIndex,
+      subparts: [],
+    },
+
+    // Meta
+    analysis: {
+      confidence: 0.85,
+      source: 'asteroid_conversion',
+    },
+
+    version: '1.0',
+  };
+}
 
 export function usePipeline() {
   const [state, setState] = useState<PipelineState>(initialState);
@@ -343,12 +394,56 @@ export function usePipeline() {
         }));
         break;
       case PipelineStep.DOCUMENT_NOTES:
-        // Notes captured, metadata confirmed. Run simulation and go directly to Philosopher
-        await getFeedback(state.selectedStudentTags);
-        setState(prev => ({
-          ...prev,
-          currentStep: PipelineStep.PHILOSOPHER_REVIEW,
-        }));
+        // Notes captured, metadata confirmed. Run simulation and Philosopher analysis
+        setLoading(true);
+        try {
+          // Step 1: Get student feedback from simulation
+          await getFeedback(state.selectedStudentTags);
+
+          // Step 2: Call Philosopher engine with asteroids
+          if (state.asteroids && state.asteroids.length > 0) {
+            const universalProblems: UniversalProblem[] = state.asteroids.map(ast =>
+              asteroidToUniversalProblem(
+                ast,
+                `doc_${Date.now()}`,
+                state.assignmentMetadata?.subject || 'General'
+              )
+            );
+
+            const philosopherPayload: PhilosopherPayload = {
+              problems: universalProblems,
+              generationContext: {
+                subject: state.assignmentMetadata?.subject || 'General',
+                gradeBand: state.assignmentMetadata?.gradeLevel || '6-8',
+                timeTargetMinutes: 60, // Default assumption
+              },
+            };
+
+            const philosopherFeedback = await callPhilosopherWithVisualizations(philosopherPayload);
+            
+            setState(prev => ({
+              ...prev,
+              philosopherAnalysis: philosopherFeedback,
+              currentStep: PipelineStep.PHILOSOPHER_REVIEW,
+              error: undefined,
+            }));
+          } else {
+            // No asteroids, just move to philosopher review
+            setState(prev => ({
+              ...prev,
+              currentStep: PipelineStep.PHILOSOPHER_REVIEW,
+            }));
+          }
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : 'Failed to run Philosopher analysis';
+          setState(prev => ({
+            ...prev,
+            error: errorMessage,
+            currentStep: PipelineStep.PHILOSOPHER_REVIEW,
+          }));
+        } finally {
+          setLoading(false);
+        }
         break;
       case PipelineStep.PHILOSOPHER_REVIEW:
         // Philosopher analysis reviewed - outcome handled by handlePhilosopherReviewOutcome
@@ -380,7 +475,7 @@ export function usePipeline() {
       default:
         break;
     }
-  }, [state.currentStep, getFeedback, rewriteTextAndTags, reset, state.selectedStudentTags]);
+  }, [state.currentStep, state.asteroids, state.assignmentMetadata, state.selectedStudentTags, getFeedback, rewriteTextAndTags, reset, setLoading]);
 
   const toggleProblemMetadataView = useCallback(() => {
     setState(prev => ({

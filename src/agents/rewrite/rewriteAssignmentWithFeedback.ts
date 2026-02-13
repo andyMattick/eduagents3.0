@@ -226,37 +226,11 @@ Now provide the FULL rewritten assignment in the JSON format specified above. Re
 }
 
 /**
- * Calls mock rewriter (Claude API disabled)
- * Returns template responses for development
+ * Claude API is not configured
+ * This function will throw an error as it requires real AI
  */
 async function callClaudeForRewrite(prompt: string): Promise<string> {
-  // Claude API is disabled. Return mock response.
-  // To use real rewriter, use /api/rewrite endpoint with Gemini instead.
-  console.log('📝 Rewriter in MOCK mode (Claude API disabled)');
-  
-  // Extract problem count from prompt
-  const problemMatches = prompt.match(/Problem \d+:/g);
-  const problemCount = problemMatches?.length || 3;
-
-  const mockRewriteResponse = {
-    title: '[Mock Rewrite] Updated Assignment',
-    sections: [
-      {
-        sectionName: 'Section 1',
-        instructions: '[MOCK] Updated instructions for clarity',
-        problems: Array.from({ length: Math.min(problemCount, 5) }, (_, i) => ({
-          problemText: `[MOCK REWRITE] Problem ${i + 1} has been clarified for better student understanding`,
-          format: 'Multiple Choice',
-          bloomLevel: 'Understand' as const,
-          options: ['Option A', 'Option B', 'Option C', 'Option D'],
-          clarifications: 'Simplified wording and added context',
-        })),
-      },
-    ],
-    summaryOfChanges: `[MOCK] Simplified ${problemCount} problems. Reduced cognitive load. Improved clarity.`,
-  };
-
-  return JSON.stringify(mockRewriteResponse);
+  throw new Error('Claude API not configured. Real AI rewriter cannot proceed.');
 }
 
 /**
@@ -377,15 +351,10 @@ export async function rewriteAssignment(
         method: 'ai',
       };
     } catch (error) {
-      console.error('AI rewrite failed, falling back to local rules:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error('AI rewrite failed: ' + message);
     }
   }
 
-  // Fallback to local rules
-  const improved = applyLocalRewriteRules(context);
-  return {
-    rewrittenAssignment: improved,
-    summaryOfChanges: 'Applied local improvements based on confusion patterns. Added scaffolding to complex problems.',
-    method: 'local',
-  };
+  throw new Error('AI rewrite attempted but ANTHROPIC_API_KEY not configured');
 }

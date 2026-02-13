@@ -46,7 +46,7 @@ const AISettingsContent = ({
           onKeyPress={(e) => e.key === 'Enter' && hasApiKey && onModeChange('real')}
         >
           <div className="ai-option-icon">✨</div>
-          <div className="ai-option-title">Real AI (Gemini)</div>
+          <div className="ai-option-title">Gemini API</div>
           <div className="ai-option-description">
             {hasApiKey ? '✅ API Key configured' : '❌ No API Key'}
           </div>
@@ -68,14 +68,14 @@ const AISettingsContent = ({
           <>
             <span className="badge-icon">✨</span>
             <span className="badge-text">
-              Using <strong>Real AI</strong> (Gemini API) - <span className="live-indicator">🟢 LIVE</span>
+              Using <strong>Gemini API</strong>
             </span>
           </>
         ) : (
           <>
             <span className="badge-icon">⚠️</span>
             <span className="badge-text">
-              <strong>Real AI Selected</strong> but <strong>No API Key Configured</strong> - Falling back to Mock
+              <strong>Gemini API Selected</strong> but <strong>No API Key Configured</strong> - Falling back to Mock
             </span>
           </>
         )}
@@ -104,7 +104,7 @@ const AISettingsContent = ({
           </p>
           <p>
             <strong>Active Service:</strong>{' '}
-            {currentMode === 'real' && hasApiKey ? 'Real AI' : 'Mock AI'}
+            {currentMode === 'real' && hasApiKey ? 'Gemini API' : 'Mock AI'}
           </p>
           <p>
             <strong>Env VITE_AI_MODE:</strong> {import.meta.env.VITE_AI_MODE || 'not set'}

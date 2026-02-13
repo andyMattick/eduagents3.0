@@ -43,23 +43,23 @@ import {
 
 let supabase: SupabaseClient | null = null;
 
-// Force mock mode in development to prevent CORS issues
-const FORCE_MOCK_MODE = import.meta.env.DEV;
+// Allow real Supabase in development when credentials are provided
+// Comment this out to use mock mode for CORS isolation
+// const FORCE_MOCK_MODE = import.meta.env.DEV;
 
 export function initializeSupabase(): SupabaseClient {
   if (supabase) return supabase;
 
-  if (FORCE_MOCK_MODE) {
-    console.warn('⚠️  Running in mock mode (development) - no REST API calls will be made');
-    return createMockSupabaseClient();
-  }
+  // if (FORCE_MOCK_MODE) {
+  //   console.warn('⚠️  Running in mock mode (development) - no REST API calls will be made');
+  //   return createMockSupabaseClient();
+  // }
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.warn('⚠️  Supabase not configured - using mock mode');
-    return createMockSupabaseClient();
+    throw new Error('Supabase not configured: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set.');
   }
 
   supabase = createClient(supabaseUrl, supabaseAnonKey);

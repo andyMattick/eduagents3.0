@@ -129,19 +129,14 @@ export async function rewriteAssignment(
     process.env.NODE_ENV === 'development' &&
     !process.env.VITE_REWRITER_ENABLED
   ) {
-    return mockRewriter(request);
+    throw new Error('Rewriter API not enabled. Set VITE_REWRITER_ENABLED environment variable.');
   }
 
   // Otherwise try real API
   try {
     return await callRewriterAPI(request);
   } catch (error) {
-    // If API fails in dev, fall back to mock
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('API failed, falling back to mock:', error);
-      return mockRewriter(request);
-    }
-    // In production, always fail if API unavailable
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error('Rewriter API request failed: ' + message);
   }
 }

@@ -17,12 +17,19 @@ export interface AIConfig {
 
 /**
  * Get AI configuration from environment variables
+ * Enforces that VITE_GOOGLE_API_KEY must be set for real AI
  */
 export function getAIConfig(): AIConfig {
   const isDevMode = import.meta.env.DEV;
   const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
-  const mode: AIMode = envMode || (isDevMode ? 'real' : 'mock');
   const googleApiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+
+  // Enforce real AI requirement - API key is mandatory
+  if (!googleApiKey) {
+    throw new Error('VITE_GOOGLE_API_KEY missing. Real AI required.');
+  }
+
+  const mode: AIMode = envMode || (isDevMode ? 'real' : 'real');
 
   return {
     mode,
@@ -32,13 +39,13 @@ export function getAIConfig(): AIConfig {
 }
 
 /**
- * Global AI mode (can be overridden at runtime for testing)
- * In dev mode, always defaults to 'real' unless explicitly set in env
+ * Global AI mode - enforced to 'real' for all scenarios
+ * Mock mode is no longer allowed
  */
 let globalAIMode: AIMode = (() => {
   const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
   if (envMode) return envMode;
-  return import.meta.env.DEV ? 'real' : 'mock';
+  return 'real'; // Always enforce real mode
 })();
 
 /**
@@ -52,18 +59,17 @@ export function setAIMode(mode: AIMode): void {
 }
 
 /**
- * Set AI mode based on user role (for auth flow - no reload)
- * Dev mode: real AI (for development)
- * Admin users: real AI
- * Everything else: mock AI
+ * Set AI mode based on user role (enforces real AI requirement)
+ * Real AI (with GEMINI_API_KEY) is required - no mock fallback
  */
 export function setAIModeByRole(isAdmin: boolean): void {
-  const isDevMode = import.meta.env.DEV;
-  const mode: AIMode = (isDevMode || isAdmin) ? 'real' : 'mock';
-  globalAIMode = mode;
-  localStorage.setItem('aiMode', mode);
-  const reason = isDevMode ? 'development' : (isAdmin ? 'admin' : 'teacher');
-  console.log(`🔐 AI Mode set to '${mode}' for ${reason} user`);
+  if (!import.meta.env.VITE_GOOGLE_API_KEY) {
+    throw new Error('VITE_GOOGLE_API_KEY missing. Real AI required.');
+  }
+  globalAIMode = 'real';
+  localStorage.setItem('aiMode', 'real');
+  const reason = isAdmin ? 'admin' : 'teacher';
+  console.log(`🔐 AI Mode enforced to 'real' for ${reason} user`);
 }
 
 /**
@@ -87,8 +93,8 @@ export function logAIConfigStatus(): void {
     console.log('%c✅ AI MODE: REAL (Google Generative AI)', 'color: green; font-weight: bold; font-size: 14px;');
     console.log('%c→ Using real Google Generative AI with Gemini Pro model', 'color: green');
   } else if (config.mode === 'real' && !config.googleApiKey) {
-    console.log('%c⚠️  AI MODE: REAL (configured but no API key)', 'color: orange; font-weight: bold; font-size: 14px;');
-    console.log('%c→ Falling back to mock AI because VITE_GOOGLE_API_KEY is not set', 'color: orange');
+    console.log('%c❌ AI MODE: REAL (configured but no API key)', 'color: red; font-weight: bold; font-size: 14px;');
+    console.log('%c→ Real AI requested but VITE_GOOGLE_API_KEY is not set - operations will fail', 'color: red');
   } else {
     console.log('%c📝 AI MODE: MOCK (simulated responses)', 'color: blue; font-weight: bold; font-size: 14px;');
     console.log('%c→ Using template-based mock AI for testing/development', 'color: blue');
@@ -107,14 +113,13 @@ export function useRealAI(): boolean {
 }
 
 /**
- * Get the appropriate AI service (mock or real)
+ * Get the appropriate AI service (enforced real AI)
  */
 export function getAIService(serviceType: 'analyzer' | 'writer') {
-  if (useRealAI()) {
-    return getRealAIService(serviceType);
-  } else {
-    return getMockAIService(serviceType);
+  if (!useRealAI()) {
+    throw new Error('Real AI is not available. VITE_GOOGLE_API_KEY must be set.');
   }
+  return getRealAIService(serviceType);
 }
 
 // ============================================================================
@@ -142,6 +147,20 @@ export interface GenerateProblemsResponse {
 }
 
 function getMockAIService(serviceType: 'analyzer' | 'writer') {
+  // Guard: Mock AI only allowed in development with explicit opt-in
+  const isDev = import.meta.env.DEV;
+  const enableMockAI = import.meta.env.VITE_ENABLE_MOCK_AI === 'true';
+  
+  if (!isDev) {
+    throw new Error('Mock AI is disabled in production/preview. Real AI (VITE_GOOGLE_API_KEY) is required.');
+  }
+  
+  if (!enableMockAI) {
+    throw new Error('Mock AI is disabled. Set VITE_ENABLE_MOCK_AI=true in development to use mock mode.');
+  }
+  
+  console.warn('⚠️  Using Mock AI - this is for local development only');
+  
   if (serviceType === 'analyzer') {
     return {
       analyze: async (assignmentText: string): Promise<AnalyzeAssignmentResponse> => {
@@ -208,48 +227,86 @@ function getMockAIService(serviceType: 'analyzer' | 'writer') {
 }
 
 // ============================================================================
-// REAL AI SERVICES (using Google Generative AI)
+// STRICT CENTRAL AI WRAPPER - ONLY PLACE THAT CALLS GEMINI API
 // ============================================================================
 
-// Helper to call Google Generative AI using the official client
-async function callGoogleGenerativeAI(
-  apiKey: string,
-  prompt: string,
-  modelName: string = 'gemini-1.5-flash'
-): Promise<any> {
+/**
+ * Central AI wrapper - strict validation, no fallbacks
+ * This is the ONLY place that should call the Gemini API
+ */
+export async function callAI(prompt: string, options?: { modelName?: string; maxTokens?: number }): Promise<any> {
+  const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+  const modelName = options?.modelName || 'gemini-pro';
+  const maxTokens = options?.maxTokens || 2000;
+
+  // Enforce API key requirement
+  if (!apiKey) {
+    throw new Error('AI disabled: VITE_GOOGLE_API_KEY missing. Real AI required.');
+  }
+
+  if (!prompt || prompt.trim().length === 0) {
+    throw new Error('AI wrapper: prompt cannot be empty');
+  }
+
   try {
+    console.log(`📡 [AI WRAPPER] Calling Gemini ${modelName}...`);
+
     const client = new GoogleGenerativeAI(apiKey);
     const model = client.getGenerativeModel({ model: modelName });
-
-    console.log(`📡 Calling Google Generative AI with model: ${modelName}`);
-
-    const result = await model.generateContent(prompt);
+    
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }],
+      }],
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+        temperature: 0.7,
+      },
+    });
     const response = result.response;
-    
-    console.log(`✅ ${modelName} succeeded`);
-    
+
+    // Strict validation: response must have text
+    const text = response.text();
+    if (!text || text.trim().length === 0) {
+      throw new Error('AI wrapper: API returned empty response');
+    }
+
+    console.log(`✅ [AI WRAPPER] Gemini ${modelName} succeeded`);
+
     return {
-      text: response.text(),
+      text: text,
       candidates: [
         {
           content: {
-            parts: [{ text: response.text() }],
+            parts: [{ text: text }],
           },
         },
       ],
     };
   } catch (error) {
-    console.error(`❌ ${modelName} failed:`, error);
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`AI request failed: ${message}`);
   }
+}
+
+/**
+ * @deprecated Use callAI() instead. This function will be removed.
+ */
+async function callGoogleGenerativeAI(
+  apiKey: string,
+  prompt: string,
+  modelName: string = 'gemini-pro'
+): Promise<any> {
+  // Delegate to the strict central wrapper
+  return callAI(prompt, { modelName });
 }
 
 function getRealAIService(serviceType: 'analyzer' | 'writer') {
   const config = getAIConfig();
 
   if (!config.googleApiKey) {
-    console.warn('⚠️ Google API key not configured, falling back to mock');
-    return getMockAIService(serviceType);
+    throw new Error('Google API key not configured. Real AI service cannot proceed.');
   }
 
   const keyPreview = config.googleApiKey.substring(0, 10) + '...' + config.googleApiKey.substring(config.googleApiKey.length - 4);
@@ -285,8 +342,12 @@ Respond in JSON format only:
   "recommendations": ["rec1", "rec2", "rec3"]
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-flash');
-          const content = data.candidates[0]?.content?.parts[0]?.text || '{}';
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-pro');
+          const content = data.candidates[0]?.content?.parts[0]?.text;
+          
+          if (!content || content.trim().length === 0) {
+            throw new Error('AI analyzer returned empty response');
+          }
 
           // Parse JSON response
           const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -296,10 +357,8 @@ Respond in JSON format only:
 
           return JSON.parse(jsonMatch[0]);
         } catch (error) {
-          console.error('❌ Real AI analyzer failed:', error);
-          // Fallback to mock
-          const mockService = getMockAIService('analyzer') as { analyze: (text: string) => Promise<AnalyzeAssignmentResponse> };
-          return await mockService.analyze(assignmentText);
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error('Real AI analyzer failed: ' + message);
         }
       },
     };
@@ -387,8 +446,12 @@ Create problems DIRECTLY from this source material. Questions should reference c
   "summary": "Generated X problems with Y% Apply level, Z% Understand level..."
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-flash');
-          const content = data.candidates[0]?.content?.parts[0]?.text || '{}';
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-pro');
+          const content = data.candidates[0]?.content?.parts[0]?.text;
+          
+          if (!content || content.trim().length === 0) {
+            throw new Error('AI writer returned empty response');
+          }
 
           // Parse JSON response
           const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -405,10 +468,8 @@ Create problems DIRECTLY from this source material. Questions should reference c
 
           return parsed;
         } catch (error) {
-          console.error('❌ Real AI writer failed:', error);
-          // Fallback to mock
-          const mockService = getMockAIService('writer') as { generate: (topic: string, goals: any, count: number) => Promise<GenerateProblemsResponse> };
-          return await mockService.generate(topic, bloomGoals, count);
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error('Real AI writer failed: ' + message);
         }
       },
     };

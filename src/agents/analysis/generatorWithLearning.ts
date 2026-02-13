@@ -16,6 +16,7 @@ import { UniversalProblem } from '../../types/universalPayloads';
 import { ProblemBankEntry } from '../../types/problemBank';
 import { refineGeneratedProblem, buildRefinementPrompt } from './problemRefinement';
 import { aiService } from '../api/aiService';
+import { callAI } from '../../config/aiConfig';
 
 /**
  * Configuration for autonomous learning
@@ -125,35 +126,13 @@ Review the assignment and make improvements to avoid the historical pitfalls men
 Return the IMPROVED assignment (same format, but enhanced based on history):`;
 
   try {
-    // Call Gemini with the refinement prompt
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${
-        import.meta.env.VITE_GOOGLE_API_KEY
-      }`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: refinementPrompt }],
-            },
-          ],
-          generationConfig: {
-            maxOutputTokens: 2000,
-            temperature: 0.7,
-          },
-        }),
-      }
-    );
+    // Call Gemini with the refinement prompt using central API wrapper
+    const data = await callAI(refinementPrompt, { modelName: 'gemini-1.5-pro', maxTokens: 2000 });
+    const refinedText = data.text || data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    if (!response.ok) {
-      throw new Error(`Gemini API returned ${response.status}`);
+    if (!refinedText || refinedText.trim().length === 0) {
+      throw new Error('AI refinement returned empty response');
     }
-
-    const data = await response.json();
-    const refinedText = data.candidates?.[0]?.content?.parts?.[0]?.text || assignmentText;
 
     console.log('[GeneratorWithLearning] Refinement successful');
     return refinedText;

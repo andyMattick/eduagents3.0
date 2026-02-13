@@ -1,22 +1,33 @@
 import React, { useState } from 'react';
+import { LoginRequest } from '../../types/teacherSystem';
 import './SignIn.css';
 
 interface SignInProps {
   onSignUpClick: () => void;
-  onSignIn: (email: string, isAdmin: boolean) => void;
+  onSignIn: (request: LoginRequest) => Promise<void>;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
-export const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
+export const SignIn: React.FC<SignInProps> = ({ onSignIn, onSignUpClick, isLoading = false, error = null }) => {
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [password, setPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLocalError(null);
+    setIsSubmitting(true);
 
-    // Simple email-based login: admin if email contains "admin"
-    const isAdmin = email.toLowerCase().includes('admin');
-    onSignIn(email, isAdmin);
+    try {
+      await onSignIn({ email, password });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Sign in failed';
+      setLocalError(errorMsg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -30,6 +41,12 @@ export const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
         <form onSubmit={handleSubmit} className="auth-form">
           <h2>Sign In</h2>
 
+          {(localError || error) && (
+            <div className="auth-error">
+              {localError || error}
+            </div>
+          )}
+
           <div className="form-group">
             <label htmlFor="email">Email</label>
             <input
@@ -39,26 +56,54 @@ export const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
               autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              disabled={isLoading || isSubmitting}
+              minLength={6}
             />
           </div>
 
           <button
             type="submit"
             className="auth-button"
-            disabled={isLoading || !email}
+            disabled={isLoading || isSubmitting || !email || !password}
           >
-            {isLoading ? 'Signing In...' : 'Sign In'}
+            {isLoading || isSubmitting ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
+        <div className="auth-footer">
+          <p>
+            Don't have an account?{' '}
+            <button
+              type="button"
+              onClick={onSignUpClick}
+              className="auth-link"
+              disabled={isLoading || isSubmitting}
+            >
+              Sign Up
+            </button>
+          </p>
+        </div>
+
         <div className="auth-demo">
-          <p className="demo-label">Quick Test Accounts:</p>
-          <code>teacher@example.com</code>
-          <code>admin@example.com</code>
+          <p className="demo-label">Demo Accounts:</p>
+          <code>teacher@example.com / password</code>
+          <code>admin@example.com / password</code>
           <p style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '8px' }}>
-            💡 Type "admin" in email for admin panel
+            💡 Use the credentials above to test the app
           </p>
         </div>
       </div>

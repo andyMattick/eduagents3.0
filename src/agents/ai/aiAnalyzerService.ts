@@ -27,6 +27,6 @@ export async function analyzeAssignmentExample(assignmentText: string): Promise<
  */
 export function checkAIMode() {
   const isReal = useRealAI();
-  console.log(`Currently using: ${isReal ? 'Real AI (Gemini)' : 'Mock AI'}`);
+  console.log(`Currently using: ${isReal ? 'Gemini API' : 'Mock AI'}`);
   return isReal;
 }

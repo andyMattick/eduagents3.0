@@ -621,7 +621,7 @@ export function AssignmentIntentForm() {
       console.log('🔍 DEBUG: useRealAI() =', isRealAI);
       
       if (isRealAI) {
-        console.log('🤖 Using REAL AI to generate questions...');
+        console.log('🤖 Using Gemini API to generate questions...');
         try {
           const writer = getWriterService();
           console.log('🔍 DEBUG: writer service =', writer);
@@ -634,7 +634,7 @@ export function AssignmentIntentForm() {
             sourceText // Pass the source material content!
           );
 
-          console.log('✅ Real AI generated problems:', response);
+          console.log('✅ Gemini API generated problems:', response);
 
           // Convert AI response to GeneratedSection format
           generatedAssignment = generateAssignmentPreviewFromAI(
@@ -649,7 +649,7 @@ export function AssignmentIntentForm() {
             formData.assignmentTitle
           );
         } catch (aiError) {
-          console.error('❌ Real AI generation FAILED:', aiError);
+          console.error('❌ Gemini API generation FAILED:', aiError);
           console.error('Full error:', aiError);
           generatedAssignment = generateAssignmentPreview(
             intentData.assignmentType,
@@ -663,7 +663,7 @@ export function AssignmentIntentForm() {
           );
         }
       } else {
-        console.log('📝 Using MOCK AI generation (real AI not enabled)');
+        console.log('📝 Using Mock AI generation (Gemini API not enabled)');
         // Use mock generation
         generatedAssignment = generateAssignmentPreview(
           intentData.assignmentType,

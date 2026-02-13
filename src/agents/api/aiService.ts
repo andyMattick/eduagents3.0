@@ -13,6 +13,8 @@
  * - Configure: aiService.setImplementation('real') or aiService.setImplementation('mock')
  */
 
+import { callAI } from '../../config/aiConfig';
+
 export interface AIServiceConfig {
   implementation: 'mock' | 'real';
   apiKey?: string;
@@ -430,42 +432,15 @@ class GeminiAIService implements IAIService {
     Provide a complete, well-structured assignment with clear instructions.`;
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: systemPrompt }] },
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: userPrompt }],
-              },
-            ],
-            generationConfig: {
-              maxOutputTokens: 2000,
-              temperature: 0.7,
-            },
-            safetySettings: [
-              {
-                category: 'HARM_CATEGORY_UNSPECIFIED',
-                threshold: 'BLOCK_NONE',
-              },
-            ],
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        console.error('Gemini API error:', response.status);
-        throw new Error(`Gemini API returned ${response.status}`);
+      // Use central AI wrapper instead of direct API call
+      const combinedPrompt = `${systemPrompt}\n\n${userPrompt}`;
+      const data = await callAI(combinedPrompt, { modelName: 'gemini-1.5-pro', maxTokens: 2000 });
+      const text = data.text || data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text || text.trim().length === 0) {
+        throw new Error('AI generateAssignment returned empty response');
       }
-
-      const data = await response.json();
-      const text =
-        data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      return text || `Assignment: ${params.prompt}`;
+      return text;
     } catch (error) {
       console.error('Error calling Gemini for generateAssignment:', error);
       throw error;
@@ -486,27 +461,13 @@ class GeminiAIService implements IAIService {
     Return ONLY the questions, one per line, with no numbering or formatting.`;
 
     try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: userPrompt }],
-              },
-            ],
-            generationConfig: { maxOutputTokens: 1000, temperature: 0.7 },
-          }),
-        }
-      );
-
-      if (!response.ok) throw new Error(`Gemini API returned ${response.status}`);
-
-      const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      // Use central AI wrapper instead of direct API call
+      const data = await callAI(userPrompt, { modelName: 'gemini-1.5-pro', maxTokens: 1000 });
+      const text = data.text || data.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text || text.trim().length === 0) {
+        throw new Error('AI generateAssignmentQuestions returned empty response');
+      }
       return text
         .split('\n')
         .filter(q => q.trim().length > 0)
@@ -517,22 +478,19 @@ class GeminiAIService implements IAIService {
     }
   }
 
-  // Remaining methods fall back to mock implementations
+  // These methods are not implemented for real API
   async analyzeTags(params: {
     text: string;
     metadata?: Record<string, unknown>;
   }): Promise<Array<{ name: string; confidenceScore: number; description: string }>> {
-    // Use mock for tagging (already highly optimized in MockAIService)
-    const mock = new MockAIService();
-    return mock.analyzeTags(params);
+    throw new Error('analyzeTags is not implemented for real AI service');
   }
 
   async breakDownProblems(params: {
     text: string;
     assignmentType?: string;
   }): Promise<Array<{ id: string; text: string }>> {
-    const mock = new MockAIService();
-    return mock.breakDownProblems(params);
+    throw new Error('breakDownProblems is not implemented for real AI service');
   }
 
   async simulateStudentInteraction(params: {
@@ -544,8 +502,7 @@ class GeminiAIService implements IAIService {
     engagementScore: number;
     perceivedSuccess: number;
   }> {
-    const mock = new MockAIService();
-    return mock.simulateStudentInteraction(params);
+    throw new Error('simulateStudentInteraction is not implemented for real AI service');
   }
 
   async analyzeStudentWork(params: {
@@ -558,8 +515,7 @@ class GeminiAIService implements IAIService {
     improvements: string[];
     score?: number;
   }> {
-    const mock = new MockAIService();
-    return mock.analyzeStudentWork(params);
+    throw new Error('analyzeStudentWork is not implemented for real AI service');
   }
 
   async generateStudentFeedback(params: {
@@ -571,8 +527,7 @@ class GeminiAIService implements IAIService {
     feedbackType: 'strength' | 'weakness' | 'suggestion';
     content: string;
   }>> {
-    const mock = new MockAIService();
-    return mock.generateStudentFeedback(params);
+    throw new Error('generateStudentFeedback is not implemented for real AI service');
   }
 
   async rewriteAssignment(params: {
@@ -583,16 +538,14 @@ class GeminiAIService implements IAIService {
     rewrittenText: string;
     summaryOfChanges: string;
   }> {
-    const mock = new MockAIService();
-    return mock.rewriteAssignment(params);
+    throw new Error('rewriteAssignment is not implemented for real AI service');
   }
 
   async generateAccessibilityVariant(params: {
     originalText: string;
     overlay: string;
   }): Promise<string> {
-    const mock = new MockAIService();
-    return mock.generateAccessibilityVariant(params);
+    throw new Error('generateAccessibilityVariant is not implemented for real AI service');
   }
 }
 
@@ -686,6 +639,20 @@ class AIServiceManager implements IAIService {
   }
 
   private createImplementation(config: AIServiceConfig): IAIService {
+    const isDev = import.meta.env.DEV;
+    const enableMockAI = import.meta.env.VITE_ENABLE_MOCK_AI === 'true';
+    
+    // Enforce real AI in production/preview
+    if (!isDev) {
+      if (config.implementation === 'mock') {
+        throw new Error('Mock AI is not allowed in production/preview. Real AI is required.');
+      }
+      // Force real mode in production
+      if (!config.apiKey) {
+        throw new Error('Production build requires VITE_GOOGLE_API_KEY for real AI.');
+      }
+    }
+    
     if (config.implementation === 'real' && config.apiKey) {
       // Prefer Gemini (Google API) if apiKey looks like Google API key
       if (config.apiKey.startsWith('AIza')) {
@@ -704,8 +671,15 @@ class AIServiceManager implements IAIService {
         });
       }
     }
-    console.log('📝 Using Mock AI (no real API key configured)');
-    return new MockAIService();
+    
+    // Only allow mock AI in development with explicit flag
+    if (isDev && enableMockAI) {
+      console.warn('⚠️  Using Mock AI - development mode only');
+      return new MockAIService();
+    }
+    
+    // If we get here, no valid AI is configured
+    throw new Error('No AI service available. Configure VITE_GOOGLE_API_KEY or set VITE_ENABLE_MOCK_AI=true in development.');
   }
 
   setImplementation(type: 'mock' | 'real', config?: { apiKey: string; apiUrl: string; timeout?: number }): void {
@@ -761,8 +735,23 @@ class AIServiceManager implements IAIService {
 }
 
 // Default export: singleton instance
+const isDev = import.meta.env.DEV;
+const enableMockAI = import.meta.env.VITE_ENABLE_MOCK_AI === 'true';
 const googleApiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
-const useRealAPI = import.meta.env.VITE_AI_MODE === 'real' || (import.meta.env.DEV && !!googleApiKey);
+
+// In production/preview, real API key is mandatory
+// In development, allow mock AI only with explicit opt-in
+let useRealAPI: boolean;
+if (!isDev) {
+  // Production/preview: must have real API key
+  if (!googleApiKey) {
+    throw new Error('Production build requires VITE_GOOGLE_API_KEY environment variable.');
+  }
+  useRealAPI = true;
+} else {
+  // Development: prefer real API key, fall back to mock with flag
+  useRealAPI = !!googleApiKey && !enableMockAI;
+}
 
 export const aiService = new AIServiceManager({
   implementation: useRealAPI ? 'real' : 'mock',

@@ -973,204 +973,106 @@ export function PipelineShell({
 
       {step === PipelineStep.PHILOSOPHER_REVIEW && (
         <div style={{ padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #999' }}>
-          <h2>🧠 Philosopher Review: Space Camp Analysis</h2>
+          <h2>🧠 Philosopher Review: Assignment Diagnostic Analysis</h2>
           <p style={{ color: '#333', marginBottom: '16px' }}>
-            Space Camp has analyzed the assignment across diverse student personas. Review the results below.
+            The Philosopher engine has analyzed your assignment across 20 student personas. Review the findings and recommendations below.
           </p>
 
-          {/* Teacher Notes Summary */}
-          {loadedTeacherNotes && (
-            loadedTeacherNotes.documentLevel.length > 0 ||
-            Object.keys(loadedTeacherNotes.byProblem).length > 0
-          ) && (
+          {isLoading && (
             <div style={{
-              backgroundColor: '#fffacd',
-              border: '1px solid #f0e68c',
-              borderRadius: '6px',
-              padding: '14px',
-              marginBottom: '16px',
+              padding: '40px',
+              textAlign: 'center',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              marginBottom: '16px'
             }}>
-              <h4 style={{ marginTop: 0, marginBottom: '10px', color: '#666' }}>📌 Your Notes</h4>
-              
-              {/* Document-level notes */}
-              {loadedTeacherNotes.documentLevel.length > 0 && (
-                <div style={{ marginBottom: '12px' }}>
-                  <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
-                    Document-Level:
-                  </div>
-                  {loadedTeacherNotes.documentLevel.map((note) => (
-                    <div key={note.id} style={{ fontSize: '13px', marginBottom: '6px', paddingLeft: '12px', borderLeft: '3px solid #ffc107' }}>
-                      <p style={{ margin: '0 0 4px 0', color: '#333' }}>{note.note}</p>
-                      <div style={{ fontSize: '11px', color: '#999' }}>
-                        {note.category && <span style={{ marginRight: '8px' }}>• {note.category}</span>}
-                        {new Date(note.createdAt).toLocaleDateString()}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {/* Problem-level notes */}
-              {Object.entries(loadedTeacherNotes.byProblem).length > 0 && (
-                <div>
-                  <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
-                    Problem-Level:
-                  </div>
-                  {Object.entries(loadedTeacherNotes.byProblem).map(([problemId, problemNotes]) => (
-                    <div key={problemId} style={{ marginBottom: '8px', paddingLeft: '12px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>
-                        Problem {problemId}
-                      </div>
-                      {problemNotes.map((note) => (
-                        <div key={note.id} style={{ fontSize: '12px', marginBottom: '4px', color: '#333', borderLeft: '3px solid #90ee90', paddingLeft: '8px' }}>
-                          {note.note}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>🧙</div>
+              <p style={{ color: '#666' }}>Philosopher is analyzing your assignment...</p>
             </div>
           )}
 
-          {/* Analysis Results Box */}
-          <div style={{
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            border: '1px solid #ddd',
-            marginBottom: '16px',
-          }}>
-            {philosopherAnalysis?.analysisContent ? (
-              <div>
-                <h3 style={{ marginTop: 0 }}>Space Camp Analysis Results:</h3>
-                <div style={{ whiteSpace: 'pre-wrap', color: '#555', lineHeight: '1.6', marginBottom: '16px' }}>
-                  {philosopherAnalysis.analysisContent}
-                </div>
-                {philosopherAnalysis.recommendations && philosopherAnalysis.recommendations.length > 0 && (
-                  <div>
-                    <h4>Recommendations:</h4>
-                    <ul style={{ paddingLeft: '20px' }}>
-                      {philosopherAnalysis.recommendations.map((rec, i) => (
-                        <li key={i} style={{ marginBottom: '8px', color: '#555' }}>{rec}</li>
+          {!isLoading && philosopherAnalysis && (
+            <>
+              {/* Teacher Notes Summary */}
+              {loadedTeacherNotes && (
+                loadedTeacherNotes.documentLevel.length > 0 ||
+                Object.keys(loadedTeacherNotes.byProblem).length > 0
+              ) && (
+                <div style={{
+                  backgroundColor: '#fffacd',
+                  border: '1px solid #f0e68c',
+                  borderRadius: '6px',
+                  padding: '14px',
+                  marginBottom: '16px',
+                }}>
+                  <h4 style={{ marginTop: 0, marginBottom: '10px', color: '#666' }}>📌 Your Notes</h4>
+                  
+                  {/* Document-level notes */}
+                  {loadedTeacherNotes.documentLevel.length > 0 && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
+                        Document-Level:
+                      </div>
+                      {loadedTeacherNotes.documentLevel.map((note) => (
+                        <div key={note.id} style={{ fontSize: '13px', marginBottom: '6px', paddingLeft: '12px', borderLeft: '3px solid #ffc107' }}>
+                          <p style={{ margin: '0 0 4px 0', color: '#333' }}>{note.note}</p>
+                          <div style={{ fontSize: '11px', color: '#999' }}>
+                            {note.category && <span style={{ marginRight: '8px' }}>• {note.category}</span>}
+                            {new Date(note.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
                       ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '16px',
-              }}>
-                {/* Simulation Metrics */}
-                <div style={{
-                  backgroundColor: '#e7f3ff',
-                  padding: '16px',
-                  borderRadius: '6px',
-                  border: '1px solid #0066cc',
-                }}>
-                  <h4 style={{ marginTop: 0, color: '#004085' }}>📊 Completion Rate</h4>
-                  <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#0066cc', marginBottom: '4px' }}>
-                    {Math.round(Math.random() * 30 + 70)}%
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    of personas expected to finish on-time
-                  </div>
+                    </div>
+                  )}
+                  
+                  {/* Problem-level notes */}
+                  {Object.entries(loadedTeacherNotes.byProblem).length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
+                        Problem-Level:
+                      </div>
+                      {Object.entries(loadedTeacherNotes.byProblem).map(([problemId, problemNotes]) => (
+                        <div key={problemId} style={{ marginBottom: '8px', paddingLeft: '12px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>
+                            Problem {problemId}
+                          </div>
+                          {problemNotes.map((note) => (
+                            <div key={note.id} style={{ fontSize: '12px', marginBottom: '4px', color: '#333', borderLeft: '3px solid #90ee90', paddingLeft: '8px' }}>
+                              {note.note}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {/* Bloom Coverage */}
-                <div style={{
-                  backgroundColor: '#f0e7ff',
-                  padding: '16px',
-                  borderRadius: '6px',
-                  border: '1px solid #6600cc',
-                }}>
-                  <h4 style={{ marginTop: 0, color: '#5a006c' }}>📈 Bloom Coverage</h4>
-                  <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#6600cc', marginBottom: '4px' }}>
-                    {Math.round(Math.random() * 30 + 60)}%
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    balanced across all cognitive levels
-                  </div>
-                </div>
+              {/* Use PhilosopherReview component for actual feedback rendering */}
+              {philosopherAnalysis && philosopherAnalysis.rankedFeedback && (
+                <PhilosopherReview
+                  analysis={philosopherAnalysis}
+                  isLoading={isLoading}
+                  onAccept={() => handlePhilosopherReviewOutcome(true)}
+                  onReject={() => handlePhilosopherReviewOutcome(false)}
+                />
+              )}
+            </>
+          )}
 
-                {/* At-Risk Students */}
-                <div style={{
-                  backgroundColor: '#ffe7e7',
-                  padding: '16px',
-                  borderRadius: '6px',
-                  border: '1px solid #cc0000',
-                }}>
-                  <h4 style={{ marginTop: 0, color: '#8b0000' }}>⚠️ At-Risk Personas</h4>
-                  <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#cc0000', marginBottom: '4px' }}>
-                    {Math.round(Math.random() * 4 + 1)}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#666' }}>
-                    personas predicted to struggle
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Placeholder recommendation text */}
-            {!philosopherAnalysis?.analysisContent && (
-              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
-                <h4 style={{ color: '#666' }}>💡 Recommendations:</h4>
-                <ul style={{ paddingLeft: '20px', color: '#666', lineHeight: '1.8' }}>
-                  <li>Review assignment difficulty for struggling students</li>
-                  <li>Consider breaking multipart questions into separate problems</li>
-                  <li>Add scaffolding hints for Remember/Understand level questions</li>
-                  <li>Balance novelty and repetition in problem sequencing</li>
-                </ul>
-              </div>
-            )}
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button
-              onClick={() => {
-                handlePhilosopherReviewOutcome(true);
-              }}
-              disabled={isLoading}
-              style={{
-                flex: 1,
-                padding: '12px 20px',
-                backgroundColor: '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                fontSize: '15px',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            >
-              {'✓ Accept Recommendations & Rewrite'}
-            </button>
-            <button
-              onClick={() => {
-                handlePhilosopherReviewOutcome(false);
-              }}
-              disabled={isLoading}
-              style={{
-                flex: 1,
-                padding: '12px 20px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-                fontSize: '15px',
-                opacity: isLoading ? 0.6 : 1,
-              }}
-            >
-              {'⬇ Download Without Analysis'}
-            </button>
-          </div>
+          {!isLoading && !philosopherAnalysis && (
+            <div style={{
+              padding: '40px',
+              textAlign: 'center',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              marginBottom: '16px'
+            }}>
+              <p style={{ color: '#666' }}>No analysis available. Please try again.</p>
+            </div>
+          )}
         </div>
       )}
 

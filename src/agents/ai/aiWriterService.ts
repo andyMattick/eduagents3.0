@@ -37,7 +37,7 @@ export async function generateWithPhase3Context(
 ): Promise<GenerateProblemsResponse> {
   console.log(`📝 Generating problems for: ${goal}`);
   console.log(`📚 Topic: ${topic}`);
-  console.log(`🎯 Using ${useRealAI() ? 'Real AI' : 'Mock AI'}`);
+  console.log(`🎯 Using ${useRealAI() ? 'Gemini API' : 'Mock AI'}`);
 
   return generateProblemsExample(topic, bloomGoals || {}, count);
 }

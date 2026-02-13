@@ -27,10 +27,23 @@ export function AssignmentPreview() {
     problemCount: generatedAssignment?.sections.length,
   });
 
+  // Show loading state while assignment is being generated/loaded
   if (!generatedAssignment) {
     return (
       <div className="preview-error">
-        <p>No assignment generated yet. Please complete the assignment form.</p>
+        <div style={{
+          padding: '4rem 2rem',
+          textAlign: 'center',
+          backgroundColor: '#f9f9f9',
+          borderRadius: '8px',
+          border: '1px solid #ddd',
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⏳</div>
+          <p>Generating your assignment...</p>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '1rem' }}>
+            AI is creating problems with Bloom-level targeting and pedagogical metadata.
+          </p>
+        </div>
       </div>
     );
   }

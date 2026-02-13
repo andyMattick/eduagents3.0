@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { SignIn } from './components/Auth/SignIn';
+import { SignUp } from './components/Auth/SignUp';
 import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
@@ -13,6 +14,7 @@ import { getCurrentAIMode } from './config/aiConfig';
 import './App.css';
 
 type AppTab = 'dashboard' | 'pipeline' | 'notepad';
+type AuthPage = 'signin' | 'signup';
 
 interface AssignmentContext {
   assignmentId: string;
@@ -53,13 +55,14 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📝</span>
               Pipeline
             </button>
-            <button
+            {/* Notebook tab disabled */}
+            {/* <button
               className={`app-tab ${activeTab === 'notepad' ? 'active' : ''}`}
               onClick={() => setActiveTab('notepad')}
             >
               <span className="app-tab-icon">📔</span>
               Notepad
-            </button>
+            </button> */}
           </div>
           <div className="app-header-actions">
             {/* AI Status Indicator */}
@@ -68,7 +71,7 @@ function TeacherAppContent() {
                 {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
               </span>
               <span className="ai-status-label">
-                {getCurrentAIMode() === 'real' ? 'AI Live' : 'Mock AI'}
+                {getCurrentAIMode() === 'real' ? 'Gemini API' : 'Mock AI'}
               </span>
             </div>
             {activeTab === 'pipeline' && (
@@ -110,7 +113,7 @@ function TeacherAppContent() {
 }
 
 function AppContent() {
-  const { user, isLoading, logout, signIn } = useAuth();
+  const { user, isLoading, logout, signIn, signUp, error } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -123,10 +126,15 @@ function AppContent() {
   }
 
   if (!user) {
+    if (authPage === 'signup') {
+      return <SignUp onSignInClick={() => setAuthPage('signin')} />;
+    }
     return (
       <SignIn 
         onSignUpClick={() => setAuthPage('signup')}
         onSignIn={signIn}
+        isLoading={isLoading}
+        error={error}
       />
     );
   }

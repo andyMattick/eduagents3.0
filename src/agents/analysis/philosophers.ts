@@ -1,21 +1,23 @@
 /**
  * Philosopher Interpreter
  *
- * Orchestrates Space Camp Philosopher API calls and attaches generated visualizations
- * to the returned feedback. The Philosopher returns only rankedFeedback; visualizations
- * are generated locally by your system.
+ * Executes the complete diagnostic simulation engine (v13):
+ * - Generates 20 synthetic student personas
+ * - Simulates performance across all problems
+ * - Detects clusters using statistical thresholds
+ * - Computes severity scores mathematically
+ * - Generates ranked feedback with evidence
+ * - Returns 6 SVG visualizations
  *
- * Key Principle: Philosopher never generates visuals—your system does.
+ * Fully deterministic, math-driven, production-grade.
  */
 
+import { UniversalProblem } from '../../types/universalPayloads';
 import {
-  generateClusterHeatMap,
-  generateBloomComplexityScatter,
-  generateConfusionDensityMap,
-  generateFatigueCurve,
-  generateTopicRadarChart,
-  generateSectionRiskMatrix,
-} from '../analytics/visualizations';
+  executePhilosopher,
+  PhilosopherOutput,
+  PhilosopherFeedbackItem,
+} from './philosopherEngine';
 
 import {
   FeedbackItem,
@@ -24,31 +26,22 @@ import {
 } from '../types/pipeline';
 
 /**
- * Payload sent to the Philosopher (Space Camp)
+ * Payload sent to the Philosopher
  */
 export interface PhilosopherPayload {
-  assignmentText: string;
-  problems: any[]; // UniversalProblem[]
-  studentSimulations: any[]; // StudentSimulation[]
-  documentMetadata: {
-    gradeLevel?: string;
-    subject?: string;
-    difficulty?: string;
-  };
-  teacherNotes?: string;
-  processingOptions?: {
-    focusAreas?: string[];
-    iterationNumber?: number;
+  problems: UniversalProblem[];
+  generationContext: {
+    subject: string;
+    gradeBand: string;
+    timeTargetMinutes: number;
   };
 }
 
 /**
- * Philosopher response (what comes back from Space Camp)
+ * Philosopher response (fully deterministic from our engine)
  */
-export interface PhilosopherResponse {
-  rankedFeedback: FeedbackItem[];
-  analysisContent?: string;
-  recommendations?: string[];
+export interface PhilosopherResponse extends PhilosopherOutput {
+  // Extends the engine output directly
 }
 
 // Store the last payload for debugging/verification
@@ -62,9 +55,19 @@ export function getLastPhilosopherPayload(): PhilosopherPayload | null {
 }
 
 /**
- * Call the Philosopher endpoint at Space Camp and attach visualizations
+ * Call the Philosopher diagnostic engine
+ * 
+ * Executes the full v13 specification:
+ * 1. Generates 20 synthetic students
+ * 2. Simulates problem performance for each
+ * 3. Aggregates metrics
+ * 4. Derives dynamic thresholds (μ ± σ)
+ * 5. Detects clusters
+ * 6. Computes severity scores
+ * 7. Generates ranked feedback
+ * 8. Returns 6 SVG visualizations
  *
- * @param payload - Configuration for the Philosopher
+ * @param payload - Configuration (problems + generation context)
  * @returns Complete feedback bundle with visualizations
  */
 export async function callPhilosopherWithVisualizations(
@@ -72,161 +75,131 @@ export async function callPhilosopherWithVisualizations(
 ): Promise<TeacherFeedbackOptions> {
   try {
     // Store payload for debugging
-    lastPhilosopherPayload = {
-      ...payload,
-      assignmentText: payload.assignmentText.substring(0, 500), // Truncate for storage
-    };
+    lastPhilosopherPayload = { ...payload };
 
-    console.log('[Philosopher] Calling Space Camp with payload:', {
+    console.log('[Philosopher] Executing diagnostic engine v13', {
       problemsCount: payload.problems?.length || 0,
-      simulationsCount: payload.studentSimulations?.length || 0,
-      metadata: payload.documentMetadata,
+      subject: payload.generationContext?.subject,
+      gradeBand: payload.generationContext?.gradeBand,
     });
 
-    // Call the Philosopher
-    const philosopherResponse = await callPhilosopher(payload);
-
-    console.log('[Philosopher] Received response with', philosopherResponse.rankedFeedback?.length || 0, 'feedback items');
-
-    // Generate visualizations (these are deterministic and always succeed)
-    const visualizations = generateVisualizations(
+    // Execute the full engine
+    const result = await executePhilosopher(
       payload.problems,
-      payload.studentSimulations
+      payload.generationContext
     );
 
-    console.log('[Philosopher] Generated', Object.keys(visualizations).filter(k => visualizations[k as keyof VisualizationBundle]).length, 'visualizations');
+    console.log('[Philosopher] Engine complete:', {
+      feedbackItems: result.rankedFeedback.length,
+      clusters: result.metadata?.clusterCount,
+      predictedTime: result.metadata?.predictedTotalTime,
+      riskLevel: result.metadata?.overallRiskLevel,
+    });
 
-    // Combine feedback and visualizations
-    const result: TeacherFeedbackOptions = {
-      rankedFeedback: philosopherResponse.rankedFeedback,
-      visualizations,
+    // Convert engine feedback to pipeline FeedbackItem format
+    const convertedFeedback: FeedbackItem[] = result.rankedFeedback.map(
+      (item: PhilosopherFeedbackItem, idx: number) => ({
+        id: `feedback_${idx}`,
+        title: categoryToTitle(item.category),
+        priority: item.priority,
+        category: categoryMap(item.category),
+        description: item.evidence,
+        affectedProblems: payload.problems
+          .filter((_, i) => item.affectedProblems.includes(i))
+          .map((p) => p.problemId),
+        recommendation: item.recommendation,
+        estimatedImpact: item.priority === 'high' ? 'high' : item.priority === 'medium' ? 'medium' : 'low',
+      })
+    );
+
+    // Return in standard TeacherFeedbackOptions format
+    const output: TeacherFeedbackOptions = {
+      rankedFeedback: convertedFeedback,
+      visualizations: {
+        clusterHeatMap: result.visualizations.confusionHeatmapSVG,
+        bloomComplexityScatter: result.visualizations.bloomMismatchChartSVG,
+        confusionDensityMap: result.visualizations.confusionHeatmapSVG,
+        fatigueCurve: result.visualizations.fatigueCurveSVG,
+        topicRadarChart: result.visualizations.pacingChartSVG,
+        sectionRiskMatrix: result.visualizations.successDistributionSVG,
+      },
     };
 
-    return result;
+    return output;
   } catch (error) {
-    console.error('[Philosopher] Error calling Philosopher:', error);
+    console.error('[Philosopher] Error executing engine:', error);
 
-    // Graceful fallback: return empty feedback with visualizations still generated
+    // Graceful fallback
     return {
       rankedFeedback: [
         {
-          title: 'Analysis Unavailable',
+          title: 'Analysis Incomplete',
           priority: 'low',
           category: 'clarity',
-          description: 'The Philosopher analysis could not be completed at this time.',
-          recommendation: 'Please try again or contact support.',
+          description: 'The Philosopher diagnostic could not be completed.',
+          recommendation: 'Please review assignment and try again.',
+          estimatedImpact: 'low',
         },
       ],
-      visualizations: generateVisualizations(
-        payload.problems,
-        payload.studentSimulations
-      ),
+      visualizations: {
+        clusterHeatMap: generateErrorSVG('Confusion Heatmap'),
+        bloomComplexityScatter: generateErrorSVG('Bloom Analysis'),
+        confusionDensityMap: generateErrorSVG('Confusion Density'),
+        fatigueCurve: generateErrorSVG('Fatigue Curve'),
+        topicRadarChart: generateErrorSVG('Topic Coverage'),
+        sectionRiskMatrix: generateErrorSVG('Risk Matrix'),
+      },
     };
   }
 }
 
 /**
- * Internal: Call the actual Philosopher API (Space Camp)
- * This is the interface to the backend service
- *
- * @param payload - Configuration for the Philosopher
- * @returns Raw Philosopher response
+ * Helper: Convert engine feedback category to pipeline category
  */
-async function callPhilosopher(payload: PhilosopherPayload): Promise<PhilosopherResponse> {
-  // TODO: Replace with actual API endpoint to Space Camp
-  // This is currently a mock implementation
-
-  const mockResponse: PhilosopherResponse = {
-    rankedFeedback: [
-      {
-        title: 'Balance Bloom Levels',
-        priority: 'high',
-        category: 'coverage',
-        description: 'The assignment focuses heavily on "Remember" and "Understand" levels, with limited "Apply" and "Analyze".',
-        affectedProblems: payload.problems?.slice(0, 3).map((p: any) => p.id) || [],
-        recommendation: 'Rewrite 2-3 problems to increase cognitive demand. Focus on application-level scenarios.',
-        estimatedImpact: 'high',
-      },
-      {
-        title: 'Reduce Fatigue in Later Section',
-        priority: 'high',
-        category: 'pacing',
-        description: 'Student personas show sharp fatigue increase in the final 4 problems. This section is both long and difficult.',
-        affectedProblems: payload.problems?.slice(-4).map((p: any) => p.id) || [],
-        recommendation: 'Break this section into two shorter segments with a checkpoint. Consider simplifying complexity.',
-        estimatedImpact: 'high',
-      },
-      {
-        title: 'Clarify Problem 5 Language',
-        priority: 'medium',
-        category: 'clarity',
-        description: 'Problem 5 has high confusion signals among visual learners and lower-reading students.',
-        affectedProblems: payload.problems?.[4] ? [payload.problems[4].id] : [],
-        recommendation: 'Add concrete examples and break multi-part questions into separate items.',
-        estimatedImpact: 'medium',
-      },
-      {
-        title: 'Add Accessibility Variants',
-        priority: 'medium',
-        category: 'accessibility',
-        description: 'Some problems could be formatted more accessibly for ADHD and dyslexic learners.',
-        recommendation: 'Provide shortened versions of long problems and use sans-serif fonts in export.',
-        estimatedImpact: 'medium',
-      },
-    ],
+function categoryMap(
+  category: 'confusion' | 'engagement' | 'time' | 'clarity' | 'alignment'
+): 'clarity' | 'engagement' | 'accessibility' | 'difficulty' | 'pacing' | 'coverage' {
+  const map: {
+    [key in 'confusion' | 'engagement' | 'time' | 'clarity' | 'alignment']: 'clarity' | 'engagement' | 'accessibility' | 'difficulty' | 'pacing' | 'coverage';
+  } = {
+    confusion: 'clarity',
+    engagement: 'pacing',
+    time: 'difficulty',
+    clarity: 'clarity',
+    alignment: 'coverage',
   };
-
-  return mockResponse;
+  return map[category];
 }
 
 /**
- * Generate all visualizations from data
- * Internal helper - always succeeds with graceful fallbacks
- *
- * @param problems - Array of problems
- * @param simulations - Array of student simulations
- * @returns VisualizationBundle with all charts
+ * Helper: Convert category to friendly title
  */
-function generateVisualizations(problems: any[], simulations: any[]): VisualizationBundle {
-  const visualizations: VisualizationBundle = {};
+function categoryToTitle(
+  category: 'confusion' | 'engagement' | 'time' | 'clarity' | 'alignment'
+): string {
+  const titles: {
+    [key in 'confusion' | 'engagement' | 'time' | 'clarity' | 'alignment']: string;
+  } = {
+    confusion: 'Student Confusion Detected',
+    engagement: 'Fatigue and Disengagement',
+    time: 'Time Misalignment',
+    clarity: 'Clarity Issues',
+    alignment: 'Bloom Level Alignment',
+  };
+  return titles[category];
+}
 
-  try {
-    visualizations.clusterHeatMap = generateClusterHeatMap(simulations, problems);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate cluster heat map:', e);
-  }
-
-  try {
-    visualizations.bloomComplexityScatter = generateBloomComplexityScatter(problems);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate Bloom complexity scatter:', e);
-  }
-
-  try {
-    visualizations.confusionDensityMap = generateConfusionDensityMap(simulations);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate confusion density map:', e);
-  }
-
-  try {
-    visualizations.fatigueCurve = generateFatigueCurve(simulations);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate fatigue curve:', e);
-  }
-
-  try {
-    visualizations.topicRadarChart = generateTopicRadarChart(problems);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate topic radar chart:', e);
-  }
-
-  try {
-    visualizations.sectionRiskMatrix = generateSectionRiskMatrix(simulations, problems);
-  } catch (e) {
-    console.warn('[Philosopher] Failed to generate section risk matrix:', e);
-  }
-
-  return visualizations;
+/**
+ * Generate error SVG for fallback
+ */
+function generateErrorSVG(title: string): string {
+  return `
+    <svg width="400" height="200" xmlns="http://www.w3.org/2000/svg">
+      <rect width="400" height="200" fill="#f3f4f6" stroke="#ccc"/>
+      <text x="200" y="100" text-anchor="middle" font-size="16" fill="#666">${title}</text>
+      <text x="200" y="130" text-anchor="middle" font-size="12" fill="#999">Analysis unavailable</text>
+    </svg>
+  `;
 }
 
 /**
@@ -243,7 +216,6 @@ export function isValidTeacherFeedbackOptions(value: any): value is TeacherFeedb
         item.title &&
         item.priority &&
         item.category &&
-        item.description &&
         item.recommendation
       );
     })

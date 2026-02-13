@@ -90,19 +90,9 @@ export async function generateAssignment(metadata: AssignmentMetadata): Promise<
       studentTimeEstimates,
     };
   } catch (error) {
-    console.warn('⚠️ Gemini API unavailable, using mock templates:', error);
-    // Fall through to mock implementation below
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error('Gemini API unavailable: ' + message);
   }
-
-  // Mock implementation fallback
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  let content = `# ${metadata.title}\n\n`;
-
-  // Course/Subject Information
-  content += `**Subject:** ${metadata.subject}\n`;
-  content += `**Grade Level:** ${metadata.gradeLevel}\n`;
   content += `**Assignment Type:** ${metadata.assignmentType}\n`;
   content += `**Difficulty Level:** ${metadata.difficultyLevel}\n\n`;
 
