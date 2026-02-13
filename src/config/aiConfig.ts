@@ -133,6 +133,8 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
 
   try {
     console.log(`📡 [AI WRAPPER] Calling Gemini ${modelName}...`);
+    console.log("Using SDK:", GoogleGenAI?.name || "unknown");
+    console.log("Stack test:", new Error().stack);
 
     const ai = new GoogleGenAI({ apiKey });
     
@@ -178,18 +180,6 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
   }
 }
 
-/**
- * @deprecated Use callAI() instead. This function will be removed.
- */
-async function callGoogleGenerativeAI(
-  apiKey: string,
-  prompt: string,
-  modelName: string = 'gemini-1.5-pro'
-): Promise<any> {
-  // Delegate to the strict central wrapper
-  return callAI(prompt, { modelName });
-}
-
 function getRealAIService(serviceType: 'analyzer' | 'writer') {
   const config = getAIConfig();
 
@@ -230,7 +220,7 @@ Respond in JSON format only:
   "recommendations": ["rec1", "rec2", "rec3"]
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-pro');
+          const data = await callAI(prompt, { modelName: 'gemini-1.5-pro' });
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
@@ -334,7 +324,7 @@ Create problems DIRECTLY from this source material. Questions should reference c
   "summary": "Generated X problems with Y% Apply level, Z% Understand level..."
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-pro');
+          const data = await callAI(prompt, { modelName: 'gemini-1.5-pro' });
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
