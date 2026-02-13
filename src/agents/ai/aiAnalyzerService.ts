@@ -1,10 +1,10 @@
 /**
  * AI Analyzer Service
  * 
- * Use this in components to analyze assignments with either mock or real AI
+ * Analyzes assignments using real Gemini API
  */
 
-import { getAnalyzerService, AnalyzeAssignmentResponse, useRealAI } from '../config/aiConfig';
+import { getAnalyzerService, AnalyzeAssignmentResponse } from '../config/aiConfig';
 
 /**
  * Example: Use in a component to analyze an assignment
@@ -26,7 +26,6 @@ export async function analyzeAssignmentExample(assignmentText: string): Promise<
  * Example: Check if real AI is being used
  */
 export function checkAIMode() {
-  const isReal = useRealAI();
-  console.log(`Currently using: ${isReal ? 'Gemini API' : 'Mock AI'}`);
-  return isReal;
+  console.log('Currently using: Gemini API (Real AI only)');
+  return true;
 }

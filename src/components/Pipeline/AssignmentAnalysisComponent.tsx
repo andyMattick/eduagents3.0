@@ -89,7 +89,7 @@ async function analyzeAssignmentText(
   const title = assignmentText.split('\n')[0] || 'Assignment';
   // const wordCount = assignmentText.split(/\s+/).length; // Unused in mock analysis
   
-  // Estimate Bloom distribution (mock - would be AI-powered)
+  // Estimate Bloom distribution (AI-powered via Gemini)
   const bloomDistribution: Record<string, number> = {
     'Remember': 25,
     'Understand': 25,

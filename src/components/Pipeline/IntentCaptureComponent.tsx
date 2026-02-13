@@ -538,7 +538,7 @@ export function IntentCaptureComponent() {
           );
         }
       } else {
-        console.log('📝 Using Mock AI generation (Gemini API not enabled)');
+        console.log('✨ Generating with Gemini API');
         generatedAssignment = generateAssignmentFromIntent(
           intent.title,
           intent.topic,

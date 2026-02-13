@@ -9,12 +9,10 @@ import { getLastCompletionSimulation, getLastClassCompletionSummary, clearComple
 import { demonstrateMockData, generateMockAsteroids, generateMockSimulationResults } from './agents/simulation/mockData';
 import { showMockDataOnly, runMockPipeline } from './agents/simulation/demoRunner';
 
-// Enforce API key requirement at initialization
+// Check for API key - but don't throw, let app load
+// Error will be displayed in UI if needed
 if (!import.meta.env.VITE_GOOGLE_API_KEY) {
-  const errorMsg = 'VITE_GOOGLE_API_KEY missing. This is required to run this application.';
-  console.error('❌ ' + errorMsg);
-  document.body.innerHTML = `<div style="padding: 20px; color: red; font-family: monospace; white-space: pre-wrap;">${errorMsg}\n\nSet VITE_GOOGLE_API_KEY environment variable before starting the app.</div>`;
-  throw new Error(errorMsg);
+  console.warn('⚠️  VITE_GOOGLE_API_KEY not set. AI features will not work.');
 }
 
 // Expose debugging functions globally for console access

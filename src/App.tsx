@@ -71,7 +71,7 @@ function TeacherAppContent() {
                 {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
               </span>
               <span className="ai-status-label">
-                {getCurrentAIMode() === 'real' ? 'Gemini API' : 'Mock AI'}
+                Gemini API
               </span>
             </div>
             {activeTab === 'pipeline' && (

@@ -1,87 +1,63 @@
 /**
  * AI Service Configuration
  * 
- * Supports both mock and real AI modes for testing and production
+ * REAL AI ONLY - Gemini API required
+ * No mock or fallback modes
  */
 
 import { buildAssignmentGenerationInstruction, AssignmentGenerationContext } from '../agents/shared/assignmentInstructions';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-export type AIMode = 'mock' | 'real';
-
 export interface AIConfig {
-  mode: AIMode;
-  googleApiKey?: string;
+  googleApiKey: string;
   useRealAI: boolean;
 }
 
 /**
  * Get AI configuration from environment variables
- * Enforces that VITE_GOOGLE_API_KEY must be set for real AI
+ * Requires VITE_GOOGLE_API_KEY - no fallbacks
  */
 export function getAIConfig(): AIConfig {
-  const isDevMode = import.meta.env.DEV;
-  const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
   const googleApiKey = import.meta.env.VITE_GOOGLE_API_KEY;
 
-  // Enforce real AI requirement - API key is mandatory
   if (!googleApiKey) {
-    throw new Error('VITE_GOOGLE_API_KEY missing. Real AI required.');
+    throw new Error('VITE_GOOGLE_API_KEY required. Real AI (Gemini API) is mandatory.');
   }
 
-  const mode: AIMode = envMode || (isDevMode ? 'real' : 'real');
-
   return {
-    mode,
     googleApiKey,
-    useRealAI: mode === 'real' && !!googleApiKey,
+    useRealAI: true,
   };
 }
 
 /**
- * Global AI mode - enforced to 'real' for all scenarios
- * Mock mode is no longer allowed
+ * Global AI mode - always real
  */
-let globalAIMode: AIMode = (() => {
-  const envMode = import.meta.env.VITE_AI_MODE as AIMode | undefined;
-  if (envMode) return envMode;
-  return 'real'; // Always enforce real mode
-})();
+let globalAIMode = 'real' as const;
 
 /**
- * Set AI mode at runtime (with page reload)
+ * Set AI mode - always real, no-op function for compatibility
  */
-export function setAIMode(mode: AIMode): void {
-  globalAIMode = mode;
-  localStorage.setItem('aiMode', mode);
-  // Force reload to apply new AI mode
-  window.location.reload();
+export function setAIMode(mode: 'real'): void {
+  // Real AI only - this is a no-op
+  console.log('✨ Real Gemini API enforced');
 }
 
 /**
- * Set AI mode based on user role (enforces real AI requirement)
- * Real AI (with GEMINI_API_KEY) is required - no mock fallback
+ * Set AI mode based on user role - always real
  */
 export function setAIModeByRole(isAdmin: boolean): void {
-  if (!import.meta.env.VITE_GOOGLE_API_KEY) {
-    throw new Error('VITE_GOOGLE_API_KEY missing. Real AI required.');
-  }
-  globalAIMode = 'real';
-  localStorage.setItem('aiMode', 'real');
+  const config = getAIConfig(); // Will throw if no API key
+  globalAIMode = 'real' as const;
   const reason = isAdmin ? 'admin' : 'teacher';
-  console.log(`🔐 AI Mode enforced to 'real' for ${reason} user`);
+  console.log(`🔐 Gemini API enforced for ${reason} user`);
 }
 
 /**
- * Get current AI mode (including any runtime overrides)
+ * Get current AI mode - always real
  */
-export function getCurrentAIMode(): AIMode {
-  // Check localStorage for runtime override
-  const saved = localStorage.getItem('aiMode');
-  if (saved === 'mock' || saved === 'real') {
-    return saved as AIMode;
-  }
-  return globalAIMode;
+export function getCurrentAIMode(): 'real' {
+  return 'real';
 }
 
 /**
@@ -89,41 +65,29 @@ export function getCurrentAIMode(): AIMode {
  */
 export function logAIConfigStatus(): void {
   const config = getAIConfig();
-  if (config.useRealAI) {
-    console.log('%c✅ AI MODE: REAL (Google Generative AI)', 'color: green; font-weight: bold; font-size: 14px;');
-    console.log('%c→ Using real Google Generative AI with Gemini Pro model', 'color: green');
-  } else if (config.mode === 'real' && !config.googleApiKey) {
-    console.log('%c❌ AI MODE: REAL (configured but no API key)', 'color: red; font-weight: bold; font-size: 14px;');
-    console.log('%c→ Real AI requested but VITE_GOOGLE_API_KEY is not set - operations will fail', 'color: red');
-  } else {
-    console.log('%c📝 AI MODE: MOCK (simulated responses)', 'color: blue; font-weight: bold; font-size: 14px;');
-    console.log('%c→ Using template-based mock AI for testing/development', 'color: blue');
-  }
+  console.log('%c✅ AI MODE: REAL (Google Generative AI / Gemini)', 'color: green; font-weight: bold; font-size: 14px;');
+  console.log('%c→ Using real Google Generative AI with Gemini models', 'color: green');
 }
 
 /**
- * Is real AI enabled?
+ * Is real AI enabled? - Always true
  */
 export function useRealAI(): boolean {
-  const config = getAIConfig();
-  const mode = getCurrentAIMode();
-  const result = mode === 'real' && config.useRealAI;
-  console.log('🔍 [useRealAI] mode:', mode, 'config.useRealAI:', config.useRealAI, 'result:', result);
-  return result;
+  try {
+    getAIConfig(); // Will throw if no API key
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
-/**
- * Get the appropriate AI service (enforced real AI)
- */
 export function getAIService(serviceType: 'analyzer' | 'writer') {
-  if (!useRealAI()) {
-    throw new Error('Real AI is not available. VITE_GOOGLE_API_KEY must be set.');
-  }
+  const config = getAIConfig(); // Will throw if no API key
   return getRealAIService(serviceType);
 }
 
 // ============================================================================
-// MOCK AI SERVICES (for testing without API calls)
+// AI RESPONSE TYPES
 // ============================================================================
 
 export interface AnalyzeAssignmentResponse {
@@ -144,86 +108,6 @@ export interface GenerateProblemsResponse {
     hasTips: boolean;
   }>;
   summary: string;
-}
-
-function getMockAIService(serviceType: 'analyzer' | 'writer') {
-  // Guard: Mock AI only allowed in development with explicit opt-in
-  const isDev = import.meta.env.DEV;
-  const enableMockAI = import.meta.env.VITE_ENABLE_MOCK_AI === 'true';
-  
-  if (!isDev) {
-    throw new Error('Mock AI is disabled in production/preview. Real AI (VITE_GOOGLE_API_KEY) is required.');
-  }
-  
-  if (!enableMockAI) {
-    throw new Error('Mock AI is disabled. Set VITE_ENABLE_MOCK_AI=true in development to use mock mode.');
-  }
-  
-  console.warn('⚠️  Using Mock AI - this is for local development only');
-  
-  if (serviceType === 'analyzer') {
-    return {
-      analyze: async (assignmentText: string): Promise<AnalyzeAssignmentResponse> => {
-        console.log('📊 [MOCK AI] Analyzing assignment...');
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        const wordCount = assignmentText.split(/\s+/).length;
-        const questionCount = assignmentText.split('?').length - 1;
-
-        return {
-          bloomDistribution: {
-            Remember: 0.2,
-            Understand: 0.3,
-            Apply: 0.25,
-            Analyze: 0.15,
-            Evaluate: 0.07,
-            Create: 0.03,
-          },
-          averageComplexity: 0.55 + Math.random() * 0.2,
-          paceingIssues: [
-            wordCount > 500 ? '⚠️ Assignment may be too long (500+ words)' : null,
-            questionCount > 10 ? '⚠️ Many questions - consider chunking into sections' : null,
-          ].filter(Boolean) as string[],
-          accessibility: [
-            '✅ Good contrast and readability',
-            '⚠️ Some questions use complex vocabulary',
-            '💡 Consider adding structure headers',
-          ],
-          overallScore: 0.72 + Math.random() * 0.15,
-          recommendations: [
-            'Balance Bloom levels - currently skewed toward Remember/Understand',
-            'Add more Apply-level questions for deeper learning',
-            'Break longer sections into smaller chunks',
-            'Consider visual aids or diagrams',
-          ],
-        };
-      },
-    };
-  } else {
-    // Writer service (mock)
-    return {
-      generate: async (topic: string, _bloomGoals: any, count: number): Promise<GenerateProblemsResponse> => {
-        console.log(`📝 [MOCK AI] Generating ${count} problems for topic: "${topic}"`);
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 1200));
-
-        const bloomLevels = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
-        const problems = Array.from({ length: count }, (_, i) => ({
-          text: `[MOCK] Problem ${i + 1} about ${topic}: Examine the relationship between ${topic} and real-world applications.`,
-          bloomLevel: bloomLevels[i % bloomLevels.length],
-          complexity: 0.3 + Math.random() * 0.4,
-          novelty: 0.4 + Math.random() * 0.4,
-          hasTips: Math.random() > 0.5,
-        }));
-
-        return {
-          problems,
-          summary: `Generated ${count} mock problems spanning Bloom levels from Remember to Create. (Using mock AI for testing)`,
-        };
-      },
-    };
-  }
 }
 
 // ============================================================================

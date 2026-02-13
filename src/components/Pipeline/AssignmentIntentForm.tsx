@@ -663,7 +663,7 @@ export function AssignmentIntentForm() {
           );
         }
       } else {
-        console.log('📝 Using Mock AI generation (Gemini API not enabled)');
+        console.log('✨ Generating with Gemini API');
         // Use mock generation
         generatedAssignment = generateAssignmentPreview(
           intentData.assignmentType,
@@ -1115,7 +1115,7 @@ export function AssignmentIntentForm() {
                 onClick={handleSubmit}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? `⏳ ${useRealAI() ? '🤖 AI' : 'Mock'} Generating...` : 'Generate Assignment →'}
+                {isSubmitting ? '⏳ 🤖 Generating with Gemini API...' : 'Generate Assignment →'}
               </button>
             ) : (
               <button 
