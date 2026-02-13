@@ -123,7 +123,6 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
   const modelName = options?.modelName || 'gemini-1.5-pro';
   const maxTokens = options?.maxTokens || 2000;
 
-  // Enforce API key requirement
   if (!apiKey) {
     throw new Error('AI disabled: VITE_GOOGLE_API_KEY missing. Real AI required.');
   }
@@ -140,13 +139,13 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
     const response = await ai.models.generateContent({
       model: modelName,
       contents: prompt,
-      config: {
-        temperature: 0.7,
+      generationConfig: {
         maxOutputTokens: maxTokens,
+        temperature: 0.7,
       },
     });
 
-    // Extract text from response - handle both response.text() and response.text property
+    // Extract text from the new SDK response
     let text: string = '';
     if (typeof (response as any).text === 'function') {
       text = (response as any).text();
@@ -156,13 +155,13 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
       text = (response as any).candidates[0].content.parts[0].text;
     }
 
-    // Strict validation: response must have text
     if (!text || text.trim().length === 0) {
       throw new Error('AI wrapper: API returned empty response');
     }
 
     console.log(`✅ [AI WRAPPER] Gemini ${modelName} succeeded`);
 
+    // Normalize response to match internal expectations
     return {
       text: text,
       candidates: [
