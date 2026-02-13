@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { setAIModeByRole } from '../config/aiConfig';
 import { login, signUp, logout as supabaseLogout, getCurrentUser } from '../services/authService';
-import { initializeDemoUsers } from '../services/initDemo';
 import { AuthSession, LoginRequest, SignUpRequest } from '../types/teacherSystem';
 
 interface AuthUser {
@@ -32,10 +31,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Initialize demo users in development
-        if (import.meta.env.DEV) {
-          await initializeDemoUsers();
-        }
+        // Demo user initialization disabled - create users manually if needed
+        // if (import.meta.env.DEV) {
+        //   await initializeDemoUsers();
+        // }
         
         const currentUser = await getCurrentUser();
         if (currentUser) {

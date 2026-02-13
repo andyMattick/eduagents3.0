@@ -120,7 +120,7 @@ export interface GenerateProblemsResponse {
  */
 export async function callAI(prompt: string, options?: { modelName?: string; maxTokens?: number }): Promise<any> {
   const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
-  const modelName = options?.modelName || 'gemini-1.5-pro-latest';
+  const modelName = options?.modelName || 'gemini-pro';
   const maxTokens = options?.maxTokens || 2000;
 
   // Enforce API key requirement
@@ -180,7 +180,7 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
 async function callGoogleGenerativeAI(
   apiKey: string,
   prompt: string,
-  modelName: string = 'gemini-1.5-pro-latest'
+  modelName: string = 'gemini-pro'
 ): Promise<any> {
   // Delegate to the strict central wrapper
   return callAI(prompt, { modelName });
@@ -226,7 +226,7 @@ Respond in JSON format only:
   "recommendations": ["rec1", "rec2", "rec3"]
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-pro-latest');
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-pro');
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
@@ -330,7 +330,7 @@ Create problems DIRECTLY from this source material. Questions should reference c
   "summary": "Generated X problems with Y% Apply level, Z% Understand level..."
 }`;
 
-          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-1.5-pro-latest');
+          const data = await callGoogleGenerativeAI(config.googleApiKey!, prompt, 'gemini-pro');
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
