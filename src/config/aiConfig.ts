@@ -133,10 +133,11 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
 
   try {
     console.log(`📡 [AI WRAPPER] Calling Gemini ${modelName}...`);
-    console.log("Using SDK:", GoogleGenAI?.name || "unknown");
-    console.log("Stack test:", new Error().stack);
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ 
+      apiKey,
+      apiVersion: "v1",
+    });
     
     const response = await ai.models.generateContent({
       model: modelName,
