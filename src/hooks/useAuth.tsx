@@ -1,7 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { getSupabase } from '../services/teacherSystemService';
-import { signUp, login } from '../services/authService';
-import { SignUpRequest, LoginRequest } from '../types/teacherSystem';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { setAIModeByRole } from '../config/aiConfig';
+import { login, signUp, logout as supabaseLogout, getCurrentUser } from '../services/authService';
+import { AuthSession, LoginRequest, SignUpRequest } from '../types/teacherSystem';
 
 interface AuthUser {
   id: string;
@@ -11,10 +11,11 @@ interface AuthUser {
 
 interface AuthContextType {
   user: AuthUser | null;
+  session: AuthSession | null;
   isLoading: boolean;
   error: string | null;
-  signUp: (request: SignUpRequest) => Promise<void>;
-  login: (request: LoginRequest) => Promise<void>;
+  signIn: (request: LoginRequest) => Promise<void>;
+  signUp: (request: SignUpRequest & { isAdmin?: boolean }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -22,37 +23,30 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if user is already logged in
+  // Initialize from Supabase auth state on mount
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const supabase = getSupabase();
-        const { data } = await supabase.auth.getSession();
+        // Demo user initialization disabled - create users manually if needed
+        // if (import.meta.env.DEV) {
+        //   await initializeDemoUsers();
+        // }
         
-        if (data.session?.user) {
-          // Fetch teacher account from database to get is_admin flag
-          const { data: accountData, error: accountError } = await supabase
-            .from('teacher_accounts')
-            .select('is_admin')
-            .eq('user_id', data.session.user.id)
-            .single();
-
-          const isAdmin = accountError ? false : (accountData?.is_admin || false);
-          
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
           setUser({
-            id: data.session.user.id,
-            email: data.session.user.email || '',
-            isAdmin,
+            id: currentUser.id,
+            email: currentUser.email,
+            isAdmin: false, // Would need to fetch from user metadata
           });
+          setAIModeByRole(false);
         }
-
-        // Demo users disabled - they make 422 errors in StrictMode
-        // Users can sign up/log in normally
       } catch (err) {
-        console.error('Auth check failed:', err);
+        console.error('Failed to check auth state:', err);
       } finally {
         setIsLoading(false);
       }
@@ -61,54 +55,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  const handleSignUp = async (request: SignUpRequest) => {
+  const handleLogin = useCallback(async (request: LoginRequest) => {
+    setIsLoading(true);
+    setError(null);
     try {
-      setError(null);
-      setIsLoading(true);
-      
-      await signUp(request);
-      
-      // After signup, log them in
-      await handleLogin({
-        email: request.email,
-        password: request.password,
+      const authSession = await login(request);
+      setSession(authSession);
+      setUser({
+        id: authSession.userId,
+        email: authSession.email,
+        isAdmin: authSession.tier === 'admin', // Map tier to isAdmin
       });
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
-      setError(errorMsg);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogin = async (request: LoginRequest) => {
-    try {
-      setError(null);
-      setIsLoading(true);
-      
-      await login(request);
-      
-      // Get user info after login
-      const supabase = getSupabase();
-      const { data } = await supabase.auth.getSession();
-      
-      if (data.session?.user) {
-        // Fetch teacher account from database to get is_admin flag
-        const { data: accountData, error: accountError } = await supabase
-          .from('teacher_accounts')
-          .select('is_admin')
-          .eq('user_id', data.session.user.id)
-          .single();
-
-        const isAdmin = accountError ? false : (accountData?.is_admin || false);
-        
-        setUser({
-          id: data.session.user.id,
-          email: data.session.user.email || '',
-          isAdmin,
-        });
-      }
+      setAIModeByRole(authSession.tier === 'admin');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Login failed';
       setError(errorMsg);
@@ -116,33 +74,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleSignUp = useCallback(async (request: SignUpRequest & { isAdmin?: boolean }) => {
+    setIsLoading(true);
+    setError(null);
     try {
-      setError(null);
-      const supabase = getSupabase();
-      await supabase.auth.signOut();
+      const authSession = await signUp({
+        email: request.email,
+        password: request.password,
+        name: request.name,
+        schoolName: request.schoolName,
+      });
+      setSession(authSession);
+      setUser({
+        id: authSession.userId,
+        email: authSession.email,
+        isAdmin: request.isAdmin || false,
+      });
+      setAIModeByRole(request.isAdmin || false);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
+      setError(errorMsg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      if (session?.sessionToken) {
+        await supabaseLogout(session.sessionToken);
+      }
       setUser(null);
+      setSession(null);
+      setAIModeByRole(false);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Logout failed';
       setError(errorMsg);
+      throw err;
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [session?.sessionToken]);
 
-  const value: AuthContextType = {
-    user,
-    isLoading,
-    error,
-    signUp: handleSignUp,
-    login: handleLogin,
-    logout: handleLogout,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider 
+      value={{
+        user,
+        session,
+        isLoading,
+        error,
+        signIn: handleLogin,
+        signUp: handleSignUp,
+        logout: handleLogout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-export function useAuth(): AuthContextType {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within AuthProvider');

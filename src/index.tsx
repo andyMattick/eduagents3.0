@@ -9,6 +9,12 @@ import { getLastCompletionSimulation, getLastClassCompletionSummary, clearComple
 import { demonstrateMockData, generateMockAsteroids, generateMockSimulationResults } from './agents/simulation/mockData';
 import { showMockDataOnly, runMockPipeline } from './agents/simulation/demoRunner';
 
+// Check for API key - but don't throw, let app load
+// Error will be displayed in UI if needed
+if (!import.meta.env.VITE_GOOGLE_API_KEY) {
+  console.warn('⚠️  VITE_GOOGLE_API_KEY not set. AI features will not work.');
+}
+
 // Expose debugging functions globally for console access
 declare global {
   interface Window {

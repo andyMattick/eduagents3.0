@@ -1,6 +1,6 @@
 import { useUserFlow } from '../../hooks/useUserFlow';
 import './AssignmentPreview.css';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { exportDocumentPreviewPDF } from '../../utils/exportUtils';
 
 /**
@@ -13,20 +13,97 @@ export function AssignmentPreview() {
   const [showBloomMetrics, setShowBloomMetrics] = useState(false);
   const [showPayloadModal, setShowPayloadModal] = useState(false);
   const [showDocumentPreview, setShowDocumentPreview] = useState(false);
+  const [showDocumentStats, setShowDocumentStats] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
 
+  // Fade in animation
+  useEffect(() => {
+    setIsVisible(true);
+  }, []);
+
+  console.log('📄 AssignmentPreview rendered with:', {
+    hasGeneratedAssignment: !!generatedAssignment,
+    assignmentTitle: generatedAssignment?.title,
+    problemCount: generatedAssignment?.sections.length,
+    sections: generatedAssignment?.sections?.map(s => ({
+      sectionName: s.sectionName,
+      problemCount: s.problems?.length || 0,
+      problems: s.problems || [],
+    })),
+  });
+
+  // Show loading state while assignment is being generated/loaded
   if (!generatedAssignment) {
     return (
       <div className="preview-error">
-        <p>No assignment generated yet. Please complete the assignment form.</p>
+        <div style={{
+          padding: '4rem 2rem',
+          textAlign: 'center',
+          backgroundColor: '#f9f9f9',
+          borderRadius: '8px',
+          border: '1px solid #ddd',
+        }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⏳</div>
+          <p>Generating your assignment...</p>
+          <p style={{ fontSize: '0.9rem', color: '#666', marginTop: '1rem' }}>
+            AI is creating problems with Bloom-level targeting and pedagogical metadata.
+          </p>
+        </div>
       </div>
     );
   }
 
+  const handleExportPDF = async () => {
+    try {
+      const htmlContent = document.getElementById('document-preview-content')?.innerHTML || '';
+      if (htmlContent) {
+        const dataUrl = await exportDocumentPreviewPDF(htmlContent);
+        if (dataUrl) {
+          const link = document.createElement('a');
+          link.href = dataUrl;
+          link.download = `${generatedAssignment.title || 'assignment'}.pdf`;
+          link.click();
+        }
+      }
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('Failed to export PDF');
+    }
+  };
+
+  const handleExportJSON = () => {
+    try {
+      const jsonData = JSON.stringify(generatedAssignment, null, 2);
+      const blob = new Blob([jsonData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${generatedAssignment.title || 'assignment'}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('JSON export failed:', error);
+      alert('Failed to export JSON');
+    }
+  };
+
   const bloomEntries = Object.entries(generatedAssignment.bloomDistribution);
   const maxBloomValue = Math.max(...bloomEntries.map(([_, count]) => count));
 
+  // Debug: Check what's actually rendering
+  useEffect(() => {
+    const previewDiv = document.querySelector('.assignment-preview');
+    const problemItems = document.querySelectorAll('.problem-item');
+    console.log('🔍 DOM Check:', {
+      previewDivExists: !!previewDiv,
+      previewDivDisplay: window.getComputedStyle(previewDiv || document.body).display,
+      problemItemsCount: problemItems.length,
+      previewContent: document.querySelector('.preview-content'),
+    });
+  }, [generatedAssignment]);
+
   return (
-    <div className="assignment-preview">
+    <div className={`assignment-preview ${isVisible ? 'visible' : ''}`} style={{ animation: isVisible ? 'fadeIn 0.4s ease-in' : 'none' }}>
       <div className="preview-container">
         {/* Header */}
         <div className="preview-header">
@@ -68,52 +145,46 @@ export function AssignmentPreview() {
 
         {/* Sections and Problems */}
         <div className="preview-content">
-          {generatedAssignment.sections.map((section, sectionIdx) => (
-            <div key={sectionIdx} className="section-block">
+          {generatedAssignment.sections.map((section, sectionIdx) => {
+            console.log(`📍 Section ${sectionIdx}:`, {
+              sectionName: section.sectionName,
+              problemCount: section.problems?.length || 0,
+              problems: section.problems || [],
+            });
+            return (
+            <div className="section-block" key={`section-${sectionIdx}`}>
               <div className="section-header">
-                <h2 className="section-title">{section.sectionName}</h2>
-                <div className="section-meta">
-                  <span className="section-info">{section.instructions}</span>
-                  <span className="section-info">
-                    {section.problems.length} {section.problems.length === 1 ? 'question' : 'questions'}
-                  </span>
-                </div>
+                <h2>{section.sectionName}</h2>
+                {section.instructions && <p className="section-instructions">{section.instructions}</p>}
               </div>
 
-              <div className="problems-list">
+              <ol className="problem-list">
                 {section.problems.map((problem, problemIdx) => (
-                  <div key={problemIdx} className="problem-item">
-                    <div className="problem-number">
-                      {sectionIdx === 0 ? problemIdx + 1 : `${sectionIdx}.${problemIdx + 1}`}
+                  <li className="problem-item" key={`problem-${sectionIdx}-${problemIdx}`}>
+                    <div className="problem-metadata">
+                      {problem.tags?.length > 0 && (
+                        <div className="problem-tags">
+                          {problem.tags.map((tag, tagIdx) => (
+                            <span className="tag" key={`tag-${tagIdx}`}>{tag}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-
                     <div className="problem-content">
                       <p className="problem-text">{problem.problemText}</p>
-
                       {section.includeTips && problem.tipText && (
                         <div className="problem-tips">
                           <span className="tips-label">💡 Tip:</span>
                           <p>{problem.tipText}</p>
                         </div>
                       )}
-
-                      <div className="problem-metadata">
-                        <span className="bloom-badge" data-level={String(problem.bloomLevel).toLowerCase()}>
-                          📚 Level {problem.bloomLevel}
-                        </span>
-                        <span className="format-badge">{problem.questionFormat.replace('-', ' ')}</span>
-                        {problem.problemLength && (
-                          <span className="length-badge" title="Word count">
-                            📏 {problem.problemLength} words
-                          </span>
-                        )}
-                      </div>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ol>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Bloom Distribution Overview */}
@@ -149,6 +220,175 @@ export function AssignmentPreview() {
             </div>
           )}
         </div>
+
+        {/* Document Statistics */}
+        <div className="preview-footer">
+          <button
+            type="button"
+            className="metrics-toggle"
+            onClick={() => setShowDocumentStats(true)}
+          >
+            📊 Document Statistics & Analysis
+          </button>
+        </div>
+
+        {showDocumentStats && (
+          <div className="document-stats-panel">
+            <div className="stats-grid">
+              {/* Basic Metrics */}
+              <div className="stats-section">
+                <h3>Assignment Overview</h3>
+                <div className="stat-row">
+                  <span className="stat-label">Total Questions:</span>
+                  <span className="stat-value">{generatedAssignment.questionCount}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Total Sections:</span>
+                  <span className="stat-value">{generatedAssignment.sections.length}</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Estimated Duration:</span>
+                  <span className="stat-value">{generatedAssignment.estimatedTime} minutes</span>
+                </div>
+                <div className="stat-row">
+                  <span className="stat-label">Assessment Type:</span>
+                  <span className="stat-value">{generatedAssignment.assessmentType || 'General'}</span>
+                </div>
+              </div>
+
+              {/* Complexity Analysis */}
+              <div className="stats-section">
+                <h3>Complexity Analysis</h3>
+                {(() => {
+                  const complexityScores = generatedAssignment.sections.flatMap(s =>
+                    s.problems.map(p => p.rawComplexity || (typeof p.complexity === 'string' ? 0.5 : p.complexity) || 0.5)
+                  );
+                  const avgComplexity = complexityScores.reduce((a, b) => a + b, 0) / complexityScores.length || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Average Complexity:</span>
+                        <span className="stat-value">{avgComplexity.toFixed(2)}/1.0</span>
+                      </div>
+                      <div className="complexity-breakdown">
+                        <div className="complexity-bar">
+                          <div className="complexity-fill" style={{ width: `${avgComplexity * 100}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Novelty Analysis */}
+              <div className="stats-section">
+                <h3>Novelty & Variety</h3>
+                {(() => {
+                  const noveltyScores = generatedAssignment.sections.flatMap(s =>
+                    s.problems.map(p => p.rawNovelty || (typeof p.novelty === 'string' ? 0.5 : p.novelty) || 0.5)
+                  );
+                  const avgNovelty = noveltyScores.reduce((a, b) => a + b, 0) / noveltyScores.length || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Average Novelty:</span>
+                        <span className="stat-value">{avgNovelty.toFixed(2)}/1.0</span>
+                      </div>
+                      <div className="novelty-breakdown">
+                        <div className="novelty-bar">
+                          <div className="novelty-fill" style={{ width: `${avgNovelty * 100}%` }} />
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Word Count */}
+              <div className="stats-section">
+                <h3>Content Length</h3>
+                {(() => {
+                  const totalWords = generatedAssignment.sections.reduce((sectionSum, section) =>
+                    sectionSum + section.problems.reduce((problemSum, problem) =>
+                      problemSum + (problem.problemLength || problem.problemText?.split(/\s+/).length || 0),
+                      0
+                    ),
+                    0
+                  );
+                  const avgWordsPerQuestion = totalWords / generatedAssignment.questionCount || 0;
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Total Words:</span>
+                        <span className="stat-value">{totalWords}</span>
+                      </div>
+                      <div className="stat-row">
+                        <span className="stat-label">Avg Words/Question:</span>
+                        <span className="stat-value">{avgWordsPerQuestion.toFixed(0)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Question Type Distribution */}
+              <div className="stats-section">
+                <h3>Question Types</h3>
+                {(() => {
+                  const typeCount: Record<string, number> = {};
+                  generatedAssignment.sections.forEach(section => {
+                    section.problems.forEach(problem => {
+                      const type = problem.questionFormat || 'unknown';
+                      typeCount[type] = (typeCount[type] || 0) + 1;
+                    });
+                  });
+                  return (
+                    <div className="type-list">
+                      {Object.entries(typeCount).map(([type, count]) => (
+                        <div key={type} className="type-item">
+                          <span className="type-name">{type.replace('-', ' ')}:</span>
+                          <span className="type-count">{count} ({((count / generatedAssignment.questionCount) * 100).toFixed(0)}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Tips Summary */}
+              <div className="stats-section">
+                <h3>Support Resources</h3>
+                {(() => {
+                  const problemsWithTips = generatedAssignment.sections.reduce((sum, section) =>
+                    sum + section.problems.filter(p => p.hasTip && p.tipText).length,
+                    0
+                  );
+                  return (
+                    <>
+                      <div className="stat-row">
+                        <span className="stat-label">Problems with Tips:</span>
+                        <span className="stat-value">{problemsWithTips}/{generatedAssignment.questionCount}</span>
+                      </div>
+                      <div className="stat-row">
+                        <span className="stat-label">Tip Coverage:</span>
+                        <span className="stat-value">{((problemsWithTips / generatedAssignment.questionCount) * 100).toFixed(0)}%</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Close button */}
+            <button
+              type="button"
+              className="metrics-toggle close-stats"
+              onClick={() => setShowDocumentStats(false)}
+            >
+              ▲ Hide Statistics
+            </button>
+          </div>
+        )}
 
         {/* No Analysis Disclaimer */}
         <div className="preview-disclaimer">
@@ -207,6 +447,20 @@ export function AssignmentPreview() {
           <div className="button-group">
             <button className="button-secondary" onClick={() => setShowDocumentPreview(true)}>
               👁️ View Document Preview
+            </button>
+            <button 
+              className="button-secondary"
+              onClick={handleExportPDF}
+              title="Export assignment as PDF"
+            >
+              📄 Export PDF
+            </button>
+            <button 
+              className="button-secondary"
+              onClick={handleExportJSON}
+              title="Export assignment data as JSON"
+            >
+              💾 Export Data
             </button>
             <button 
               className="button-secondary"

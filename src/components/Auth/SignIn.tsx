@@ -1,25 +1,32 @@
 import React, { useState } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import { LoginRequest } from '../../types/teacherSystem';
 import './SignIn.css';
 
 interface SignInProps {
   onSignUpClick: () => void;
+  onSignIn: (request: LoginRequest) => Promise<void>;
+  isLoading?: boolean;
+  error?: string | null;
 }
 
-export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
-  const { login, isLoading, error } = useAuth();
+export const SignIn: React.FC<SignInProps> = ({ onSignIn, onSignUpClick, isLoading = false, error = null }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
+    setIsSubmitting(true);
 
     try {
-      await login({ email, password });
+      await onSignIn({ email, password });
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Login failed');
+      const errorMsg = err instanceof Error ? err.message : 'Sign in failed';
+      setLocalError(errorMsg);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -49,7 +56,8 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
+              autoFocus
             />
           </div>
 
@@ -62,16 +70,17 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
+              minLength={6}
             />
           </div>
 
           <button
             type="submit"
             className="auth-button"
-            disabled={isLoading}
+            disabled={isLoading || isSubmitting || !email || !password}
           >
-            {isLoading ? 'Signing In...' : 'Sign In'}
+            {isLoading || isSubmitting ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
 
@@ -82,7 +91,7 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
               type="button"
               onClick={onSignUpClick}
               className="auth-link"
-              disabled={isLoading}
+              disabled={isLoading || isSubmitting}
             >
               Sign Up
             </button>
@@ -90,16 +99,14 @@ export const SignIn: React.FC<SignInProps> = ({ onSignUpClick }) => {
         </div>
 
         <div className="auth-demo">
-          <p className="demo-label">Demo Credentials:</p>
+          <p className="demo-label">Demo Accounts:</p>
           <code>teacher@example.com / password</code>
           <code>admin@example.com / password</code>
           <p style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '8px' }}>
-            💡 Check browser console (F12) for demo setup status
+            💡 Use the credentials above to test the app
           </p>
         </div>
       </div>
     </div>
   );
 };
-
-export default SignIn;

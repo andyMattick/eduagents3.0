@@ -1,13 +1,13 @@
 /**
  * AI Writer Service
  * 
- * Use this in components to generate problems with either mock or real AI
+ * Generates problems using real Gemini AI
  */
 
-import { getWriterService, GenerateProblemsResponse, useRealAI } from '../config/aiConfig';
+import { getWriterService, GenerateProblemsResponse } from '../config/aiConfig';
 
 /**
- * Example: Generate problems using either mock or real AI
+ * Example: Generate problems using Gemini API
  */
 export async function generateProblemsExample(
   topic: string,
@@ -37,7 +37,7 @@ export async function generateWithPhase3Context(
 ): Promise<GenerateProblemsResponse> {
   console.log(`📝 Generating problems for: ${goal}`);
   console.log(`📚 Topic: ${topic}`);
-  console.log(`🎯 Using ${useRealAI() ? 'Real AI' : 'Mock AI'}`);
+  console.log(`✨ Using Gemini API (Real AI only)`);
 
   return generateProblemsExample(topic, bloomGoals || {}, count);
 }

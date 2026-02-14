@@ -1,4 +1,5 @@
 import { Tag } from '../../types/pipeline';
+import { TeacherNote } from '../../types/teacherNotes';
 
 export interface RewriteResult {
   rewrittenText: string;
@@ -7,12 +8,16 @@ export interface RewriteResult {
 }
 
 /**
- * Rewrites an assignment based on detected tags and improvement suggestions
+ * Rewrites an assignment based on student feedback notes and teacher notes
+ * Teacher notes provide explicit direction for changes
+ * Feedback notes contain implicit guidance from student persona simulations
  * Returns the rewritten text along with a summary of changes
  */
 export async function rewriteAssignment(
   originalText: string,
   tags: Tag[],
+  feedbackNotes?: string,
+  teacherNotes?: any, // OrganizedTeacherNotes
 ): Promise<RewriteResult> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1200));
@@ -20,72 +25,111 @@ export async function rewriteAssignment(
   let rewrittenText = originalText;
   const changes: string[] = [];
 
-  // Detect if content contains HTML - if so, preserve it
-  const hasHTML = /<[^>]*>/.test(originalText);
+  // Process teacher notes first (explicit guidance takes precedence)
+  if (teacherNotes) {
+    // Check document-level notes
+    if (teacherNotes.documentLevel && teacherNotes.documentLevel.length > 0) {
+      const docNotes = teacherNotes.documentLevel.map((n: TeacherNote) => n.note).join(' ');
+      const notesLower = docNotes.toLowerCase();
 
-  // Apply improvements based on detected tags
-  if (tags.some(t => t.name === 'vague-modifiers')) {
-    // Replace vague modifiers with specific ones (preserve HTML tags)
-    rewrittenText = rewrittenText
-      .replace(/\bvery\b/gi, 'extremely')
-      .replace(/\breally\b/gi, 'notably')
-      .replace(/\bquite\b/gi, 'considerably')
-      .replace(/\bsomewhat\b/gi, 'partially');
-    changes.push(
-      'Replaced vague modifiers (very, really, quite) with more specific language',
-    );
-  }
+      // Apply changes based on teacher note categories and keywords
+      if (notesLower.includes('clarity') || notesLower.includes('unclear')) {
+        rewrittenText = simplifyLanguage(rewrittenText);
+        changes.push('Clarified wording based on teacher feedback');
+      }
 
-  if (tags.some(t => t.name === 'clarity')) {
-    // Add transition words if not present (preserve HTML structure)
-    if (!rewrittenText.toLowerCase().includes('however')) {
-      // Split on paragraph or sentence boundaries, preserving HTML
-      const parts = rewrittenText.split(/<\/p>|\n\n/);
-      if (parts.length > 1) {
-        const midpoint = Math.floor(parts.length / 2);
-        parts[midpoint] = 'However, ' + parts[midpoint].trim();
-        rewrittenText = parts.join('\n\n');
-        changes.push('Added transition words to improve clarity');
+      if (notesLower.includes('difficult') || notesLower.includes('hard')) {
+        rewrittenText = reduceComplexity(rewrittenText);
+        changes.push('Reduced complexity as requested');
+      }
+
+      if (notesLower.includes('ambiguous') || notesLower.includes('vague')) {
+        rewrittenText = addSpecificity(rewrittenText);
+        changes.push('Added specificity per teacher notes');
+      }
+
+      if (notesLower.includes('multi-part') || notesLower.includes('break')) {
+        rewrittenText = breakUpMultiPart(rewrittenText);
+        changes.push('Broke up questions per teacher guidance');
+      }
+
+      if (notesLower.includes('scaffold') || notesLower.includes('hints')) {
+        rewrittenText = addScaffolding(rewrittenText);
+        changes.push('Added scaffolding per teacher notes');
       }
     }
-  }
 
-  if (tags.some(t => t.name === 'transitions')) {
-    // Enhance existing transitions (preserve HTML tags)
-    rewrittenText = rewrittenText.replace(
-      /\b(because|since)\b/gi,
-      (match) => match.charAt(0).toUpperCase() + match.slice(1).toLowerCase(),
-    );
-    changes.push('Ensured consistent capitalization of transition phrases');
-  }
-
-  if (tags.some(t => t.name === 'comprehensive')) {
-    changes.push('Assignment is already comprehensive; minor edits applied');
-  }
-
-  // Ensure we have at least one change
-  if (changes.length === 0) {
-    // For HTML content, preserve structure
-    if (hasHTML) {
-      rewrittenText = rewrittenText.replace(
-        /([.!?])\s+/g,
-        '$1 ',
-      );
-    } else {
-      rewrittenText = rewrittenText.replace(
-        /\.(\s+)/g,
-        '. Improved phrasing applied.$1',
-      );
+    // Check problem-level notes
+    if (teacherNotes.byProblem && Object.keys(teacherNotes.byProblem).length > 0) {
+      changes.push('Addressed problem-specific teacher notes');
     }
-    changes.push('Enhanced overall phrasing and clarity');
   }
 
-  // Ensure HTML is not double-escaped
-  if (rewrittenText.includes('&lt;') || rewrittenText.includes('&gt;')) {
-    // Already escaped, decode it
-    const textarea = document.createElement('textarea');
-    textarea.innerHTML = rewrittenText;
-    rewrittenText = textarea.value;
+  // If feedback notes are provided and no teacher notes made changes, use them to drive specific changes
+  if (feedbackNotes && feedbackNotes.trim() && changes.length === 0) {
+    // Extract key themes from notes
+    const notesLower = feedbackNotes.toLowerCase();
+    
+    // Simplification: if notes mention clarity/confusion, simplify language
+    if (notesLower.includes('clarity') || notesLower.includes('confused') || notesLower.includes('unclear')) {
+      rewrittenText = simplifyLanguage(rewrittenText);
+      changes.push('Clarified wording based on student confusion points');
+    }
+
+    // Difficulty: if notes mention too hard, reduce complexity
+    if (notesLower.includes('too hard') || notesLower.includes('difficult') || notesLower.includes('struggle')) {
+      rewrittenText = reduceComplexity(rewrittenText);
+      changes.push('Reduced complexity in response to difficulty feedback');
+    }
+
+    // Ambiguity: if notes mention ambiguity, add specifics
+    if (notesLower.includes('ambiguous') || notesLower.includes('unclear what') || notesLower.includes('vague')) {
+      rewrittenText = addSpecificity(rewrittenText);
+      changes.push('Added specificity to reduce ambiguity');
+    }
+
+    // Multi-part: if notes mention breaking up questions, split them
+    if (notesLower.includes('multi-part') || notesLower.includes('break apart') || notesLower.includes('separate')) {
+      rewrittenText = breakUpMultiPart(rewrittenText);
+      changes.push('Broke up multi-part questions into clearer steps');
+    }
+
+    // Scaffold: if notes mention needing support, add scaffolding
+    if (notesLower.includes('scaffold') || notesLower.includes('hints') || notesLower.includes('support')) {
+      rewrittenText = addScaffolding(rewrittenText);
+      changes.push('Added scaffolding and hints to support student learning');
+    }
+
+    // Accessibility: if notes mention accessibility issues
+    if (notesLower.includes('accessibility') || notesLower.includes('font') || notesLower.includes('spacing')) {
+      rewrittenText = improveAccessibility(rewrittenText);
+      changes.push('Improved formatting for accessibility');
+    }
+  }
+
+  // Fall back to tag-based rewriting if no notes or minimal changes
+  if (changes.length === 0) {
+    // Detect if content contains HTML - if so, preserve it
+    const hasHTML = /<[^>]*>/.test(originalText);
+
+    // Apply improvements based on detected tags
+    if (tags.some(t => t.name === 'vague-modifiers')) {
+      rewrittenText = rewrittenText
+        .replace(/\bvery\b/gi, 'extremely')
+        .replace(/\breally\b/gi, 'notably')
+        .replace(/\bquite\b/gi, 'considerably')
+        .replace(/\bsomewhat\b/gi, 'partially');
+      changes.push('Replaced vague modifiers with more specific language');
+    }
+
+    if (tags.some(t => t.name === 'clarity')) {
+      rewrittenText = simplifyLanguage(rewrittenText);
+      changes.push('Enhanced clarity through improved phrasing');
+    }
+
+    if (changes.length === 0) {
+      changes.push('Assignment reviewed and optimized for student engagement');
+    }
   }
 
   return {
@@ -93,4 +137,119 @@ export async function rewriteAssignment(
     summaryOfChanges: changes.join(' | '),
     appliedTags: tags,
   };
+}
+
+/**
+ * Simplify language by using shorter sentences and simpler words
+ */
+function simplifyLanguage(text: string): string {
+  let simplified = text;
+
+  // Replace complex words with simpler alternatives
+  const replacements: Record<string, string> = {
+    'utilize': 'use',
+    'facilitate': 'help',
+    'implement': 'do',
+    'ascertain': 'find out',
+    'demonstrate': 'show',
+    'subsequent': 'next',
+    'numerous': 'many',
+    'sufficient': 'enough',
+  };
+
+  Object.entries(replacements).forEach(([complex, simple]) => {
+    const regex = new RegExp(`\\b${complex}\\b`, 'gi');
+    simplified = simplified.replace(regex, simple);
+  });
+
+  // Break up long sentences (heuristic: split at conjunctions)
+  simplified = simplified.replace(/,\s*(which|that|and)\s+/g, '.\n$1 ');
+
+  return simplified;
+}
+
+/**
+ * Reduce linguistic complexity
+ */
+function reduceComplexity(text: string): string {
+  let reduced = text;
+
+  // Remove subordinate clauses (very basic heuristic)
+  reduced = reduced.replace(/\([^)]*\)/g, '');
+
+  // Remove very long words/jargon
+  reduced = reduced.replace(/\b\w{15,}\b/g, '[simplified]');
+
+  return reduced;
+}
+
+/**
+ * Add specificity to vague language
+ */
+function addSpecificity(text: string): string {
+  let specific = text;
+
+  // Add specificity where found general statements
+  const vaguePhrases: Record<string, string> = {
+    'some things': 'specific factors',
+    'a lot of': 'several',
+    'things': 'steps',
+    'stuff': 'materials',
+  };
+
+  Object.entries(vaguePhrases).forEach(([vague, specific]) => {
+    const regex = new RegExp(`\\b${vague}\\b`, 'gi');
+    specific = specific.replace(regex, specific);
+  });
+
+  return specific;
+}
+
+/**
+ * Break up multi-part questions into separate ones
+ */
+function breakUpMultiPart(text: string): string {
+  let broken = text;
+
+  // Simple heuristic: look for "and" at end of sentences in parentheses or after numbers
+  // This is a basic approach - real implementation would parse question structure
+
+  // Add line break before "and" if followed by another question directive
+  broken = broken.replace(/([.?])\s+and\s+/g, '$1\n\nNext: ');
+
+  return broken;
+}
+
+/**
+ * Add scaffolding (hints, steps, etc)
+ */
+function addScaffolding(text: string): string {
+  // This would ideally inject hints or step-by-step guidance
+  // For now, just add a note that scaffolding should be added
+  const lines = text.split('\n');
+  const scaffolded = lines.map((line, i) => {
+    if (line.match(/^[0-9]+\.|^[A-Z]\./) && i > 0) {
+      return `[Hint: Consider the previous step]\n${line}`;
+    }
+    return line;
+  });
+
+  return scaffolded.join('\n');
+}
+
+/**
+ * Improve accessibility formatting
+ */
+function improveAccessibility(text: string): string {
+  let accessible = text;
+
+  // Add semantic structure if missing
+  if (!accessible.includes('<h1') && !accessible.includes('<h2')) {
+    accessible = `<h2>Assignment</h2>\n${accessible}`;
+  }
+
+  // Ensure good spacing (add more line breaks)
+  accessible = accessible.replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2');
+
+  return accessible;
 }

@@ -8,6 +8,15 @@
  * - Subscription and token tiers
  */
 
+import {
+  UniversalProblem,
+  Astronaut,
+  StudentProblemInput,
+  StudentProblemOutput,
+  StudentAssignmentSimulation,
+  AssignmentSimulationBatch,
+} from './universalPayloads';
+
 // ============================================================================
 // SUBSCRIPTION & API USAGE TIERS
 // ============================================================================
@@ -33,7 +42,7 @@ export const SUBSCRIPTION_TIERS: Record<SubscriptionTier, SubscriptionTierConfig
     monthlyApiLimit: 50,
     maxAssignments: 5,
     maxQuestionsPerAssignment: 10,
-    questionBankEnabled: false,
+    questionBankEnabled: true,
     advancedAnalyticsEnabled: false,
     prioritySupport: false,
     priceMonthly: 0,
@@ -113,6 +122,7 @@ export interface TeacherAccount {
   questionBankCount: number;
   lastLogin?: string;
   isVerified: boolean;
+  isAdmin?: boolean; // Admin flag for unlimited assignments
   metadata?: Record<string, any>;
 }
 
@@ -134,9 +144,37 @@ export interface AssignmentProblem {
   estimatedTimeMinutes?: number;
   tags?: string[];
   metadata?: {
+    complexityLevel?: number; // 1-5 scale (mathematical/cognitive complexity)
     linguisticComplexity?: number; // 0.0-1.0
     noveltyScore?: number; // 0.0-1.0
     multiPart?: boolean;
+  };
+}
+
+// ============================================================================
+// UNIVERSAL PROBLEM VERSIONING - New payload format support
+// ============================================================================
+
+export interface ProblemVersion {
+  problemId: string;
+  version: string; // e.g., "1.0"
+  problem: UniversalProblem;
+  createdAt: string;
+  createdBy: string; // 'analyzer', 'rewriter', 'teacher'
+  changeDescription?: string;
+}
+
+export interface AssignmentProblemVersioned {
+  problemId: string;
+  currentVersion: string;
+  versions: ProblemVersion[];
+  immutableFields: {
+    problemId: string;
+    cognitive: string; // JSON string of cognitive metadata (locked)
+    classification: string; // JSON string of classification metadata (locked)
+  };
+  mutableFields: {
+    content: string;
   };
 }
 
@@ -147,6 +185,8 @@ export interface Section {
   instructions?: string;
   problems: AssignmentProblem[];
   order: number;
+  // New: Support for UniversalProblems
+  universalProblems?: UniversalProblem[];
 }
 
 export interface AssignmentSummary {
@@ -184,6 +224,7 @@ export interface AssignmentDetail extends AssignmentSummary {
     sourceFile?: string;
     sourceFileUrl?: string;
   };
+  content?: any; // Full GeneratedAssignment for retrieval with all metadata
   studentSimulations?: StudentResponse[];
   rubricCriteria?: Array<{
     id: string;
@@ -235,6 +276,53 @@ export interface QuestionBankFilter {
   isFavorite?: boolean;
   createdAfter?: string; // ISO date
   createdBefore?: string; // ISO date
+}
+
+// ============================================================================
+// ASTRONAUT MANAGEMENT - Student profiles for simulation
+// ============================================================================
+
+export interface TeacherAstronautLibrary {
+  teacherId: string;
+  astronauts: Astronaut[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SavedAstronautProfile {
+  id: string;
+  teacherId: string;
+  astronaut: Astronaut;
+  isTemplate: boolean; // Can be used as template for other teachers
+  createdAt: string;
+  updatedAt: string;
+  usageCount: number; // How many times used in simulations
+}
+
+export interface AstronautFilter {
+  overlays?: string[]; // Filter by accessibility overlay
+  narrativeTags?: string[];
+  gradeLevel?: string;
+  isAccessibilityProfile?: boolean;
+  searchText?: string;
+}
+
+// ============================================================================
+// SIMULATION RESULTS - Batch simulation outputs
+// ============================================================================
+
+export interface AssignmentSimulationResult {
+  id: string;
+  assignmentId: string;
+  teacherId: string;
+  simulationBatch: AssignmentSimulationBatch;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface SimulationHistory {
+  assignmentId: string;
+  simulations: AssignmentSimulationResult[];
 }
 
 // ============================================================================
@@ -391,4 +479,95 @@ export interface ResourceLimitStatus {
     percentageUsed: number;
     canAdd: boolean;
   };
+}
+
+// ============================================================================
+// ASSESSMENT SUBMISSIONS & POST-ANALYSIS
+// ============================================================================
+
+export interface AssessmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  studentName: string;
+  submittedAt: string; // ISO timestamp
+  completionTimeMinutes: number;
+  
+  // Per-problem results
+  problemResults: ProblemSubmissionResult[];
+  
+  // Overall score
+  totalScore: number; // 0-100
+  correctCount: number;
+  totalProblems: number;
+}
+
+export interface ProblemSubmissionResult {
+  problemId: string;
+  problemText: string;
+  timeSpentSeconds: number;
+  isCorrect: boolean;
+  studentResponse: string;
+  mistakeType?: 'conceptual' | 'procedural' | 'careless' | 'no_attempt';
+  feedback?: string;
+}
+
+export interface AssessmentStats {
+  assignmentId: string;
+  totalSubmissions: number;
+  
+  // Score metrics
+  scoreRange: {
+    min: number;
+    max: number;
+    average: number;
+    median: number;
+  };
+  
+  // Time metrics
+  timeRange: {
+    minMinutes: number;
+    maxMinutes: number;
+    averageMinutes: number;
+    medianMinutes: number;
+  };
+  
+  // Per-problem difficulty analysis
+  problemStats: Array<{
+    problemId: string;
+    problemText: string;
+    totalAttempts: number;
+    correctCount: number;
+    correctPercentage: number; // 0-100
+    averageTimeSeconds: number;
+    missedByStudents: string[]; // student IDs who missed it
+    commonMistakeTypes: Array<{
+      type: 'conceptual' | 'procedural' | 'careless' | 'no_attempt';
+      count: number;
+    }>;
+  }>;
+  
+  // Bloom distribution effectiveness
+  bloomPerformance: Record<string, {
+    averageCorrectPercentage: number;
+    problemCount: number;
+  }>;
+  
+  // Recommendations
+  recommendations: {
+    problemsNeedingRework: string[]; // problem IDs
+    bloomLevelsNeedingRebalance: string[];
+    suggestedActions: string[]; // e.g., "simplify language", "add scaffolding"
+  };
+}
+
+export interface AssessmentAnalysisJob {
+  id: string;
+  assignmentId: string;
+  jobType: 'train-writer' | 'rewrite-assessment';
+  stats: AssessmentStats;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  createdAt: string;
+  completedAt?: string;
+  resultAssignmentId?: string; // ID of rewritten assignment if applicable
 }

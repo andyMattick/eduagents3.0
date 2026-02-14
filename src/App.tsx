@@ -6,9 +6,11 @@ import { AdminDashboard } from './components/Admin/AdminDashboard';
 import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
 import { PipelineRouter } from './components/Pipeline/PipelineRouter';
 import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
+import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
+import { getCurrentAIMode } from './config/aiConfig';
 import './App.css';
 
 type AppTab = 'dashboard' | 'pipeline' | 'notepad';
@@ -53,15 +55,25 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📝</span>
               Pipeline
             </button>
-            <button
+            {/* Notebook tab disabled */}
+            {/* <button
               className={`app-tab ${activeTab === 'notepad' ? 'active' : ''}`}
               onClick={() => setActiveTab('notepad')}
             >
-              <span className="app-tab-icon">📋</span>
-              Notepad & Settings
-            </button>
+              <span className="app-tab-icon">📔</span>
+              Notepad
+            </button> */}
           </div>
           <div className="app-header-actions">
+            {/* AI Status Indicator */}
+            <div className="ai-status-indicator">
+              <span className="ai-status-icon">
+                {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
+              </span>
+              <span className="ai-status-label">
+                Gemini API
+              </span>
+            </div>
             {activeTab === 'pipeline' && (
               <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
                 🔄 Reset
@@ -101,7 +113,7 @@ function TeacherAppContent() {
 }
 
 function AppContent() {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, logout, signIn, signUp, error } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -114,14 +126,16 @@ function AppContent() {
   }
 
   if (!user) {
+    if (authPage === 'signup') {
+      return <SignUp onSignInClick={() => setAuthPage('signin')} />;
+    }
     return (
-      <>
-        {authPage === 'signin' ? (
-          <SignIn onSignUpClick={() => setAuthPage('signup')} />
-        ) : (
-          <SignUp onSignInClick={() => setAuthPage('signin')} />
-        )}
-      </>
+      <SignIn 
+        onSignUpClick={() => setAuthPage('signup')}
+        onSignIn={signIn}
+        isLoading={isLoading}
+        error={error}
+      />
     );
   }
 
@@ -133,6 +147,7 @@ function AppContent() {
     <NotepadProvider>
       <UserFlowProvider>
         <TeacherAppContent />
+        <APICallNotifier />
       </UserFlowProvider>
     </NotepadProvider>
   );

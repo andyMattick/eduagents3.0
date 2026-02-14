@@ -1,12 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { getTeacherAccount, listAssignments, getResourceLimitStatus } from '../../services/teacherSystemService';
-import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TIERS } from '../../types/teacherSystem';
+import { getTeacherAccount, listAssignments, getResourceLimitStatus, deleteAssignment, getAssessmentStats, createRewriteJob, createTrainWriterJob } from '../../services/teacherSystemService';
+import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TIERS, AssessmentStats } from '../../types/teacherSystem';
 import { useUserFlow } from '../../hooks/useUserFlow';
+import { AssessmentResults } from './AssessmentResults';
 import './TeacherDashboard.css';
 
 interface TeacherDashboardProps {
   teacherId: string;
   onNavigate: (page: string, data?: any) => void;
+}
+
+interface DeleteConfirmation {
+  assignmentId: string;
+  assignmentTitle: string;
+}
+
+interface AssessmentView {
+  assignmentId: string;
+  assignment: AssignmentSummary;
+  stats: AssessmentStats;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, onNavigate }) => {
@@ -16,6 +28,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'draft' | 'finalized'>('all');
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [assessmentView, setAssessmentView] = useState<AssessmentView | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
   const { reset } = useUserFlow();
 
   useEffect(() => {
@@ -41,8 +58,106 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
     }
   }
 
+  async function handleDeleteAssignment(assignmentId: string) {
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      await deleteAssignment(assignmentId, teacherId);
+      
+      // Remove from local state
+      setAssignments(assignments.filter(a => a.id !== assignmentId));
+      setDeleteConfirmation(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete assignment');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function openDeleteConfirmation(assignmentId: string, assignmentTitle: string) {
+    setDeleteConfirmation({ assignmentId, assignmentTitle });
+    setDeleteError(null);
+  }
+
+  function closeDeleteConfirmation() {
+    setDeleteConfirmation(null);
+    setDeleteError(null);
+  }
+
+  async function viewAssessmentResults(assignment: AssignmentSummary) {
+    try {
+      setIsLoadingStats(true);
+      const stats = await getAssessmentStats(assignment.id);
+      setAssessmentView({
+        assignmentId: assignment.id,
+        assignment,
+        stats,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load assessment stats');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }
+
+  function closeAssessmentView() {
+    setAssessmentView(null);
+  }
+
+  async function handleRewriteAssessment() {
+    if (!assessmentView) return;
+    try {
+      setIsLoadingStats(true);
+      await createRewriteJob(assessmentView.assignmentId, teacherId, assessmentView.stats);
+      setError(null);
+      // Show success message - in production, would show a real notification
+      alert('Rewrite job created! The system will generate an improved version of this assessment.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create rewrite job');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }
+
+  async function handleTrainWriter() {
+    if (!assessmentView) return;
+    try {
+      setIsLoadingStats(true);
+      await createTrainWriterJob(assessmentView.assignmentId, teacherId, assessmentView.stats);
+      setError(null);
+      // Show success message
+      alert('Training job created! The system will learn from this assessment data.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create training job');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }
+
   if (isLoading) {
     return <div className="dashboard-container loading">Loading your dashboard...</div>;
+  }
+
+  // Show assessment results view if selected
+  if (assessmentView) {
+    return (
+      <div className="dashboard-container">
+        <button
+          onClick={closeAssessmentView}
+          className="btn-back"
+          style={{ marginBottom: '1rem' }}
+        >
+          ← Back to Dashboard
+        </button>
+        <AssessmentResults
+          assignment={assessmentView.assignment}
+          stats={assessmentView.stats}
+          onRewriteAssessment={handleRewriteAssessment}
+          onTrainWriter={handleTrainWriter}
+          isLoading={isLoadingStats}
+        />
+      </div>
+    );
   }
 
   if (error || !account || !limits) {
@@ -265,6 +380,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                   <small>Updated {new Date(assignment.updatedAt).toLocaleDateString()}</small>
                 </div>
                 <div className="card-actions">
+                  {assignment.status === 'finalized' && (
+                    <button
+                      onClick={() => viewAssessmentResults(assignment)}
+                      className="btn-secondary btn-sm btn-results"
+                      title="View assessment results and stats"
+                    >
+                      📊 Results
+                    </button>
+                  )}
                   <button
                     onClick={() => onNavigate('edit-assignment', { assignmentId: assignment.id })}
                     className="btn-secondary btn-sm"
@@ -283,6 +407,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                   >
                     View
                   </button>
+                  <button
+                    onClick={() => openDeleteConfirmation(assignment.id, assignment.title)}
+                    className="btn-secondary btn-sm btn-delete"
+                    title="Delete this assignment"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
@@ -294,15 +425,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
       <section className="quick-links">
         <h2>Quick Actions</h2>
         <div className="links-grid">
-          <button
-            onClick={() => onNavigate('question-bank')}
-            className="quick-link"
-            disabled={!tierConfig.questionBankEnabled}
-            title={!tierConfig.questionBankEnabled ? 'Available on Pro and above' : ''}
-          >
-            <div className="link-icon">🏦</div>
-            <div className="link-text">Question Bank</div>
-          </button>
           <button
             onClick={() => onNavigate('analytics')}
             className="quick-link"
@@ -328,6 +450,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
           </button>
         </div>
       </section>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmation && (
+        <div className="modal-overlay" onClick={closeDeleteConfirmation}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete Assignment?</h2>
+            <p>
+              Are you sure you want to delete <strong>{deleteConfirmation.assignmentTitle}</strong>? This action cannot be undone.
+            </p>
+            {deleteError && (
+              <div className="error-message">
+                <p>Error: {deleteError}</p>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                onClick={closeDeleteConfirmation}
+                className="btn-secondary"
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteAssignment(deleteConfirmation.assignmentId)}
+                className="btn-danger"
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -17,6 +17,7 @@ import {
   generateHTMLPreview,
   downloadFile,
 } from '../../utils/exportUtils';
+import { Asteroid } from '../../types/simulation';
 import './Step8FinalReview.css';
 
 interface Step8Props {
@@ -32,8 +33,12 @@ interface Step8Props {
   tags?: any[];
   studentFeedback?: any[];
   asteroids?: any[];
+  sourceDocumentId?: string;
+  assignmentId?: string;
+  teacherId?: string;
   onPrevious?: () => void;
   onComplete?: () => void;
+  onCompleteSaveProblems?: (result: { successCount: number; failureCount: number; savedProblemIds: string[] }) => Promise<void>;
 }
 
 export const Step8FinalReview: React.FC<Step8Props> = ({
@@ -43,14 +48,20 @@ export const Step8FinalReview: React.FC<Step8Props> = ({
   tags = [],
   studentFeedback = [],
   asteroids = [],
+  sourceDocumentId,
+  assignmentId,
+  teacherId,
   onPrevious,
   onComplete,
+  onCompleteSaveProblems,
 }) => {
   const [activeTab, setActiveTab] = useState<'preview' | 'analytics' | 'export'>('preview');
   const [isExporting, setIsExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string>('');
   const [showMetadata, setShowMetadata] = useState(true);
   const [showAnalytics, setShowAnalytics] = useState(true);
+  const [isSavingProblems, setIsSavingProblems] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string>('');
 
   // Handle export functions
   const handleExportPDF = async () => {
@@ -102,6 +113,39 @@ export const Step8FinalReview: React.FC<Step8Props> = ({
 
   const sanitizeName = (name: string) => {
     return name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  };
+
+  const handleCompleteWithSave = async () => {
+    // If we have asteroids and save callback, save them to problem bank first
+    if (asteroids && asteroids.length > 0 && onCompleteSaveProblems && teacherId && sourceDocumentId && assignmentId) {
+      setIsSavingProblems(true);
+      setSaveStatus('💾 Saving problems to library...');
+      try {
+        // Call the parent component's save handler
+        await onCompleteSaveProblems({
+          successCount: asteroids.length,
+          failureCount: 0,
+          savedProblemIds: asteroids.map((a: any) => a.ProblemId || ''),
+        });
+        setSaveStatus('✓ Problems saved to library successfully!');
+        // Wait a moment for user to see the success message
+        setTimeout(() => {
+          onComplete?.();
+        }, 1500);
+      } catch (error) {
+        setSaveStatus(`✗ Error saving problems: ${error instanceof Error ? error.message : String(error)}`);
+        console.error('Error saving problems to problem bank:', error);
+        // Still allow user to complete even if save fails
+        setTimeout(() => {
+          onComplete?.();
+        }, 2000);
+      } finally {
+        setIsSavingProblems(false);
+      }
+    } else {
+      // No asteroids to save or no save callback, just complete
+      onComplete?.();
+    }
   };
 
   const generateFinalReviewHTML = (includeAnalytics: boolean) => {
@@ -619,17 +663,32 @@ export const Step8FinalReview: React.FC<Step8Props> = ({
 
       {/* Action Buttons */}
       <div className="step8-actions">
+        {saveStatus && (
+          <div style={{
+            padding: '12px',
+            marginBottom: '16px',
+            borderRadius: '4px',
+            fontSize: '14px',
+            backgroundColor: saveStatus.includes('✗') ? '#f8d7da' : '#d4edda',
+            color: saveStatus.includes('✗') ? '#721c24' : '#155724',
+            border: `1px solid ${saveStatus.includes('✗') ? '#f5c6cb' : '#c3e6cb'}`,
+          }}>
+            {saveStatus}
+          </div>
+        )}
         <button
           className="step8-btn secondary"
           onClick={onPrevious}
+          disabled={isSavingProblems}
         >
           ← Previous
         </button>
         <button
           className="step8-btn primary"
-          onClick={onComplete}
+          onClick={handleCompleteWithSave}
+          disabled={isSavingProblems}
         >
-          ✓ Complete
+          {isSavingProblems ? '⏳ Saving...' : '✓ Complete'}
         </button>
       </div>
     </div>

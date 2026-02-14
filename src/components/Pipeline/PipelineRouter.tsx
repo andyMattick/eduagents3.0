@@ -11,9 +11,14 @@ import { AssignmentIntentForm } from './AssignmentIntentForm';
 import { AssignmentPreview } from './AssignmentPreview';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
+import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
+import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
+import { RewriterNotesPanel } from './RewriterNotesPanel';
 import { AssignmentEditor } from './AssignmentEditor';
 import { PipelineShell } from './PipelineShell';
 import { SaveAssignmentStep } from './SaveAssignmentStep';
+import { ViewAssignmentPage } from './ViewAssignmentPage';
+import { Launchpad } from './Launchpad';
 import './PipelineRouter.css';
 
 interface AssignmentContext {
@@ -50,6 +55,8 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     setGeneratedAssignment,
     setReadyForRewrite,
     setReadyForClassroomAnalysis,
+    getCurrentRoute,
+    reset,
   } =
     useUserFlow();
 
@@ -57,7 +64,19 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   const [isLoadingAssignment, setIsLoadingAssignment] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const currentRoute = useUserFlow().getCurrentRoute();
+  const currentRoute = getCurrentRoute();
+
+  // Debug: Log route changes
+  useEffect(() => {
+    console.log('🛣️ PipelineRouter route changed:', {
+      currentRoute,
+      goal,
+      hasSourceDocs: sourceFile ? 'yes' : 'no',
+      hasGeneratedAssignment: !!generatedAssignment,
+      studentFeedback: studentFeedback.length,
+      sourceAwareIntentData: !!sourceAwareIntentData,
+    });
+  }, [currentRoute]);
 
   // Load assignment if assignmentContext is provided
   useEffect(() => {
@@ -123,20 +142,12 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   // If assignment context exists and loaded, show the appropriate view
   if (assignmentContext && generatedAssignment && !isLoadingAssignment) {
     if (assignmentContext.action === 'view') {
-      // View mode: show assignment preview
+      // View mode: show dedicated view page with stats and export
       return (
-        <div className="pipeline-router-container">
-          <div className="step-header">
-            <h1>📖 View Assignment</h1>
-            <p>{generatedAssignment.title}</p>
-          </div>
-          <AssignmentPreview />
-          <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-            <button onClick={onAssignmentSaved} className="btn-primary">
-              ← Back to Dashboard
-            </button>
-          </div>
-        </div>
+        <ViewAssignmentPage
+          assignment={generatedAssignment}
+          onBack={onAssignmentSaved || (() => {})}
+        />
       );
     } else if (assignmentContext.action === 'edit' || assignmentContext.action === 'clone') {
       // Edit mode: show editor
@@ -186,6 +197,11 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     sourceAwareIntentData: !!sourceAwareIntentData,
     generatedAssignment: !!generatedAssignment,
   });
+
+  // Unified Launchpad: Consolidates mission setup (goal, source, metadata, upload, review)
+  if (currentRoute === '/launchpad') {
+    return <Launchpad />;
+  }
 
   // Step 1: Goal Selection
   if (currentRoute === '/goal-selection') {
@@ -322,35 +338,67 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Classroom Simulation Results - Show feedback from mock simulation
   if (currentRoute === '/rewrite-assignment') {
-    const { setReadyForRewrite } = useUserFlow();
+    console.log('📍 /rewrite-assignment route - preparing props for ProblemsAndFeedbackViewer');
+    console.log('   generatedAssignment:', generatedAssignment);
+    console.log('   studentFeedback:', studentFeedback);
+    
+    const bloomLevelMap: Record<number, string> = {
+      1: 'Remember',
+      2: 'Understand',
+      3: 'Apply',
+      4: 'Analyze',
+      5: 'Evaluate',
+      6: 'Create'
+    };
+    
+    const complexityMap: Record<string, number> = {
+      'low': 0.3,
+      'medium': 0.5,
+      'high': 0.8
+    };
+    
+    const noveltyMap: Record<string, number> = {
+      'low': 0.2,
+      'medium': 0.5,
+      'high': 0.8
+    };
+    
+    const asteroids = generatedAssignment?.sections.flatMap(s => s.problems.map(p => ({
+      BloomLevel: bloomLevelMap[p.bloomLevel as number] || 'Understand',
+      LinguisticComplexity: complexityMap[p.complexity as string] || 0.5,
+      ProblemText: p.problemText,
+      NoveltyScore: noveltyMap[p.novelty as string] || 0.5,
+    }))) || [];
+    
+    console.log('   Generated asteroids:', asteroids);
+    
+    const problemCount = generatedAssignment?.sections.flatMap(s => s.problems).length || 0;
     
     return (
       <div className="pipeline-router-container">
-        <div className="step-header">
-          <h1>Page 6 of 8: Student Simulation Results</h1>
-          <p>Review simulated student feedback and prepare assignment improvements</p>
-        </div>
-        <StudentSimulations
-          feedback={studentFeedback}
-          completionSimulations={{
-            studentSimulations: [],
-            classSummary: {},
-          }}
-          onNext={() => {
-            setReadyForRewrite(true);
-          }}
-        />
-        <div className="simulation-actions" style={{ marginTop: '2rem', maxWidth: '900px', margin: '2rem auto 0' }}>
-          <button
-            className="button-secondary"
-            onClick={() => setReadyForEditing(true)}
-            style={{ marginRight: '1rem' }}
-          >
-            ✏️ Edit Assignment
-          </button>
-          <p style={{ fontSize: '0.9rem', color: 'var(--color-text-secondary)' }}>
-            Review and modify specific problems or sections based on student feedback
-          </p>
+        <div className="rewrite-page-wrapper">
+          {/* Feedback Viewer */}
+          <div className="rewrite-feedback-section">
+            <ProblemsAndFeedbackViewer
+              asteroids={asteroids}
+              studentFeedback={studentFeedback}
+              isLoading={false}
+              onNext={() => {
+                setReadyForRewrite(true);
+              }}
+            />
+          </div>
+          
+          {/* Rewriter Notes Panel */}
+          <div className="rewrite-notes-section">
+            <RewriterNotesPanel 
+              problemCount={problemCount}
+              onNotesChange={(notes) => {
+                console.log('📝 Rewriter notes updated:', notes);
+                // Notes can be saved to state or used directly for rewriting
+              }}
+            />
+          </div>
         </div>
       </div>
     );
@@ -401,8 +449,6 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Final Save Step - Save assignment to database
   if (currentRoute === '/ai-rewrite-placeholder') {
-    const { reset, setReadyForRewrite } = useUserFlow();
-
     if (!generatedAssignment) {
       return (
         <div className="pipeline-router-container error-state">
@@ -421,7 +467,7 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
         <SaveAssignmentStep
           assignment={generatedAssignment}
           onSaveComplete={() => {
-            reset();
+            // Don't reset state here - let parent navigate
             // Call callback to notify parent that save is complete
             if (onAssignmentSaved) {
               onAssignmentSaved();
@@ -478,7 +524,20 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
     <div className="pipeline-router-container">
       <div className="error-state">
         <h2>⚠️ Unknown Route</h2>
-        <p>Current route: {currentRoute}</p>
+        <p><strong>Current route:</strong> {currentRoute}</p>
+        <div style={{ marginTop: '2rem', fontSize: '12px', backgroundColor: '#f5f5f5', padding: '1rem', borderRadius: '8px', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+          <strong>Debug State:</strong>
+          {JSON.stringify({
+            currentRoute,
+            goal,
+            hasSourceDocs: !!sourceFile,
+            hasGeneratedAssignment: !!generatedAssignment,
+            generatedAssignmentTitle: generatedAssignment?.title,
+            studentFeedbackCount: studentFeedback.length,
+            sourceAwareIntentData: !!sourceAwareIntentData,
+          }, null, 2)}
+        </div>
+        <p style={{ marginTop: '1rem', color: '#666', fontSize: '14px' }}>Please check the browser console for more details</p>
       </div>
     </div>
   );

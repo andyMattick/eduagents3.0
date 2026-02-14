@@ -1,4 +1,5 @@
 import { AssignmentMetadata, generateTagsFromMetadata } from './assignmentMetadata';
+import { aiService } from '../api/aiService';
 
 export interface GeneratedAssignment {
   content: string;
@@ -60,21 +61,38 @@ const mockExamples: Record<string, string[]> = {
 };
 
 /**
- * Generates a comprehensive assignment based on structured metadata
- * Returns detailed mock content that simulates AI-generated assignments
+ * Generates a comprehensive assignment - tries REAL Gemini API first, falls back to templates
+ * Returns detailed content simulating assignments
  */
 export async function generateAssignment(metadata: AssignmentMetadata): Promise<GeneratedAssignment> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
   // Generate tags from metadata
   const tags = generateTagsFromMetadata(metadata);
 
-  let content = `# ${metadata.title}\n\n`;
+  // Try to use real Gemini API first
+  try {
+    console.log('🤖 Trying Gemini API for assignment generation...');
+    const generatedContent = await aiService.generateAssignment({
+      prompt: metadata.description,
+      type: metadata.assignmentType.toLowerCase().replace(/ /g, '_'),
+      gradeLevel: metadata.gradeLevel,
+      subject: metadata.subject,
+      wordCount: 500 + (metadata.estimatedTimeMinutes * 10),
+    });
 
-  // Course/Subject Information
-  content += `**Subject:** ${metadata.subject}\n`;
-  content += `**Grade Level:** ${metadata.gradeLevel}\n`;
+    const rubricCriteria = generateMockRubric(metadata);
+    const studentTimeEstimates = estimateTimeByPersona(metadata.estimatedTimeMinutes || 60);
+
+    return {
+      content: generatedContent,
+      metadata,
+      tags,
+      rubricCriteria,
+      studentTimeEstimates,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error('Gemini API unavailable: ' + message);
+  }
   content += `**Assignment Type:** ${metadata.assignmentType}\n`;
   content += `**Difficulty Level:** ${metadata.difficultyLevel}\n\n`;
 

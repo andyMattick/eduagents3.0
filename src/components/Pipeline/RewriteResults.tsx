@@ -9,6 +9,8 @@ interface RewriteResultsProps {
   isLoading?: boolean;
   onNext: () => void;
   onEditAndRetest?: () => void;
+  onReanalyze?: () => void;
+  hasUnsavedChanges?: boolean;
 }
 
 /**
@@ -23,6 +25,8 @@ export function RewriteResults({
   isLoading = false,
   onNext,
   onEditAndRetest,
+  onReanalyze,
+  hasUnsavedChanges = false,
 }: RewriteResultsProps) {
   const [showHtml, setShowHtml] = useState(false);
 
@@ -249,59 +253,85 @@ export function RewriteResults({
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-        {onEditAndRetest && (
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ fontSize: '12px', color: hasUnsavedChanges ? '#ff6b6b' : '#999' }}>
+          {hasUnsavedChanges ? '⚠️ Unsaved changes' : '✓ Ready to save'}
+        </div>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          {onReanalyze && (
+            <button
+              onClick={onReanalyze}
+              disabled={isLoading}
+              style={{
+                padding: '10px 18px',
+                backgroundColor: isLoading ? '#ccc' : '#ff9800',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+              }}
+              title="Re-analyze the rewritten assignment with the same student personas to validate improvements"
+            >
+              🔍 Reanalyze with Same Students
+            </button>
+          )}
+          {onEditAndRetest && (
+            <button
+              onClick={onEditAndRetest}
+              disabled={isLoading}
+              style={{
+                padding: '12px 24px',
+                backgroundColor: isLoading ? '#ccc' : '#f0f0f0',
+                color: '#333',
+                border: '2px solid #0066cc',
+                borderRadius: '4px',
+                cursor: isLoading ? 'not-allowed' : 'pointer',
+                fontSize: '15px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = '#e6f2ff';
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isLoading) {
+                  e.currentTarget.style.backgroundColor = '#f0f0f0';
+                }
+              }}
+            >
+              🔄 Edit & Re-test
+            </button>
+          )}
           <button
-            onClick={onEditAndRetest}
-            disabled={isLoading}
+            onClick={onNext}
+            disabled={isLoading || hasUnsavedChanges}
             style={{
-              padding: '12px 24px',
-              backgroundColor: isLoading ? '#ccc' : '#f0f0f0',
-              color: '#333',
-              border: '2px solid #0066cc',
+              padding: '12px 28px',
+              backgroundColor: isLoading || hasUnsavedChanges ? '#ccc' : '#28a745',
+              color: 'white',
+              border: 'none',
               borderRadius: '4px',
-              cursor: isLoading ? 'not-allowed' : 'pointer',
+              cursor: isLoading || hasUnsavedChanges ? 'not-allowed' : 'pointer',
               fontSize: '15px',
               fontWeight: '600',
-              transition: 'all 0.2s',
+              transition: 'background-color 0.2s',
             }}
             onMouseEnter={e => {
-              if (!isLoading) {
-                e.currentTarget.style.backgroundColor = '#e6f2ff';
-              }
+              if (!isLoading && !hasUnsavedChanges) e.currentTarget.style.backgroundColor = '#218838';
             }}
             onMouseLeave={e => {
-              if (!isLoading) {
-                e.currentTarget.style.backgroundColor = '#f0f0f0';
-              }
+              if (!isLoading && !hasUnsavedChanges) e.currentTarget.style.backgroundColor = '#28a745';
             }}
+            title={hasUnsavedChanges ? 'Reanalyze the rewritten version before saving' : 'Continue to export and save'}
           >
-            🔄 Edit & Re-test
+            {isLoading ? '⏳ Processing...' : hasUnsavedChanges ? '📊 Reanalyze First' : '✓ Continue to Export'}
           </button>
-        )}
-        <button
-          onClick={onNext}
-          disabled={isLoading}
-          style={{
-            padding: '12px 28px',
-            backgroundColor: isLoading ? '#ccc' : '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-            fontSize: '15px',
-            fontWeight: '600',
-            transition: 'background-color 0.2s',
-          }}
-          onMouseEnter={e => {
-            if (!isLoading) e.currentTarget.style.backgroundColor = '#218838';
-          }}
-          onMouseLeave={e => {
-            if (!isLoading) e.currentTarget.style.backgroundColor = '#28a745';
-          }}
-        >
-          {isLoading ? '⏳ Processing...' : '✓ Continue to Export'}
-        </button>
+        </div>
       </div>
     </div>
   );

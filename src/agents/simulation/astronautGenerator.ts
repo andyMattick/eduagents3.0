@@ -1,5 +1,11 @@
 /**
  * Astronaut Generator: Creates student profiles with learning traits and accessibility needs
+ * 
+ * PHASE 4: Overlays are now applied strategically by overlayStrategy.ts
+ * Astronauts generated here have empty Overlays arrays.
+ * Strategic overlays are applied after astronaut creation based on problem characteristics.
+ * 
+ * See: src/agents/simulation/overlayStrategy.ts
  */
 
 import { Astronaut } from '../../types/simulation';

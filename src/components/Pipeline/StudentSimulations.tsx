@@ -1,10 +1,13 @@
 import React from 'react';
 import { StudentFeedback } from '../../types/pipeline';
 import { Asteroid } from '../../types/simulation';
+import { GeneratedAssignment } from '../../hooks/useUserFlow';
+import { SpaceCampBlackBox } from './SpaceCampBlackBox';
 import AccessibilityFeedback from './AccessibilityFeedback';
 import { TeacherNotesPanel } from './TeacherNotesPanel';
 import CompletionPerformance from '../Analysis/CompletionPerformance';
 import ClassCompletionSummary from '../Analysis/ClassCompletionSummary';
+import { QuestionFeedbackAnalysis } from './QuestionFeedbackAnalysis';
 
 interface StudentSimulationsProps {
   feedback: StudentFeedback[];
@@ -17,6 +20,7 @@ interface StudentSimulationsProps {
   asteroids?: Asteroid[];
   showProblemMetadata?: boolean;
   onToggleProblemMetadata?: () => void;
+  assignment?: GeneratedAssignment;
 }
 
 const feedbackTypeColors: Record<string, string> = {
@@ -31,8 +35,14 @@ export function StudentSimulations({
   onNext,
   completionSimulations,
   asteroids = [],
+  assignment,
 }: StudentSimulationsProps) {
-  const [activeTab, setActiveTab] = React.useState<'feedback' | 'completion' | 'metadata'>('feedback');
+  const [activeTab, setActiveTab] = React.useState<'feedback' | 'questions' | 'completion' | 'metadata'>('questions');
+
+  // SECURITY: Show black-box loading during simulation (hide all internals)
+  if (isLoading) {
+    return <SpaceCampBlackBox isRunning={true} />;
+  }
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
@@ -51,6 +61,22 @@ export function StudentSimulations({
         flexWrap: 'wrap'
       }}>
         <button
+          onClick={() => setActiveTab('questions')}
+          style={{
+            padding: '12px 16px',
+            backgroundColor: activeTab === 'questions' ? '#28a745' : 'transparent',
+            color: activeTab === 'questions' ? 'white' : '#666',
+            border: 'none',
+            borderRadius: '4px 4px 0 0',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          📋 Question Feedback
+        </button>
+        <button
           onClick={() => setActiveTab('feedback')}
           style={{
             padding: '12px 16px',
@@ -64,7 +90,7 @@ export function StudentSimulations({
             transition: 'all 0.2s ease'
           }}
         >
-          Student Feedback
+          By Student
         </button>
         {completionSimulations && (
           <button
@@ -103,6 +129,15 @@ export function StudentSimulations({
           </button>
         )}
       </div>
+
+      {/* Question Feedback Tab */}
+      {activeTab === 'questions' && assignment && (
+        <QuestionFeedbackAnalysis
+          assignment={assignment}
+          feedback={feedback}
+          isLoading={isLoading}
+        />
+      )}
 
       {/* Feedback Tab */}
       {activeTab === 'feedback' && (

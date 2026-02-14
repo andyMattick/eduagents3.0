@@ -8,6 +8,40 @@ export interface Tag {
 }
 
 /**
+ * Represents a single piece of feedback from the Philosopher
+ */
+export interface FeedbackItem {
+  id?: string;
+  title: string;
+  priority: 'high' | 'medium' | 'low';
+  category: 'clarity' | 'engagement' | 'accessibility' | 'difficulty' | 'pacing' | 'coverage';
+  description: string;
+  affectedProblems?: string[]; // Problem IDs
+  recommendation: string;
+  estimatedImpact?: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Represents visual analytics bundle (charts, maps, etc.)
+ */
+export interface VisualizationBundle {
+  clusterHeatMap?: string;        // base64 PNG or SVG of student clustering
+  bloomComplexityScatter?: string; // Bloom level vs. linguistic complexity scatter plot
+  confusionDensityMap?: string;    // Heat map of confusion hotspots
+  fatigueCurve?: string;           // Line chart of cumulative fatigue
+  topicRadarChart?: string;        // Radar chart of topic coverage by Bloom
+  sectionRiskMatrix?: string;      // 2D matrix of section risk assessment
+}
+
+/**
+ * Represents the Philosopher's complete analysis output
+ */
+export interface TeacherFeedbackOptions {
+  rankedFeedback: FeedbackItem[];
+  visualizations?: VisualizationBundle;
+}
+
+/**
  * Represents a student profile in the teacher's class
  */
 export interface ClassStudentProfile {
@@ -95,14 +129,17 @@ export interface TagChange {
  * Represents a single step in the pipeline
  */
 export enum PipelineStep {
-  INPUT = 0,
-  DOCUMENT_PREVIEW = 1,  // NEW: Quick validation (sections, problem count)
-  DOCUMENT_ANALYSIS = 2,  // Analyze document structure & problem types
-  PROBLEM_ANALYSIS = 3,   // Show metadata, allow export
-  CLASS_BUILDER = 4,     // Build/customize student class
-  STUDENT_SIMULATIONS = 5, // Simulated feedback (preview), then EDIT step
-  REWRITE_RESULTS = 6,   // After simulation: address "how should AI change"
-  EXPORT = 7,           // Final export
+  INPUT = 0,              // Mission setup (grade, subject, type)
+  DOCUMENT_PREVIEW = 1,   // Quick validation (sections, problem count)
+  PROBLEM_ANALYSIS = 2,   // Show metadata per problem (Foundry)
+  DOCUMENT_NOTES = 3,     // Document-level notes before simulation
+  WRITER_OUTPUT = 4,      // Show raw generated assignment before atomization (NEW)
+  STUDENT_SIMULATIONS = 5, // Detailed simulation feedback per persona
+  OBSERVATORY = 6,        // Summary-only view of simulation results (NEW)
+  PHILOSOPHER_REVIEW = 7, // Ranked feedback + visual analytics
+  REWRITE_RESULTS = 8,    // Side-by-side original vs rewritten
+  VERSION_COMPARISON = 9, // Version comparison metrics
+  EXPORT = 10,            // Final export & save
 }
 
 /**
@@ -162,6 +199,29 @@ export interface PipelineState {
     sourceFileName?: string;
     intentTags?: any; // AssignmentIntentTags
   };
+  // Rewrite Tracking
+  studentFeedbackNotes?: string; // Accumulated notes about what to change
+  activeStudentPersonas?: string[]; // Personas used in current simulation (for re-analysis)
+  rewriteHistory?: Array<{
+    iteration: number;
+    timestamp: string;
+    originalText: string;
+    rewrittenText: string;
+    notes: string;
+    feedbackFromPersonas: string[];
+  }>;
+  hasUnsavedChanges?: boolean; // Track if changes have been made but not saved
+  // New Pipeline Steps (Phase 4 restructuring)
+  teacherNotes?: string; // Notes from teacher during document review step
+  persistentTeacherNotes?: any; // Organized notes from database (document + problem level)
+  philosopherAnalysis?: { // Analysis results from Space Camp simulation
+    analysisContent: string;
+    recommendations: string[];
+    bloomDistribution?: Record<string, number>;
+    acceptedByTeacher?: boolean;
+  };
+  // Phase 1: Document metadata (inferred + overridden)
+  documentMetadata?: DocumentMetadata;
 }
 
 /**
@@ -175,4 +235,48 @@ export interface VersionAnalysis {
   rewrittenEngagementScore: number;
   originalTimeToRead: number;
   rewrittenTimeToRead: number;
+}
+
+export interface DocumentMetadata {
+  inferredGradeBand: "3-5" | "6-8" | "9-12";
+  inferredSubject: "math" | "english" | "science" | "history" | "general";
+  inferredClassLevel: "standard" | "honors" | "AP";
+  
+  // Overrides (user can change inferred values)
+  gradeBand?: "3-5" | "6-8" | "9-12";
+  subject?: "math" | "english" | "science" | "history" | "general";
+  classLevel?: "standard" | "honors" | "AP";
+  
+  // Confidence scores for inference
+  gradeBandConfidence?: number;  // 0.0-1.0
+  subjectConfidence?: number;    // 0.0-1.0
+  classLevelConfidence?: number; // 0.0-1.0
+}
+
+// Helper function to get effective value (override or inferred)
+export function getEffectiveGradeBand(metadata: DocumentMetadata): "3-5" | "6-8" | "9-12" {
+  return metadata.gradeBand || metadata.inferredGradeBand;
+}
+
+export function getEffectiveSubject(metadata: DocumentMetadata): "math" | "english" | "science" | "history" | "general" {
+  return metadata.subject || metadata.inferredSubject;
+}
+
+export function getEffectiveClassLevel(metadata: DocumentMetadata): "standard" | "honors" | "AP" {
+  return metadata.classLevel || metadata.inferredClassLevel;
+}
+
+/**
+ * Payload sent to Space Camp (backend astronaut generation & simulation)
+ */
+export interface SpaceCampPayload {
+  documentId: string;
+  problems: any[]; // UniversalProblem[]
+  scoringRules: any; // AstronautRubric
+  documentMetadata: {
+    gradeBand: "3-5" | "6-8" | "9-12";
+    subject: "math" | "english" | "science" | "history" | "general";
+    classLevel: "standard" | "honors" | "AP";
+  };
+  // NOT included: Pre-generated astronauts, student previews, etc.
 }

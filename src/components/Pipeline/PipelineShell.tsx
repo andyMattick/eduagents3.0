@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { PipelineStep, ClassDefinition } from '../../types/pipeline';
 import { usePipeline } from '../../hooks/usePipeline';
+import { useAuth } from '../../hooks/useAuth';
 import { Phase3Goal, Phase3Source } from '../../types/assignmentGeneration';
 import { getBehaviorSpec } from '../../agents/phase3/phase3BehaviorMatrix';
 import { parseDocumentStructure } from '../../agents/analysis/documentStructureParser';
 import { previewDocument } from '../../agents/analysis/documentPreview';
 import { convertExtractedProblemsToAsteroids } from '../../agents/shared/convertExtractedToAsteroid';
 import { extractAsteroidsFromText } from '../../agents/pipelineIntegration';
+import { saveAsteroidsToProblemBank } from '../../agents/shared/saveProblemsToProblemBank';
+import { saveTeacherNote, getOrganizedTeacherNotes } from '../../services/teacherNotesService';
 import { AssignmentInput } from './AssignmentInput';
 import { Phase3Selector } from './Phase3Selector';
 import { PromptBuilder } from './PromptBuilderSimplified';
@@ -14,8 +17,11 @@ import { ReviewMetadataForm, ReviewMetadata } from './ReviewMetadataForm';
 import { DocumentPreviewComponent } from '../Analysis/DocumentPreview';
 import { DocumentAnalysis } from '../Analysis/DocumentAnalysis';
 import { ProblemAnalysis } from './ProblemAnalysis';
-import { ClassBuilder } from './ClassBuilder';
-import { StudentSimulations } from './StudentSimulations';
+import { DockwardWriterOutput } from './DockwardWriterOutput';
+import { ObservableLoadingModal } from './ObservableLoadingModal';
+import { PhilosopherReview } from './PhilosopherReview';
+import { ProblemsAndFeedbackViewer } from './ProblemsAndFeedbackViewer';
+import { RewriteNotesCapturePanel } from './RewriteNotesCapturePanel';
 import { RewriteResults } from './RewriteResults';
 import { Step8FinalReview } from './Step8FinalReview';
 import { AssignmentMetadata } from '../../agents/shared/assignmentMetadata';
@@ -44,6 +50,8 @@ export function PipelineShell({
   intentData,
   onFlowComplete,
 }: PipelineShellProps = {}) {
+  const { user } = useAuth();
+  
   const {
     step,
     originalText,
@@ -54,13 +62,29 @@ export function PipelineShell({
     error,
     rewrittenTags,
     asteroids,
+    assignmentMetadata,
+    documentMetadata,
     analyzeTextAndTags,
     nextStep,
+    handlePhilosopherReviewOutcome,
     reset,
     setAssignmentMetadata,
     setAsteroids,
     setOriginalText,
+    setTeacherNotes,
+    setPersistentTeacherNotes,
+    setPhilosopherAnalysis,
+    setDocumentMetadata,
     retestWithRewrite,
+    captureRewriteNotes,
+    reanalyzeWithSamePersonas,
+    prepareForRewrite,
+    markAsSaved,
+    studentFeedbackNotes,
+    rewriteHistory,
+    hasUnsavedChanges,
+    teacherNotes,
+    philosopherAnalysis,
   } = usePipeline();
 
   const [input, setInput] = useState('');
@@ -73,6 +97,19 @@ export function PipelineShell({
   const [classDefinition, setClassDefinition] = useState<ClassDefinition | undefined>(undefined);
   const [documentPreview, setDocumentPreview] = useState<any>(null);
   const [documentStructure, setDocumentStructure] = useState<any>(null);
+  
+  // Generate document ID and assignment ID once for this pipeline session
+  const [documentId] = useState(() => `doc_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+  const [assignmentId] = useState(() => `assign_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+
+  // Metadata selection state (teacher overrides)
+  const [selectedGradeBand, setSelectedGradeBand] = useState<string | undefined>();
+  const [selectedSubject, setSelectedSubject] = useState<string | undefined>();
+  const [selectedClassLevel, setSelectedClassLevel] = useState<string | undefined>();
+
+  // Teacher notes loading state
+  const [loadedTeacherNotes, setLoadedTeacherNotes] = useState<any>(null);
+  const [notesLoading, setNotesLoading] = useState(false);
 
   // Handle UserFlow data injection
   useEffect(() => {
@@ -103,6 +140,95 @@ export function PipelineShell({
     // Monitor step changes
   }, [step, workflowMode, asteroids, error, originalText]);
 
+  // Load teacher notes when entering DOCUMENT_NOTES step
+  useEffect(() => {
+    if (step === PipelineStep.DOCUMENT_NOTES && user?.id) {
+      loadDocumentNotes();
+    }
+  }, [step, user?.id]);
+
+  // ============================================
+  // OBSERVATORY HELPER FUNCTIONS
+  // ============================================
+  
+  const generateConfusionHotspots = (feedback: any[], asteroids: any[]) => {
+    if (!feedback || feedback.length === 0) return [];
+    
+    // Aggregate confusion signals by problem
+    const confusionByProblem: Record<string, { signals: number; personas: string[] }> = {};
+    
+    feedback.forEach(f => {
+      if (f.struggledWith && Array.isArray(f.struggledWith)) {
+        f.struggledWith.forEach((problemRef: string) => {
+          if (!confusionByProblem[problemRef]) {
+            confusionByProblem[problemRef] = { signals: 0, personas: [] };
+          }
+          confusionByProblem[problemRef].signals++;
+          if (!confusionByProblem[problemRef].personas.includes(f.studentPersona)) {
+            confusionByProblem[problemRef].personas.push(f.studentPersona);
+          }
+        });
+      }
+    });
+    
+    // Convert to hotspot format
+    return Object.entries(confusionByProblem)
+      .map(([problemId, data]) => {
+        const asteroid = asteroids?.find(a => a.ProblemId === problemId || a.id === problemId);
+        return {
+          problemId,
+          problemText: asteroid?.ProblemText || asteroid?.problemText || `Problem ${problemId}`,
+          confusionScore: Math.min(data.signals / feedback.length, 1),
+          affectedPersonas: data.personas,
+        };
+      })
+      .sort((a, b) => b.confusionScore - a.confusionScore);
+  };
+  
+  const generateFatigueSummary = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) {
+      return 'No simulation data available.';
+    }
+    
+    const avgFatigue = feedback.reduce((sum, f) => sum + (f.atRiskProfile?.fatigues || 0), 0) / feedback.length;
+    
+    if (avgFatigue < 0.3) {
+      return '✅ Low fatigue expected. Students should remain engaged throughout.';
+    } else if (avgFatigue < 0.6) {
+      return '⚠️ Moderate fatigue. Some students may experience energy drop towards the end.';
+    } else {
+      return '🚨 High fatigue risk. Assignment may be too long or demanding. Consider breaking it into sections or reducing complexity.';
+    }
+  };
+  
+  const calculateSuccessRate = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return 0;
+    const successes = feedback.filter(f =>
+      (f.timeToCompleteMinutes && f.timeToCompleteMinutes > 0) ||
+      (f.successMetric !== undefined && f.successMetric > 0)
+    ).length;
+    return successes / feedback.length;
+  };
+  
+  const calculateAtRiskCount = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return 0;
+    return feedback.filter(f => f.atRiskProfile === true || f.atRisk === true).length;
+  };
+  
+  const calculateAvgCompletionTime = (feedback: any[]) => {
+    if (!feedback || feedback.length === 0) return undefined;
+    const times = feedback
+      .filter(f => f.timeToCompleteMinutes && f.timeToCompleteMinutes > 0)
+      .map(f => f.timeToCompleteMinutes);
+    if (times.length === 0) return undefined;
+    return times.reduce((a, b) => a + b, 0) / times.length;
+  };
+  
+
+  // ============================================
+  // FILE PARSING & HANDLERS
+  // ============================================
+  
   /**
    * Parse source file for assignment generation/analysis
    */
@@ -298,6 +424,148 @@ export function PipelineShell({
     }
   };
 
+  /**
+   * Load all teacher notes for the current document
+   */
+  const loadDocumentNotes = async () => {
+    if (!user || !user.id) return;
+    
+    try {
+      setNotesLoading(true);
+      const notes = await getOrganizedTeacherNotes(documentId, user.id);
+      setLoadedTeacherNotes(notes);
+      // Also store in pipeline state for use by rewriter
+      setPersistentTeacherNotes(notes);
+    } catch (error) {
+      console.error('Failed to load teacher notes:', error);
+    } finally {
+      setNotesLoading(false);
+    }
+  };
+
+  /**
+   * Save document-level notes before proceeding from DOCUMENT_NOTES step
+   */
+  const handleSaveDocumentNotes = async () => {
+    if (!user || !user.id || !teacherNotes) return;
+    
+    try {
+      // Only save if there's content
+      if (teacherNotes.trim()) {
+        await saveTeacherNote(user.id, {
+          documentId,
+          note: teacherNotes,
+          category: 'other',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save teacher notes:', error);
+    }
+  };
+
+  /**
+   * Handle transition from DOCUMENT_NOTES step
+   */
+  const handleDocumentNotesNextStep = async () => {
+    // Save notes before proceeding
+    await handleSaveDocumentNotes();
+    
+    // Update metadata with teacher selections before proceeding
+    if (documentMetadata) {
+      setDocumentMetadata({
+        ...documentMetadata,
+        gradeBand: selectedGradeBand || documentMetadata.inferredGradeBand,
+        subject: selectedSubject || documentMetadata.inferredSubject,
+        classLevel: selectedClassLevel || documentMetadata.inferredClassLevel,
+      });
+    }
+    
+    // Proceed to next step
+    await nextStep();
+  };
+
+  const handleCompleteSaveProblems = async (result: { successCount: number; failureCount: number; savedProblemIds: string[] }) => {
+    if (!user || !user.id || !asteroids || asteroids.length === 0) {
+      console.warn('Cannot save problems: missing user, asteroids, or IDs');
+      return;
+    }
+
+    try {
+      // First, save the full assignment with rewritten text and metadata
+      const assignmentToSave = {
+        id: assignmentId,
+        title: `Assignment_${new Date().toISOString().slice(0, 10)}`,
+        subject: assignmentSubject || 'General',
+        gradeLevel: assignmentMetadata?.gradeLevel || '6-8',
+        assignmentType: 'rewritten-assignment',
+        status: 'draft' as const,
+        sections: [{
+          id: 'S1',
+          title: 'Rewritten Assignment',
+          instructions: '',
+          problems: asteroids.map((ast, idx) => ({
+            id: ast.ProblemId || `P${idx + 1}`,
+            text: ast.ProblemText,
+            points: 1,
+          })),
+          order: 0,
+        }],
+        estimatedTimeMinutes: asteroids.length * 5, // Rough estimate
+        specifications: {
+          title: `Assignment_${new Date().toISOString().slice(0, 10)}`,
+          instructions: rewriteSummary || 'Rewritten assignment',
+          subject: assignmentSubject || 'General',
+          gradeLevel: assignmentMetadata?.gradeLevel || '6-8',
+          assignmentType: 'rewritten-assignment',
+          assessmentType: 'general',
+          estimatedTime: asteroids.length * 5,
+          difficulty: assignmentMetadata?.difficulty || 'medium',
+        },
+        metadata: {
+          bloomDistribution: {},
+          rewriteSummary: rewriteSummary,
+          studentFeedbackNotes: studentFeedbackNotes,
+          rewriteHistory: rewriteHistory,
+        },
+        isTemplate: false,
+        tags: [],
+        sourceFileName: 'pipeline-generated',
+        version: 1,
+      };
+
+      // Save assignment to Supabase
+      const { saveAssignment } = await import('../../services/teacherSystemService');
+      await saveAssignment(user.id, assignmentToSave as any);
+      console.log('✓ Assignment saved to database');
+
+      // Then save problems to problem bank
+      const saveResult = await saveAsteroidsToProblemBank({
+        teacherId: user.id,
+        asteroids,
+        documentId,
+        assignmentId,
+        subject: assignmentSubject || 'General',
+        sectionId: 'S1',
+        createdBy: user.id,
+      });
+
+      console.log('✓ Problems saved to problem bank:', saveResult);
+      
+      // Call the parent flow completion callback if provided
+      if (onFlowComplete) {
+        onFlowComplete({
+          type: 'assignment_completed',
+          assignmentId,
+          documentId,
+          saveResult,
+        });
+      }
+    } catch (error) {
+      console.error('Error saving assignment/problems:', error);
+      // Don't re-throw - allow the flow to continue even if save fails
+    }
+  };
+
   // For choosing workflow - show Phase 3 goal + source selector
   if (workflowMode === 'choose' && step === PipelineStep.INPUT) {
     return (
@@ -329,11 +597,11 @@ export function PipelineShell({
           📝 Assignment Pipeline
         </h1>
         <p style={{ margin: 0, color: '#666', fontSize: '14px' }}>
-          Step {step + 1} of 8
+          Step {step + 1} of 10
         </p>
         <div style={{ marginTop: '8px' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((s) => (
               <div
                 key={s}
                 style={{
@@ -529,24 +797,285 @@ export function PipelineShell({
         </>
       )}
 
-      {step === PipelineStep.CLASS_BUILDER && (
-        <ClassBuilder
-          gradeLevel={assignmentGradeLevel}
-          subject={assignmentSubject}
-          classDefinition={classDefinition}
-          onClassDefinitionChange={setClassDefinition}
-          isLoading={isLoading}
-          onNext={handleNextStep}
-        />
+      {step === PipelineStep.DOCUMENT_NOTES && (
+        <div style={{ padding: '20px', backgroundColor: '#fff8f0', borderRadius: '8px', border: '1px solid #ffc107' }}>
+          <h2>📋 Document Review</h2>
+          <p style={{ color: '#666', marginBottom: '16px' }}>
+            Review the assignment metadata and add any notes for the backend analysis.
+          </p>
+          
+          {/* Metadata Section */}
+          {documentMetadata && (
+            <div style={{
+              backgroundColor: '#f0f8ff',
+              borderRadius: '8px',
+              border: '1px solid #4a90e2',
+              padding: '16px',
+              marginBottom: '16px',
+            }}>
+              <h3 style={{ marginTop: 0, marginBottom: '12px', color: '#004085' }}>📊 Assignment Metadata</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                {/* Grade Band */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '4px', fontSize: '13px', color: '#333' }}>
+                    Grade Band
+                  </label>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                    Inferred: <strong>{documentMetadata.inferredGradeBand}</strong>
+                    <span style={{ marginLeft: '6px', color: '#999' }}>
+                      ({(documentMetadata.gradeConfidence * 100).toFixed(0)}% confidence)
+                    </span>
+                  </div>
+                  <select
+                    value={selectedGradeBand || documentMetadata.gradeBand || documentMetadata.inferredGradeBand}
+                    onChange={(e) => setSelectedGradeBand(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <option value="3-5">Elementary (3-5)</option>
+                    <option value="6-8">Middle School (6-8)</option>
+                    <option value="9-12">High School (9-12)</option>
+                  </select>
+                </div>
+
+                {/* Subject */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '4px', fontSize: '13px', color: '#333' }}>
+                    Subject
+                  </label>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                    Inferred: <strong>{documentMetadata.inferredSubject}</strong>
+                    <span style={{ marginLeft: '6px', color: '#999' }}>
+                      ({(documentMetadata.subjectConfidence * 100).toFixed(0)}% confidence)
+                    </span>
+                  </div>
+                  <select
+                    value={selectedSubject || documentMetadata.subject || documentMetadata.inferredSubject}
+                    onChange={(e) => setSelectedSubject(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <option value="Math">Math</option>
+                    <option value="English">English / ELA</option>
+                    <option value="Science">Science</option>
+                    <option value="History">History / Social Studies</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+
+                {/* Class Level */}
+                <div>
+                  <label style={{ display: 'block', fontWeight: '600', marginBottom: '4px', fontSize: '13px', color: '#333' }}>
+                    Class Level
+                  </label>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '6px' }}>
+                    Inferred: <strong>{documentMetadata.inferredClassLevel}</strong>
+                    <span style={{ marginLeft: '6px', color: '#999' }}>
+                      ({(documentMetadata.classConfidence * 100).toFixed(0)}% confidence)
+                    </span>
+                  </div>
+                  <select
+                    value={selectedClassLevel || documentMetadata.classLevel || documentMetadata.inferredClassLevel}
+                    onChange={(e) => setSelectedClassLevel(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #ddd',
+                      borderRadius: '4px',
+                      fontSize: '13px',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="honors">Honors</option>
+                    <option value="AP">AP / Advanced</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Document Preview */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            border: '1px solid #ddd',
+            padding: '16px',
+            marginBottom: '16px',
+            maxHeight: '250px',
+            overflowY: 'auto',
+            fontSize: '13px',
+            lineHeight: '1.6',
+            fontFamily: 'Georgia, serif',
+          }}>
+            {originalText}
+          </div>
+
+          {/* Notes Input */}
+          <label style={{ display: 'block', fontWeight: '600', marginBottom: '8px', color: '#333' }}>
+            📝 Teacher Notes (optional):
+          </label>
+          <textarea
+            value={teacherNotes || ''}
+            onChange={(e) => setTeacherNotes(e.target.value)}
+            placeholder="Add any notes or context for the analysis (special considerations, learning objectives, etc.)"
+            style={{
+              width: '100%',
+              minHeight: '100px',
+              padding: '12px',
+              border: '1px solid #ddd',
+              borderRadius: '4px',
+              fontFamily: 'inherit',
+              marginBottom: '16px',
+              boxSizing: 'border-box',
+            }}
+          />
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              onClick={handleDocumentNotesNextStep}
+              disabled={isLoading || notesLoading}
+              style={{
+                flex: 1,
+                padding: '12px 20px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: (isLoading || notesLoading) ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+                fontSize: '15px',
+                opacity: (isLoading || notesLoading) ? 0.6 : 1,
+              }}
+            >
+              {'→ Proceed to Analysis'}
+            </button>
+          </div>
+        </div>
       )}
 
-      {step === PipelineStep.STUDENT_SIMULATIONS && (
-        <StudentSimulations
-          feedback={studentFeedback}
-          isLoading={isLoading}
-          onNext={handleNextStep}
-        />
+      {/* Observable Loading Modal - shows while Space Camp analyzes */}
+      <ObservableLoadingModal isLoading={isLoading && step === PipelineStep.DOCUMENT_NOTES} />
+
+      {step === PipelineStep.PHILOSOPHER_REVIEW && (
+        <div style={{ padding: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #999' }}>
+          <h2>🧠 Philosopher Review: Assignment Diagnostic Analysis</h2>
+          <p style={{ color: '#333', marginBottom: '16px' }}>
+            The Philosopher engine has analyzed your assignment across 20 student personas. Review the findings and recommendations below.
+          </p>
+
+          {isLoading && (
+            <div style={{
+              padding: '40px',
+              textAlign: 'center',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              marginBottom: '16px'
+            }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>🧙</div>
+              <p style={{ color: '#666' }}>Philosopher is analyzing your assignment...</p>
+            </div>
+          )}
+
+          {!isLoading && philosopherAnalysis && (
+            <>
+              {/* Teacher Notes Summary */}
+              {loadedTeacherNotes && (
+                loadedTeacherNotes.documentLevel.length > 0 ||
+                Object.keys(loadedTeacherNotes.byProblem).length > 0
+              ) && (
+                <div style={{
+                  backgroundColor: '#fffacd',
+                  border: '1px solid #f0e68c',
+                  borderRadius: '6px',
+                  padding: '14px',
+                  marginBottom: '16px',
+                }}>
+                  <h4 style={{ marginTop: 0, marginBottom: '10px', color: '#666' }}>📌 Your Notes</h4>
+                  
+                  {/* Document-level notes */}
+                  {loadedTeacherNotes.documentLevel.length > 0 && (
+                    <div style={{ marginBottom: '12px' }}>
+                      <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
+                        Document-Level:
+                      </div>
+                      {loadedTeacherNotes.documentLevel.map((note) => (
+                        <div key={note.id} style={{ fontSize: '13px', marginBottom: '6px', paddingLeft: '12px', borderLeft: '3px solid #ffc107' }}>
+                          <p style={{ margin: '0 0 4px 0', color: '#333' }}>{note.note}</p>
+                          <div style={{ fontSize: '11px', color: '#999' }}>
+                            {note.category && <span style={{ marginRight: '8px' }}>• {note.category}</span>}
+                            {new Date(note.createdAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Problem-level notes */}
+                  {Object.entries(loadedTeacherNotes.byProblem).length > 0 && (
+                    <div>
+                      <div style={{ fontWeight: '600', fontSize: '12px', color: '#555', marginBottom: '6px' }}>
+                        Problem-Level:
+                      </div>
+                      {Object.entries(loadedTeacherNotes.byProblem).map(([problemId, problemNotes]) => (
+                        <div key={problemId} style={{ marginBottom: '8px', paddingLeft: '12px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '500', color: '#666', marginBottom: '4px' }}>
+                            Problem {problemId}
+                          </div>
+                          {problemNotes.map((note) => (
+                            <div key={note.id} style={{ fontSize: '12px', marginBottom: '4px', color: '#333', borderLeft: '3px solid #90ee90', paddingLeft: '8px' }}>
+                              {note.note}
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Use PhilosopherReview component for actual feedback rendering */}
+              {philosopherAnalysis && philosopherAnalysis.rankedFeedback && (
+                <PhilosopherReview
+                  analysis={philosopherAnalysis}
+                  isLoading={isLoading}
+                  onAccept={() => handlePhilosopherReviewOutcome(true)}
+                  onReject={() => handlePhilosopherReviewOutcome(false)}
+                />
+              )}
+            </>
+          )}
+
+          {!isLoading && !philosopherAnalysis && (
+            <div style={{
+              padding: '40px',
+              textAlign: 'center',
+              backgroundColor: '#fff',
+              borderRadius: '8px',
+              border: '1px solid #ddd',
+              marginBottom: '16px'
+            }}>
+              <p style={{ color: '#666' }}>No analysis available. Please try again.</p>
+            </div>
+          )}
+        </div>
       )}
+
 
       {step === PipelineStep.REWRITE_RESULTS && (
         <RewriteResults
@@ -557,6 +1086,11 @@ export function PipelineShell({
           isLoading={isLoading}
           onNext={handleNextStep}
           onEditAndRetest={handleEditAndRetest}
+          onReanalyze={() => {
+            // Reanalyze the rewritten text with same student personas
+            reanalyzeWithSamePersonas(rewrittenText);
+          }}
+          hasUnsavedChanges={hasUnsavedChanges}
         />
       )}
 
@@ -568,6 +1102,9 @@ export function PipelineShell({
           tags={rewrittenTags || []}
           studentFeedback={studentFeedback}
           asteroids={asteroids}
+          sourceDocumentId={documentId}
+          assignmentId={assignmentId}
+          teacherId={user?.id}
           onPrevious={() => {
             // Go back to rewrite results
             // Could implement a previousStep() function in usePipeline
@@ -575,6 +1112,7 @@ export function PipelineShell({
           onComplete={() => {
             handleReset();
           }}
+          onCompleteSaveProblems={handleCompleteSaveProblems}
         />
       )}
     </div>
