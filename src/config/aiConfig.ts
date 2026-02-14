@@ -388,10 +388,34 @@ export async function generateAssignmentWithContext(
          (writer as any).generate?.(context.subject, {}, 10);
 }
 
+/**
+ * TEMPORARY: Test available models
+ * Run this to see which Gemini models your API key can access
+ */
+export async function testAvailableModels(): Promise<void> {
+  try {
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+    if (!apiKey) {
+      console.error('❌ No API key configured');
+      return;
+    }
+
+    const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1' });
+    const models = await (ai.models as any).list?.();
+    
+    console.log('📋 Available Models:', models);
+    console.log('Models array:', (models as any)?.models || models);
+  } catch (error) {
+    console.error('❌ Error listing models:', error);
+  }
+}
+
 // Log AI configuration status on module load
 if (typeof window !== 'undefined') {
   // Small delay to ensure console is ready
   setTimeout(() => {
     logAIConfigStatus();
+    // Expose testAvailableModels to window for easy console access
+    (window as any).testAvailableModels = testAvailableModels;
   }, 0);
 }
