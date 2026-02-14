@@ -412,10 +412,12 @@ export async function testAvailableModels(): Promise<void> {
 
 // Log AI configuration status on module load
 if (typeof window !== 'undefined') {
-  // Small delay to ensure console is ready
+  // Expose testAvailableModels immediately to window
+  (window as any).testAvailableModels = testAvailableModels;
+  
+  // Small delay to ensure console is ready for logging
   setTimeout(() => {
     logAIConfigStatus();
-    // Expose testAvailableModels to window for easy console access
-    (window as any).testAvailableModels = testAvailableModels;
+    console.log('✅ testAvailableModels available in console');
   }, 0);
 }
