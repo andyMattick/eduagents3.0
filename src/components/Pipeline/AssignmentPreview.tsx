@@ -25,6 +25,11 @@ export function AssignmentPreview() {
     hasGeneratedAssignment: !!generatedAssignment,
     assignmentTitle: generatedAssignment?.title,
     problemCount: generatedAssignment?.sections.length,
+    sections: generatedAssignment?.sections?.map(s => ({
+      sectionName: s.sectionName,
+      problemCount: s.problems?.length || 0,
+      problems: s.problems || [],
+    })),
   });
 
   // Show loading state while assignment is being generated/loaded
