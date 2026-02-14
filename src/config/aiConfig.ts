@@ -31,6 +31,23 @@ export function getAIConfig(): AIConfig {
 }
 
 /**
+ * Set AI mode - always real, no-op function for compatibility
+ */
+export function setAIMode(_mode?: 'real'): void {
+  // Real AI only - this is a no-op
+  console.log('✨ Real Gemini API enforced');
+}
+
+/**
+ * Set AI mode based on user role - always real
+ */
+export function setAIModeByRole(isAdmin: boolean): void {
+  getAIConfig(); // Will throw if no API key
+  const reason = isAdmin ? 'admin' : 'teacher';
+  console.log(`🔐 Gemini API enforced for ${reason} user`);
+}
+
+/**
  * Get current AI mode - always real
  */
 export function getCurrentAIMode(): 'real' {
