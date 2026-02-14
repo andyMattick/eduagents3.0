@@ -5,6 +5,24 @@
  * 1. Natural language summary (for teacher + AI context)
  * 2. Internal Space Camp payload (hidden from teacher)
  *
+ * ============================================================================
+ * SECTION 3: BLOOM DISTRIBUTION ENGINE
+ * ============================================================================
+ *
+ * Level-Based Default Targets:
+ * Remedial   → 25R / 30U / 30A / 10An / 5E / 0C
+ * Standard   → 10R / 20U / 35A / 25An / 5E / 5C
+ * Honors     → 5R / 15U / 30A / 30An / 10E / 10C
+ * AP         → 0-5R / 10U / 25A / 30An / 15E / 15C
+ *
+ * Rules:
+ * • Distribution must normalize to 100%
+ * • Question counts must match rounding logic (see distributeQuestionsByBloom)
+ * • If emphasis modifier applied → adjust then renormalize
+ * • Multi-part questions count as highest Bloom only
+ *
+ * ============================================================================
+ *
  * Pipeline Integrity:
  * - SpaceCampPayload structure unchanged
  * - Bloom distributions sum to ~1.0 (within 0.02 tolerance)
@@ -19,6 +37,7 @@ import {
   AssessmentEmphasis,
   DifficultyProfile,
   BloomDistribution,
+  QuestionDistribution,
   GradeBand,
   ClassLevel,
   Subject,
@@ -141,7 +160,7 @@ export function estimateBloomDistribution(
 /**
  * Validate that Bloom distribution sums to ~1.0 (within tolerance)
  */
-function validateBloomDistribution(
+export function validateBloomDistribution(
   dist: BloomDistribution,
   tolerance: number = 0.02
 ): { valid: boolean; sum: number; error?: string } {
@@ -160,6 +179,72 @@ function validateBloomDistribution(
     sum,
     error: valid ? undefined : `Bloom distribution sum is ${sum.toFixed(3)}, expected ~1.0 (±${tolerance})`,
   };
+}
+
+/**
+ * Distribute total question count across Bloom levels based on percentages
+ * 
+ * Algorithm (Largest Remainder Method - Huntington-Hill):
+ * 1. Calculate ideal question count per Bloom level (percentage × total)
+ * 2. Assign floor() to each level (minimum allocation)
+ * 3. Distribute remainders to levels with largest fractional parts
+ * 4. Verify sum equals total question count
+ *
+ * This ensures:
+ * - All percentages respected with minimal rounding error
+ * - Total questions always matches input count
+ * - Remainders allocated fairly to highest-precision levels
+ *
+ * Per Specification (Section 3):
+ * "Question counts must match rounding logic"
+ * "Multi-part questions count as highest Bloom only"
+ *
+ * @example
+ * distributeQuestionsByBloom(
+ *   { Remember: 0.10, Understand: 0.20, Apply: 0.35, Analyze: 0.25, Evaluate: 0.05, Create: 0.05 },
+ *   20
+ * )
+ * → { Remember: 2, Understand: 4, Apply: 7, Analyze: 5, Evaluate: 1, Create: 1 } (sum=20)
+ */
+function distributeQuestionsByBloom(
+  distribution: BloomDistribution,
+  totalQuestions: number
+): QuestionDistribution {
+  const levels: Array<keyof BloomDistribution> = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+
+  // Step 1: Calculate ideal counts and fractional parts
+  const allocations: Array<{ level: keyof BloomDistribution; floor: number; fractional: number }> = levels.map(
+    level => {
+      const ideal = distribution[level] * totalQuestions;
+      return {
+        level,
+        floor: Math.floor(ideal),
+        fractional: ideal - Math.floor(ideal),
+      };
+    }
+  );
+
+  // Step 2: Calculate remainders to distribute
+  const totalFloor = allocations.reduce((sum, a) => sum + a.floor, 0);
+  const remainders = totalQuestions - totalFloor;
+
+  // Step 3: Sort by fractional part (descending) and allocate remainders
+  allocations.sort((a, b) => b.fractional - a.fractional);
+
+  for (let i = 0; i < remainders; i++) {
+    allocations[i].floor += 1;
+  }
+
+  // Step 4: Build result (re-sort to original order)
+  const levelOrder = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'];
+  allocations.sort((a, b) => levelOrder.indexOf(a.level) - levelOrder.indexOf(b.level));
+
+  const result: Partial<QuestionDistribution> = {};
+  allocations.forEach(a => {
+    (result as Record<string, number>)[a.level] = a.floor;
+  });
+
+  return result as QuestionDistribution;
 }
 
 /**
@@ -201,6 +286,21 @@ function estimateQuestionCount(
     questionCount: Math.max(1, questionCount), // At least 1 question
     estimatedTimePerQuestion: 1 / questionsPerMinute,
   };
+}
+
+/**
+ * Export question distribution utility for external use (Phase 3+)
+ * Used when generating detailed question breakdown per Bloom level
+ * 
+ * @param distribution Bloom distribution (percentages summing to ~1.0)
+ * @param totalQuestions Total question count (will be distributed across Bloom levels)
+ * @returns Exact question count per Bloom level, summing to totalQuestions
+ */
+export function distributeQuestionsByBloomExport(
+  distribution: BloomDistribution,
+  totalQuestions: number
+): QuestionDistribution {
+  return distributeQuestionsByBloom(distribution, totalQuestions);
 }
 
 /**
@@ -281,9 +381,9 @@ export function buildNaturalLanguageSummary(intent: AssessmentIntent): string {
   }[intent.studentLevel];
 
   const typeName = {
-    Quiz: 'quiz',
-    Test: 'test',
-    Practice: 'practice set',
+    Quiz: 'Quiz',
+    Test: 'Test',
+    Practice: 'Practice Set',
   }[intent.assessmentType];
 
   const source = intent.sourceFile ? intent.sourceFile.name : `topic: "${intent.sourceTopic}"`;
@@ -344,7 +444,7 @@ export async function summarizeAssessmentIntent(
   }
 
   if ((!intent.sourceFile && !intent.sourceTopic) || (intent.sourceFile && intent.sourceTopic)) {
-    throw new Error('Invalid AssessmentIntent: must provide exactly one of sourceFile or sourceTopic');
+    throw new Error('Exactly one of sourceFile or sourceTopic must be provided');
   }
 
   // Build components
@@ -477,17 +577,20 @@ export const mapStudentLevelToClassLevel = (level: StudentLevel): ClassLevel => 
  * Get all metadata for a given assessment intent (for debugging/logging)
  */
 export function getAssessmentMetadata(intent: AssessmentIntent) {
+  const { questionCount } = estimateQuestionCount(intent.timeMinutes, intent.assessmentType);
+
   return {
     gradeBand: STUDENT_LEVEL_TO_GRADE_BAND[intent.studentLevel],
     classLevel: STUDENT_LEVEL_TO_CLASS_LEVEL[intent.studentLevel],
     subject: inferSubject(intent),
-    bloomDistribution: estimateBloomDistribution(
+    estimatedBloomDistribution: estimateBloomDistribution(
       intent.studentLevel,
       intent.assessmentType,
       intent.emphasis
     ),
-    complexityRange: COMPLEXITY_RANGES[intent.studentLevel],
+    estimatedComplexityRange: COMPLEXITY_RANGES[intent.studentLevel],
+    estimatedQuestionCount: questionCount,
+    estimatedTotalTimeMinutes: intent.timeMinutes,
     fatigueMultiplier: FATIGUE_MULTIPLIERS[intent.studentLevel],
-    estimatedQuestions: estimateQuestionCount(intent.timeMinutes, intent.assessmentType),
   };
 }

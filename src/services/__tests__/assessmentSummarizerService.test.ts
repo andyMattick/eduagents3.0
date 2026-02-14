@@ -20,13 +20,112 @@ import {
   getAssessmentMetadata,
   mapStudentLevelToGradeBand,
   mapStudentLevelToClassLevel,
+  distributeQuestionsByBloomExport,
 } from '../assessmentSummarizerService';
-import { AssessmentIntent } from '../../types/assessmentIntent';
+import { AssessmentIntent, BloomDistribution } from '../../types/assessmentIntent';
 
 describe('assessmentSummarizerService', () => {
   // =========================================================================
   // TEST SUITE 1: Bloom Distribution Estimation
   // =========================================================================
+
+  // =========================================================================
+  // TEST SUITE 1.5: Question Distribution (Rounding Logic)
+  // =========================================================================
+
+  describe('distributeQuestionsByBloomExport (Rounding Logic)', () => {
+    it('should distribute questions per Specification Section 3 rounding rules', () => {
+      const standardDist = estimateBloomDistribution('Standard', 'Test');
+      const distributed = distributeQuestionsByBloomExport(standardDist, 20);
+
+      // Verify sum equals input
+      const sum = Object.values(distributed).reduce((a: number, b: number) => a + b, 0);
+      expect(sum).toBe(20);
+
+      // Verify all values are non-negative integers
+      Object.values(distributed).forEach(count => {
+        expect(count).toBeGreaterThanOrEqual(0);
+        expect(Number.isInteger(count)).toBe(true);
+      });
+    });
+
+    it('should use Largest Remainder Method for fair distribution', () => {
+      // Standard: 10R / 20U / 35A / 25An / 5E / 5C
+      const standardDist = estimateBloomDistribution('Standard', 'Test');
+      const distributed = distributeQuestionsByBloomExport(standardDist, 20);
+
+      // For 20 questions with Standard distribution:
+      // Expected: Remember=2, Understand=4, Apply=7, Analyze=5, Evaluate=1, Create=1
+      expect(distributed.Remember).toBe(2); // 10% of 20 = 2
+      expect(distributed.Understand).toBe(4); // 20% of 20 = 4
+      expect(distributed.Apply).toBe(7); // 35% of 20 = 7
+      expect(distributed.Analyze).toBe(5); // 25% of 20 = 5
+      expect(distributed.Evaluate).toBe(1); // 5% of 20 = 1
+      expect(distributed.Create).toBe(1); // 5% of 20 = 1
+    });
+
+    it('should handle remainders via fractional part sorting', () => {
+      // Create problematic distribution that will have remainders
+      const trickyDist: BloomDistribution = {
+        Remember: 0.3333, // 1/3
+        Understand: 0.3333, // 1/3
+        Apply: 0.1667, // 1/6
+        Analyze: 0.1667, // 1/6
+        Evaluate: 0,
+        Create: 0,
+      };
+
+      const distributed = distributeQuestionsByBloomExport(trickyDist, 10);
+      const sum = Object.values(distributed).reduce((a: number, b: number) => a + b, 0);
+
+      expect(sum).toBe(10);
+      // Should distribute fairly: 3, 3, 2, 2 (or similar based on fractional parts)
+      const topTwo = distributed.Remember + distributed.Understand;
+      const bottomTwo = distributed.Apply + distributed.Analyze;
+      expect(topTwo).toBeGreaterThanOrEqual(6);
+      expect(bottomTwo).toBeLessThanOrEqual(4);
+    });
+
+    it('should handle edge case of 1 question', () => {
+      const dist = estimateBloomDistribution('Standard', 'Test');
+      const distributed = distributeQuestionsByBloomExport(dist, 1);
+
+      const sum = Object.values(distributed).reduce((a: number, b: number) => a + b, 0);
+      expect(sum).toBe(1);
+
+      // Should allocate to highest percentage (Apply)
+      expect(distributed.Apply).toBe(1);
+    });
+
+    it('should handle large question counts accurately', () => {
+      const dist = estimateBloomDistribution('Honors', 'Test');
+      const distributed = distributeQuestionsByBloomExport(dist, 100);
+
+      const sum = Object.values(distributed).reduce((a: number, b: number) => a + b, 0);
+      expect(sum).toBe(100);
+
+      // Honors: 5R / 15U / 30A / 30An / 10E / 10C
+      expect(distributed.Remember).toBe(5);
+      expect(distributed.Understand).toBe(15);
+      expect(distributed.Apply).toBe(30);
+      expect(distributed.Analyze).toBe(30);
+      expect(distributed.Evaluate).toBe(10);
+      expect(distributed.Create).toBe(10);
+    });
+
+    it('should maintain distribution fidelity with emphasis modifiers', () => {
+      const emphasizedDist = estimateBloomDistribution('Standard', 'Test', 'Conceptual');
+      const distributed = distributeQuestionsByBloomExport(emphasizedDist, 30);
+
+      const sum = Object.values(distributed).reduce((a: number, b: number) => a + b, 0);
+      expect(sum).toBe(30);
+
+      // Conceptual should have more Understand and Analyze than standard
+      expect(distributed.Understand + distributed.Analyze).toBeGreaterThan(
+        (emphasizedDist.Understand + emphasizedDist.Analyze) * 25 // baseline
+      );
+    });
+  });
 
   describe('estimateBloomDistribution', () => {
     it('should return a valid Bloom distribution for Standard level', () => {

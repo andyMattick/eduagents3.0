@@ -53,8 +53,23 @@ export type BloomLevel = 'Remember' | 'Understand' | 'Apply' | 'Analyze' | 'Eval
 
 /**
  * Bloom distribution (percentages as decimals)
+ * Sum should equal 1.0 (within ±0.02 tolerance)
  */
 export interface BloomDistribution {
+  Remember: number;
+  Understand: number;
+  Apply: number;
+  Analyze: number;
+  Evaluate: number;
+  Create: number;
+}
+
+/**
+ * Question distribution by Bloom level
+ * Represents actual question counts per level (not percentages)
+ * Used for detailed assessment breakdown
+ */
+export interface QuestionDistribution {
   Remember: number;
   Understand: number;
   Apply: number;
