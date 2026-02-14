@@ -31,29 +31,6 @@ export function getAIConfig(): AIConfig {
 }
 
 /**
- * Global AI mode - always real
- */
-let globalAIMode = 'real' as const;
-
-/**
- * Set AI mode - always real, no-op function for compatibility
- */
-export function setAIMode(mode: 'real'): void {
-  // Real AI only - this is a no-op
-  console.log('✨ Real Gemini API enforced');
-}
-
-/**
- * Set AI mode based on user role - always real
- */
-export function setAIModeByRole(isAdmin: boolean): void {
-  const config = getAIConfig(); // Will throw if no API key
-  globalAIMode = 'real' as const;
-  const reason = isAdmin ? 'admin' : 'teacher';
-  console.log(`🔐 Gemini API enforced for ${reason} user`);
-}
-
-/**
  * Get current AI mode - always real
  */
 export function getCurrentAIMode(): 'real' {
@@ -64,7 +41,7 @@ export function getCurrentAIMode(): 'real' {
  * Log AI configuration status to console
  */
 export function logAIConfigStatus(): void {
-  const config = getAIConfig();
+  getAIConfig();
   console.log('%c✅ AI MODE: REAL (Google Generative AI / Gemini)', 'color: green; font-weight: bold; font-size: 14px;');
   console.log('%c→ Using real Google Generative AI with Gemini models', 'color: green');
 }
@@ -82,7 +59,7 @@ export function useRealAI(): boolean {
 }
 
 export function getAIService(serviceType: 'analyzer' | 'writer') {
-  const config = getAIConfig(); // Will throw if no API key
+  getAIConfig(); // Will throw if no API key
   return getRealAIService(serviceType);
 }
 
@@ -139,7 +116,7 @@ export async function callAI(prompt: string, options?: { modelName?: string; max
       apiVersion: "v1",
     });
     
-    const response = await ai.models.generateContent({
+    const response = await (ai.models as any).generateContent({
       model: modelName,
       contents: prompt,
       generationConfig: {
