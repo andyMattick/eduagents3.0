@@ -90,6 +90,18 @@ export function AssignmentPreview() {
   const bloomEntries = Object.entries(generatedAssignment.bloomDistribution);
   const maxBloomValue = Math.max(...bloomEntries.map(([_, count]) => count));
 
+  // Debug: Check what's actually rendering
+  useEffect(() => {
+    const previewDiv = document.querySelector('.assignment-preview');
+    const problemItems = document.querySelectorAll('.problem-item');
+    console.log('🔍 DOM Check:', {
+      previewDivExists: !!previewDiv,
+      previewDivDisplay: window.getComputedStyle(previewDiv || document.body).display,
+      problemItemsCount: problemItems.length,
+      previewContent: document.querySelector('.preview-content'),
+    });
+  }, [generatedAssignment]);
+
   return (
     <div className={`assignment-preview ${isVisible ? 'visible' : ''}`} style={{ animation: isVisible ? 'fadeIn 0.4s ease-in' : 'none' }}>
       <div className="preview-container">
