@@ -1,0 +1,273 @@
+{
+  "metadata": {
+    "title": "Space Camp Configuration Payload Example",
+    "version": "1.0",
+    "date": "2026-02-14",
+    "purpose": "Complete example of what gets sent to Space Camp for student stats generation"
+  },
+  
+  "complete_space_camp_request": {
+    "documentId": "doc_math_6b_midterm_v2",
+    
+    "problems": [
+      {
+        "ProblemId": "prob_001",
+        "Type": "multiple-choice",
+        "BloomLevel": "Remember",
+        "Content": "What is 15 × 3?",
+        "CorrectAnswer": "45",
+        "LinguisticComplexity": 0.2,
+        "EstimatedTimeMinutes": 1.5,
+        "Difficulty": 1,
+        "SequenceIndex": 0
+      },
+      {
+        "ProblemId": "prob_002",
+        "Type": "true-false",
+        "BloomLevel": "Understand",
+        "Content": "True or False: The sum of 25 + 30 equals 55.",
+        "CorrectAnswer": "True",
+        "LinguisticComplexity": 0.25,
+        "EstimatedTimeMinutes": 1.2,
+        "Difficulty": 2,
+        "SequenceIndex": 1
+      },
+      {
+        "ProblemId": "prob_003",
+        "Type": "short-answer",
+        "BloomLevel": "Apply",
+        "Content": "Sarah has 24 apples. She gives away 1/3 of them. How many does she have left? Show your work.",
+        "CorrectAnswer": "16 apples",
+        "LinguisticComplexity": 0.45,
+        "EstimatedTimeMinutes": 3.5,
+        "Difficulty": 3,
+        "SequenceIndex": 2
+      },
+      {
+        "ProblemId": "prob_004",
+        "Type": "multiple-choice",
+        "BloomLevel": "Analyze",
+        "Content": "Which strategy would be most efficient for solving complex multi-step equations? Why?",
+        "CorrectAnswer": "Isolate variables systematically from innermost to outermost operations",
+        "LinguisticComplexity": 0.65,
+        "EstimatedTimeMinutes": 4.0,
+        "Difficulty": 4,
+        "SequenceIndex": 3
+      },
+      {
+        "ProblemId": "prob_005",
+        "Type": "essay",
+        "BloomLevel": "Evaluate",
+        "Content": "Critique this student's solution to a quadratic equation. What mistakes were made and why might someone make them?",
+        "CorrectAnswer": "Detailed analysis of errors in approach and computation",
+        "LinguisticComplexity": 0.8,
+        "EstimatedTimeMinutes": 6.0,
+        "Difficulty": 5,
+        "SequenceIndex": 4
+      }
+    ],
+
+    "document_metadata": {
+      "gradeBand": "6-8",
+      "subject": "math",
+      "classLevel": "standard",
+      "timeTargetMinutes": 45
+    },
+
+    "scoring_rules": {
+      "gradeBandBaselines": {
+        "3-5": {
+          "readingLevel": [0.30, 0.60],
+          "mathLevel": [0.35, 0.65],
+          "stamina": [0.45, 0.75],
+          "reasoning": [0.35, 0.65],
+          "confusionTolerance": [0.50, 0.80]
+        },
+        "6-8": {
+          "readingLevel": [0.40, 0.70],
+          "mathLevel": [0.45, 0.75],
+          "stamina": [0.45, 0.75],
+          "reasoning": [0.45, 0.75],
+          "confusionTolerance": [0.45, 0.75]
+        },
+        "9-12": {
+          "readingLevel": [0.55, 0.85],
+          "mathLevel": [0.55, 0.85],
+          "stamina": [0.50, 0.80],
+          "reasoning": [0.55, 0.85],
+          "confusionTolerance": [0.45, 0.75]
+        }
+      },
+      
+      "classLevelMultipliers": {
+        "standard": 1.0,
+        "honors": 1.10,
+        "AP": 1.20
+      },
+      
+      "subjectModifiers": {
+        "math": {
+          "mathLevel": 1.1,
+          "readingLevel": 1.0,
+          "reasoning": 1.0
+        },
+        "english": {
+          "readingLevel": 1.1,
+          "reasoning": 1.0,
+          "mathLevel": 1.0
+        },
+        "science": {
+          "mathLevel": 1.0,
+          "reasoning": 1.1,
+          "readingLevel": 1.0
+        },
+        "history": {
+          "readingLevel": 1.1,
+          "reasoning": 1.0,
+          "mathLevel": 1.0
+        },
+        "general": {
+          "mathLevel": 1.0,
+          "readingLevel": 1.0,
+          "reasoning": 1.0
+        }
+      },
+      
+      "overlayMultipliers": {
+        "adhd": {
+          "stamina": 0.85,
+          "reasoning": 0.90,
+          "confusionTolerance": 0.75
+        },
+        "dyslexia": {
+          "readingLevel": 0.65,
+          "confidence": 0.80
+        },
+        "fatigue_sensitive": {
+          "stamina": 0.75,
+          "reasoning": 0.85
+        },
+        "esl": {
+          "readingLevel": 0.75,
+          "confidence": 0.85
+        },
+        "anxiety_prone": {
+          "confidence": 0.80,
+          "confusionTolerance": 0.70
+        }
+      }
+    }
+  },
+
+  "expected_space_camp_response": {
+    "documentId": "doc_math_6b_midterm_v2",
+    "problems": "[5 problems as sent]",
+
+    "students": [
+      {
+        "studentId": "astronaut_001",
+        "personaName": "Alex (High Math Ability)",
+        "baseStats": {
+          "readingLevel": 0.58,
+          "reasoningLevel": 0.64,
+          "mathFluency": 0.70,
+          "attentionSpan": 0.62,
+          "confidence": 0.68
+        },
+        "overlays": [],
+        "gradeBand": "6-8"
+      },
+      {
+        "studentId": "astronaut_002",
+        "personaName": "Jordan (ADHD, Struggling Reader)",
+        "baseStats": {
+          "readingLevel": 0.42,
+          "reasoningLevel": 0.50,
+          "mathFluency": 0.48,
+          "attentionSpan": 0.51,
+          "confidence": 0.45
+        },
+        "overlays": ["adhd"],
+        "gradeBand": "6-8"
+      },
+      {
+        "studentId": "astronaut_003",
+        "personaName": "Morgan (Dyslexic, Math-Capable)",
+        "baseStats": {
+          "readingLevel": 0.32,
+          "reasoningLevel": 0.62,
+          "mathFluency": 0.68,
+          "attentionSpan": 0.58,
+          "confidence": 0.52
+        },
+        "overlays": ["dyslexia"],
+        "gradeBand": "6-8"
+      }
+    ],
+
+    "simulations": [
+      {
+        "studentId": "astronaut_001",
+        "personaName": "Alex (High Math Ability)",
+        "overlays": [],
+        "successRate": 0.92,
+        "averageTimePerProblem": 8.2,
+        "cumulativeFatigue": 0.35,
+        "problemResults": [
+          {
+            "problemId": "prob_001",
+            "studentId": "astronaut_001",
+            "success": true,
+            "timeSeconds": 65,
+            "confusionIndex": 0.0,
+            "engagementScore": 0.95,
+            "cumulativeFatigue": 0.05,
+            "fatigueMultiplier": 0.95
+          }
+        ],
+        "struggledProblemIds": [],
+        "averageEngagement": 0.88,
+        "flaggedAsAtRisk": false
+      },
+      {
+        "studentId": "astronaut_002",
+        "personaName": "Jordan (ADHD, Struggling Reader)",
+        "overlays": ["adhd"],
+        "successRate": 0.62,
+        "averageTimePerProblem": 12.5,
+        "cumulativeFatigue": 0.72,
+        "problemResults": [
+          {
+            "problemId": "prob_001",
+            "studentId": "astronaut_002",
+            "success": true,
+            "timeSeconds": 78,
+            "confusionIndex": 0.1,
+            "engagementScore": 0.75,
+            "cumulativeFatigue": 0.08,
+            "fatigueMultiplier": 0.92
+          }
+        ],
+        "struggledProblemIds": ["prob_004", "prob_005"],
+        "averageEngagement": 0.65,
+        "flaggedAsAtRisk": true
+      }
+    ],
+
+    "metadata": {
+      "predictedCompletionRate": 0.87,
+      "predictedAverageTime": 38.5,
+      "estimatedTotalTime": 49,
+      "riskLevel": "medium",
+      "averageSuccessRate": 0.76
+    }
+  },
+
+  "key_takeaways": {
+    "1_problems": "Must have BloomLevel, LinguisticComplexity, EstimatedTimeMinutes",
+    "2_metadata": "gradeBand determines ability ranges; subject boosts subject-specific skills",
+    "3_scoring_rules": "AstronautRubric is THE critical input - defines how stats are calculated",
+    "4_process": "Baseline → ClassLevel × SubjectModifier × OverlayMultiplier = Final Stats",
+    "5_output": "Per-student simulation results with fatigue, confusion, engagement tracking"
+  }
+}
