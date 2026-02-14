@@ -403,8 +403,8 @@ export async function testAvailableModels(): Promise<void> {
     const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1' });
     const models = await (ai.models as any).list?.();
     
-    console.log('📋 Available Models:', models);
-    console.log('Models array:', (models as any)?.models || models);
+    console.log('📋 Available Models:');
+    console.log(models.page.map((m: any) => m.name));
   } catch (error) {
     console.error('❌ Error listing models:', error);
   }
