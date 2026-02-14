@@ -133,7 +133,13 @@ export function AssignmentPreview() {
 
         {/* Sections and Problems */}
         <div className="preview-content">
-          {generatedAssignment.sections.map((section, sectionIdx) => (
+          {generatedAssignment.sections.map((section, sectionIdx) => {
+            console.log(`📍 Section ${sectionIdx}:`, {
+              sectionName: section.sectionName,
+              problemCount: section.problems?.length || 0,
+              problems: section.problems || [],
+            });
+            return (
             <div className="section-block" key={`section-${sectionIdx}`}>
               <div className="section-header">
                 <h2>{section.sectionName}</h2>
@@ -165,7 +171,8 @@ export function AssignmentPreview() {
                 ))}
               </ol>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Bloom Distribution Overview */}
