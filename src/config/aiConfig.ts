@@ -114,7 +114,7 @@ export interface GenerateProblemsResponse {
  */
 export async function callAI(prompt: string, options?: { modelName?: string; maxTokens?: number }): Promise<any> {
   const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
-  const modelName = options?.modelName || 'gemini-1.5-pro';
+  const modelName = options?.modelName || 'gemini-2.5-flash';
   const maxTokens = options?.maxTokens || 2000;
 
   if (!apiKey) {
@@ -215,7 +215,7 @@ Respond in JSON format only:
   "recommendations": ["rec1", "rec2", "rec3"]
 }`;
 
-          const data = await callAI(prompt, { modelName: 'gemini-1.5-pro' });
+          const data = await callAI(prompt, { modelName: 'gemini-2.5-flash' });
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
@@ -319,7 +319,7 @@ Create problems DIRECTLY from this source material. Questions should reference c
   "summary": "Generated X problems with Y% Apply level, Z% Understand level..."
 }`;
 
-          const data = await callAI(prompt, { modelName: 'gemini-1.5-pro' });
+          const data = await callAI(prompt, { modelName: 'gemini-2.5-flash' });
           const content = data.candidates[0]?.content?.parts[0]?.text;
           
           if (!content || content.trim().length === 0) {
