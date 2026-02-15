@@ -22,7 +22,7 @@ interface AssignmentContext {
 }
 
 function TeacherAppContent() {
-  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
   const [assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
   const { reset } = useUserFlow();
   const { logout, user } = useAuth();

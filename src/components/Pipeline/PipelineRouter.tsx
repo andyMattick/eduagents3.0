@@ -65,7 +65,20 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
   const [isLoadingAssignment, setIsLoadingAssignment] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const currentRoute = getCurrentRoute();
+  let currentRoute = getCurrentRoute();
+
+  if (!generatedAssignment) {
+    currentRoute = '/minimal-form';
+}
+
+if (currentRoute === '/minimal-form') {
+  return <MinimalAssessmentFormWrapper />;
+}
+
+// Assignment preview
+if (currentRoute === '/assignment-preview') {
+  return <AssignmentPreview />;
+}
 
   // Debug: Log route changes
   useEffect(() => {

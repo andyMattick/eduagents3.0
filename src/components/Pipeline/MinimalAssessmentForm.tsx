@@ -1,315 +1,283 @@
-/**
- * MinimalAssessmentForm.tsx
- * 
- * Clean-break minimal assessment form
- * 4 core decisions + optional advanced settings
- */
+import { useState, useEffect } from "react";
 
-import { useState } from 'react';
-import './MinimalAssessmentForm.css';
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from "@/components/ui/collapsible";
+import { ChevronUp, ChevronDown } from "lucide-react";
 
-export type StudentLevel = 'Remedial' | 'Standard' | 'Honors' | 'AP';
-export type AssessmentType = 'Quiz' | 'Test' | 'Practice';
-export type Emphasis = 'Conceptual' | 'Procedural' | 'ExamStyle';
-export type DifficultyProfile = 'Scaffolded' | 'Balanced' | 'Challenging';
-
-export interface AssessmentIntent {
+export type AssessmentIntent = {
   sourceFile?: File;
   sourceTopic?: string;
-  studentLevel: StudentLevel;
-  assessmentType: AssessmentType;
+  subject: string;
+  courseName: string;
+  gradeBand: string;
+  studentLevel: string;
+  assessmentType: string;
   timeMinutes: number;
-  focusAreas?: string[];
-  emphasis?: Emphasis;
-  difficultyProfile?: DifficultyProfile;
-  classroomContext?: string;
-}
+  focusAreas: string[];
+  emphasis: string;
+  difficultyProfile: string;
+  classroomContext: string;
+};
 
-interface MinimalAssessmentFormProps {
+type MinimalAssessmentFormProps = {
   onSubmit: (intent: AssessmentIntent) => void;
-  isLoading?: boolean;
-}
+  isLoading: boolean;
+};
 
-export function MinimalAssessmentForm({ onSubmit, isLoading = false }: MinimalAssessmentFormProps) {
-  // Core state
-  const [sourceMode, setSourceMode] = useState<'upload' | 'topic' | null>(null);
-  const [sourceFile, setSourceFile] = useState<File | null>(null);
-  const [sourceTopic, setSourceTopic] = useState('');
-  const [studentLevel, setStudentLevel] = useState<StudentLevel>('Standard');
-  const [assessmentType, setAssessmentType] = useState<AssessmentType>('Quiz');
+export function MinimalAssessmentForm({
+  onSubmit,
+  isLoading,
+}: MinimalAssessmentFormProps) {
+  // Unified source/test input model
+  const [inputMode, setInputMode] = useState<
+    "source-docs" | "example-test-file" | "example-test-text" | null
+  >(null);
+
+  const [sourceDocs, setSourceDocs] = useState<File[]>([]);
+  const [exampleTestFile, setExampleTestFile] = useState<File | null>(null);
+  const [exampleTestText, setExampleTestText] = useState("");
+
+  // Standard metadata
+  const [subject, setSubject] = useState("math");
+  const [courseName, setCourseName] = useState("");
+  const [gradeBand, setGradeBand] = useState("9-12");
+  const [studentLevel, setStudentLevel] = useState("Standard");
+  const [assessmentType, setAssessmentType] = useState("Quiz");
   const [timeMinutes, setTimeMinutes] = useState(30);
 
-  // Advanced state
+  // Advanced options
+  const [focusAreas, setFocusAreas] = useState("");
+  const [emphasis, setEmphasis] = useState("Conceptual");
+  const [difficultyProfile, setDifficultyProfile] = useState("Balanced");
+  const [classroomContext, setClassroomContext] = useState("");
+  const [notesForWriter, setNotesForWriter] = useState("");
+
+  // UI controls
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [focusAreas, setFocusAreas] = useState('');
-  const [emphasis, setEmphasis] = useState<Emphasis>('Conceptual');
-  const [difficultyProfile, setDifficultyProfile] = useState<DifficultyProfile>('Balanced');
-  const [classroomContext, setClassroomContext] = useState('');
 
-  // Validation
-  const [errors, setErrors] = useState<string[]>([]);
+  // Preview text
+  const [previewText, setPreviewText] = useState("");
 
+  // Generate preview text dynamically
+  useEffect(() => {
+    let summary = "We will create a new assessment";
+
+    if (sourceDocs.length > 0) {
+      summary +=
+        "\n• Extract content from your source documents\n• Align questions ONLY to covered material";
+    }
+
+    if (exampleTestFile || exampleTestText.length > 0) {
+      summary +=
+        "\n• Analyze your example test’s structure, pacing, and difficulty\n• Match or improve the structure in the new assessment";
+    }
+
+    if (sourceDocs.length > 0 && (exampleTestFile || exampleTestText)) {
+      summary +=
+        "\n• Compare the example test to the new one and explain differences";
+    }
+
+    summary +=
+      "\n• Simulate student performance using class defaults\n• Improve the assessment based on predicted misconceptions\n• Provide a rationale for every design choice";
+
+    setPreviewText(summary);
+  }, [
+    sourceDocs,
+    exampleTestFile,
+    exampleTestText,
+    subject,
+    gradeBand,
+    assessmentType,
+    timeMinutes,
+  ]);
+
+  // Submit handler
   const handleSubmit = () => {
-    const newErrors: string[] = [];
-
-    // Validate source
-    if (!sourceMode) {
-      newErrors.push('Please select a source type');
-    } else if (sourceMode === 'upload' && !sourceFile) {
-      newErrors.push('Please upload a document');
-    } else if (sourceMode === 'topic' && !sourceTopic.trim()) {
-      newErrors.push('Please enter a topic');
-    }
-
-    // Validate required fields
-    if (!studentLevel) newErrors.push('Please select a student level');
-    if (!assessmentType) newErrors.push('Please select an assessment type');
-    if (!timeMinutes || timeMinutes < 5 || timeMinutes > 480) {
-      newErrors.push('Time must be between 5 and 480 minutes');
-    }
-
-    if (newErrors.length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
-    // Build intent
     const intent: AssessmentIntent = {
-      sourceFile: sourceMode === 'upload' ? sourceFile || undefined : undefined,
-      sourceTopic: sourceMode === 'topic' ? sourceTopic : undefined,
+      sourceFile: sourceDocs[0] || exampleTestFile || undefined,
+      sourceTopic: exampleTestText || undefined,
+      subject,
+      courseName,
+      gradeBand,
       studentLevel,
       assessmentType,
       timeMinutes,
-      focusAreas: focusAreas.trim() ? focusAreas.split('\n').filter(s => s.trim()) : undefined,
-      emphasis: showAdvanced ? emphasis : undefined,
-      difficultyProfile: showAdvanced ? difficultyProfile : undefined,
-      classroomContext: showAdvanced && classroomContext.trim() ? classroomContext : undefined,
+      focusAreas: focusAreas
+        .split("\n")
+        .map((f) => f.trim())
+        .filter(Boolean),
+      emphasis,
+      difficultyProfile,
+      classroomContext,
     };
 
-    console.log('📋 Form submitted:', intent);
     onSubmit(intent);
   };
 
-  if (isLoading) {
-    return (
-      <div className="minimal-form-container loading-state">
-        <div className="loading-content">
-          <div className="loading-icon">🧠</div>
-          <h2>Generating Assessment</h2>
-          <ul className="loading-steps">
-            <li>Designing structure</li>
-            <li>Simulating student performance</li>
-            <li>Refining difficulty</li>
-            <li>Finalizing document</li>
-          </ul>
-          <div className="loading-dots">
-            <div className="dot"></div>
-            <div className="dot"></div>
-            <div className="dot"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="minimal-form-container">
-      <div className="form-header">
-        <h1>✨ Create Assessment</h1>
-        <p>Tell us your needs. We'll handle the rest.</p>
-      </div>
+    <div className="space-y-10">
 
-      <div className="form-body">
-        {/* 1. Source */}
-        <div className="form-section">
-          <div className="section-label">
-            <span className="section-number">1️⃣</span>
-            <span className="section-title">Source</span>
-          </div>
-          <div className="source-buttons">
-            <button
-              className={`source-btn ${sourceMode === 'upload' ? 'active' : ''}`}
-              onClick={() => {
-                setSourceMode('upload');
-                setSourceTopic('');
-              }}
-            >
-              📄 Upload Document
-            </button>
-            <button
-              className={`source-btn ${sourceMode === 'topic' ? 'active' : ''}`}
-              onClick={() => {
-                setSourceMode('topic');
-                setSourceFile(null);
-              }}
-            >
-              ✏️ Enter Topic
-            </button>
-          </div>
+      {/* 1️⃣ Unified Source/Test Input Section */}
+      <Card className="p-6 space-y-6">
+        <h2 className="text-xl font-semibold">What are you starting with?</h2>
 
-          {sourceMode === 'upload' && (
-            <div className="source-upload">
-              <input
-                type="file"
-                id="file-input"
-                accept=".pdf,.docx,.txt"
-                onChange={(e) => setSourceFile(e.target.files?.[0] || null)}
-                className="file-input"
-              />
-              <label htmlFor="file-input" className="file-label">
-                <div className="upload-icon">📤</div>
-                <p>Drag & drop or click to upload</p>
-                {sourceFile && <p className="file-name">✓ {sourceFile.name}</p>}
-              </label>
-            </div>
-          )}
+        <Tabs value={inputMode ?? ""} onValueChange={setInputMode}>
+          <TabsList className="grid grid-cols-3 w-full">
+            <TabsTrigger value="source-docs">Source Docs</TabsTrigger>
+            <TabsTrigger value="example-test-file">Example Test (File)</TabsTrigger>
+            <TabsTrigger value="example-test-text">Example Test (Paste)</TabsTrigger>
+          </TabsList>
 
-          {sourceMode === 'topic' && (
-            <input
-              type="text"
-              placeholder="e.g., 'Chapter 7: Sampling Distributions'"
-              value={sourceTopic}
-              onChange={(e) => setSourceTopic(e.target.value)}
-              className="topic-input"
+          {/* Source Docs */}
+          <TabsContent value="source-docs" className="mt-4">
+            <Input
+              type="file"
+              multiple
+              onChange={(e) => setSourceDocs(Array.from(e.target.files ?? []))}
             />
-          )}
-        </div>
+            <p className="text-sm text-gray-500 mt-2">
+              Upload textbook chapters, readings, slides, worksheets, etc.
+            </p>
+          </TabsContent>
 
-        {/* 2. Student Level */}
-        <div className="form-section">
-          <div className="section-label">
-            <span className="section-number">2️⃣</span>
-            <span className="section-title">Student Level</span>
-          </div>
-          <select
-            value={studentLevel}
-            onChange={(e) => setStudentLevel(e.target.value as StudentLevel)}
-            className="form-select"
-          >
-            <option value="Remedial">Remedial</option>
-            <option value="Standard">Standard</option>
-            <option value="Honors">Honors</option>
-            <option value="AP">AP / College</option>
-          </select>
-        </div>
+          {/* Example Test (File) */}
+          <TabsContent value="example-test-file" className="mt-4">
+            <Input
+              type="file"
+              onChange={(e) => setExampleTestFile(e.target.files?.[0] ?? null)}
+            />
+            <p className="text-sm text-gray-500 mt-2">
+              We’ll analyze structure, difficulty, pacing, and question types.
+            </p>
+          </TabsContent>
 
-        {/* 3. Assessment Type */}
-        <div className="form-section">
-          <div className="section-label">
-            <span className="section-number">3️⃣</span>
-            <span className="section-title">Assessment Type</span>
-          </div>
-          <select
-            value={assessmentType}
-            onChange={(e) => setAssessmentType(e.target.value as AssessmentType)}
-            className="form-select"
-          >
-            <option value="Quiz">Quiz</option>
-            <option value="Test">Test</option>
-            <option value="Practice">Practice</option>
-          </select>
-        </div>
+          {/* Example Test (Paste) */}
+          <TabsContent value="example-test-text" className="mt-4">
+            <Textarea
+              placeholder="Paste an existing test here..."
+              value={exampleTestText}
+              onChange={(e) => setExampleTestText(e.target.value)}
+              className="min-h-[160px]"
+            />
+            <p className="text-sm text-gray-500 mt-2">
+              If you don’t have a file, paste the test text here.
+            </p>
+          </TabsContent>
+        </Tabs>
+      </Card>
 
-        {/* 4. Time */}
-        <div className="form-section">
-          <div className="section-label">
-            <span className="section-number">4️⃣</span>
-            <span className="section-title">Estimated Time</span>
+      {/* 2️⃣ Assessment Details */}
+      <Card className="p-6 space-y-6">
+        <h2 className="text-xl font-semibold">Assessment Details</h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+          <div className="space-y-2">
+            <Label>Subject</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
           </div>
-          <div className="time-group">
-            <input
+
+          <div className="space-y-2">
+            <Label>Course Name</Label>
+            <Input value={courseName} onChange={(e) => setCourseName(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Grade Band</Label>
+            <Input value={gradeBand} onChange={(e) => setGradeBand(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Student Level</Label>
+            <Input value={studentLevel} onChange={(e) => setStudentLevel(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Assessment Type</Label>
+            <Input value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Time (minutes)</Label>
+            <Input
               type="number"
-              min="5"
-              max="480"
               value={timeMinutes}
-              onChange={(e) => setTimeMinutes(parseInt(e.target.value) || 30)}
-              className="time-input"
+              onChange={(e) => setTimeMinutes(parseInt(e.target.value))}
             />
-            <span className="time-unit">minutes</span>
           </div>
-        </div>
 
-        {/* Advanced Section */}
-        <div className="advanced-section">
-          <button
-            className="advanced-toggle"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            <span className="toggle-icon">{showAdvanced ? '▼' : '▶'}</span>
+        </div>
+      </Card>
+
+      {/* 3️⃣ Advanced Options */}
+      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline" className="w-full flex justify-between">
             Advanced Options
-          </button>
+            {showAdvanced ? <ChevronUp /> : <ChevronDown />}
+          </Button>
+        </CollapsibleTrigger>
 
-          {showAdvanced && (
-            <div className="advanced-content">
-              <div className="form-section">
-                <label className="field-label">Focus Areas</label>
-                <textarea
-                  placeholder="Enter focus areas (one per line)"
-                  value={focusAreas}
-                  onChange={(e) => setFocusAreas(e.target.value)}
-                  className="form-textarea"
-                  rows={2}
-                />
-              </div>
+        <CollapsibleContent className="mt-4 space-y-6 transition-all duration-300">
+          <Card className="p-6 space-y-6">
 
-              <div className="form-section">
-                <label className="field-label">Emphasis</label>
-                <select
-                  value={emphasis}
-                  onChange={(e) => setEmphasis(e.target.value as Emphasis)}
-                  className="form-select"
-                >
-                  <option value="Conceptual">Conceptual Understanding</option>
-                  <option value="Procedural">Procedural Fluency</option>
-                  <option value="ExamStyle">Exam Style</option>
-                </select>
-              </div>
-
-              <div className="form-section">
-                <label className="field-label">Difficulty Profile</label>
-                <select
-                  value={difficultyProfile}
-                  onChange={(e) => setDifficultyProfile(e.target.value as DifficultyProfile)}
-                  className="form-select"
-                >
-                  <option value="Scaffolded">Scaffolded (easier start)</option>
-                  <option value="Balanced">Balanced</option>
-                  <option value="Challenging">Challenging (harder start)</option>
-                </select>
-              </div>
-
-              <div className="form-section">
-                <label className="field-label">Classroom Context</label>
-                <textarea
-                  placeholder="e.g., 'Mixed ability class with ELL students'"
-                  value={classroomContext}
-                  onChange={(e) => setClassroomContext(e.target.value)}
-                  className="form-textarea"
-                  rows={2}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label>Focus Areas</Label>
+              <Textarea
+                value={focusAreas}
+                onChange={(e) => setFocusAreas(e.target.value)}
+                placeholder="One per line"
+              />
             </div>
-          )}
-        </div>
 
-        {/* Errors */}
-        {errors.length > 0 && (
-          <div className="error-section">
-            {errors.map((error, i) => (
-              <div key={i} className="error-item">
-                ⚠️ {error}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+            <div className="space-y-2">
+              <Label>Classroom Context</Label>
+              <Textarea
+                value={classroomContext}
+                onChange={(e) => setClassroomContext(e.target.value)}
+                placeholder="Optional notes"
+              />
+            </div>
 
-      {/* Footer */}
-      <div className="form-footer">
-        <button onClick={handleSubmit} disabled={isLoading} className="submit-btn">
-          🚀 Generate Assessment
-        </button>
-      </div>
+            <div className="space-y-2">
+              <Label>Notes for the AI Writer</Label>
+              <Textarea
+                value={notesForWriter}
+                onChange={(e) => setNotesForWriter(e.target.value)}
+                placeholder="Anything else we should know?"
+              />
+            </div>
+
+          </Card>
+        </CollapsibleContent>
+      </Collapsible>
+
+      {/* 4️⃣ Before You Generate Preview */}
+      <Card className="p-6 space-y-4">
+        <h2 className="text-xl font-semibold">Before You Generate</h2>
+        <p className="text-gray-600 dark:text-gray-300 whitespace-pre-line">
+          {previewText}
+        </p>
+      </Card>
+
+      {/* 5️⃣ Generate Button */}
+      <Button
+        className="w-full py-6 text-lg font-semibold"
+        onClick={handleSubmit}
+        disabled={isLoading}
+      >
+        {isLoading ? "Generating..." : "Generate Assessment"}
+      </Button>
+
     </div>
   );
 }
