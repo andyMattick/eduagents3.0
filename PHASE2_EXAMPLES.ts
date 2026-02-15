@@ -12,7 +12,7 @@ import {
   summarizeAssessmentIntent,
   getAssessmentMetadata,
 } from '../services/assessmentSummarizerService';
-import { AssessmentIntent } from '../types/assessmentIntent';
+//import { AssessmentIntent } from '../types/assessmentIntent';
 
 // ============================================================================
 // EXAMPLE 1: Basic Summarization (Standard Level, 30-min Quiz)

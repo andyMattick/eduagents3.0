@@ -1,3 +1,4 @@
+import MinimalAssessmentFormWrapper from './MinimalAssessmentFormWrapper';
 import { useState, useEffect } from 'react';
 import { useUserFlow } from '../../hooks/useUserFlow';
 import { useAuth } from '../../hooks/useAuth';
@@ -7,7 +8,7 @@ import { SourceSelector } from './SourceSelector';
 import { FileUploadComponent } from './FileUploadComponent';
 import { IntentCaptureComponent } from './IntentCaptureComponent';
 import { AssignmentAnalysisComponent } from './AssignmentAnalysisComponent';
-import { AssignmentIntentForm } from './AssignmentIntentForm';
+//import { AssignmentIntentForm } from './AssignmentIntentForm';
 import { AssignmentPreview } from './AssignmentPreview';
 import { ClassBuilder } from './ClassBuilder';
 import { StudentSimulations } from './StudentSimulations';
@@ -200,18 +201,14 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Unified Launchpad: Consolidates mission setup (goal, source, metadata, upload, review)
   if (currentRoute === '/launchpad') {
-    return <Launchpad />;
+    return <MinimalAssessmentFormWrapper />;
   }
 
   // Step 1: Goal Selection
-  if (currentRoute === '/goal-selection') {
-    return <GoalSelector />;
-  }
+  
 
   // Step 2: Source Selection
-  if (currentRoute === '/source-selection') {
-    return <SourceSelector />;
-  }
+  
 
   // Step 3: File Upload Routes
   if (currentRoute === '/source-upload') {
@@ -268,7 +265,8 @@ export function PipelineRouter({ onAssignmentSaved, assignmentContext }: Pipelin
 
   // Step 3: Source-Aware Intent Form (with source docs, create mode)
   if (currentRoute === '/source-aware-intent') {
-    return <AssignmentIntentForm />;
+    console.log("🔥 MINIMAL FORM WRAPPER LOADED");
+    return <MinimalAssessmentFormWrapper />;
   }
 
   // Step 3: Assignment Upload (analyze mode, no source docs)

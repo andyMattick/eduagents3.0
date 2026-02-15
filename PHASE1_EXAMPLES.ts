@@ -10,8 +10,8 @@
 // ============================================================================
 
 import React, { useState } from 'react';
-import { MinimalAssessmentForm } from '../components/Pipeline/MinimalAssessmentForm';
-import { AssessmentIntent } from '../types/assessmentIntent';
+import { MinimalAssessmentFormWrapper } from './MinimalAssessmentFormWrapper';
+//import { AssessmentIntent } from '../types/assessmentIntent';
 
 export function ExampleParentComponent() {
   const [isLoading, setIsLoading] = useState(false);
