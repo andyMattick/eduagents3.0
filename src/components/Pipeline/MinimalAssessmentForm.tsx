@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { AssessmentIntent } from "./contracts/assessmentContracts";
+
+
 
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +16,13 @@ import { ChevronUp, ChevronDown } from "lucide-react";
 
 import styles from "./MinimalAssessmentForm.module.css";
 
-export function MinimalAssessmentForm({ onSubmit, isLoading }) {
+interface MinimalAssessmentFormProps {
+  onSubmit: (intent: AssessmentIntent) => void;
+  isLoading: boolean;
+}
+
+export function MinimalAssessmentForm({ onSubmit, isLoading }: MinimalAssessmentFormProps) {
+
   const [inputMode, setInputMode] = useState(null);
   const [unitName, setUnitName] = useState("");
   // Add pasted example test text
@@ -143,26 +152,33 @@ if (hasSourceDocs && hasExampleTests) {
 
 
 const handleSubmit = () => {
-  const intent = {
-    // Multi‑input sources
-    sourceDocs,
-    exampleTestFiles,
-    exampleTestTexts: exampleTestTextList,
-
-    // Core instructional context
-    courseName,
-    unitName,
-
-    // Assignment metadata
+  const intent: AssessmentIntent = {
+    course: courseName ?? "",
+    unit: unitName ?? "",
+    studentLevel: studentLevel ?? "Standard",
     assignmentType:
       assessmentType === "Other" && customAssessmentType
         ? customAssessmentType
         : assessmentType,
-
-    timeMinutes,
-
-    // Single simplified advanced field
-    advancedDetails,
+    time: String(timeMinutes ?? ""),
+    uploads: [
+      ...sourceDocs.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      })),
+      ...exampleTestFiles.map((file) => ({
+        name: file.name,
+        size: file.size,
+        type: file.type,
+      })),
+      ...exampleTestTextList.map((text, i) => ({
+        name: `example_text_${i + 1}.txt`,
+        size: text.length,
+        type: "text/plain",
+      })),
+    ],
+    additionalDetails: advancedDetails ?? "",
   };
 
   onSubmit(intent);

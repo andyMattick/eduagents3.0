@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { CustomSection } from '../components/Pipeline/SectionBuilder';
+import { UnifiedAssessmentResponse } from "@/components/Pipeline/contracts/assessmentContracts";
 
 export type UserGoal = 'create' | 'analyze';
 
@@ -96,8 +97,9 @@ export interface UserFlowState {
   setSourceAwareIntentData: (data: SourceAwareIntentData | null) => void;
 
   // Generated assignment preview data
-  generatedAssignment: GeneratedAssignment | null;
-  setGeneratedAssignment: (data: GeneratedAssignment | null) => void;
+  generatedAssignment: UnifiedAssessmentResponse | null;
+  setGeneratedAssignment: (a: UnifiedAssessmentResponse | null) => void;
+
 
   // Extracted data
   extractedTags: string[];
@@ -145,7 +147,7 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
   const [intentData, setIntentData] = useState<StandardIntentData | null>(null);
   const [sourceAwareIntentData, setSourceAwareIntentData] = useState<SourceAwareIntentData | null>(null);
-  const [generatedAssignment, setGeneratedAssignment] = useState<GeneratedAssignment | null>(null);
+  const [generatedAssignment, setGeneratedAssignment] = useState<UnifiedAssessmentResponse | null>(null);
   const [extractedTags, setExtractedTags] = useState<string[]>([]);
   const [readyForClassroomAnalysis, setReadyForClassroomAnalysis] = useState(false);
   const [classDefinition, setClassDefinition] = useState<any>(null);

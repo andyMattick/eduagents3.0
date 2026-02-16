@@ -3,9 +3,16 @@
  * 
  * Wraps MinimalAssessmentForm and integrates with useUserFlow pipeline
  */
+import { runUnifiedAssessment } from "./orchestrator/assessmentOrchestratorService";
+import {
+  AssessmentIntent,
+  UnifiedAssessmentRequest,
+  UnifiedAssessmentResponse
+} from "./contracts/assessmentContracts";
 
 import { useState } from 'react';
-import { MinimalAssessmentForm, AssessmentIntent } from './MinimalAssessmentForm';
+import { MinimalAssessmentForm } from './MinimalAssessmentForm';
+
 import { useUserFlow } from '../../hooks/useUserFlow';
 import { summarizeAssessmentIntent } from '../../services/assessmentSummarizerService';
 
@@ -21,39 +28,90 @@ export default function MinimalAssessmentFormWrapper() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFormSubmit = async (intent: AssessmentIntent) => {
+  const handleFormSubmit = async (uiIntent: any) => {
     try {
       setIsGenerating(true);
       setError(null);
 
-      console.log('📋 MinimalAssessmentForm submitted:', intent);
+      console.log('📋 MinimalAssessmentForm submitted (UI intent):', uiIntent);
+
+      // 🔥 Convert UI intent → pipeline AssessmentIntent
+      const intent: AssessmentIntent = {
+  course: uiIntent.courseName ?? "",
+  unit: uiIntent.unitName ?? "",
+  studentLevel: uiIntent.studentLevel ?? "Standard",
+  assignmentType:
+    uiIntent.assessmentType === "Other" && uiIntent.customAssessmentType
+      ? uiIntent.customAssessmentType
+      : uiIntent.assessmentType,
+  time: String(uiIntent.timeMinutes ?? "30"),
+  uploads: [
+    ...(uiIntent.sourceDocs as File[] ?? []).map((file: File) => ({
+  name: file.name,
+  size: file.size,
+  type: file.type
+})),
+
+...(uiIntent.exampleTestFiles as File[] ?? []).map((file: File) => ({
+  name: file.name,
+  size: file.size,
+  type: file.type
+})),
+
+...(uiIntent.exampleTestTexts as string[] ?? []).map((text: string, i: number) => ({
+  name: `example_text_${i + 1}.txt`,
+  size: text.length,
+  type: "text/plain"
+}))
+
+  ],
+  additionalDetails: uiIntent.advancedDetails ?? ""
+};
+
+
+      console.log("🧩 Pipeline intent:", intent);
 
       // Update pipeline state
       setGoal('create');
-      setHasSourceDocs(!!intent.sourceFile);
+      setHasSourceDocs(!!uiIntent.sourceFile);
 
-      if (intent.sourceFile) {
-        setSourceFile(intent.sourceFile);
+      if (uiIntent.sourceFile) {
+        setSourceFile(uiIntent.sourceFile);
       }
 
       // For topic-based flow
-      if (intent.sourceTopic) {
+      if (uiIntent.sourceTopic) {
         setIntentData({
-          topic: intent.sourceTopic,
-          gradeLevel: mapStudentLevelToGrade(intent.studentLevel),
-          assignmentType: intent.assessmentType,
+          topic: uiIntent.sourceTopic,
+          gradeLevel: mapStudentLevelToGrade(uiIntent.studentLevel),
+          assignmentType: uiIntent.assessmentType,
           bloomTargets: [],
         });
       }
 
       // Generate assignment
       console.log('🤖 Calling summarizeAssessmentIntent...');
-      const assignment = await summarizeAssessmentIntent(intent);
+      const summarized = await summarizeAssessmentIntent(intent);
+      console.log('🧩 Summarized intent:', summarized);
 
-      if (assignment) {
-        setGeneratedAssignment(assignment);
-        console.log('✅ Assignment generated:', assignment);
-      }
+// Build the UnifiedAssessmentRequest
+const req: UnifiedAssessmentRequest = {
+  intent,
+  studentSliders: {
+    reading: 5,
+    reasoning: 5,
+    fluency: 5,
+    stamina: 5,
+    confusionTolerance: 5,
+    overlays: []
+  }
+};
+
+console.log('🚀 Calling runUnifiedAssessment...');
+const assignment: UnifiedAssessmentResponse = await runUnifiedAssessment(req);
+setGeneratedAssignment(assignment);
+
+
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to generate assessment';
       setError(msg);
@@ -61,7 +119,7 @@ export default function MinimalAssessmentFormWrapper() {
     } finally {
       setIsGenerating(false);
     }
-  };
+  }; // ← THIS WAS MISALIGNED BEFORE
 
   if (error) {
     return (
@@ -91,53 +149,3 @@ function mapStudentLevelToGrade(level: string): string {
   };
   return map[level] || '9-10';
 }
-
-/* Wrapper styles */
-export const styles = `
-.wrapper-container {
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  background: var(--bg-primary);
-}
-
-.error-state {
-  align-items: center;
-}
-
-.error-box {
-  background: var(--bg-secondary);
-  border-radius: 12px;
-  padding: 2rem;
-  max-width: 500px;
-  text-align: center;
-}
-
-.error-box h2 {
-  color: var(--text-primary);
-  margin: 0 0 1rem;
-}
-
-.error-box p {
-  color: var(--text-secondary);
-  margin: 0 0 1.5rem;
-}
-
-.error-box button {
-  padding: 0.75rem 1.5rem;
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.error-box button:hover {
-  opacity: 0.9;
-}
-`;
-
