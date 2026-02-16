@@ -8,6 +8,8 @@ import { getLastSimulateStudentsPrompt, clearSimulateStudentsPrompt } from './ag
 import { getLastCompletionSimulation, getLastClassCompletionSummary, clearCompletionSimulation } from './agents/analysis/completionSimulation';
 import { demonstrateMockData, generateMockAsteroids, generateMockSimulationResults } from './agents/simulation/mockData';
 import { showMockDataOnly, runMockPipeline } from './agents/simulation/demoRunner';
+import "./styles/tokens.css";
+import "./styles/global.css";
 
 // Check for API key - but don't throw, let app load
 // Error will be displayed in UI if needed

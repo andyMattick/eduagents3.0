@@ -1,0 +1,74 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Section titles */
+.sectionTitle {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+/* Tabs */
+.tabsList {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tab {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);   /* ← FIX */
+  cursor: pointer;
+}
+
+.tab[data-state="active"] {
+  background: var(--primary-color);
+  color: var(--bg-primary);     /* ← FIX */
+}
+
+
+.tabContent {
+  margin-top: 1rem;
+}
+
+/* Help text under inputs */
+.helpText {
+  font-size: 0.875rem;
+  color: var(--gray-500);
+  margin-top: 0.5rem;
+}
+
+/* Grid for assessment details */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* Advanced options */
+.advancedButton {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.advancedContent {
+  margin-top: 1rem;
+}
+
+/* Preview section */
+.preview {
+  white-space: pre-wrap;
+}
+
+/* Generate button */
+.generateButton {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+}

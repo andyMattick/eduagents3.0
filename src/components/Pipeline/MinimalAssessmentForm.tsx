@@ -4,49 +4,22 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from "@/components/ui/collapsible";
+
+import * as Tabs from "@radix-ui/react-tabs";
+import * as Collapsible from "@radix-ui/react-collapsible";
+
 import { ChevronUp, ChevronDown } from "lucide-react";
 
-export type AssessmentIntent = {
-  sourceFile?: File;
-  sourceTopic?: string;
-  subject: string;
-  courseName: string;
-  gradeBand: string;
-  studentLevel: string;
-  assessmentType: string;
-  timeMinutes: number;
-  focusAreas: string[];
-  emphasis: string;
-  difficultyProfile: string;
-  classroomContext: string;
-};
+import styles from "./MinimalAssessmentForm.module.css";
 
-type MinimalAssessmentFormProps = {
-  onSubmit: (intent: AssessmentIntent) => void;
-  isLoading: boolean;
-};
-
-export function MinimalAssessmentForm({
-  onSubmit,
-  isLoading,
-}: MinimalAssessmentFormProps) {
-  // Unified source/test input model
-  const [inputMode, setInputMode] = useState<
-    "source-docs" | "example-test-file" | "example-test-text" | null
-  >(null);
+export function MinimalAssessmentForm({ onSubmit, isLoading }) {
+  const [inputMode, setInputMode] = useState(null);
 
   const [sourceDocs, setSourceDocs] = useState<File[]>([]);
   const [exampleTestFile, setExampleTestFile] = useState<File | null>(null);
   const [exampleTestText, setExampleTestText] = useState("");
 
-  // Standard metadata
   const [subject, setSubject] = useState("math");
   const [courseName, setCourseName] = useState("");
   const [gradeBand, setGradeBand] = useState("9-12");
@@ -54,20 +27,15 @@ export function MinimalAssessmentForm({
   const [assessmentType, setAssessmentType] = useState("Quiz");
   const [timeMinutes, setTimeMinutes] = useState(30);
 
-  // Advanced options
   const [focusAreas, setFocusAreas] = useState("");
   const [emphasis, setEmphasis] = useState("Conceptual");
   const [difficultyProfile, setDifficultyProfile] = useState("Balanced");
   const [classroomContext, setClassroomContext] = useState("");
   const [notesForWriter, setNotesForWriter] = useState("");
 
-  // UI controls
   const [showAdvanced, setShowAdvanced] = useState(false);
-
-  // Preview text
   const [previewText, setPreviewText] = useState("");
 
-  // Generate preview text dynamically
   useEffect(() => {
     let summary = "We will create a new assessment";
 
@@ -100,9 +68,8 @@ export function MinimalAssessmentForm({
     timeMinutes,
   ]);
 
-  // Submit handler
   const handleSubmit = () => {
-    const intent: AssessmentIntent = {
+    const intent = {
       sourceFile: sourceDocs[0] || exampleTestFile || undefined,
       sourceTopic: exampleTestText || undefined,
       subject,
@@ -124,89 +91,92 @@ export function MinimalAssessmentForm({
   };
 
   return (
-    <div className="space-y-10">
+    <div className={styles.container}>
+      {/* 1️⃣ Unified Source/Test Input */}
+      <Card>
+        <h2 className={styles.sectionTitle}>What are you starting with?</h2>
 
-      {/* 1️⃣ Unified Source/Test Input Section */}
-      <Card className="p-6 space-y-6">
-        <h2 className="text-xl font-semibold">What are you starting with?</h2>
+        <Tabs.Root value={inputMode ?? ""} onValueChange={setInputMode}>
+          <Tabs.List className={styles.tabsList}>
+            <Tabs.Trigger value="source-docs" className={styles.tab}>
+              Source Docs
+            </Tabs.Trigger>
+            <Tabs.Trigger value="example-test-file" className={styles.tab}>
+              Example Test (File)
+            </Tabs.Trigger>
+            <Tabs.Trigger value="example-test-text" className={styles.tab}>
+              Example Test (Paste)
+            </Tabs.Trigger>
+          </Tabs.List>
 
-        <Tabs value={inputMode ?? ""} onValueChange={setInputMode}>
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="source-docs">Source Docs</TabsTrigger>
-            <TabsTrigger value="example-test-file">Example Test (File)</TabsTrigger>
-            <TabsTrigger value="example-test-text">Example Test (Paste)</TabsTrigger>
-          </TabsList>
-
-          {/* Source Docs */}
-          <TabsContent value="source-docs" className="mt-4">
+          <Tabs.Content value="source-docs" className={styles.tabContent}>
             <Input
               type="file"
               multiple
               onChange={(e) => setSourceDocs(Array.from(e.target.files ?? []))}
             />
-            <p className="text-sm text-gray-500 mt-2">
+            <p className={styles.helpText}>
               Upload textbook chapters, readings, slides, worksheets, etc.
             </p>
-          </TabsContent>
+          </Tabs.Content>
 
-          {/* Example Test (File) */}
-          <TabsContent value="example-test-file" className="mt-4">
+          <Tabs.Content value="example-test-file" className={styles.tabContent}>
             <Input
               type="file"
               onChange={(e) => setExampleTestFile(e.target.files?.[0] ?? null)}
             />
-            <p className="text-sm text-gray-500 mt-2">
+            <p className={styles.helpText}>
               We’ll analyze structure, difficulty, pacing, and question types.
             </p>
-          </TabsContent>
+          </Tabs.Content>
 
-          {/* Example Test (Paste) */}
-          <TabsContent value="example-test-text" className="mt-4">
+          <Tabs.Content value="example-test-text" className={styles.tabContent}>
             <Textarea
               placeholder="Paste an existing test here..."
               value={exampleTestText}
               onChange={(e) => setExampleTestText(e.target.value)}
-              className="min-h-[160px]"
             />
-            <p className="text-sm text-gray-500 mt-2">
+            <p className={styles.helpText}>
               If you don’t have a file, paste the test text here.
             </p>
-          </TabsContent>
-        </Tabs>
+          </Tabs.Content>
+        </Tabs.Root>
       </Card>
 
       {/* 2️⃣ Assessment Details */}
-      <Card className="p-6 space-y-6">
-        <h2 className="text-xl font-semibold">Assessment Details</h2>
+      <Card>
+        <h2 className={styles.sectionTitle}>Assessment Details</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-          <div className="space-y-2">
+        <div className={styles.grid}>
+          <div>
             <Label>Subject</Label>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label>Course Name</Label>
             <Input value={courseName} onChange={(e) => setCourseName(e.target.value)} />
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label>Grade Band</Label>
             <Input value={gradeBand} onChange={(e) => setGradeBand(e.target.value)} />
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label>Student Level</Label>
             <Input value={studentLevel} onChange={(e) => setStudentLevel(e.target.value)} />
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label>Assessment Type</Label>
-            <Input value={assessmentType} onChange={(e) => setAssessmentType(e.target.value)} />
+            <Input
+              value={assessmentType}
+              onChange={(e) => setAssessmentType(e.target.value)}
+            />
           </div>
 
-          <div className="space-y-2">
+          <div>
             <Label>Time (minutes)</Label>
             <Input
               type="number"
@@ -214,23 +184,21 @@ export function MinimalAssessmentForm({
               onChange={(e) => setTimeMinutes(parseInt(e.target.value))}
             />
           </div>
-
         </div>
       </Card>
 
       {/* 3️⃣ Advanced Options */}
-      <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-        <CollapsibleTrigger asChild>
-          <Button variant="outline" className="w-full flex justify-between">
+      <Collapsible.Root open={showAdvanced} onOpenChange={setShowAdvanced}>
+        <Collapsible.Trigger asChild>
+          <Button variant="outline" className={styles.advancedButton}>
             Advanced Options
             {showAdvanced ? <ChevronUp /> : <ChevronDown />}
           </Button>
-        </CollapsibleTrigger>
+                </Collapsible.Trigger>
 
-        <CollapsibleContent className="mt-4 space-y-6 transition-all duration-300">
-          <Card className="p-6 space-y-6">
-
-            <div className="space-y-2">
+        <Collapsible.Content className={styles.advancedContent}>
+          <Card>
+            <div>
               <Label>Focus Areas</Label>
               <Textarea
                 value={focusAreas}
@@ -239,7 +207,7 @@ export function MinimalAssessmentForm({
               />
             </div>
 
-            <div className="space-y-2">
+            <div>
               <Label>Classroom Context</Label>
               <Textarea
                 value={classroomContext}
@@ -248,7 +216,7 @@ export function MinimalAssessmentForm({
               />
             </div>
 
-            <div className="space-y-2">
+            <div>
               <Label>Notes for the AI Writer</Label>
               <Textarea
                 value={notesForWriter}
@@ -256,28 +224,25 @@ export function MinimalAssessmentForm({
                 placeholder="Anything else we should know?"
               />
             </div>
-
           </Card>
-        </CollapsibleContent>
-      </Collapsible>
+        </Collapsible.Content>
+      </Collapsible.Root>
 
-      {/* 4️⃣ Before You Generate Preview */}
-      <Card className="p-6 space-y-4">
-        <h2 className="text-xl font-semibold">Before You Generate</h2>
-        <p className="text-gray-600 dark:text-gray-300 whitespace-pre-line">
-          {previewText}
-        </p>
+      {/* 4️⃣ Preview */}
+      <Card>
+        <h2 className={styles.sectionTitle}>Before You Generate</h2>
+        <p className={styles.preview}>{previewText}</p>
       </Card>
 
-      {/* 5️⃣ Generate Button */}
+      {/* 5️⃣ Submit */}
       <Button
-        className="w-full py-6 text-lg font-semibold"
+        variant="primary"
+        className={styles.generateButton}
         onClick={handleSubmit}
         disabled={isLoading}
       >
         {isLoading ? "Generating..." : "Generate Assessment"}
       </Button>
-
     </div>
   );
 }
