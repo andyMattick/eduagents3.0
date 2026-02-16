@@ -35,18 +35,13 @@ const handleRemoveExampleText = (index: number) => {
   const [exampleTestFiles, setExampleTestFiles] = useState<File[]>([]);
   const [exampleTestText, setExampleTestText] = useState("");
   const [exampleTestTextList, setExampleTestTextList] = useState<string[]>([]);
+  const [advancedDetails, setAdvancedDetails] = useState("");
+
 
 
   const [courseName, setCourseName] = useState("");
-  const [gradeLevels, setGradeLevels] = useState<string[]>([]);
-
-  const toggleGradeLevel = (level: string) => {
-  setGradeLevels((prev) =>
-    prev.includes(level)
-      ? prev.filter((l) => l !== level)
-      : [...prev, level]
-  );
-};
+  
+  
 
 
   const [studentLevel, setStudentLevel] = useState("Standard");
@@ -66,73 +61,75 @@ const handleRemoveExampleText = (index: number) => {
 useEffect(() => {
   let summary = "Based on what you provided, here’s what we’ll generate:\n";
 
-  // Course + Unit
+  // 1. Course Name
   if (courseName) {
     summary += `\n• Course: ${courseName}`;
   }
 
+  // 2. Unit / Topic
   if (unitName) {
     summary += `\n• Unit / Topic: ${unitName}`;
   }
 
-  // Grade Levels
-  if (gradeLevels.length > 0) {
-    summary += `\n• Grade Levels: ${gradeLevels.join(", ")}`;
+  // 3. Student Level 
+  if (studentLevel) 
+    { summary += `\n• Student Level: ${studentLevel}`; 
   }
 
-  // Student Level
-  if (studentLevel) {
-    summary += `\n• Student Level: ${studentLevel}`;
-  }
+  // 4. Assignment Type
+  const finalAssignmentType =
+    assessmentType === "Other" && customAssessmentType
+      ? customAssessmentType
+      : assessmentType;
 
-  // Assignment Type
-  if (assessmentType === "Other" && customAssessmentType) {
-    summary += `\n• Assignment Type: ${customAssessmentType}`;
-  } else if (assessmentType) {
-    summary += `\n• Assignment Type: ${assessmentType}`;
-  }
+  summary += `\n• Assignment Type: ${finalAssignmentType}`;
 
-  // Time
+  // 5. Time
   if (timeMinutes) {
     summary += `\n• Estimated Time: ${timeMinutes} minutes`;
   }
 
-  // Source Docs
-  if (sourceDocs.length > 0) {
-    summary += `\n\nWe’ll use your ${sourceDocs.length} source document(s) to extract key concepts, skills, and vocabulary.`;
+  // 6. Uploads
+  const hasSourceDocs = sourceDocs.length > 0;
+  const hasExampleFiles = exampleTestFiles.length > 0;
+  const hasExampleText = exampleTestTextList.length > 0;
+
+  if (hasSourceDocs || hasExampleFiles || hasExampleText) {
+    summary += "\n\nWe’ll use the following inputs:";
+
+    if (hasSourceDocs) {
+      summary += `\n• ${sourceDocs.length} source document(s)`;
+    }
+
+    if (hasExampleFiles) {
+      summary += `\n• ${exampleTestFiles.length} example test file(s)`;
+    }
+
+    if (hasExampleText) {
+      summary += `\n• ${exampleTestTextList.length} pasted example test(s)`;
+    }
   }
 
-  // Example Tests (Files + Pasted)
-  const hasExampleTests =
-    exampleTestFiles.length > 0 || exampleTestTextList.length > 0;
-
-  if (hasExampleTests) {
-    summary +=
-      "\n\nWe’ll analyze your example test(s) for structure, pacing, difficulty, and question types.";
+  // 7. Additional Comments
+  if (advancedDetails.trim().length > 0) {
+    summary += `\n\nAdditional Details:\n${advancedDetails.trim()}`;
   }
 
-  // Compare source docs + example tests
-  if (sourceDocs.length > 0 && hasExampleTests) {
-    summary +=
-      "\n\nWe’ll compare your source materials with your example test(s) to align difficulty, structure, and learning goals.";
-  }
-
-  // Final output
+  // Final line
   summary +=
-    "\n\nFinally, we’ll generate a new assessment aligned to your course, unit, grade levels, and student needs.";
+    "\n\nFinally, we’ll generate a new assessment aligned to your course, unit, and instructional goals.";
 
   setPreviewText(summary);
 }, [
   courseName,
   unitName,
-  gradeLevels,
-  studentLevel,
   assessmentType,
   customAssessmentType,
   timeMinutes,
   sourceDocs,
   exampleTestFiles,
   exampleTestTextList,
+  advancedDetails,
 ]);
 
 
@@ -146,8 +143,6 @@ const handleSubmit = () => {
     // Core instructional context
     courseName,
     unitName,
-    gradeLevels,
-    studentLevel,
 
     // Assignment metadata
     assignmentType:
@@ -157,16 +152,8 @@ const handleSubmit = () => {
 
     timeMinutes,
 
-    // Optional advanced fields
-    focusAreas: focusAreas
-      .split("\n")
-      .map((f) => f.trim())
-      .filter(Boolean),
-
-    emphasis,
-    difficultyProfile,
-    classroomContext,
-    notesForWriter,
+    // Single simplified advanced field
+    advancedDetails,
   };
 
   onSubmit(intent);
@@ -205,29 +192,7 @@ const handleSubmit = () => {
       />
     </div>
 
-    {/* Grade Levels (K–12 multi-select) */}
-    <div>
-      <Label>Grade Levels</Label>
-
-      <div className={styles.checkboxGroup}>
-        {[
-          "K",
-          "1", "2", "3", "4", "5",
-          "6", "7", "8",
-          "9", "10", "11", "12"
-        ].map((level) => (
-          <label key={level} className={styles.checkboxItem}>
-            <input
-              type="checkbox"
-              checked={gradeLevels.includes(level)}
-              onChange={() => toggleGradeLevel(level)}
-            />
-            {level === "K" ? "Kindergarten" : `${level}th`}
-          </label>
-        ))}
-      </div>
-    </div>
-
+    
     {/* Student Level */}
     <div>
       <Label>Student Level</Label>
@@ -380,35 +345,28 @@ const handleSubmit = () => {
                 </Collapsible.Trigger>
 
         <Collapsible.Content className={styles.advancedContent}>
-          <Card>
-            <div>
-              <Label>Focus Areas</Label>
-              <Textarea
-                value={focusAreas}
-                onChange={(e) => setFocusAreas(e.target.value)}
-                placeholder="One per line"
-              />
-            </div>
+        {/* 4️⃣ Advanced Details (Optional) */}
+<Card>
+  <h2 className={styles.sectionTitle}>Additional Details (Optional)</h2>
 
-            <div>
-              <Label>Classroom Context</Label>
-              <Textarea
-                value={classroomContext}
-                onChange={(e) => setClassroomContext(e.target.value)}
-                placeholder="Optional notes"
-              />
-            </div>
+  <p className={styles.helperText}>
+    Add anything else you want the system to consider.  
+    You might include:
+    <br />• specific skills or standards  
+    <br />• classroom context  
+    <br />• student challenges or strengths  
+    <br />• preferred difficulty or emphasis  
+    <br />• anything unique about this assessment  
+  </p>
 
-            <div>
-              <Label>Notes for the AI Writer</Label>
-              <Textarea
-                value={notesForWriter}
-                onChange={(e) => setNotesForWriter(e.target.value)}
-                placeholder="Anything else we should know?"
-              />
-            </div>
-          </Card>
-        </Collapsible.Content>
+  <Textarea
+    placeholder="Add any extra details here..."
+    value={advancedDetails}
+    onChange={(e) => setAdvancedDetails(e.target.value)}
+  />
+</Card>
+
+      </Collapsible.Content>
       </Collapsible.Root>
 
       {/* 4️⃣ Preview */}
@@ -416,6 +374,8 @@ const handleSubmit = () => {
         <h2 className={styles.sectionTitle}>Before You Generate</h2>
         <p className={styles.preview}>{previewText}</p>
       </Card>
+
+
 
       {/* 5️⃣ Submit */}
       <Button
