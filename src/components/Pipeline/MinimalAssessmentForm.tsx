@@ -15,16 +15,43 @@ import styles from "./MinimalAssessmentForm.module.css";
 
 export function MinimalAssessmentForm({ onSubmit, isLoading }) {
   const [inputMode, setInputMode] = useState(null);
+  const [unitName, setUnitName] = useState("");
+  // Add pasted example test text
+const handleAddExampleText = () => {
+  if (exampleTestText.trim().length > 0) {
+    setExampleTestTextList((prev) => [...prev, exampleTestText.trim()]);
+    setExampleTestText("");
+  }
+};
+
+// Remove a pasted example test
+const handleRemoveExampleText = (index: number) => {
+  setExampleTestTextList((prev) => prev.filter((_, i) => i !== index));
+};
+
+
 
   const [sourceDocs, setSourceDocs] = useState<File[]>([]);
-  const [exampleTestFile, setExampleTestFile] = useState<File | null>(null);
+  const [exampleTestFiles, setExampleTestFiles] = useState<File[]>([]);
   const [exampleTestText, setExampleTestText] = useState("");
+  const [exampleTestTextList, setExampleTestTextList] = useState<string[]>([]);
 
-  const [subject, setSubject] = useState("math");
+
   const [courseName, setCourseName] = useState("");
-  const [gradeBand, setGradeBand] = useState("9-12");
+  const [gradeLevels, setGradeLevels] = useState<string[]>([]);
+
+  const toggleGradeLevel = (level: string) => {
+  setGradeLevels((prev) =>
+    prev.includes(level)
+      ? prev.filter((l) => l !== level)
+      : [...prev, level]
+  );
+};
+
+
   const [studentLevel, setStudentLevel] = useState("Standard");
   const [assessmentType, setAssessmentType] = useState("Quiz");
+  const [customAssessmentType, setCustomAssessmentType] = useState("");
   const [timeMinutes, setTimeMinutes] = useState(30);
 
   const [focusAreas, setFocusAreas] = useState("");
@@ -36,156 +63,312 @@ export function MinimalAssessmentForm({ onSubmit, isLoading }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [previewText, setPreviewText] = useState("");
 
-  useEffect(() => {
-    let summary = "We will create a new assessment";
+useEffect(() => {
+  let summary = "Based on what you provided, here’s what we’ll generate:\n";
 
-    if (sourceDocs.length > 0) {
-      summary +=
-        "\n• Extract content from your source documents\n• Align questions ONLY to covered material";
-    }
+  // Course + Unit
+  if (courseName) {
+    summary += `\n• Course: ${courseName}`;
+  }
 
-    if (exampleTestFile || exampleTestText.length > 0) {
-      summary +=
-        "\n• Analyze your example test’s structure, pacing, and difficulty\n• Match or improve the structure in the new assessment";
-    }
+  if (unitName) {
+    summary += `\n• Unit / Topic: ${unitName}`;
+  }
 
-    if (sourceDocs.length > 0 && (exampleTestFile || exampleTestText)) {
-      summary +=
-        "\n• Compare the example test to the new one and explain differences";
-    }
+  // Grade Levels
+  if (gradeLevels.length > 0) {
+    summary += `\n• Grade Levels: ${gradeLevels.join(", ")}`;
+  }
 
+  // Student Level
+  if (studentLevel) {
+    summary += `\n• Student Level: ${studentLevel}`;
+  }
+
+  // Assignment Type
+  if (assessmentType === "Other" && customAssessmentType) {
+    summary += `\n• Assignment Type: ${customAssessmentType}`;
+  } else if (assessmentType) {
+    summary += `\n• Assignment Type: ${assessmentType}`;
+  }
+
+  // Time
+  if (timeMinutes) {
+    summary += `\n• Estimated Time: ${timeMinutes} minutes`;
+  }
+
+  // Source Docs
+  if (sourceDocs.length > 0) {
+    summary += `\n\nWe’ll use your ${sourceDocs.length} source document(s) to extract key concepts, skills, and vocabulary.`;
+  }
+
+  // Example Tests (Files + Pasted)
+  const hasExampleTests =
+    exampleTestFiles.length > 0 || exampleTestTextList.length > 0;
+
+  if (hasExampleTests) {
     summary +=
-      "\n• Simulate student performance using class defaults\n• Improve the assessment based on predicted misconceptions\n• Provide a rationale for every design choice";
+      "\n\nWe’ll analyze your example test(s) for structure, pacing, difficulty, and question types.";
+  }
 
-    setPreviewText(summary);
-  }, [
+  // Compare source docs + example tests
+  if (sourceDocs.length > 0 && hasExampleTests) {
+    summary +=
+      "\n\nWe’ll compare your source materials with your example test(s) to align difficulty, structure, and learning goals.";
+  }
+
+  // Final output
+  summary +=
+    "\n\nFinally, we’ll generate a new assessment aligned to your course, unit, grade levels, and student needs.";
+
+  setPreviewText(summary);
+}, [
+  courseName,
+  unitName,
+  gradeLevels,
+  studentLevel,
+  assessmentType,
+  customAssessmentType,
+  timeMinutes,
+  sourceDocs,
+  exampleTestFiles,
+  exampleTestTextList,
+]);
+
+
+const handleSubmit = () => {
+  const intent = {
+    // Multi‑input sources
     sourceDocs,
-    exampleTestFile,
-    exampleTestText,
-    subject,
-    gradeBand,
-    assessmentType,
+    exampleTestFiles,
+    exampleTestTexts: exampleTestTextList,
+
+    // Core instructional context
+    courseName,
+    unitName,
+    gradeLevels,
+    studentLevel,
+
+    // Assignment metadata
+    assignmentType:
+      assessmentType === "Other" && customAssessmentType
+        ? customAssessmentType
+        : assessmentType,
+
     timeMinutes,
-  ]);
 
-  const handleSubmit = () => {
-    const intent = {
-      sourceFile: sourceDocs[0] || exampleTestFile || undefined,
-      sourceTopic: exampleTestText || undefined,
-      subject,
-      courseName,
-      gradeBand,
-      studentLevel,
-      assessmentType,
-      timeMinutes,
-      focusAreas: focusAreas
-        .split("\n")
-        .map((f) => f.trim())
-        .filter(Boolean),
-      emphasis,
-      difficultyProfile,
-      classroomContext,
-    };
+    // Optional advanced fields
+    focusAreas: focusAreas
+      .split("\n")
+      .map((f) => f.trim())
+      .filter(Boolean),
 
-    onSubmit(intent);
+    emphasis,
+    difficultyProfile,
+    classroomContext,
+    notesForWriter,
   };
+
+  onSubmit(intent);
+};
+
+
 
   return (
     <div className={styles.container}>
       {/* 1️⃣ Unified Source/Test Input */}
-      <Card>
-        <h2 className={styles.sectionTitle}>What are you starting with?</h2>
+{/* 2️⃣ Assessment Details */}
+{/* 2️⃣ Assessment Details */}
+{/* 2️⃣ Assessment Details */}
+<Card>
+  <h2 className={styles.sectionTitle}>Assessment Details</h2>
 
-        <Tabs.Root value={inputMode ?? ""} onValueChange={setInputMode}>
-          <Tabs.List className={styles.tabsList}>
-            <Tabs.Trigger value="source-docs" className={styles.tab}>
-              Source Docs
-            </Tabs.Trigger>
-            <Tabs.Trigger value="example-test-file" className={styles.tab}>
-              Example Test (File)
-            </Tabs.Trigger>
-            <Tabs.Trigger value="example-test-text" className={styles.tab}>
-              Example Test (Paste)
-            </Tabs.Trigger>
-          </Tabs.List>
+  <div className={styles.grid}>
 
-          <Tabs.Content value="source-docs" className={styles.tabContent}>
-            <Input
-              type="file"
-              multiple
-              onChange={(e) => setSourceDocs(Array.from(e.target.files ?? []))}
+    {/* Course Name */}
+    <div>
+      <Label>Course Name</Label>
+      <Input
+        placeholder="e.g., Algebra I, Biology, World History, ELA 7"
+        value={courseName}
+        onChange={(e) => setCourseName(e.target.value)}
+      />
+    </div>
+
+    {/* Unit / Topic */}
+    <div>
+      <Label>Unit / Topic</Label>
+      <Input
+        placeholder="e.g., Linear Functions, Photosynthesis, Civil War"
+        value={unitName}
+        onChange={(e) => setUnitName(e.target.value)}
+      />
+    </div>
+
+    {/* Grade Levels (K–12 multi-select) */}
+    <div>
+      <Label>Grade Levels</Label>
+
+      <div className={styles.checkboxGroup}>
+        {[
+          "K",
+          "1", "2", "3", "4", "5",
+          "6", "7", "8",
+          "9", "10", "11", "12"
+        ].map((level) => (
+          <label key={level} className={styles.checkboxItem}>
+            <input
+              type="checkbox"
+              checked={gradeLevels.includes(level)}
+              onChange={() => toggleGradeLevel(level)}
             />
-            <p className={styles.helpText}>
-              Upload textbook chapters, readings, slides, worksheets, etc.
-            </p>
-          </Tabs.Content>
+            {level === "K" ? "Kindergarten" : `${level}th`}
+          </label>
+        ))}
+      </div>
+    </div>
 
-          <Tabs.Content value="example-test-file" className={styles.tabContent}>
-            <Input
-              type="file"
-              onChange={(e) => setExampleTestFile(e.target.files?.[0] ?? null)}
-            />
-            <p className={styles.helpText}>
-              We’ll analyze structure, difficulty, pacing, and question types.
-            </p>
-          </Tabs.Content>
+    {/* Student Level */}
+    <div>
+      <Label>Student Level</Label>
+      <select
+        className={styles.select}
+        value={studentLevel}
+        onChange={(e) => setStudentLevel(e.target.value)}
+      >
+        <option value="Remedial">Remedial</option>
+        <option value="Standard">Standard</option>
+        <option value="Honors">Honors</option>
+        <option value="AP">AP</option>
+      </select>
+    </div>
 
-          <Tabs.Content value="example-test-text" className={styles.tabContent}>
-            <Textarea
-              placeholder="Paste an existing test here..."
-              value={exampleTestText}
-              onChange={(e) => setExampleTestText(e.target.value)}
-            />
-            <p className={styles.helpText}>
-              If you don’t have a file, paste the test text here.
-            </p>
-          </Tabs.Content>
-        </Tabs.Root>
-      </Card>
+    {/* Assignment Type */}
+    <div>
+      <Label>Assignment Type</Label>
+      <select
+        className={styles.select}
+        value={assessmentType}
+        onChange={(e) => setAssessmentType(e.target.value)}
+      >
+        <option value="Test">Test</option>
+        <option value="Quiz">Quiz</option>
+        <option value="Bell Ringer">Bell Ringer</option>
+        <option value="Exit Ticket">Exit Ticket</option>
+        <option value="Worksheet">Worksheet</option>
+        <option value="Essay">Essay</option>
+        <option value="Other">Other</option>
+      </select>
 
-      {/* 2️⃣ Assessment Details */}
-      <Card>
-        <h2 className={styles.sectionTitle}>Assessment Details</h2>
+      {assessmentType === "Other" && (
+        <Input
+          placeholder="Enter assignment type"
+          value={customAssessmentType}
+          onChange={(e) => setCustomAssessmentType(e.target.value)}
+        />
+      )}
+    </div>
 
-        <div className={styles.grid}>
-          <div>
-            <Label>Subject</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
-          </div>
+    {/* Time */}
+    <div>
+      <Label>Time (minutes)</Label>
+      <Input
+        type="number"
+        value={timeMinutes}
+        onChange={(e) => setTimeMinutes(parseInt(e.target.value))}
+      />
+    </div>
 
-          <div>
-            <Label>Course Name</Label>
-            <Input value={courseName} onChange={(e) => setCourseName(e.target.value)} />
-          </div>
+  </div>
+</Card>
 
-          <div>
-            <Label>Grade Band</Label>
-            <Input value={gradeBand} onChange={(e) => setGradeBand(e.target.value)} />
-          </div>
+{/* 1️⃣ Input Sources */}
+<Card>
+  <h2 className={styles.sectionTitle}>Input Sources</h2>
 
-          <div>
-            <Label>Student Level</Label>
-            <Input value={studentLevel} onChange={(e) => setStudentLevel(e.target.value)} />
-          </div>
+  <div className={styles.verticalStack}>
 
-          <div>
-            <Label>Assessment Type</Label>
-            <Input
-              value={assessmentType}
-              onChange={(e) => setAssessmentType(e.target.value)}
-            />
-          </div>
+    {/* Source Documents */}
+    <div>
+      <Label>Source Documents</Label>
+      <Input
+        type="file"
+        multiple
+        onChange={(e) =>
+          setSourceDocs(Array.from(e.target.files ?? []))
+        }
+      />
 
-          <div>
-            <Label>Time (minutes)</Label>
-            <Input
-              type="number"
-              value={timeMinutes}
-              onChange={(e) => setTimeMinutes(parseInt(e.target.value))}
-            />
-          </div>
-        </div>
-      </Card>
+      {sourceDocs.length > 0 && (
+        <ul className={styles.fileList}>
+          {sourceDocs.map((file, i) => (
+            <li key={i}>{file.name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    {/* Example Test Files */}
+    <div>
+      <Label>Example Test Files</Label>
+      <Input
+        type="file"
+        multiple
+        onChange={(e) =>
+          setExampleTestFiles(Array.from(e.target.files ?? []))
+        }
+      />
+
+      {exampleTestFiles.length > 0 && (
+        <ul className={styles.fileList}>
+          {exampleTestFiles.map((file, i) => (
+            <li key={i}>{file.name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+    {/* Example Test Text */}
+    <div>
+      <Label>Example Test Text</Label>
+
+      <Textarea
+        placeholder="Paste example test text here..."
+        value={exampleTestText}
+        onChange={(e) => setExampleTestText(e.target.value)}
+      />
+
+      <Button
+        type="button"
+        onClick={handleAddExampleText}
+        disabled={exampleTestText.trim().length === 0}
+        className={styles.addButton}
+      >
+        Add Text
+      </Button>
+
+      {exampleTestTextList.length > 0 && (
+        <ul className={styles.textList}>
+          {exampleTestTextList.map((text, i) => (
+            <li key={i} className={styles.textItem}>
+              <div className={styles.textPreview}>{text}</div>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => handleRemoveExampleText(i)}
+              >
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+
+  </div>
+</Card>
+
+
 
       {/* 3️⃣ Advanced Options */}
       <Collapsible.Root open={showAdvanced} onOpenChange={setShowAdvanced}>

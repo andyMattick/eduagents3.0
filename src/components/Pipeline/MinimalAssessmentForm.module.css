@@ -72,3 +72,87 @@
   padding: 0.75rem;
   font-size: 1rem;
 }
+.multiInputContainer {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .multiInputContainer {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.inputBlock {
+  background: var(--bg-secondary);
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-color);
+}
+
+.fileList {
+  margin-top: 0.5rem;
+  padding-left: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.addPastedTestButton {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--primary-color);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.addPastedTestButton:hover {
+  opacity: 0.9;
+}
+
+.select {
+  width: 100%;
+  padding: 0.5rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+}
+
+.checkboxGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.checkboxItem {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-primary);
+}
+
+.verticalStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.fileList,
+.textList {
+  margin-top: 0.5rem;
+  padding-left: 1rem;
+}
+
+.textItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.textPreview {
+  max-width: 80%;
+  opacity: 0.8;
+}
