@@ -61,28 +61,28 @@ const handleRemoveExampleText = (index: number) => {
 useEffect(() => {
   let summary = "Based on what you provided, here’s what we’ll generate:\n";
 
-  // 1. Course Name
-  if (courseName) {
-    summary += `\n• Course: ${courseName}`;
-  }
-
-  // 2. Unit / Topic
-  if (unitName) {
-    summary += `\n• Unit / Topic: ${unitName}`;
-  }
-
-  // 3. Student Level 
-  if (studentLevel) 
-    { summary += `\n• Student Level: ${studentLevel}`; 
-  }
-
-  // 4. Assignment Type
+    // 1. Assignment Type
   const finalAssignmentType =
     assessmentType === "Other" && customAssessmentType
       ? customAssessmentType
       : assessmentType;
 
   summary += `\n• Assignment Type: ${finalAssignmentType}`;
+  
+  // 2. Course Name
+  if (courseName) {
+    summary += `\n• Course: ${courseName}`;
+  }
+
+  // 3. Unit / Topic
+  if (unitName) {
+    summary += `\n• Unit / Topic: ${unitName}`;
+  }
+
+  // 4. Student Level 
+  if (studentLevel) 
+    { summary += `\n• Student Level: ${studentLevel}`; 
+  }
 
   // 5. Time
   if (timeMinutes) {
@@ -90,34 +90,43 @@ useEffect(() => {
   }
 
   // 6. Uploads
-  const hasSourceDocs = sourceDocs.length > 0;
-  const hasExampleFiles = exampleTestFiles.length > 0;
-  const hasExampleText = exampleTestTextList.length > 0;
+const hasSourceDocs = sourceDocs.length > 0;
+const hasExampleFiles = exampleTestFiles.length > 0;
+const hasExampleText = exampleTestTextList.length > 0;
+const hasExampleTests = hasExampleFiles || hasExampleText;
 
-  if (hasSourceDocs || hasExampleFiles || hasExampleText) {
-    summary += "\n\nWe’ll use the following inputs:";
+if (hasSourceDocs || hasExampleTests) {
+  summary += "\n\nWe’ll use the following inputs:";
 
-    if (hasSourceDocs) {
-      summary += `\n• ${sourceDocs.length} source document(s)`;
-    }
-
-    if (hasExampleFiles) {
-      summary += `\n• ${exampleTestFiles.length} example test file(s)`;
-    }
-
-    if (hasExampleText) {
-      summary += `\n• ${exampleTestTextList.length} pasted example test(s)`;
-    }
+  if (hasSourceDocs) {
+    summary += `\n• ${sourceDocs.length} source document(s)`;
   }
 
-  // 7. Additional Comments
-  if (advancedDetails.trim().length > 0) {
-    summary += `\n\nAdditional Details:\n${advancedDetails.trim()}`;
+  if (hasExampleFiles) {
+    summary += `\n• ${exampleTestFiles.length} example test file(s)`;
   }
 
-  // Final line
+  if (hasExampleText) {
+    summary += `\n• ${exampleTestTextList.length} pasted example test(s)`;
+  }
+}
+
+// 7. Additional Comments
+if (advancedDetails.trim().length > 0) {
+  summary += `\n\nAdditional Details:\n${advancedDetails.trim()}`;
+}
+
+// 8. Conditional Final Statement
+if (hasSourceDocs && hasExampleTests) {
   summary +=
-    "\n\nFinally, we’ll generate a new assessment aligned to your course, unit, and instructional goals.";
+    "\n\nFinally, we’ll generate a new assessment that aligns with your source materials, matches or improves the structure of your example test(s), and explains key differences.";
+} else if (hasSourceDocs) {
+  summary +=
+    "\n\nFinally, we’ll generate a new assessment aligned to the content and skills in your source materials.";
+} else if (hasExampleTests) {
+  summary +=
+    "\n\nFinally, we’ll generate a new assessment that mirrors the structure, pacing, and difficulty of your example test(s).";
+} 
 
   setPreviewText(summary);
 }, [
@@ -176,7 +185,7 @@ const handleSubmit = () => {
     <div>
       <Label>Course Name</Label>
       <Input
-        placeholder="e.g., Algebra I, Biology, World History, ELA 7"
+        placeholder="e.g., Algebra I, Biology, World History"
         value={courseName}
         onChange={(e) => setCourseName(e.target.value)}
       />
@@ -184,9 +193,9 @@ const handleSubmit = () => {
 
     {/* Unit / Topic */}
     <div>
-      <Label>Unit / Topic</Label>
+      <Label>Unit / Topic (be specific)</Label>
       <Input
-        placeholder="e.g., Linear Functions, Photosynthesis, Civil War"
+        placeholder="e.g., Revolutionary War - Causes"
         value={unitName}
         onChange={(e) => setUnitName(e.target.value)}
       />
@@ -336,16 +345,7 @@ const handleSubmit = () => {
 
 
       {/* 3️⃣ Advanced Options */}
-      <Collapsible.Root open={showAdvanced} onOpenChange={setShowAdvanced}>
-        <Collapsible.Trigger asChild>
-          <Button variant="outline" className={styles.advancedButton}>
-            Advanced Options
-            {showAdvanced ? <ChevronUp /> : <ChevronDown />}
-          </Button>
-                </Collapsible.Trigger>
-
-        <Collapsible.Content className={styles.advancedContent}>
-        {/* 4️⃣ Advanced Details (Optional) */}
+      {/* 3️⃣ Additional Details (Optional) */}
 <Card>
   <h2 className={styles.sectionTitle}>Additional Details (Optional)</h2>
 
@@ -366,8 +366,6 @@ const handleSubmit = () => {
   />
 </Card>
 
-      </Collapsible.Content>
-      </Collapsible.Root>
 
       {/* 4️⃣ Preview */}
       <Card>

@@ -11,9 +11,13 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
 import { getCurrentAIMode } from './config/aiConfig';
+import { WhatWeInferPage } from './components/Inference/WhatWeInferPage';
+
+
 import './App.css';
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad';
+type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer';
+
 type AuthPage = 'signin' | 'signup';
 
 interface AssignmentContext {
@@ -55,6 +59,14 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📝</span>
               Pipeline
             </button>
+            <button
+              className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
+              onClick={() => setActiveTab('what-we-infer')}
+            >
+              🔍 What We Infer
+            </button>
+
+
           </div>
 
           <div className="app-header-actions">
@@ -122,6 +134,13 @@ function TeacherAppContent() {
         )}
 
         {activeTab === 'notepad' && <TeacherNotepad />}
+        {activeTab === 'what-we-infer' && (
+    <WhatWeInferPage onBack={() => setActiveTab('pipeline')} />
+  )}
+
+
+        
+
       </div>
     </div>
   );
