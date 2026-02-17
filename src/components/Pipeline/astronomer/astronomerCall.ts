@@ -10,15 +10,7 @@ import {
 
 /**
  * Astronomer v2 — Technical Student-Experience Simulation Engine
- *
- * Responsibilities:
- * - Build multidimensional embeddings for each problem
- * - Cluster problems based on cognitive similarity
- * - Simulate student traversal through the assessment
- * - Detect blueprint violations
- * - Identify culprit problems
- * - Produce a technical report for the Philosopher
- * */
+ */
 export async function runAstronomer(
   draft: UnifiedAssessmentResponse
 ): Promise<AstronomerResult> {
@@ -43,20 +35,18 @@ export async function runAstronomer(
     }))
   }));
 
-  // Flatten traversal into studentInteraction[]
   const studentInteraction: StudentInteraction[] = studentTraversal.flatMap((s) =>
-  s.path.map((step) => ({
-    studentId: s.studentId,              // <-- REQUIRED
-    problemId: step.problemId,
-    estimatedCorrectRate: step.estimatedCorrectRate,
-    estimatedTime: step.estimatedTime,
-    cognitiveLoad: step.cognitiveLoad,
-    likelyMisconceptions: step.likelyMisconceptions,
-    fatigueRisk: step.fatigueRisk,
-    confusionRisk: step.confusionRisk
-  }))
-);
-
+    s.path.map((step) => ({
+      studentId: s.studentId,
+      problemId: step.problemId,
+      estimatedCorrectRate: step.estimatedCorrectRate,
+      estimatedTime: step.estimatedTime,
+      cognitiveLoad: step.cognitiveLoad,
+      likelyMisconceptions: step.likelyMisconceptions,
+      fatigueRisk: step.fatigueRisk,
+      confusionRisk: step.confusionRisk
+    }))
+  );
 
   const blueprintViolations: BlueprintViolation[] = [];
   const culpritProblems: string[] = [];
@@ -68,7 +58,7 @@ export async function runAstronomer(
     problemEmbeddings: embeddings,
     clusters,
     studentTraversal,
-    studentInteraction,   // <-- NOW INCLUDED
+    studentInteraction,
     culpritProblems,
     blueprintViolations,
     notes

@@ -3,7 +3,8 @@ import {
   UnifiedAssessmentResponse
 } from "../contracts/assessmentContracts";
 import { writerCall } from "../writer/writerCall";
-import { astronomerCall } from "../astronomer/astronomerCall";
+import { runAstronomer } from "../astronomer/astronomerCall";
+
 import { philosopherCall } from "../philosopher/philosopherCall";
 
 export async function runUnifiedAssessment(
@@ -20,15 +21,19 @@ export async function runUnifiedAssessment(
     const draft = await writerCall(req, lastDraft);
 
     // 2. Astronomer clusters the draft
-    const astro = await astronomerCall(draft);
+    const astro = await runAstronomer(draft);
+
+
 
     // 3. Philosopher interprets clusters
     const phil = await philosopherCall(astro);
 
-    if (phil.status === "complete") {
+    if (phil.decision.status === "complete") {
+ 
       return {
         ...draft,
-        astronomerClusters: astro.clusters,
+        astronomerClusters: { clusters: astro.clusters },
+
         philosopherExplanation: phil,
         rewriteMeta: { cycles, status: "complete" }
       };
@@ -38,14 +43,14 @@ export async function runUnifiedAssessment(
   }
 
   // Forced complete after 3 cycles
-  const astro = await astronomerCall(lastDraft!);
-  const phil = await philosopherCall(astro);
+ const finalAstro = await runAstronomer(lastDraft!);
+ const finalPhil = await philosopherCall(finalAstro);
 
   return {
     ...lastDraft!,
-    astronomerClusters: astro.clusters,
+    astronomerClusters: { clusters: finalAstro.clusters },
     philosopherExplanation: {
-      ...phil,
+      ...finalPhil,
       status: "forced-complete"
     },
     rewriteMeta: { cycles: 3, status: "forced-complete" }
