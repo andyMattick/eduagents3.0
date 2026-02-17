@@ -6,7 +6,7 @@ export interface MinimalTeacherIntent {
   time: string;
   additionalDetails?: string;
 
-  sourceDocuments?: Array<{
+  sourceDocuments: Array<{
     id: string;
     name: string;
     content: string;
@@ -220,26 +220,6 @@ export interface WriterBlueprint {
 //
 // --- Minimal teacher-facing request ---
 //
-export interface MinimalTeacherIntent {
-  course: string;
-  unit: string;
-  studentLevel: string;
-  assignmentType: string;
-  time: string;
-  additionalDetails?: string;
-
-  // uploads
-  sourceDocuments?: Array<{
-    id: string;
-    name: string;
-    content: string;
-  }>;
-
-  exampleAssessment?: {
-    id: string;
-    content: string;
-  };
-}
 
 export interface UnifiedAssessmentResponse {
   //

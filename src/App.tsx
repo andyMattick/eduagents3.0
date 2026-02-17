@@ -10,7 +10,6 @@ import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
-import { getCurrentAIMode } from './config/aiConfig';
 import { WhatWeInferPage } from './components/Inference/WhatWeInferPage';
 
 
@@ -20,10 +19,17 @@ type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer';
 
 type AuthPage = 'signin' | 'signup';
 
-interface AssignmentContext {
+export interface AssignmentContext {
   assignmentId: string;
-  action: 'view' | 'edit' | 'clone';
+  action:
+    | 'view'
+    | 'edit'
+    | 'report-results'
+    | 'generate-new-version'
+    | 'view answer-key'
+    | 'view rubric';
 }
+
 
 /* ------------------------------
    Teacher App (with theme toggle)
@@ -31,11 +37,8 @@ interface AssignmentContext {
 function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
   const [assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
-  const { reset } = useUserFlow();
   const { logout, user } = useAuth();
-  const { theme, toggleTheme } = useTheme();
-
-  const handleResetFlow = () => reset();
+  
   const handleLogout = async () => await logout();
 
   return (
@@ -65,38 +68,18 @@ function TeacherAppContent() {
             >
               🔍 What We Infer
             </button>
-
-
-          </div>
-
-          <div className="app-header-actions">
-            {/* AI Status */}
-            <div className="ai-status-indicator">
-              <span className="ai-status-icon">
-                {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
-              </span>
-              <span className="ai-status-label">Gemini API</span>
-            </div>
-
             {/* Theme Toggle */}
-            <button
-              className="theme-toggle-button"
-              onClick={toggleTheme}
-              title="Toggle dark mode"
-            >
-              {theme === 'dark' ? '🌙' : '☀️'}
-            </button>
+            
 
-            {activeTab === 'pipeline' && (
-              <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
-                🔄 Reset
-              </button>
-            )}
+          
 
             <button onClick={handleLogout} className="logout-button">
               Sign Out
             </button>
+
+
           </div>
+
         </div>
       </div>
 
@@ -122,44 +105,29 @@ function TeacherAppContent() {
                 setActiveTab('pipeline');
               }
 
-              else if (page === 'clone-assignment' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
-                setActiveTab('pipeline');
-              }
+             
 
-              // ⭐ NEW ROUTES ⭐
-              else if (page === 'view-assessment' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-assessment' });
-                setActiveTab('pipeline');
-              }
+             
 
               else if (page === 'report-results' && data?.assignmentId) {
                 setAssignmentContext({ assignmentId: data.assignmentId, action: 'report-results' });
                 setActiveTab('pipeline');
               }
 
-              else if (page === 'compare-predicted-actual' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'compare-predicted-actual' });
-                setActiveTab('pipeline');
-              }
-
-              else if (page === 'improve-future-writing' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'improve-future-writing' });
-                setActiveTab('pipeline');
-              }
+              
 
               else if (page === 'generate-new-version' && data?.assignmentId) {
                 setAssignmentContext({ assignmentId: data.assignmentId, action: 'generate-new-version' });
                 setActiveTab('pipeline');
               }
 
+             
               else if (page === 'view-answer-key' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-answer-key' });
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view answer-key' });
                 setActiveTab('pipeline');
               }
-
               else if (page === 'view-rubric' && data?.assignmentId) {
-                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-rubric' });
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view rubric' });
                 setActiveTab('pipeline');
               }
 }}

@@ -642,3 +642,94 @@
     color: #ffffff;
   }
 }
+
+/* ------------------------------
+   DASHBOARD LAYOUT FIXES
+--------------------------------*/
+
+/* Grid for assignment cards */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.75rem;
+  padding: 1rem 0;
+}
+
+/* Card wrapper */
+.dashboard-card {
+  background: var(--bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all var(--transition-base);
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Title */
+.dashboard-card-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+/* Metadata section */
+.dashboard-card-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+/* Question/time row */
+.dashboard-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+/* Action buttons */
+.dashboard-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: auto;
+}
+
+.dashboard-card-actions button {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.assignment-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.card-actions {
+  margin-top: auto;
+}
+
+.card-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

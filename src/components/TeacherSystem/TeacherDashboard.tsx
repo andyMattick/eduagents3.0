@@ -4,6 +4,12 @@ import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TI
 import { useUserFlow } from '../../hooks/useUserFlow';
 import { AssessmentResults } from './AssessmentResults';
 import './TeacherDashboard.css';
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent
+} from "@/components/ui/collapsible";
+
 
 interface TeacherDashboardProps {
   teacherId: string;
@@ -379,69 +385,48 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                 <div className="card-footer">
                   <small>Updated {new Date(assignment.updatedAt).toLocaleDateString()}</small>
                 </div>
-                <div className="card-actions">
-                  {assignment.status === 'finalized' && (
-                    <button
-                      onClick={() => viewAssessmentResults(assignment)}
-                      className="btn-secondary btn-sm btn-results"
-                      title="View assessment results and stats"
-                    >
-                      📊 Results
-                    </button>
-                  )}
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => onNavigate('view-assessment', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      View Assessment
-                    </button>
+                <Collapsible className="card-actions" defaultOpen={false}>
+  <CollapsibleTrigger className="card-actions-trigger">
+    ▶ Actions
+  </CollapsibleTrigger>
 
-                    <button
-                      onClick={() => onNavigate('report-results', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      Report Classroom Results
-                    </button>
+  <CollapsibleContent className="card-actions-list">
+    <button
+      onClick={() => onNavigate('view-assessment', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Assessment
+    </button>
 
-                    <button
-                      onClick={() => onNavigate('compare-predicted-actual', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      Compare Predicted vs Actual
-                    </button>
+    <button
+      onClick={() => onNavigate('report-results', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      Report Results
+    </button>
 
-                    <button
-                      onClick={() => onNavigate('improve-future-writing', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      Improve Future Writing
-                    </button>
+    <button
+      onClick={() => onNavigate('generate-new-version', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      Generate New Version
+    </button>
 
-                    <button
-                      onClick={() => onNavigate('generate-new-version', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      Generate New Version
-                    </button>
+    <button
+      onClick={() => onNavigate('view-answer-key', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Answer Key
+    </button>
 
-                    <button
-                      onClick={() => onNavigate('view-answer-key', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      View Answer Key
-                    </button>
-
-                    <button
-                      onClick={() => onNavigate('view-rubric', { assignmentId: assignment.id })}
-                      className="btn-secondary btn-sm"
-                    >
-                      View Rubric
-</button>
-
-                  </div>
-
-                </div>
+    <button
+      onClick={() => onNavigate('view-rubric', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Rubric
+    </button>
+  </CollapsibleContent>
+</Collapsible>
               </div>
             ))}
           </div>
