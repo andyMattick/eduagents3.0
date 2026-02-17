@@ -1,5 +1,8 @@
+// src/components/Pipeline/writer/writerCall.ts
+
 import {
   UnifiedAssessmentRequest,
+  UnifiedAssessmentResponse,
   DocumentSummary,
   ProblemPayload,
   StudentProfile,
@@ -9,46 +12,72 @@ import {
   CognitiveTrace,
   DifficultyEstimate,
   MisconceptionCluster,
-  TimeEstimateSummary
+  TimeEstimateSummary,
 } from "../contracts/assessmentContracts";
 
 import { buildWriterPrompt } from "./writerPrompt";
+import { callAI } from "../../../config/aiConfig";
+import { estimateAssessmentTime } from "./writerModel";
 
 export async function writerCall(
   req: UnifiedAssessmentRequest,
   previousDraft?: any
-) {
+): Promise<UnifiedAssessmentResponse> {
   const prompt = buildWriterPrompt(req, previousDraft);
 
-  // TODO: Replace with real Gemini call
-  const response = await mockWriterResponse();
+  // 🔥 REAL AI CALL — no mocks, no fallbacks
+  const aiResponse = await callAI(prompt, {
+    modelName: "gemini-2.5-flash",
+    maxTokens: 4000,
+  });
 
-  return {
-    documentSummary: response.documentSummary as DocumentSummary,
-    problemPayload: response.problemPayload as ProblemPayload[],
-    studentProfiles: response.studentProfiles as StudentProfile[],
-    studentTesters: response.studentTesters as StudentTester[],
-    finalDocument: response.finalDocument as GeneratedAssessment,
-    answerKey: response.answerKey as AnswerKey,
-    cognitiveTraces: response.cognitiveTraces as CognitiveTrace[],
-    difficultyEstimates: response.difficultyEstimates as DifficultyEstimate[],
-    misconceptionClusters: response.misconceptionClusters as MisconceptionCluster[],
-    timeEstimates: response.timeEstimates as TimeEstimateSummary
-  };
-}
+  const text = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
 
-// Temporary stub so TypeScript compiles
-async function mockWriterResponse() {
+  if (!text || text.trim().length === 0) {
+    throw new Error("Writer returned an empty response");
+  }
+
+  // Extract JSON from the model output
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("Writer did not return valid JSON");
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  // ⭐ NEW: Smart time estimation based on problem type, Bloom level, complexity
+  const timeEstimates: TimeEstimateSummary = estimateAssessmentTime(
+    parsed.problemPayload || []
+  );
+
+  // Shape into UnifiedAssessmentResponse
   return {
-    documentSummary: { summaryText: "Mock summary" },
-    problemPayload: [],
-    studentProfiles: [],
-    studentTesters: [],
-    finalDocument: { problems: [], metadata: {} },
-    answerKey: { answers: [] },
-    cognitiveTraces: [],
-    difficultyEstimates: [],
-    misconceptionClusters: [],
-    timeEstimates: { totalMinutes: 0, perProblem: [] }
+    documentSummary: parsed.documentSummary as DocumentSummary,
+    problemPayload: parsed.problemPayload as ProblemPayload[],
+    studentProfiles: parsed.studentProfiles as StudentProfile[],
+    studentTesters: parsed.studentTesters as StudentTester[],
+    finalDocument: parsed.finalDocument as GeneratedAssessment,
+    answerKey: parsed.answerKey as AnswerKey,
+    cognitiveTraces: parsed.cognitiveTraces as CognitiveTrace[],
+    difficultyEstimates: parsed.difficultyEstimates as DifficultyEstimate[],
+    misconceptionClusters: parsed.misconceptionClusters as MisconceptionCluster[],
+    studentInteraction: parsed.studentInteraction ?? [],
+
+
+    // ⭐ Use our computed time estimates instead of AI’s
+    timeEstimates,
+
+    // Optional fields for rewrite loop
+    astronomerClusters: parsed.astronomerClusters ?? { clusters: [] },
+    philosopherExplanation: parsed.philosopherExplanation ?? {
+      status: "complete",
+      narrativeSummary: "",
+      keyFindings: [],
+      recommendations: [],
+    },
+    rewriteMeta: parsed.rewriteMeta ?? {
+      cycles: 1,
+      status: "complete",
+    },
   };
 }

@@ -22,10 +22,23 @@ import { ViewAssignmentPage } from './ViewAssignmentPage';
 import { Launchpad } from './Launchpad';
 import './PipelineRouter.css';
 
-interface AssignmentContext {
+export type AssignmentAction =
+  | 'view'
+  | 'edit'
+  | 'clone'
+  | 'view-assessment'
+  | 'report-results'
+  | 'compare-predicted-actual'
+  | 'improve-future-writing'
+  | 'generate-new-version'
+  | 'view-answer-key'
+  | 'view-rubric';
+
+export interface AssignmentContext {
   assignmentId: string;
-  action: 'view' | 'edit' | 'clone';
+  action: AssignmentAction;
 }
+
 
 interface PipelineRouterProps {
   onAssignmentSaved?: () => void;

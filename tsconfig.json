@@ -23,12 +23,17 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
 
-    /* ⭐ ADD THESE ⭐ */
+    /* Path alias */
     "baseUrl": "src",
     "paths": {
       "@/*": ["*"]
     }
   },
+
   "include": ["src"],
+
+  /* ⭐ ADD THIS ⭐ */
+  "exclude": ["src/agents", "src/agents_legacy"],
+
   "references": [{ "path": "./tsconfig.node.json" }]
 }

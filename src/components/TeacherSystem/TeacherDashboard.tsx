@@ -389,31 +389,58 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                       📊 Results
                     </button>
                   )}
-                  <button
-                    onClick={() => onNavigate('edit-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => onNavigate('clone-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    Clone
-                  </button>
-                  <button
-                    onClick={() => onNavigate('view-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    View
-                  </button>
-                  <button
-                    onClick={() => openDeleteConfirmation(assignment.id, assignment.title)}
-                    className="btn-secondary btn-sm btn-delete"
-                    title="Delete this assignment"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => onNavigate('view-assessment', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      View Assessment
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('report-results', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      Report Classroom Results
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('compare-predicted-actual', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      Compare Predicted vs Actual
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('improve-future-writing', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      Improve Future Writing
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('generate-new-version', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      Generate New Version
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('view-answer-key', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      View Answer Key
+                    </button>
+
+                    <button
+                      onClick={() => onNavigate('view-rubric', { assignmentId: assignment.id })}
+                      className="btn-secondary btn-sm"
+                    >
+                      View Rubric
+</button>
+
+                  </div>
+
                 </div>
               </div>
             ))}

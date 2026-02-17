@@ -1,0 +1,43 @@
+// src/components/Pipeline/rewriter/rewriter.ts
+
+import { callAI } from "../../../config/aiConfig";
+import {
+  UnifiedAssessmentResponse,
+  PhilosopherReport
+} from "../contracts/assessmentContracts";
+
+import { buildRewriterPrompt } from "./rewriterPrompt";
+
+export interface RewriterResult {
+  rewrittenProblems: Array<any>;
+}
+
+export async function runRewriter(
+  writerDraft: UnifiedAssessmentResponse,
+  philosopher: PhilosopherReport
+): Promise<RewriterResult> {
+
+  const prompt = buildRewriterPrompt(writerDraft, philosopher);
+
+  const aiResponse = await callAI(prompt, {
+    modelName: "gemini-2.5-flash",
+    maxTokens: 4000,
+  });
+
+  const text = aiResponse?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text || text.trim().length === 0) {
+    throw new Error("Rewriter returned an empty response");
+  }
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("Rewriter did not return valid JSON");
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  return {
+    rewrittenProblems: parsed.rewrittenProblems ?? []
+  };
+}

@@ -106,20 +106,64 @@ function TeacherAppContent() {
           <TeacherDashboard
             teacherId={user?.id || ''}
             onNavigate={(page, data) => {
+  // Existing routes
               if (page === 'pipeline' || page === 'create-assignment') {
                 setAssignmentContext(null);
                 setActiveTab('pipeline');
-              } else if (page === 'view-assignment' && data?.assignmentId) {
+              }
+
+              else if (page === 'view-assignment' && data?.assignmentId) {
                 setAssignmentContext({ assignmentId: data.assignmentId, action: 'view' });
                 setActiveTab('pipeline');
-              } else if (page === 'edit-assignment' && data?.assignmentId) {
+              }
+
+              else if (page === 'edit-assignment' && data?.assignmentId) {
                 setAssignmentContext({ assignmentId: data.assignmentId, action: 'edit' });
                 setActiveTab('pipeline');
-              } else if (page === 'clone-assignment' && data?.assignmentId) {
+              }
+
+              else if (page === 'clone-assignment' && data?.assignmentId) {
                 setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
                 setActiveTab('pipeline');
               }
-            }}
+
+              // ⭐ NEW ROUTES ⭐
+              else if (page === 'view-assessment' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-assessment' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'report-results' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'report-results' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'compare-predicted-actual' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'compare-predicted-actual' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'improve-future-writing' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'improve-future-writing' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'generate-new-version' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'generate-new-version' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'view-answer-key' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-answer-key' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'view-rubric' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view-rubric' });
+                setActiveTab('pipeline');
+              }
+}}
+
           />
         )}
 
