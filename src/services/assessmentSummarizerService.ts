@@ -1,18 +1,11 @@
-import { AssessmentIntent } from "../components/Pipeline/contracts/assessmentContracts";
+import { MinimalTeacherIntent } from "../components/Pipeline/contracts/assessmentContracts";
+import { translateMinimalToUnified } from "./translateMinimalToUnified";
+import { runUnifiedAssessment } from "../components/Pipeline/orchestrator/assessmentOrchestratorService";
 
-export async function summarizeAssessmentIntent(intent: AssessmentIntent) {
-  const prompt = `
-    Summarize the teacher's assessment intent clearly and concisely.
-
-    Course: ${intent.course}
-    Unit: ${intent.unit}
-    Student Level: ${intent.studentLevel}
-    Assignment Type: ${intent.assignmentType}
-    Time: ${intent.time}
-    Additional Details: ${intent.additionalDetails}
-  `;
-
-  const summaryText = await callYourAI(prompt);
-
-  return { summaryText };
+export async function summarizeAssessmentIntent(
+  intent: MinimalTeacherIntent
+) {
+  const req = translateMinimalToUnified(intent);
+  return await runUnifiedAssessment(req);
 }
+

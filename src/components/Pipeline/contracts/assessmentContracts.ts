@@ -1,3 +1,22 @@
+export interface MinimalTeacherIntent {
+  course: string;
+  unit: string;
+  studentLevel: string;
+  assignmentType: string;
+  time: string;
+  additionalDetails?: string;
+
+  sourceDocuments?: Array<{
+    id: string;
+    name: string;
+    content: string;
+  }>;
+
+  exampleAssessment?: {
+    id: string;
+    content: string;
+  };
+}
 //
 // --- Unified Assessment Request ---
 //
@@ -196,6 +215,29 @@ export interface WriterBlueprint {
     bloomDistribution: any;
     difficultyCurve: any;
     structureNotes: string[];
+  };
+}
+//
+// --- Minimal teacher-facing request ---
+//
+export interface MinimalTeacherIntent {
+  course: string;
+  unit: string;
+  studentLevel: string;
+  assignmentType: string;
+  time: string;
+  additionalDetails?: string;
+
+  // uploads
+  sourceDocuments?: Array<{
+    id: string;
+    name: string;
+    content: string;
+  }>;
+
+  exampleAssessment?: {
+    id: string;
+    content: string;
   };
 }
 
