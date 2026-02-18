@@ -10,9 +10,19 @@ import {
 import { buildPhilosopherPrompt } from "./philosopherPrompt";
 
 export async function runPhilosopher(
+  
   writerDraft: UnifiedAssessmentResponse,
   astro: AstronomerResult
 ): Promise<PhilosopherReport> {
+  console.log(
+  "%c[Philosopher] Starting evaluation...",
+  "color:#7C3AED;font-weight:bold;",
+  {
+    writerDraft,
+    astro
+  }
+);
+
   const prompt = buildPhilosopherPrompt(writerDraft, astro);
 
   const aiResponse = await callAI(prompt, {
@@ -32,6 +42,13 @@ export async function runPhilosopher(
   }
 
   const parsed = JSON.parse(jsonMatch[0]);
+
+  console.log(
+  "%c[Philosopher] Evaluation complete:",
+  "color:#6D28D9;font-weight:bold;",
+  parsed
+);
+
 
   return {
     decision: parsed.decision ?? {

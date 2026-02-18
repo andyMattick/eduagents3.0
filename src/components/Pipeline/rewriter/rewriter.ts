@@ -17,6 +17,13 @@ export async function runRewriter(
   philosopher: PhilosopherReport
 ): Promise<RewriterResult> {
 
+  console.log(
+  "%c[Rewriter] Starting rewrite...",
+  "color:#C026D3;font-weight:bold;",
+  { writerDraft, philosopher }
+);
+
+
   const prompt = buildRewriterPrompt(writerDraft, philosopher);
 
   const aiResponse = await callAI(prompt, {
@@ -36,6 +43,13 @@ export async function runRewriter(
   }
 
   const parsed = JSON.parse(jsonMatch[0]);
+
+  console.log(
+  "%c[Rewriter] Rewrite complete:",
+  "color:#DB2777;font-weight:bold;",
+  parsed
+);
+
 
   return {
     rewrittenProblems: parsed.rewrittenProblems ?? []

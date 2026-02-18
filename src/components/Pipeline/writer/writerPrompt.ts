@@ -45,6 +45,26 @@ Your tasks:
 8. Estimate difficulty and time.
 9. Identify misconception clusters.
 
+STRICT OUTPUT REQUIREMENTS:
+- "problemPayload" MUST be an array of problem objects, even if only one problem is generated.
+- Each problem object MUST follow this exact schema:
+
+  {
+    "problemId": "string",
+    "question": "string",
+    "answer": "string",
+    "questionType": "string",
+    "bloomLevel": "string",
+    "complexity": number
+  }
+
+- NEVER return a single object for problemPayload.
+- NEVER return null for problemPayload.
+- NEVER wrap problemPayload in another object.
+- ALWAYS return: "problemPayload": [ { ... }, { ... } ]
+
 Return JSON ONLY.
-  `;
+
+
+  `
 }

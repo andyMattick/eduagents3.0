@@ -15,6 +15,13 @@ export async function runAstronomer(
   draft: UnifiedAssessmentResponse
 ): Promise<AstronomerResult> {
 
+  console.log(
+  "%c[Astronomer] Starting analysis...",
+  "color:#0EA5E9;font-weight:bold;",
+  draft
+);
+
+
   const embeddings: ProblemEmbedding[] = draft.problemPayload.map((p) => ({
     problemId: p.problemId,
     vector: [] // TODO: real embedding
@@ -53,6 +60,17 @@ export async function runAstronomer(
   const notes: string[] = [
     "Astronomer v2 executed placeholder logic. Replace with real modeling."
   ];
+
+  console.log(
+  "%c[Astronomer] Analysis complete:",
+  "color:#0284C7;font-weight:bold;",
+  {
+    clusters,
+    studentInteraction
+  }
+);
+
+
 
   return {
     problemEmbeddings: embeddings,

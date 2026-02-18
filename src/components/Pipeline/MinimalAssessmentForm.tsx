@@ -96,10 +96,23 @@ export default function MinimalAssessment({ onSubmit }: { onSubmit: (intent: Min
     form.time.trim() !== "";
 
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSubmit(form);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+
+  const intent = {
+    ...form, // or your individual fields
   };
+
+  console.log(
+    "%c[UI] Submit clicked — intent built:",
+    "color:#9333EA;font-weight:bold;",
+    intent
+  );
+
+  onSubmit(intent);
+};
+
+
 
   return (
     <div className={styles.appShell}>
@@ -313,7 +326,7 @@ export default function MinimalAssessment({ onSubmit }: { onSubmit: (intent: Min
             <button
               type="submit"
               className={styles.generateButtonSecondary}
-              onClick={handleSubmit}
+              
             >
               Generate Assessment
             </button>
