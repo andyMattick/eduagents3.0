@@ -1,70 +1,159 @@
 import { UnifiedAssessmentRequest } from "../contracts/assessmentContracts";
 
-
-export function buildWriterPrompt(
-  req: UnifiedAssessmentRequest,
-  previousDraft?: any
-): string {
-
+export function buildWriterPrompt(uar: UnifiedAssessmentRequest): string {
   return `
-You are the Writer module in an adaptive assessment system.
+You are Writer v2, a problem-generation engine in a modular assessment pipeline.
 
-Teacher Inputs:
+Your ONLY job is to generate a JSON object with a "problemPayload" array.
+Do NOT generate instructions, formatting, or document layout.
+
+----------------------------------------
+TEACHER INTENT
+----------------------------------------
+Subject: ${uar.subject}
+Grade Level: ${uar.gradeLevel}
+Assessment Type: ${uar.assessmentType}
+Time Available: ${uar.time} minutes
+Number of Problems Requested: ${uar.numProblems}
+Difficulty Target (0–1): ${uar.difficultyProfile?.target ?? 0.5}
+Focus Areas: ${uar.focusAreas?.join(", ") || "none"}
+
+----------------------------------------
+SOURCE DOCUMENTS (summaries only)
+----------------------------------------
+${formatDocs(uar.sourceDocuments)}
+
+----------------------------------------
+ALLOWED QUESTION TYPES
+----------------------------------------
+Choose question types based on the assessmentType:
+
+K–12 Types:
+- multipleChoice
+- trueFalse
+- shortAnswer
+- fillInTheBlank
+- matching
+- ordering
+- labeling
+- openResponse
+- essay
+
+AP Types:
+- frq  (AP Free Response)
+- dbq  (AP Document-Based Question)
+- leq  (AP Long Essay Question)
+- saq  (AP Short Answer Question)
+
+Rules:
+- Bell Ringer → shortAnswer, trueFalse, multipleChoice
+- Exit Ticket → shortAnswer, multipleChoice
+- Quiz → multipleChoice, shortAnswer, fillInTheBlank, trueFalse
+- Test → all K–12 types allowed
+- Worksheet → fillInTheBlank, matching, labeling, shortAnswer
+- Test Review → multipleChoice, shortAnswer
+
+AP-Specific:
+- If assessmentType contains "DBQ", use dbq
+- If assessmentType contains "LEQ", use leq
+- If assessmentType contains "SAQ", use saq
+- If assessmentType contains "FRQ", use frq
+- AP questions should NOT appear in non-AP assessments
+
+----------------------------------------
+COGNITIVE LOAD & TIME ESTIMATES
+----------------------------------------
+Use these approximate times per question:
+
+- trueFalse: 15–20 sec
+- multipleChoice: 30–45 sec
+- fillInTheBlank: 45–60 sec
+- shortAnswer: 1–2 min
+- matching: 2–3 min
+- ordering: 2–3 min
+- labeling: 2–4 min
+- openResponse: 5–7 min
+- essay: 10–15 min
+- saq: 5–7 min
+- frq: 10–15 min
+- leq: 15–25 min
+- dbq: 20–30 min
+
+Ensure the total estimated time fits within the teacher's time budget.
+
+----------------------------------------
+DIFFICULTY RULES
+----------------------------------------
+Match bloomLevel & complexity to difficultyProfile.target:
+
+Low difficulty (0.0–0.3):
+- remember, understand
+- trueFalse, multipleChoice, fillInTheBlank
+
+Medium difficulty (0.3–0.6):
+- apply, analyze
+- shortAnswer, matching, ordering, labeling
+
+High difficulty (0.6–1.0):
+- evaluate, create
+- openResponse, essay, frq, leq, dbq
+
+----------------------------------------
+OUTPUT FORMAT (STRICT)
+----------------------------------------
+Return ONLY valid JSON:
+
 {
-  "title": "${req.title}",
-  "subject": "${req.subject}",
-  "gradeLevel": "${req.gradeLevel}",
-  "numProblems": ${req.numProblems},
-  "focusAreas": ${JSON.stringify(req.focusAreas ?? [])},
-  "emphasis": ${JSON.stringify(req.emphasis ?? [])},
-  "rubricGoals": ${JSON.stringify(req.rubricGoals ?? [])},
-  "classroomContext": ${JSON.stringify(req.classroomContext ?? "")},
-  "notesForWriter": ${JSON.stringify(req.notesForWriter ?? "")}
+  "problemPayload": [
+    {
+      "problemId": "string",
+      "question": "string",
+      "answer": "string",
+      "questionType": "${questionTypeList()}",
+      "bloomLevel": "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create",
+      "complexity": number (0–1)
+    }
+  ]
 }
 
-Source Documents:
-${JSON.stringify(req.sourceDocuments ?? [], null, 2)}
+Rules:
+- problemId must be unique
+- question must be original
+- answer must be correct
+- questionType must be allowed for the assessmentType
+- complexity must reflect difficultyProfile.target
+- Output must be valid JSON with no trailing text
 
-Example Assessment:
-${JSON.stringify(req.exampleAssessment ?? null, null, 2)}
+Begin now.
+`;
+}
 
-Student Profiles:
-${JSON.stringify(req.studentProfiles ?? [], null, 2)}
+function formatDocs(docs?: any[]) {
+  if (!docs || docs.length === 0) return "No source documents provided.";
+  return docs
+    .map(
+      (d) =>
+        `- ${d.name}: ${d.content
+          .replace(/\s+/g, " ")
+          .slice(0, 300)}...`
+    )
+    .join("\n");
+}
 
-Previous Draft:
-${previousDraft ? JSON.stringify(previousDraft, null, 2) : "None"}
-
-Your tasks:
-1. Summarize the uploaded documents.
-2. Infer the problem payload.
-3. Generate student profiles.
-4. Generate student testers.
-5. Produce the final written assessment.
-6. Produce the answer key.
-7. Produce cognitive traces.
-8. Estimate difficulty and time.
-9. Identify misconception clusters.
-
-STRICT OUTPUT REQUIREMENTS:
-- "problemPayload" MUST be an array of problem objects, even if only one problem is generated.
-- Each problem object MUST follow this exact schema:
-
-  {
-    "problemId": "string",
-    "question": "string",
-    "answer": "string",
-    "questionType": "string",
-    "bloomLevel": "string",
-    "complexity": number
-  }
-
-- NEVER return a single object for problemPayload.
-- NEVER return null for problemPayload.
-- NEVER wrap problemPayload in another object.
-- ALWAYS return: "problemPayload": [ { ... }, { ... } ]
-
-Return JSON ONLY.
-
-
-  `
+function questionTypeList(): string {
+  return [
+    "multipleChoice",
+    "trueFalse",
+    "shortAnswer",
+    "fillInTheBlank",
+    "openResponse",
+    "essay",
+    "matching",
+    "ordering",
+    "labeling",
+    "frq",
+    "dbq",
+    "leq",
+    "saq",
+  ].join(" | ");
 }

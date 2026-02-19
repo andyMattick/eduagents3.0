@@ -1,12 +1,16 @@
 export interface MinimalTeacherIntent {
+  gradeLevels?: string[];
   course: string;
   unit: string;
   studentLevel: string;
-  assignmentType: string;
-  time: string;
+
+  assessmentType: "bellRinger" | "exitTicket" | "quiz" | "test" | "worksheet" | "testReview";
+
+  time: number;
+
   additionalDetails?: string;
 
-  sourceDocuments: Array<{
+  sourceDocuments?: Array<{
     id: string;
     name: string;
     content: string;
@@ -17,6 +21,7 @@ export interface MinimalTeacherIntent {
     content: string;
   };
 }
+
 //
 // --- Unified Assessment Request ---
 //
@@ -24,12 +29,26 @@ export interface UnifiedAssessmentRequest {
   //
   // Core teacher inputs
   //
-  title: string;
-  gradeLevel?: string;
-  subject?: string;
+  
+  title: string;            // e.g., "Algebra I – Linear Functions"
+  gradeLevels?: string[];      // e.g., "Grade 8", "Advanced"
+  subject?: string;         // e.g., "Algebra I"
 
   //
-  // Source materials
+  // Assessment type + time (required)
+  //
+  assessmentType:
+    | "bellRinger"
+    | "exitTicket"
+    | "quiz"
+    | "test"
+    | "worksheet"
+    | "testReview";
+
+  time: number;             // minutes
+
+  //
+  // Source materials (optional)
   //
   sourceDocuments?: Array<{
     id: string;
@@ -48,8 +67,8 @@ export interface UnifiedAssessmentRequest {
   numProblems: number;
 
   difficultyProfile?: {
-    target: number;   // 0–1
-    spread?: number;  // 0–1
+    target: number;   // 0–1 difficulty target
+    spread?: number;  // 0–1 variability
   };
 
   focusAreas?: string[];
@@ -58,12 +77,12 @@ export interface UnifiedAssessmentRequest {
   notesForWriter?: string;
 
   //
-  // Rubric alignment
+  // Rubric alignment (optional)
   //
   rubricGoals?: string[];
 
   //
-  // Student modeling
+  // Student modeling (optional)
   //
   studentProfiles?: Array<{
     studentId: string;
@@ -81,11 +100,12 @@ export interface UnifiedAssessmentRequest {
   preserveTeacherStyle?: boolean;
 
   //
-  // Versioning
+  // Versioning + student interaction
   //
   pipelineVersion?: string;
   studentInteraction?: StudentInteraction[];
 }
+
 
 export interface ProblemEmbedding {
   problemId: string;
@@ -226,6 +246,8 @@ export interface UnifiedAssessmentResponse {
   // --- Writer Core Output ---
   //
   writerBlueprint?: WriterBlueprint;   // <-- NEW
+  writerDraft: WriterDraft; 
+  astronomerReport: AstronomerReport;
 
   documentSummary: DocumentSummary;
   problemPayload: ProblemPayload[];
@@ -365,6 +387,10 @@ export interface MisconceptionCluster {
 export interface TimeEstimateSummary {
   totalMinutes: number;
   perProblem: number[];
+}
+export interface WriterAstronomerResponse {
+  writerDraft: WriterDraft;
+  astronomerReport: AstronomerReport;
 }
 
 

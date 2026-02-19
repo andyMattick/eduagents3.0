@@ -3,14 +3,18 @@ import {
   ProblemPayload
 } from "../contracts/assessmentContracts";
 
+
+
 export interface WriterValidationResult {
   valid: boolean;
   errors: string[];
 }
 
-export function validateWriterOutput(
-  draft: UnifiedAssessmentResponse
+import { WriterDraft } from "../writer/WriterDraft"; 
+export function validateWriterOutput( 
+  draft: WriterDraft 
 ): WriterValidationResult {
+
   const errors: string[] = [];
 
   // 1. Problem payload exists
@@ -24,7 +28,7 @@ export function validateWriterOutput(
       errors.push(`Problem at index ${i} is missing a valid problemId.`);
     }
   });
-
+/*
   // 3. Answer key exists
   if (!draft.answerKey || !Array.isArray(draft.answerKey.answers)) {
     errors.push("Writer produced an invalid answer key.");
@@ -54,6 +58,7 @@ export function validateWriterOutput(
   if (!draft.finalDocument || typeof draft.finalDocument !== "object") {
     errors.push("Writer produced invalid finalDocument.");
   }
+    */
 
   return {
     valid: errors.length === 0,

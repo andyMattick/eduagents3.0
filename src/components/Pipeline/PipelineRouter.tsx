@@ -25,7 +25,8 @@ export function PipelineRouter({
       <MinimalAssessmentFormWrapper onResult={handlePipelineResult} />
 
       {assessment && (
-        <pre style={{ marginTop: "2rem", background: "#f5f5f5", padding: "1rem" }}>
+        <pre className="json-preview" style={{ marginTop: "2rem", padding: "1rem" }}>
+
           {JSON.stringify(assessment, null, 2)}
         </pre>
       )}

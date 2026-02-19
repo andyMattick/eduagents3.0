@@ -629,19 +629,60 @@
   }
 }
 
-/* Dark mode for AI status */
+/* GLOBAL DARK MODE */
 @media (prefers-color-scheme: dark) {
-  .ai-status-indicator {
-    background: #242424;
-    border-color: #333333;
-    color: #aaaaaa;
+  body {
+    background-color: #121212;
+    color: #e5e5e5;
   }
+
+  /* Panels, cards, containers */
+  .card,
+  .panel,
+  .container,
+  .section {
+    background-color: #1e1e1e;
+    color: #e5e5e5;
+  }
+
+  /* Code blocks, JSON previews, <pre> tags */
+  pre,
+  code {
+    background-color: #1a1a1a;
+    color: #d0d0d0;
+    border: 1px solid #333;
+  }
+
+  /* Inputs */
+  input,
+  textarea,
+  select {
+    background-color: #1a1a1a;
+    color: #e5e5e5;
+    border-color: #444;
+  }
+
+  /* Buttons (if you use light buttons) */
+  button {
+    background-color: #2a2a2a;
+    color: #e5e5e5;
+    border-color: #444;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .json-preview {
+    background-color: #1a1a1a;
+    color: #d0d0d0;
+    border: 1px solid #333;
+  }
+}
 
   .ai-status-indicator:hover {
     border-color: #667eea;
     color: #ffffff;
   }
-}
+
 
 /* ------------------------------
    DASHBOARD LAYOUT FIXES

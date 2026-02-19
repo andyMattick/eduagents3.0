@@ -1,43 +1,50 @@
-import { MinimalTeacherIntent, UnifiedAssessmentRequest } from "../components/Pipeline/contracts/assessmentContracts";
+import {
+  MinimalTeacherIntent,
+  UnifiedAssessmentRequest
+} from "../components/Pipeline/contracts/assessmentContracts";
 
 export function translateMinimalToUnified(
   intent: MinimalTeacherIntent
 ): UnifiedAssessmentRequest {
   return {
     //
-    // Core teacher inputs (inferred)
+    // Core teacher inputs
     //
     title: `${intent.course} – ${intent.unit}`,
-    gradeLevel: intent.studentLevel,
+    gradeLevels: intent.gradeLevels ?? [],
     subject: intent.course,
+
+    // Required
+    assessmentType: intent.assessmentType,
+    time: intent.time,
 
     //
     // Source materials
     //
-    sourceDocuments: intent.sourceDocuments,
+    sourceDocuments: intent.sourceDocuments ?? [],
     exampleAssessment: intent.exampleAssessment,
 
     //
-    // Problem generation parameters (inferred)
+    // Problem generation parameters
     //
     numProblems: inferNumProblems(intent.time),
     difficultyProfile: inferDifficulty(intent.studentLevel),
 
     //
-    // Focus areas (inferred)
+    // Focus areas + teacher notes
     //
-    focusAreas: inferFocus(intent.assignmentType),
+    focusAreas: inferFocus(intent.assessmentType),
     emphasis: [],
     classroomContext: intent.additionalDetails ?? "",
-    notesForWriter: "",
+    notesForWriter: intent.additionalDetails ?? "",
 
     //
-    // Rubric alignment (optional)
+    // Rubric alignment
     //
     rubricGoals: [],
 
     //
-    // Student modeling (none for minimal)
+    // Student modeling
     //
     studentProfiles: [],
 
@@ -55,21 +62,52 @@ export function translateMinimalToUnified(
   };
 }
 
-// --- Simple inference helpers ---
-function inferNumProblems(time: string): number {
-  if (time.includes("short") || time.includes("quick")) return 3;
-  if (time.includes("long") || time.includes("extended")) return 10;
-  return 5;
+//
+// ─────────────────────────────────────────────
+//   Inference Helpers
+// ─────────────────────────────────────────────
+//
+
+function inferNumProblems(time: number): number {
+  if (time <= 5) return 1;     // bell-ringer / exit ticket
+  if (time <= 15) return 4;    // quiz / worksheet
+  if (time <= 30) return 8;    // test review
+  return 12;                   // test
 }
 
+function inferGradeLevel(intent: MinimalTeacherIntent): string {
+  // If teacher explicitly selected grade levels, use them
+  if (intent.gradeLevels && intent.gradeLevels.length > 0) {
+    return intent.gradeLevels.join(", ");
+  }
+
+  // Otherwise infer from studentLevel (old behavior)
+  return intent.studentLevel;
+}
+
+
 function inferDifficulty(level: string) {
-  if (level.toLowerCase().includes("advanced")) return { target: 0.8 };
-  if (level.toLowerCase().includes("beginner")) return { target: 0.3 };
+  const lower = level.toLowerCase();
+  if (lower.includes("advanced")) return { target: 0.8 };
+  if (lower.includes("beginner")) return { target: 0.3 };
   return { target: 0.5 };
 }
 
-function inferFocus(assignmentType: string): string[] {
-  if (assignmentType.toLowerCase().includes("essay")) return ["writing", "reasoning"];
-  if (assignmentType.toLowerCase().includes("quiz")) return ["recall", "accuracy"];
-  return ["general understanding"];
+function inferFocus(assessmentType: string): string[] {
+  switch (assessmentType) {
+    case "bellRinger":
+      return ["prior knowledge activation"];
+    case "exitTicket":
+      return ["today's objective"];
+    case "quiz":
+      return ["retention", "accuracy"];
+    case "worksheet":
+      return ["practice", "fluency"];
+    case "testReview":
+      return ["unit review"];
+    case "test":
+      return ["summative evaluation"];
+    default:
+      return ["general understanding"];
+  }
 }
