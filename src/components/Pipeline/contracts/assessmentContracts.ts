@@ -1,8 +1,12 @@
 export interface MinimalTeacherIntent {
-  gradeLevels?: string[];
+  gradeLevels: string[];
   course: string;
   unit: string;
   studentLevel: string;
+  unitName: string;
+  lessonName: string;
+  topic: string;
+
 
   assessmentType: "bellRinger" | "exitTicket" | "quiz" | "test" | "worksheet" | "testReview";
 

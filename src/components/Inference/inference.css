@@ -1,6 +1,6 @@
 /* ------------------------------
    Shared Inference Page Styles
-   Dark‑mode safe
+   Dark‑mode safe + high contrast
 ------------------------------ */
 
 .inference-page {
@@ -11,18 +11,20 @@
 
 /* Light mode defaults */
 :root {
-  --inference-bg: #ffffff;
-  --inference-bg-hover: #f5f5f5;
+  --inference-page-bg: #ffffff;
+  --inference-card-bg: #ffffff;
+  --inference-card-hover: #f5f5f5;
   --inference-border: #e5e5e5;
   --text-color: #000000;
 }
 
 /* Dark mode overrides */
 [data-theme="dark"] {
-  --inference-bg: #1e1e1e;
-  --inference-bg-hover: #2a2a2a;
-  --inference-border: #333333;
-  --text-color: #ffffff;
+  --inference-page-bg: #121212;       /* page background */
+  --inference-card-bg: #1e1f22;       /* card layer (contrast!) */
+  --inference-card-hover: #2a2c30;    /* hover layer */
+  --inference-border: #2c2c2c;
+  --text-color: #f5f5f5;              /* brighter, readable */
 }
 
 /* ------------------------------
@@ -39,15 +41,14 @@
 .inference-card {
   padding: 16px;
   border-radius: 8px;
-  background: var(--inference-bg);
-  cursor: pointer;
-  transition: background 0.2s ease;
+  background: var(--inference-card-bg);
   border: 1px solid var(--inference-border);
   color: var(--text-color);
+  transition: background 0.2s ease;
 }
 
 .inference-card:hover {
-  background: var(--inference-bg-hover);
+  background: var(--inference-card-hover);
 }
 
 .inference-card-header {
@@ -55,12 +56,15 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text-color);
 }
 
 .inference-card-text {
   font-size: 14px;
-  opacity: 0.85;
+  color: var(--text-color); /* full contrast */
   margin-left: 16px;
+  line-height: 1.45;
 }
 
 /* ------------------------------
@@ -93,10 +97,14 @@
 }
 
 /* ------------------------------
-   Collapsible Content Animation
+   Collapsible Content
 ------------------------------ */
 
 .collapsible-content {
+  background: var(--inference-card-bg);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--inference-border);
   overflow: hidden;
   transition: height 0.25s ease;
 }

@@ -145,12 +145,13 @@
 
 /* Sections */
 .section {
-  background: var(--bg-secondary);
+  background: var(--bg-secondary);          /* was #fff-ish */
   border-radius: var(--radius);
   border: 1px solid var(--border-color);
   padding: 1.25rem 1.25rem 1.5rem;
   box-shadow: var(--shadow-soft);
 }
+
 
 .sectionTitle {
   font-size: 1.1rem;
@@ -158,28 +159,28 @@
   margin-bottom: 1rem;
 }
 
-.sectionDivider {
-  height: 1px;
-  background: #e4e7ec;
-  margin: 20px 0;
-}
+.sectionDivider { 
+  height: 1px; 
+  background: var(--border-color); /* was #e4e7ec */ 
+  margin: 20px 0; }
 
 .leftColumnHeader {
   font-size: 1.1rem;
   font-weight: 600;
   margin-bottom: 12px;
-  color: #344054;
+  color: var(--text-primary);
 }
 
 .leftCard {
-  background: #fff;
+  background: var(--bg-card);               /* was #fff */
   padding: 20px;
   border-radius: 12px;
-  border: 1px solid #e4e7ec;
+  border: 1px solid var(--border-color);    /* was #e4e7ec */
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+
 
 
 /* Grid for basics */
@@ -189,16 +190,7 @@
   gap: 1rem;
 }
 
-.input,
-.textarea,
-.select,
-.multiSelect {
-  padding: 10px 12px;
-  border-radius: 6px;
-  border: 1px solid #d0d5dd;
-  font-size: 0.95rem;
-  background: #fff;
-}
+
 
 .multiSelect {
   height: 120px;
@@ -218,20 +210,33 @@
 .inputBlock label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #344054;
+  color: var(--text-primary);
 }
 
 
 /* Inputs */
-.input {
+.input,
+.textarea,
+.select,
+.multiSelect {
   width: 100%;
   padding: 0.55rem 0.6rem;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: #101018;
+  background: #101018;                      /* or var(--bg-card) if you prefer */
   color: var(--text-primary);
   font-size: 0.9rem;
 }
+
+.input:focus,
+.textarea:focus,
+.select:focus,
+.multiSelect:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.6);
+}
+
 
 .input:focus {
   outline: none;
@@ -434,8 +439,8 @@
 }
 
 .modal {
-  background: var(--surface);
-  color: var(--foreground);
+  background: var(--bg-card);               /* was var(--surface) */
+  color: var(--text-primary);               /* was var(--foreground) */
   max-width: 720px;
   width: 100%;
   max-height: 80vh;
@@ -445,6 +450,58 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Collapsible trigger */
+.gradeTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.gradeTrigger .arrow {
+  transition: transform 0.25s ease;
+}
+
+[data-state="open"] .gradeTrigger .arrow {
+  transform: rotate(90deg);
+}
+
+/* Collapsible content */
+.gradeContent {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 1rem;
+}
+
+/* Checkbox grid */
+.gradeCheckboxGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 8px;
+}
+
+.gradeCheckboxItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.gradeCheckboxItem input {
+  accent-color: var(--primary-color);
+}
+
 
 .modalTextarea {
   margin-top: 1rem;
@@ -457,18 +514,18 @@
   text-align: left;
   padding: 1rem;
   border-radius: 0.5rem;
-  border: 1px solid #333;
-  background: #111;      /* dark background */
-  color: #fff;           /* default text color = white */
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);               /* was #111 */
+  color: var(--text-primary);               /* was #fff */
   cursor: pointer;
 }
 
-/* hint text: also white (or slightly softer if you want) */
 .detailsCardHint {
   font-size: 0.875rem;
   margin-top: 0.25rem;
-  color: #fff;           /* force white */
+  color: var(--text-secondary);             /* was #fff */
 }
+
 
 .labelRow {
   display: flex;
@@ -509,11 +566,9 @@
   color: #495057; /* muted gray text */
 }
 
-.helperText {
-  font-size: 0.8rem;
-  color: #667085;
-  margin-top: -4px;
-}
+.helperText { font-size: 0.8rem; 
+  color: var(--text-secondary); /* was #667085 */ 
+  margin-top: -4px; }
 
 .modalCloseButton {
   position: absolute;
@@ -528,4 +583,155 @@
 
 .modalCloseButton:hover {
   color: #344054;
+}
+
+.unitTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.unitTrigger .arrow {
+  transition: transform 0.25s ease;
+}
+
+[data-state="open"] .unitTrigger .arrow {
+  transform: rotate(90deg);
+}
+
+.unitContent {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 1rem;
+}
+
+.unitGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.unitTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.unitTrigger .arrow {
+  transition: transform 0.25s ease;
+}
+
+[data-state="open"] .unitTrigger .arrow {
+  transform: rotate(90deg);
+}
+
+.unitSummary {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-right: auto;
+  margin-left: 12px;
+}
+
+.checkmarkComplete {
+  color: #4ade80; /* green */
+  font-weight: 700;
+}
+
+.checkmarkIncomplete {
+  color: var(--text-secondary);
+}
+
+.unitContent {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 1rem;
+}
+
+.instructions {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.instructions ul {
+  margin-top: 6px;
+  padding-left: 18px;
+  opacity: 0.9;
+}
+
+.unitGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+.extraTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.extraTrigger .arrow {
+  transition: transform 0.25s ease;
+}
+
+[data-state="open"] .extraTrigger .arrow {
+  transform: rotate(90deg);
+}
+
+.extraSummary {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-right: auto;
+  margin-left: 12px;
+}
+
+.extraContent {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 1rem;
+}
+
+.instructions {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.instructions ul {
+  margin-top: 6px;
+  padding-left: 18px;
+  opacity: 0.9;
 }

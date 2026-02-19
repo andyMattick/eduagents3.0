@@ -4,6 +4,8 @@ import styles from "./minimalAssessment.module.css";
 import { ASSESSMENT_TYPES } from "../Pipeline/assessmentTypes";
 import { MinimalTeacherIntent } from "./contracts/assessmentContracts";
 
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+
 type AssessmentTypeKey = 
   | "bellRinger"
   | "exitTicket"
@@ -15,10 +17,10 @@ type AssessmentTypeKey =
 const DEFAULT_TIMES: Record<AssessmentTypeKey, number> = {
   bellRinger: 5,
   exitTicket: 5,
-  quiz: 10,
-  test: 30,
+  quiz: 35,
+  test: 45,
   worksheet: 15,
-  testReview: 20,
+  testReview: 40,
 };
 
 interface MinimalAssessmentFormProps {
@@ -36,15 +38,23 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
   additionalDetails: "",
   sourceDocuments: [],
   exampleAssessment: undefined,
-  gradeLevels: []
+  gradeLevels: [],
+  unitName: "",
+  lessonName: "",
+  topic: "",
+  
+  
+
 });
 
+  const [showUnitSection, setShowUnitSection] = useState(false);
 
   const [assignmentChoice, setAssignmentChoice] = useState<AssessmentTypeKey>("bellRinger");
   const [showExpectModal, setShowExpectModal] = useState(false);
   const [showLevelModal, setShowLevelModal] = useState(false);
+  const [showExtraDetails, setShowExtraDetails] = useState(false);
 
-
+  
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
   e.preventDefault();
   onSubmit(form);
@@ -59,31 +69,44 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
       <form id="assessmentForm" onSubmit={handleSubmit}>
 
         <div className={styles.section}>
-          <h2 className={styles.leftColumnHeader}>Assessment Basics</h2>
+          <h2 className={styles.leftColumnHeader}>Tell Us About Your Assessment, The More Details The Better</h2>
 
           <div className={styles.grid}>
 
+            
             {/* Grade Levels */}
-            <div className={styles.inputBlock}>
-              <label>Grade Levels - Hold Shift to select multiple grades</label>
-              <select
-                multiple
-                className={styles.input}
-                value={form.gradeLevels}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions).map(
-                    (opt) => opt.value
-                  );
-                  setForm((prev) => ({ ...prev, gradeLevels: selected }));
-                }}
-              >
-                {["K","1","2","3","4","5","6","7","8","9","10","11","12"].map((grade) => (
-                  <option key={grade} value={grade}>
-                    {grade === "K" ? "Kindergarten" : `${grade}th Grade`}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <Collapsible>
+              <CollapsibleTrigger className={styles.gradeTrigger}>
+                <span className="arrow">▶</span>
+                Grade Levels
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className={styles.gradeContent}>
+                <div className={styles.gradeCheckboxGrid}>
+                  {["K","1","2","3","4","5","6","7","8","9","10","11","12"].map((grade) => (
+                    <label key={grade} className={styles.gradeCheckboxItem}>
+                      <input
+                        type="checkbox"
+                        checked={form.gradeLevels.includes(grade)}
+                        onChange={() => {
+                          setForm((prev) => {
+                            const exists = prev.gradeLevels.includes(grade);
+                            return {
+                              ...prev,
+                              gradeLevels: exists
+                                ? prev.gradeLevels.filter((g) => g !== grade)
+                                : [...prev.gradeLevels, grade],
+                            };
+                          });
+                        }}
+                      />
+                      {grade}
+                    </label>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
 
             {/* Course */}
             <div className={styles.inputBlock}>
@@ -97,17 +120,89 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
               />
             </div>
 
-            {/* Unit */}
-            <div className={styles.inputBlock}>
-              <label>Unit - e.g. Linear Functions, Shakespeare's Sonnets</label>
-              <input
-                className={styles.input}
-                value={form.unit}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, unit: e.target.value }))
-                }
-              />
-            </div>
+            
+            {/* Unit / Lesson / Topic */}
+            <Collapsible open={showUnitSection} onOpenChange={setShowUnitSection}>
+
+              <CollapsibleTrigger className={styles.unitTrigger}>
+                <span className="arrow">▶</span>
+                <span>Unit, Lesson & Topic</span>
+
+                {/* Summary when collapsed */}
+                {!showUnitSection && (
+                  <span className={styles.unitSummary}>
+                    {form.unitName && form.lessonName && form.topic
+                      ? `${form.unitName} → ${form.lessonName} → ${form.topic}`
+                      : "Not complete"}
+                  </span>
+                )}
+              {/* Checkmark logic */}
+                {!showUnitSection && (
+                  <span className={ form.unitName && form.lessonName && form.topic ? styles.checkmarkComplete : styles.checkmarkIncomplete } >
+                    {form.unitName && form.lessonName && form.topic ? "✔" : "○"}
+                  </span>
+                )}
+              </CollapsibleTrigger>
+
+              <CollapsibleContent className={styles.unitContent}>
+              <div className={styles.instructions}>
+                To help the Writer generate accurate problems, please be specific.
+                <br />
+                Examples:
+                <ul>
+                  <li><strong>Unit:</strong> Fractions</li>
+                  <li><strong>Lesson:</strong> Adding Fractions</li>
+                  <li><strong>Topic:</strong> Adding fractions with the same denominator</li>
+                </ul>
+              </div>
+                <div className={styles.unitGrid}>
+                  
+                  {/* Unit Name */}
+                  <div className={styles.inputBlock}>
+                    <label>Unit Name</label>
+                    <input
+                      className={styles.input}
+                      placeholder="Fractions"
+                      value={form.unitName}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, unitName: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  {/* Lesson Name */}
+                  <div className={styles.inputBlock}>
+                    <label>Lesson Name</label>
+                    <input
+                      className={styles.input}
+                      placeholder="Adding Fractions"
+                      value={form.lessonName}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, lessonName: e.target.value }))
+                      }
+                    />
+                  </div>
+
+                  {/* Specific Topic */}
+                  <div className={styles.inputBlock}>
+                    <label>Specific Topic</label>
+                    <input
+                      className={styles.input}
+                      placeholder="Adding fractions with the same denominator"
+                      value={form.topic}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, topic: e.target.value }))
+                      }
+                    />
+                    <div className={styles.helpText}>
+                      Be as specific as possible — this helps the Writer generate accurate problems.
+                    </div>
+                  </div>
+
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
 
             {/* Student Level */}
             <div className={styles.inputBlock}>
@@ -190,23 +285,60 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
           </div>
 
           {/* Additional Details */}
-          <div className={styles.inputBlock}>
-            <label>Additional Details</label>
-            <textarea
-              className={styles.textarea}
-              placeholder={ASSESSMENT_TYPES[form.assessmentType].additionalDetailsHint}
-              value={form.additionalDetails}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  additionalDetails: e.target.value
-                }))
-              }
-            />
-          </div>
-          <p className={styles.helperText}> 
-            Optional — but your guidance helps tailor the assessment. </p>
+          <Collapsible open={showExtraDetails} onOpenChange={setShowExtraDetails}>
+            <CollapsibleTrigger className={styles.extraTrigger}>
+              <span className="arrow">▶</span>
+              <span>Anything else you want to add?</span>
 
+              {/* Summary when collapsed */}
+              {!showExtraDetails && (
+                <span className={styles.extraSummary}>
+                  {form.additionalDetails?.trim()
+                    ? `${form.additionalDetails.split("\n").length} note${
+                        form.additionalDetails.split("\n").length > 1 ? "s" : ""
+                      } added`
+                    : "Optional"}
+                </span>
+              )}
+
+              {/* Checkmark logic */}
+              {!showExtraDetails && (
+                <span
+                  className={
+                    form.additionalDetails?.trim()
+                      ? styles.checkmarkComplete
+                      : styles.checkmarkIncomplete
+                  }
+                >
+                  {form.additionalDetails?.trim() ? "✔" : "○"}
+                </span>
+              )}
+            </CollapsibleTrigger>
+
+            <CollapsibleContent className={styles.extraContent}>
+              <div className={styles.instructions}>
+                These optional notes help the Writer tailor the assignment.
+                You might include:
+                <ul>
+                  <li>Prior knowledge students need activated</li>
+                  <li>Common misconceptions students have</li>
+                  <li>The specific skill or standard you want reinforced</li>
+                  <li>Anything to avoid (topics, formats, difficulty levels)</li>
+                </ul>
+              </div>
+
+              <textarea
+                className={styles.textarea}
+                placeholder="Add any helpful notes for the Writer..."
+                value={form.additionalDetails}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, additionalDetails: e.target.value }))
+                }
+              />
+            </CollapsibleContent>
+          </Collapsible>
+
+          
         </div>
       </form>
     </div>
@@ -249,7 +381,7 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
 
       <div className={styles.summaryRow}>
         <span className={styles.summaryLabel}>
-          {form.unit ? "✔️" : "•"} Unit
+          {form.unit ? "✔️" : "•"} Unit | Lesson | Topic
         </span>
         <span className={styles.summaryValue}>{form.unit || "Not set"}</span>
       </div>
@@ -306,16 +438,7 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
     </div>
 
 
-    {/* Suggested Additional Details */}
-    <div className={styles.summarySection}>
-      <h4 className={styles.summarySectionTitle}>Suggested Additional Details</h4>
-      <ul className={styles.summaryNotes}>
-        <li>{ASSESSMENT_TYPES[form.assessmentType].additionalDetailsHint}</li>
-        <li>Mention any common misconceptions students have.</li>
-        <li>Identify the specific skill or standard you want reinforced.</li>
-        <li>Note anything to avoid (topics, formats, difficulty levels).</li>
-      </ul>
-    </div>
+    
 
 
   </div>

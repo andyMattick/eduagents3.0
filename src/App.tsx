@@ -10,7 +10,7 @@ import { APICallNotifier } from './components/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
-import { WhatWeInferPage } from './components/Inference/WhatWeInferPage';
+import WhatWeInferPage from './components/Inference/WhatWeInferPage';
 
 
 import './App.css';
@@ -66,7 +66,7 @@ function TeacherAppContent() {
               className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
               onClick={() => setActiveTab('what-we-infer')}
             >
-              🔍 What We Infer
+              🔍 How Your Inputs Drive the Process
             </button>
             {/* Theme Toggle */}
             
@@ -147,7 +147,8 @@ function TeacherAppContent() {
 
         {activeTab === 'notepad' && <TeacherNotepad />}
         {activeTab === 'what-we-infer' && (
-    <WhatWeInferPage onBack={() => setActiveTab('pipeline')} />
+   <WhatWeInferPage />
+
   )}
 
 
