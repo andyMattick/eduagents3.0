@@ -63,6 +63,9 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
     form.unitName && form.lessonName && form.topic
       ? `${form.unitName} → ${form.lessonName} → ${form.topic}`
       : "";
+  const time = ASSESSMENT_TYPES[form.assessmentType].recommendedTime; 
+  const timeDisplay = time.min === time.max ? `
+    ${time.min} minutes` : `${time.min}–${time.max} minutes`;
 
  return (
     
@@ -426,12 +429,17 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
       form="assessmentForm"
       type="submit"
       className={styles.generateButton}
-      disabled={!form.course || !form.unit || !form.assessmentType}
+      disabled={
+        !form.course ||
+        !form.unitName?.trim() ||
+        !form.lessonName?.trim() ||
+        !form.topic?.trim() ||
+        !form.assessmentType
+}
+
     >
       Generate Assessment
     </button>
-
-    
 
     {/* Notes Preview */}
     <div
@@ -443,10 +451,6 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
         ? "Your insights are included — they’ll shape the assessment."
         : "Add notes to guide the generator."}
     </div>
-
-
-    
-
 
   </div>
 </aside>
@@ -464,10 +468,8 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
       </p>
 
       <p>
-        <strong>Time:</strong> 
-        {ASSESSMENT_TYPES[form.assessmentType].recommendedTime.min}–
-        {ASSESSMENT_TYPES[form.assessmentType].recommendedTime.max} minutes
-      </p>
+        <strong>{timeDisplay}:</strong> 
+           </p>
 
       <p>
         <strong>Typical Length:</strong> 
@@ -550,8 +552,6 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
     </div>
   </div>
 )}
-
-
 
 </div>
 
