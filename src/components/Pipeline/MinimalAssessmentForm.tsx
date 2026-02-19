@@ -386,9 +386,11 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
 
       <div className={styles.summaryRow}>
         <span className={styles.summaryLabel}>
-          {form.unit ? "✔️" : "•"} Unit | Lesson | Topic
+          {unitSummary ? "✔️" : "•"} Unit | Lesson | Topic
         </span>
-        <span className={styles.summaryValue}>{form.unit || "Not set"}</span>
+        <span className={styles.summaryValue}>
+          {unitSummary || "Not set"}
+        </span>
       </div>
 
       <div className={styles.summaryRow}>
