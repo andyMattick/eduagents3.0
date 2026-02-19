@@ -59,6 +59,11 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
   e.preventDefault();
   onSubmit(form);
 }
+  const unitSummary =
+    form.unitName && form.lessonName && form.topic
+      ? `${form.unitName} → ${form.lessonName} → ${form.topic}`
+      : "";
+
  return (
     
 <div className={styles.dashboardLayout}>
