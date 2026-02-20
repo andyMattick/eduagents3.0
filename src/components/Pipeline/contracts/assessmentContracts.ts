@@ -1,3 +1,7 @@
+import { WriterDraft } from "../writer/WriterDraft";
+import { AstronomerReport } from "../astronomer/astronomerReport";
+import { RewriterResult } from "../rewriter/rewriter";
+
 export interface MinimalTeacherIntent {
   gradeLevels: string[];
   course: string;
@@ -13,6 +17,8 @@ export interface MinimalTeacherIntent {
   time: number;
 
   additionalDetails?: string;
+
+  // NEW: Emphasis (teacher-selected focus areas) // emphasis?: string[]; // // NEW: Classroom context (behavior, pacing, constraints) // classroomContext?: string; // // NEW: Rubric alignment // rubricGoals?: string[]; // // NEW: Student modeling (optional) // studentProfiles?: Array<{ studentId: string; readingLevel: number; mathLevel: number; stamina: number; reasoning: number; confusionTolerance: number; }>;
 
   sourceDocuments?: Array<{
     id: string;
@@ -37,6 +43,12 @@ export interface UnifiedAssessmentRequest {
   title: string;            // e.g., "Algebra I – Linear Functions"
   gradeLevels?: string[];      // e.g., "Grade 8", "Advanced"
   subject?: string;         // e.g., "Algebra I"
+  unitName?: string;
+  lessonName?: string;
+  topic?: string;
+  additionalDetails?: string;
+  studentLevel?: string;
+
 
   //
   // Assessment type + time (required)
@@ -246,67 +258,17 @@ export interface WriterBlueprint {
 //
 
 export interface UnifiedAssessmentResponse {
-  //
-  // --- Writer Core Output ---
-  //
-  writerBlueprint?: WriterBlueprint;   // <-- NEW
-  writerDraft: WriterDraft; 
+  writerDraft: WriterDraft;
   astronomerReport: AstronomerReport;
+  philosopherReport: PhilosopherReport;
+  rewriterReport: RewriterResult | null;
 
-  documentSummary: DocumentSummary;
-  problemPayload: ProblemPayload[];
-  studentProfiles: StudentProfile[];
-  studentTesters: StudentTester[];
-  finalDocument: GeneratedAssessment;
-  answerKey: AnswerKey;
-
-  cognitiveTraces: CognitiveTrace[];
-  difficultyEstimates: DifficultyEstimate[];
-  misconceptionClusters: MisconceptionCluster[];
-  timeEstimates: TimeEstimateSummary;
-
-  //
-  // --- Astronomer ---
-  //
-  astronomerClusters?: {
-  clusters: ClusterSummary[];
-};
-
-  studentInteraction?: StudentInteraction[];
-
-  //
-  // Derived for UI
-  //
-  misconceptionHeatmap?: Array<{
-    problemId: string;
-    misconceptionLabels: string[];
-    confusionRisk: string;
-    fatigueRisk: string;
-  }>;
-
-  //
-  // --- Philosopher ---
-  //
-  philosopherExplanation: PhilosopherReport;
-
-  //
-  // --- Rewrite loop metadata ---
-  //
-  rewriteMeta: {
+  meta: {
     cycles: number;
     status: "complete" | "forced-complete";
   };
-
-  //
-  // --- Final teacher-facing summary ---
-  //
-  finalSummary?: {
-    totalCycles: number;
-    finalStatus: "complete" | "forced-complete";
-    keyImprovements: string[];
-    remainingRisks: string[];
-  };
 }
+
 
 //
 // --- Document Summary ---

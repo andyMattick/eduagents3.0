@@ -7,7 +7,8 @@ import {
 
 import { runWriter } from "./writer";
 import { validateWriterOutput } from "./writerValidation";
-import { runAstronomer } from "../astronomer/astronomerCall";
+import { runAstronomer } from "../astronomer/runAstronomer";
+
 
 export async function runWriterOrchestrator(
   req: UnifiedAssessmentRequest

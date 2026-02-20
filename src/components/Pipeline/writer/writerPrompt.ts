@@ -11,7 +11,8 @@ Do NOT generate instructions, formatting, or document layout.
 TEACHER INTENT
 ----------------------------------------
 Subject: ${uar.subject}
-Grade Level: ${uar.gradeLevel}
+Grade Levels: ${uar.gradeLevels?.join(", ") || "Not specified"}
+
 Assessment Type: ${uar.assessmentType}
 Time Available: ${uar.time} minutes
 Number of Problems Requested: ${uar.numProblems}

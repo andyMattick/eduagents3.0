@@ -10,11 +10,20 @@ export function translateMinimalToUnified(
     //
     // Core teacher inputs
     //
-    title: `${intent.course} – ${intent.unit}`,
+    title: `${intent.course} – ${intent.unitName} → ${intent.lessonName} → ${intent.topic}`,
     gradeLevels: intent.gradeLevels ?? [],
     subject: intent.course,
 
+    //
+    // Structured Unit → Lesson → Topic (NEW)
+    //
+    unitName: intent.unitName,
+    lessonName: intent.lessonName,
+    topic: intent.topic,
+
+    //
     // Required
+    //
     assessmentType: intent.assessmentType,
     time: intent.time,
 
@@ -34,19 +43,20 @@ export function translateMinimalToUnified(
     // Focus areas + teacher notes
     //
     focusAreas: inferFocus(intent.assessmentType),
-    emphasis: [],
-    classroomContext: intent.additionalDetails ?? "",
+    emphasis: intent.emphasis ?? [],
+    classroomContext: intent.classroomContext ?? "",
     notesForWriter: intent.additionalDetails ?? "",
 
     //
     // Rubric alignment
     //
-    rubricGoals: [],
+    rubricGoals: intent.rubricGoals ?? [],
 
     //
     // Student modeling
     //
-    studentProfiles: [],
+    studentProfiles: intent.studentProfiles ?? [],
+    studentLevel: intent.studentLevel, // NEW
 
     //
     // Advanced options
@@ -62,6 +72,7 @@ export function translateMinimalToUnified(
   };
 }
 
+
 //
 // ─────────────────────────────────────────────
 //   Inference Helpers
@@ -73,16 +84,6 @@ function inferNumProblems(time: number): number {
   if (time <= 15) return 4;    // quiz / worksheet
   if (time <= 30) return 8;    // test review
   return 12;                   // test
-}
-
-function inferGradeLevel(intent: MinimalTeacherIntent): string {
-  // If teacher explicitly selected grade levels, use them
-  if (intent.gradeLevels && intent.gradeLevels.length > 0) {
-    return intent.gradeLevels.join(", ");
-  }
-
-  // Otherwise infer from studentLevel (old behavior)
-  return intent.studentLevel;
 }
 
 

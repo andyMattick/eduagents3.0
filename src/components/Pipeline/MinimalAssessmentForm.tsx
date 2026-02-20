@@ -5,6 +5,10 @@ import { ASSESSMENT_TYPES } from "../Pipeline/assessmentTypes";
 import { MinimalTeacherIntent } from "./contracts/assessmentContracts";
 
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { UnifiedAssessmentRequest } from "@/components/Pipeline/contracts/assessmentContracts";
+import { translateMinimalToUnified } from "@/services/translateMinimalToUnified";
+import { buildWriterPrompt } from "@/components/Pipeline/writer/writerPrompt";
+
 
 type AssessmentTypeKey = 
   | "bellRinger"
@@ -53,6 +57,8 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
   const [showExpectModal, setShowExpectModal] = useState(false);
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [showExtraDetails, setShowExtraDetails] = useState(false);
+  const [showWriterPrompt, setShowWriterPrompt] = useState(false);
+
 
   
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -67,6 +73,12 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
   const timeDisplay = time.min === time.max ? `
     ${time.min} minutes` : `${time.min}–${time.max} minutes`;
 
+  // Build the exact request the Writer receives
+  const writerRequest: UnifiedAssessmentRequest = translateMinimalToUnified(form);
+
+  // Build the Writer prompt string
+  const writerPrompt = buildWriterPrompt(writerRequest);
+  
  return (
     
 <div className={styles.dashboardLayout}>
@@ -424,6 +436,14 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
       </div>
     </div>
 
+    <button
+      type="button"
+      className={styles.generateButtonSecondary}
+      onClick={() => setShowWriterPrompt(true)}
+    >
+      Show Writer Prompt
+    </button>
+
     {/* Generate Button */}
     <button
       form="assessmentForm"
@@ -453,6 +473,27 @@ export function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) 
     </div>
 
   </div>
+{showWriterPrompt && (
+  <div className={styles.modalOverlay}>
+    <div className={styles.modal}>
+      <h2 className={styles.modalTitle}>Writer Prompt</h2>
+
+      <pre className={styles.promptBlock}>
+        <code>{writerPrompt}</code>
+      </pre>
+
+      <button
+        type="button"
+        className={styles.closeButton}
+        onClick={() => setShowWriterPrompt(false)}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+)}
+
+
 </aside>
 
 {showExpectModal && (

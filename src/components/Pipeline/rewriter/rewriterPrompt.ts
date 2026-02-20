@@ -1,13 +1,13 @@
 // src/components/Pipeline/rewriter/rewriterPrompt.ts
 
-import { UnifiedAssessmentResponse, PhilosopherReport } from "../contracts/assessmentContracts";
+import { WriterDraft } from "../writer/WriterDraft";
+import { PhilosopherReport } from "../contracts/assessmentContracts";
 
 export function buildRewriterPrompt(
-  writerDraft: UnifiedAssessmentResponse,
+  writerDraft: WriterDraft,
   philosopher: PhilosopherReport
 ): string {
 
-  // Derive rewrite instructions from Philosopher v2 structure
   const culpritIds = philosopher.decision.culpritProblems;
 
   const rewriteInstructions = philosopher.issues

@@ -1,8 +1,11 @@
 // src/components/Pipeline/writer/astronomerPrompt.ts
 
 import { UnifiedAssessmentResponse } from "../contracts/assessmentContracts";
+import { UnifiedAssessmentRequest } from "../contracts/assessmentContracts";
+
 
 export function buildAstronomerPrompt(
+  uar: UnifiedAssessmentRequest,
   writerDraft: UnifiedAssessmentResponse
 ): string {
   return `
@@ -32,7 +35,10 @@ You must produce:
    - Estimated cognitive strain per problem
    - Estimated misconception triggered per problem
 
-Here is the Writer's draft:
+Teacher Intent:
+${JSON.stringify(uar, null, 2)}
+
+   Here is the Writer's draft:
 ${JSON.stringify(writerDraft, null, 2)}
 
 Return JSON ONLY in this exact shape:

@@ -1,8 +1,8 @@
 import { UnifiedAssessmentRequest } from "../contracts/assessmentContracts";
-import { WriterDraft } from "../writer/writerTypes";
+import { WriterDraft } from "../writer/WriterDraft";
 import { AstronomerReport } from "./astronomerReport";
 import { buildAstronomerPrompt } from "./astronomerPrompt";
-import { callAI } from "../ai/aiClient"; // whatever your AI wrapper is
+import { callAI } from "../../../config/aiConfig";
 
 export async function runAstronomer(input: {
   uar: UnifiedAssessmentRequest;

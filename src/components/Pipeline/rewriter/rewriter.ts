@@ -5,6 +5,7 @@ import {
   UnifiedAssessmentResponse,
   PhilosopherReport
 } from "../contracts/assessmentContracts";
+import { WriterDraft } from "../writer/WriterDraft";
 
 import { buildRewriterPrompt } from "./rewriterPrompt";
 
@@ -13,7 +14,7 @@ export interface RewriterResult {
 }
 
 export async function runRewriter(
-  writerDraft: UnifiedAssessmentResponse,
+  writerDraft: WriterDraft,
   philosopher: PhilosopherReport
 ): Promise<RewriterResult> {
 
