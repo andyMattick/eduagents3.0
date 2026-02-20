@@ -9,10 +9,6 @@ interface ProblemAnalysisProps {
 
 export function ProblemAnalysis({ asteroids, onNext, isLoading = false }: ProblemAnalysisProps) {
   const [viewMode, setViewMode] = React.useState<'metadata' | 'html'>('metadata');
-  // Note: Problem editing disabled - keeping state vars commented for future re-enablement
-  // const [editingId, setEditingId] = React.useState<string | null>(null);
-  // const [editText, setEditText] = React.useState('');
-  // const [editedAsteroids, setEditedAsteroids] = React.useState<Map<string, Asteroid>>(new Map());
 
   // Log when asteroids are received
   React.useEffect(() => {

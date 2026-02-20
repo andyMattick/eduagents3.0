@@ -12,7 +12,6 @@
  */
 
 import jsPDF from 'jspdf';
-// import html2canvas from 'html2canvas'; // Unused in current implementation
 import {
   AssessmentDocument,
   AssessmentProblem,
@@ -36,11 +35,8 @@ export async function generateAssessmentPDF(assessment: AssessmentDocument): Pro
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margins = DEFAULT_PAGE_LAYOUT.margins;
-  // const lineHeightPt = 12; // Default line height in points (unused)
   const fontSize = DEFAULT_PAGE_LAYOUT.fontSize;
 
-  // Setup: Convert pt to mm (1pt = 0.3528mm)
-  // const ptToMm = 0.3528; // Unused conversion factor
   const leftMargin = margins.left;
   const rightMargin = margins.right;
   const topMargin = margins.top;
