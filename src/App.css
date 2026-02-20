@@ -629,16 +629,148 @@
   }
 }
 
-/* Dark mode for AI status */
+/* GLOBAL DARK MODE */
 @media (prefers-color-scheme: dark) {
-  .ai-status-indicator {
-    background: #242424;
-    border-color: #333333;
-    color: #aaaaaa;
+  body {
+    background-color: #121212;
+    color: #e5e5e5;
   }
+
+  /* Panels, cards, containers */
+  .card,
+  .panel,
+  .container,
+  .section {
+    background-color: #1e1e1e;
+    color: #e5e5e5;
+  }
+
+  /* Code blocks, JSON previews, <pre> tags */
+  pre,
+  code {
+    background-color: #1a1a1a;
+    color: #d0d0d0;
+    border: 1px solid #333;
+  }
+
+  /* Inputs */
+  input,
+  textarea,
+  select {
+    background-color: #1a1a1a;
+    color: #e5e5e5;
+    border-color: #444;
+  }
+
+  /* Buttons (if you use light buttons) */
+  button {
+    background-color: #2a2a2a;
+    color: #e5e5e5;
+    border-color: #444;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .json-preview {
+    background-color: #1a1a1a;
+    color: #d0d0d0;
+    border: 1px solid #333;
+  }
+}
 
   .ai-status-indicator:hover {
     border-color: #667eea;
     color: #ffffff;
   }
+
+
+/* ------------------------------
+   DASHBOARD LAYOUT FIXES
+--------------------------------*/
+
+/* Grid for assignment cards */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.75rem;
+  padding: 1rem 0;
+}
+
+/* Card wrapper */
+.dashboard-card {
+  background: var(--bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all var(--transition-base);
+}
+
+.dashboard-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Title */
+.dashboard-card-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+/* Metadata section */
+.dashboard-card-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  row-gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 1rem;
+}
+
+/* Question/time row */
+.dashboard-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+/* Action buttons */
+.dashboard-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: auto;
+}
+
+.dashboard-card-actions button {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.assignment-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.card-actions {
+  margin-top: auto;
+}
+
+.card-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }

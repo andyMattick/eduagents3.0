@@ -1,0 +1,118 @@
+/* ------------------------------
+   Shared Inference Page Styles
+   Dark‑mode safe + high contrast
+------------------------------ */
+
+.inference-page {
+  padding: 24px;
+  font-family: system-ui, sans-serif;
+  color: var(--text-color);
+}
+
+/* Light mode defaults */
+:root {
+  --inference-page-bg: #ffffff;
+  --inference-card-bg: #ffffff;
+  --inference-card-hover: #f5f5f5;
+  --inference-border: #e5e5e5;
+  --text-color: #000000;
+}
+
+/* Dark mode overrides */
+[data-theme="dark"] {
+  --inference-page-bg: #121212;       /* page background */
+  --inference-card-bg: #1e1f22;       /* card layer (contrast!) */
+  --inference-card-hover: #2a2c30;    /* hover layer */
+  --inference-border: #2c2c2c;
+  --text-color: #f5f5f5;              /* brighter, readable */
+}
+
+/* ------------------------------
+   Grid + Cards
+------------------------------ */
+
+.inference-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.inference-card {
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--inference-card-bg);
+  border: 1px solid var(--inference-border);
+  color: var(--text-color);
+  transition: background 0.2s ease;
+}
+
+.inference-card:hover {
+  background: var(--inference-card-hover);
+}
+
+.inference-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.inference-card-text {
+  font-size: 14px;
+  color: var(--text-color); /* full contrast */
+  margin-left: 16px;
+  line-height: 1.45;
+}
+
+/* ------------------------------
+   Collapsible Trigger Styling
+------------------------------ */
+
+.collapsible-trigger {
+  font-size: 20px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-color);
+  user-select: none;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Arrow icon */
+.collapsible-trigger .arrow {
+  transition: transform 0.25s ease;
+}
+
+/* When open, rotate arrow */
+[data-state="open"] .arrow {
+  transform: rotate(90deg);
+}
+
+/* ------------------------------
+   Collapsible Content
+------------------------------ */
+
+.collapsible-content {
+  background: var(--inference-card-bg);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--inference-border);
+  overflow: hidden;
+  transition: height 0.25s ease;
+}
+
+/* ------------------------------
+   Section Spacing
+------------------------------ */
+
+.inference-section {
+  margin-bottom: 32px;
+}

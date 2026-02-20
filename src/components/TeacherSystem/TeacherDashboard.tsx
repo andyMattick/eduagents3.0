@@ -4,6 +4,12 @@ import { TeacherAccount, AssignmentSummary, ResourceLimitStatus, SUBSCRIPTION_TI
 import { useUserFlow } from '../../hooks/useUserFlow';
 import { AssessmentResults } from './AssessmentResults';
 import './TeacherDashboard.css';
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent
+} from "@/components/ui/collapsible";
+
 
 interface TeacherDashboardProps {
   teacherId: string;
@@ -379,42 +385,48 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacherId, o
                 <div className="card-footer">
                   <small>Updated {new Date(assignment.updatedAt).toLocaleDateString()}</small>
                 </div>
-                <div className="card-actions">
-                  {assignment.status === 'finalized' && (
-                    <button
-                      onClick={() => viewAssessmentResults(assignment)}
-                      className="btn-secondary btn-sm btn-results"
-                      title="View assessment results and stats"
-                    >
-                      📊 Results
-                    </button>
-                  )}
-                  <button
-                    onClick={() => onNavigate('edit-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => onNavigate('clone-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    Clone
-                  </button>
-                  <button
-                    onClick={() => onNavigate('view-assignment', { assignmentId: assignment.id })}
-                    className="btn-secondary btn-sm"
-                  >
-                    View
-                  </button>
-                  <button
-                    onClick={() => openDeleteConfirmation(assignment.id, assignment.title)}
-                    className="btn-secondary btn-sm btn-delete"
-                    title="Delete this assignment"
-                  >
-                    Delete
-                  </button>
-                </div>
+                <Collapsible className="card-actions" defaultOpen={false}>
+  <CollapsibleTrigger className="card-actions-trigger">
+    ▶ Actions
+  </CollapsibleTrigger>
+
+  <CollapsibleContent className="card-actions-list">
+    <button
+      onClick={() => onNavigate('view-assessment', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Assessment
+    </button>
+
+    <button
+      onClick={() => onNavigate('report-results', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      Report Results
+    </button>
+
+    <button
+      onClick={() => onNavigate('generate-new-version', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      Generate New Version
+    </button>
+
+    <button
+      onClick={() => onNavigate('view-answer-key', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Answer Key
+    </button>
+
+    <button
+      onClick={() => onNavigate('view-rubric', { assignmentId: assignment.id })}
+      className="btn-secondary btn-sm"
+    >
+      View Rubric
+    </button>
+  </CollapsibleContent>
+</Collapsible>
               </div>
             ))}
           </div>

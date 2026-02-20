@@ -1,0 +1,33 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-muted);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.button:hover {
+  background: var(--bg);
+}
+
+.primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.primary:hover {
+  background: var(--primary-hover);
+}
+
+.outline {
+  background: transparent;
+  border-color: var(--border);
+}

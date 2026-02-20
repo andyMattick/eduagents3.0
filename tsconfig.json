@@ -21,8 +21,19 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+
+    /* Path alias */
+    "baseUrl": "src",
+    "paths": { "@/*": ["./*"] }
+
+
   },
+
   "include": ["src"],
+
+  /* ⭐ ADD THIS ⭐ */
+  "exclude": ["src/agents", "src/agents_legacy"],
+
   "references": [{ "path": "./tsconfig.node.json" }]
 }
