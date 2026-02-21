@@ -1,7 +1,6 @@
 import { buildWriterPrompt } from "./writerPrompt";
 import { WriterDraft } from "./WriterDraft";
 import { UnifiedAssessmentRequest } from "../contracts/assessmentContracts";
-import { callAI } from "../../../config/aiConfig";
 
 export async function runWriter(
   req: UnifiedAssessmentRequest

@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 //import './AssignmentIntentForm.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection } from '../../hooks/useUserFlow';
-import { enrichAssignmentMetadata } from '../../agents/analysis/enrichAssignmentMetadata';
-import { getWriterService } from '../../config/aiConfig';
-import { useRealAI } from '../../config/aiConfig';
 import { SectionBuilder, CustomSection } from './SectionBuilder';
 import { selectAppropriateFormat, validateProblemBloomAlignment, formatValidationReport } from '../../agents/analysis/bloomConstraints';
 
@@ -617,8 +614,6 @@ export function AssignmentIntentForm() {
       let generatedAssignment;
       
       // DEBUG: Check if real AI is enabled
-      const isRealAI = useRealAI();
-      console.log('🔍 DEBUG: useRealAI() =', isRealAI);
       
       if (isRealAI) {
         console.log('🤖 Using Gemini API to generate questions...');
@@ -748,9 +743,6 @@ export function AssignmentIntentForm() {
               marginBottom: '1rem',
               animation: 'spin 2s linear infinite',
             }}>⏳</div>
-            <div style={{ fontSize: '18px', fontWeight: '600', marginBottom: '0.5rem', color: '#ffffff' }}>
-              {useRealAI() ? '🤖 AI is generating...' : '📝 Generating...'}
-            </div>
             <div style={{ fontSize: '14px', color: '#aaaaaa' }}>
               This may take a moment. Please don't close the page.
             </div>

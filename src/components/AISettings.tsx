@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { getCurrentAIMode, getAIConfig } from '../config/aiConfig';
 import './AISettings.css';
 
 interface AISettingsProps {
@@ -67,7 +66,6 @@ const AISettingsContent = ({
 
 export function AISettings({ embedded = false }: AISettingsProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const config = getAIConfig();
   const hasApiKey = !!config.googleApiKey;
 
   // Embedded mode: show content directly

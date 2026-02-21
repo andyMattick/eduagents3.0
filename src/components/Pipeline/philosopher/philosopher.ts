@@ -1,6 +1,5 @@
 // src/components/Pipeline/philosopher/philosopher.ts
 
-import { callAI } from "../../../config/aiConfig";
 import {
   UnifiedAssessmentResponse,
   AstronomerResult,

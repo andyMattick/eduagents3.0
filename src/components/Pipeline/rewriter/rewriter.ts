@@ -1,6 +1,5 @@
 // src/components/Pipeline/rewriter/rewriter.ts
 
-import { callAI } from "../../../config/aiConfig";
 import {
   UnifiedAssessmentResponse,
   PhilosopherReport

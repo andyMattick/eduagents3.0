@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { setAIModeByRole } from '../config/aiConfig';
 import { login, signUp, logout as supabaseLogout, getCurrentUser } from '../services/authService';
 import { AuthSession, LoginRequest, SignUpRequest } from '../types/teacherSystem';
 
@@ -43,7 +42,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: currentUser.email,
             isAdmin: false, // Would need to fetch from user metadata
           });
-          setAIModeByRole(false);
         }
       } catch (err) {
         console.error('Failed to check auth state:', err);
@@ -66,8 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: authSession.email,
         isAdmin: authSession.tier === 'admin', // Map tier to isAdmin
       });
-      setAIModeByRole(authSession.tier === 'admin');
-    } catch (err) {
+     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Login failed';
       setError(errorMsg);
       throw err;
@@ -92,8 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: authSession.email,
         isAdmin: request.isAdmin || false,
       });
-      setAIModeByRole(request.isAdmin || false);
-    } catch (err) {
+      } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Sign up failed';
       setError(errorMsg);
       throw err;
@@ -111,7 +107,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(null);
       setSession(null);
-      setAIModeByRole(false);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Logout failed';
       setError(errorMsg);

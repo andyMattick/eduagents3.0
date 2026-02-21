@@ -16,7 +16,6 @@ import {
 } from "../contracts/assessmentContracts";
 
 import { buildWriterPrompt } from "./writerPrompt";
-import { callAI } from "../../../config/aiConfig";
 import { estimateAssessmentTime } from "./writerModel";
 
 export async function writerCall(

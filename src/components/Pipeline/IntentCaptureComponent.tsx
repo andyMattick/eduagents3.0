@@ -2,7 +2,6 @@ import { useState } from 'react';
 import './IntentCaptureComponent.css';
 import { useUserFlow, GeneratedAssignment, GeneratedSection, GeneratedProblem } from '../../hooks/useUserFlow';
 import { selectAppropriateFormat, validateProblemBloomAlignment, formatValidationReport } from '../../agents/analysis/bloomConstraints';
-import { getWriterService, useRealAI } from '../../config/aiConfig';
 
 interface BloomDistribution {
   remember: number;
@@ -492,8 +491,6 @@ export function IntentCaptureComponent() {
       let generatedAssignment: GeneratedAssignment;
       
       // Check if real AI is enabled
-      const isRealAI = useRealAI();
-      console.log('🔍 DEBUG: useRealAI() =', isRealAI);
       
       if (isRealAI) {
         console.log('🤖 Using Gemini API to generate from intent...');

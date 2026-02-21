@@ -25,15 +25,16 @@
 
     /* Path alias */
     "baseUrl": "src",
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["*"] }
 
 
   },
 
-  "include": ["src"],
+  "include": ["src", "src/types"],
+
 
   /* ⭐ ADD THIS ⭐ */
-  "exclude": ["src/agents", "src/agents_legacy"],
+  
 
   "references": [{ "path": "./tsconfig.node.json" }]
 }

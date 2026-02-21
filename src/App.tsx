@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { AuthProvider, useAuth } from './hooks/useAuth';
-import { SignIn } from './components/Auth/SignIn';
-import { SignUp } from './components/Auth/SignUp';
-import { AdminDashboard } from './components/Admin/AdminDashboard';
-import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
-import { PipelineRouter } from './components/Pipeline/PipelineRouter';
-import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
-import { APICallNotifier } from './components/APICallNotifier';
+import { SignIn } from './components_new/Auth/SignIn';
+import { SignUp } from './components_new/Auth/SignUp';
+import { AdminDashboard } from './components_new/Admin/AdminDashboard';
+import { TeacherDashboard } from './components_new/TeacherSystem/TeacherDashboard';
+import { PipelineRouter } from './components_new/Pipeline/PipelineRouter';
+import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
-import WhatWeInferPage from './components/Inference/WhatWeInferPage';
+import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 
 
 import './App.css';
