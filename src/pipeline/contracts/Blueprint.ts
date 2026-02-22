@@ -1,17 +1,12 @@
 import { UnifiedAssessmentRequest } from "./UnifiedAssessmentRequest";
+import { BlueprintPlanV3_2 } from "./BlueprintPlanV3_2";
 
 export interface Blueprint {
   uar: UnifiedAssessmentRequest;
 
   writerPrompt: string;
 
-  // Room to grow: planning + constraints
-  plan: {
-    questionCount: number;
-    questionTypes: string[]; // e.g. ["multipleChoice", "shortAnswer", "constructedResponse"]
-    targetDifficulty: "introductory" | "onLevel" | "challenge";
-    estimatedTimeMinutes: number;
-  };
+  plan: BlueprintPlanV3_2;
 
   constraints: {
     mustAlignToTopic: boolean;
