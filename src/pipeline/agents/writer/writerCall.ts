@@ -2,7 +2,7 @@ import { buildWriterPrompt } from "./writerPrompt";
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
 import { Blueprint } from "@/pipeline/contracts/Blueprint";
 import { callGemini } from "@/pipeline/llm/gemini"; // your wrapper
-import { WriterOutput } from "@/pipeline/contracts/writerOutput"; // optional but recommended
+import { WriterOutput } from "@/pipeline/contracts/writerModels"; // optional but recommended
 
 export async function writerCall(
   uar: UnifiedAssessmentRequest,
@@ -29,5 +29,5 @@ export async function writerCall(
   }
 
   // 4. Return the parsed Writer output
-  return parsed;
+  return parsed;// 4. Validate shape (optional but recommended) if (!parsed.assessment || !parsed.writerSelfCheck) { throw new Error("WriterCall: Missing assessment or writerSelfCheck."); } // 5. Return both assessment + self-check to SCRIBE return { assessment: parsed.assessment, writerSelfCheck: parsed.writerSelfCheck };
 }
