@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { AuthProvider, useAuth } from './hooks/useAuth';
+import { AuthProvider, useAuth } from '@/components_new/Auth/useAuth';
+
 import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
@@ -13,6 +14,9 @@ import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 
 
 import './App.css';
+
+console.log("ENV CHECK", import.meta.env);
+
 
 type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer';
 
@@ -144,7 +148,6 @@ function TeacherAppContent() {
           />
         )}
 
-        {activeTab === 'notepad' && <TeacherNotepad />}
         {activeTab === 'what-we-infer' && (
    <WhatWeInferPage />
 

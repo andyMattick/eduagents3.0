@@ -1,9 +1,4 @@
 import "./inference.css";
-import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent
-} from "@/components/ui/collapsible";
 
 
 export default function WhatWeInfer() {
@@ -17,14 +12,10 @@ export default function WhatWeInfer() {
       {/* ------------------------------
           COLLAPSIBLE: WRITING TESTS
       ------------------------------ */}
-      <Collapsible defaultOpen={false}>
-        <CollapsibleTrigger className="collapsible-trigger">
             <span className="arrow">▶</span>
             When Writing Assessments
-        </CollapsibleTrigger>
+      
 
-
-        <CollapsibleContent className="collapsible-content">
           <div className="inference-grid">
             {/* Course */}
             <div className="inference-card">
@@ -111,20 +102,13 @@ export default function WhatWeInfer() {
               </ul>
             </div>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-
+      
       {/* ------------------------------
           COLLAPSIBLE: GENERATING STUDENTS
       ------------------------------ */}
-      <Collapsible defaultOpen={false}>
-        <CollapsibleTrigger className="collapsible-trigger">
             <span className="arrow">▶</span>
             When Generating Students
-        </CollapsibleTrigger>
-
-
-        <CollapsibleContent className="collapsible-content">
+      
           <div className="inference-grid">
             {/* Grade Band */}
             <div className="inference-card">
@@ -203,21 +187,14 @@ export default function WhatWeInfer() {
               </ul>
             </div>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-
+      
      
      
       {/* ============================================================
           3. WHAT EACH INPUT DOES
       ============================================================ */}
-      <Collapsible defaultOpen={false}>
-        <CollapsibleTrigger className="collapsible-trigger">
           <span className="arrow">▶</span>
           What Each Input Does
-        </CollapsibleTrigger>
-
-        <CollapsibleContent className="collapsible-content">
           <div className="inference-grid">
             {/* Grade Levels */}
             <div className="inference-card">
@@ -322,22 +299,15 @@ export default function WhatWeInfer() {
               </ul>
             </div>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
-
+      
       {/* ============================================================
     4. WHO OUR AGENTS ARE
 ============================================================ */}
 {/* ============================================================
     4. WHO OUR AGENTS ARE
 ============================================================ */}
-<Collapsible defaultOpen={false}>
-  <CollapsibleTrigger className="collapsible-trigger">
     <span className="arrow">▶</span>
     Who Our Agents Are (and How You Drive the Process)
-  </CollapsibleTrigger>
-
-  <CollapsibleContent className="collapsible-content">
     <div className="inference-grid">
 
       {/* Interpreter */}
@@ -421,8 +391,6 @@ export default function WhatWeInfer() {
       </div>
 
     </div>
-  </CollapsibleContent>
-</Collapsible>
 
 
 
