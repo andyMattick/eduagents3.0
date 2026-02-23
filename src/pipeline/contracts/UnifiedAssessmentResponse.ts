@@ -1,3 +1,5 @@
+import { PipelineTrace } from "@/types/Trace";
+
 export interface UnifiedAssessmentResponse {
   architectBlueprint: any;
   writerDraft: any;
@@ -19,4 +21,9 @@ export interface UnifiedAssessmentResponse {
     gatekeeperPrompt: string;
     gatekeeperOutput: string;
   };
+
+  // ⭐ NEW FIELD
+  trace: PipelineTrace;
 }
+
+

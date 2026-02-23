@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import { MinimalAssessmentFormWrapper } from "./MinimalAssessmentFormWrapper";
-import { UnifiedAssessmentRequest, UnifiedAssessmentResponse } from "@/pipeline/contracts";
-
-
+import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
+import { TraceViewer } from "@/components_new/TraceViewer";
 
 import { AssignmentContext } from "../../App"; // this path IS correct
 
@@ -32,13 +31,16 @@ export function PipelineRouter({
         onResult={handlePipelineResult}
 />
 
-
-      {assessment && (
-        <pre className="json-preview" style={{ marginTop: "2rem", padding: "1rem" }}>
-
-          {JSON.stringify(assessment, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
+{assessment && ( 
+  <div style={{ marginTop: "2rem" }}> 
+  {/* Existing JSON preview */} 
+  <pre className="json-preview" style={{ padding: "1rem" }}> 
+    {JSON.stringify(assessment, null, 2)} 
+    </pre> {/* 
+      ⭐ NEW: Pipeline Trace Viewer */} 
+      <TraceViewer trace={assessment.trace} /> 
+      </div> 
+    )} 
+  </div> 
+  ); 
 }
