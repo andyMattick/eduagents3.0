@@ -1,5 +1,6 @@
 export interface UnifiedAssessmentRequest {
   // Teacher context
+  userId: string;
   gradeLevels: string[];
   course: string;
   unitName: string;

@@ -6,13 +6,13 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true,
+
+    "jsx": "react-jsx",
+
     "baseUrl": "src",
     "paths": {
-      "@/*": ["./*"],
+      "@/*": ["*"]
     }
   },
-  "include": [
-    "src/pipeline",
-    "vite.config.ts"
-  ]
+  "include": ["vite.config.ts"]
 }

@@ -10,10 +10,15 @@ import {
 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import { buildWriterPrompt } from "@/pipeline/agents/writer/writerPrompt";
 
-export async function runArchitect(uar: UnifiedAssessmentRequest): Promise<Blueprint> {
-  //
-  // 1. Derive high-level knobs from UAR
-  //
+export async function runArchitect({
+  uar,
+  agentId,
+  compensation
+}: {
+  uar: UnifiedAssessmentRequest;
+  agentId: string;
+  compensation: any;
+}): Promise<Blueprint> {
 
   // Intensity from time
   const intensity: BlueprintPlanV3_2["intensity"] =

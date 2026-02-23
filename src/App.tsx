@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AuthProvider } from "./components_new/Auth/useAuth";
 import { useAuth } from "./components_new/Auth/useAuth";
 import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
@@ -10,7 +11,6 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider, useTheme } from './hooks/useTheme';
 import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
-
 
 import './App.css';
 
@@ -139,11 +139,13 @@ function TeacherAppContent() {
         {activeTab === 'pipeline' && (
           <PipelineRouter
             assignmentContext={assignmentContext}
+            userId={user?.id ?? null}     // ⭐ ADD THIS
             onAssignmentSaved={() => {
               setAssignmentContext(null);
               setActiveTab('dashboard');
             }}
-          />
+/>
+
         )}
 
         {activeTab === 'what-we-infer' && (
@@ -208,14 +210,17 @@ function AppContent() {
 --------------------------------*/
 function App() {
   return (
-  <PipelineRouter
-  assignmentContext={null}
-  onAssignmentSaved={() => {}}
-/>
-
-);
-
-
+    <AuthProvider>
+      <ThemeProvider>
+        <NotepadProvider>
+          <UserFlowProvider>
+            <AppContent />
+          </UserFlowProvider>
+        </NotepadProvider>
+      </ThemeProvider>
+    </AuthProvider>
+  );
 }
+
 
 export default App;

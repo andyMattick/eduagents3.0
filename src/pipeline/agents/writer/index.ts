@@ -7,7 +7,15 @@ export interface WriterResult {
   // parsedAssessment?: any; // coming soon
 }
 
-export async function runWriter(blueprint: Blueprint): Promise<WriterResult> {
+export async function runWriter({
+  blueprint,
+  agentId,
+  compensation
+}: {
+  blueprint: Blueprint;
+  agentId: string;
+  compensation: any;
+}) {
   const { writerPrompt } = blueprint;
 
   console.log("=== WRITER: Prompt Received ==="); 
