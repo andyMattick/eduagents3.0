@@ -73,15 +73,23 @@ const uarWithDefaults: UnifiedAssessmentRequest = {
   // 1. Architect — build the blueprint
   
   // 2. Writer — generate the initial draft
-  
-  const writerDraft = await runAgent(trace, "Writer", runWriter, {
-    blueprint: blueprint.plan,
-    agentId: selected.writerInstanceId,
-    compensation: selected.compensationProfile
-  });
+  // 2a. SCRIBE → Writer prescriptions
+const writerPrescriptions = SCRIBE.getWriterPrescriptions();
+
+const writerDraft = await runAgent(trace, "Writer", runWriter, {
+  blueprint: blueprint.plan,
+  uar: blueprint.uar, // normalized Architect UAR
+  scribePrescriptions: writerPrescriptions,
+  agentId: selected.writerInstanceId,
+  compensation: selected.compensationProfile
+});
+
 // 3. Gatekeeper — validate the draft
 const gatekeeperResult = Gatekeeper.validate(blueprint.plan, writerDraft);
 logAgentStep(trace, "Gatekeeper", { blueprint, writerDraft }, gatekeeperResult);
+// 3a. SCRIBE learns from Gatekeeper violations (Writer-specific dossier)
+SCRIBE.updateWriterDossier(gatekeeperResult);
+
 if (process.env.NODE_ENV === "development") {
   console.log("Gatekeeper Report:", gatekeeperResult);
 }

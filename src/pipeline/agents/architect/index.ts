@@ -2,7 +2,6 @@ import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAsses
 import { buildArchitectUAR } from "@/pipeline/contracts/UnifiedAssessmentRequest";
 import { Blueprint } from "@/pipeline/contracts/Blueprint";
 import { buildArchitectPrompt } from "./architectPrompt";
-import { buildWriterPrompt } from "@/pipeline/agents/writer/writerPrompt";
 import { callGemini } from "@/pipeline/llm/gemini";
 
 
@@ -229,10 +228,15 @@ export async function runArchitect({
   // 9. Constraints + writerPrompt + Blueprint
   //
 
-  const firstSlot = finalPlan.slots?.[0];
-  const writerPrompt = firstSlot
-    ? buildWriterPrompt(finalPlan as any, firstSlot)
-    : `Write a ${architectUAR.assessmentType} assessment on ${architectUAR.topic} for ${architectUAR.grade} ${architectUAR.domain}.`;
-
-  return { uar, writerPrompt, plan: finalPlan, constraints: { mustAlignToTopic: true, avoidTrickQuestions: true, avoidSensitiveContent: true, respectTimeLimit: true } };
+  return {
+    uar,
+    writerPrompt: "",
+    plan: finalPlan,
+    constraints: {
+      mustAlignToTopic: true,
+      avoidTrickQuestions: true,
+      avoidSensitiveContent: true,
+      respectTimeLimit: true
+    }
+  };
 }

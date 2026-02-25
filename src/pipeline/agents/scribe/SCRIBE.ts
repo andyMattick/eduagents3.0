@@ -7,6 +7,19 @@ import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperRe
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { supabase } from "@/supabase/client";
 
+// Persistent in-memory dossier (simple, append-only)
+const writerDossier = {
+  weaknesses: [] as string[],
+  forbiddenBehaviors: [] as string[],
+  requiredBehaviors: [] as string[],
+  history: [] as {
+    slotId: string;
+    violations: string[];
+    timestamp: number;
+  }[]
+};
+
+
 /**
  * Compute predictive defaults from a teacher's assessment history.
  * As more assessments are generated, these defaults improve.
@@ -72,6 +85,89 @@ export class SCRIBE {
   // -----------------------------------------------------
   // 2. UPDATE AGENT DOSSIER
   // -----------------------------------------------------
+  static updateWriterDossier(gatekeeperResult: { violations: { slotId: string; type: string }[] }) {
+  const now = Date.now();
+
+  for (const v of gatekeeperResult.violations) {
+    // 1. Append history
+    writerDossier.history.push({
+      slotId: v.slotId,
+      violations: [v.type],
+      timestamp: now
+    });
+
+    // 2. Learn weaknesses
+    if (!writerDossier.weaknesses.includes(v.type)) {
+      writerDossier.weaknesses.push(v.type);
+    }
+
+    // 3. Auto-generate forbidden + required behaviors
+    switch (v.type) {
+      case "topic_mismatch":
+        addForbidden("drifting off-topic");
+        addRequired("explicitly reference the topic in the prompt");
+        break;
+
+      case "domain_mismatch":
+        addForbidden("using content outside the subject domain");
+        break;
+
+      case "mcq_options_invalid":
+        addForbidden("malformed MCQ option arrays");
+        addRequired("produce exactly 4 options");
+        break;
+
+      case "mcq_answer_mismatch":
+        addForbidden("answer not matching options");
+        break;
+
+      case "cognitive_demand_mismatch":
+        addRequired("use Bloom-aligned verbs");
+        break;
+
+      case "difficulty_mismatch":
+        addForbidden("producing questions above difficulty level");
+        break;
+
+      case "forbidden_content":
+        addForbidden("including teacher-forbidden content");
+        break;
+
+      case "missing_misconception_alignment":
+        addRequired("address required misconceptions explicitly");
+        break;
+
+      case "pacing_violation":
+        addForbidden("writing overly long prompts");
+        break;
+
+      case "scope_width_violation":
+        addForbidden("integrating too many strands for narrow scope");
+        break;
+    }
+  }
+
+  function addForbidden(b: string) {
+    if (!writerDossier.forbiddenBehaviors.includes(b)) {
+      writerDossier.forbiddenBehaviors.push(b);
+    }
+  }
+
+  function addRequired(b: string) {
+    if (!writerDossier.requiredBehaviors.includes(b)) {
+      writerDossier.requiredBehaviors.push(b);
+    }
+  }
+}
+  static getWriterPrescriptions() {
+    return {
+      weaknesses: [...writerDossier.weaknesses],
+      forbiddenBehaviors: [...writerDossier.forbiddenBehaviors],
+      requiredBehaviors: [...writerDossier.requiredBehaviors]
+    };
+  }
+
+  
   static async updateAgentDossier({
     userId,
     agentType,
