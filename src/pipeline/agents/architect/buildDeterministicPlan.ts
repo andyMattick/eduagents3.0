@@ -1,4 +1,4 @@
-import { BlueprintPlanV3_2, BlueprintSlot } from "@/types/Blueprint";
+import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 
 export function buildWriterPrompt(
   plan: BlueprintPlanV3_2,

@@ -1,4 +1,32 @@
 // pipeline/agents/scribe/AgentSelector.ts
+type SubscriptionTier = "free" | "tier1" | "tier2" | "admin";
+import { SupabaseClient } from "@supabase/supabase-js";
+
+const tierMap: Record<SubscriptionTier, string[]> = {
+  admin: ["free", "tier1", "tier2"],
+  tier2: ["free", "tier1", "tier2"],
+  tier1: ["free", "tier1"],
+  free: ["free"]
+};
+
+export async function selectAgents(supabase: SupabaseClient, userId: string) {
+  const { data: account } = await supabase
+    .from("teacher_account")
+    .select("subscription_tier")
+    .eq("user_id", userId)
+    .single();
+
+  const tier = (account?.subscription_tier ?? "free") as SubscriptionTier;
+
+  const allowedTiers = tierMap[tier];
+
+  const { data: agents } = await supabase
+    .from("agent_capabilities")
+    .select("*")
+    .in("tier", allowedTiers);
+
+  return agents;
+}
 
 import { DossierManager } from "@/system/dossier/DossierManager";
 

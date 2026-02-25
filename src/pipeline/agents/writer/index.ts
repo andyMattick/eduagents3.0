@@ -1,35 +1,51 @@
-import { Blueprint } from "@/pipeline/contracts";
-import { callAI } from "@/pipeline/ai/aiCall";
-
-export interface WriterResult {
-  writerPrompt: string;
-  rawModelResponse?: string;
-  // parsedAssessment?: any; // coming soon
-}
+import { BlueprintPlanV3_2 } from "@/types/Blueprint";
+import { GeneratedItem } from "./types";
+import { buildWriterPrompt } from "./writerPrompt";
+import { callGemini } from "@/pipeline/llm/gemini";
 
 export async function runWriter({
   blueprint,
-  agentId,
-  compensation
+  agentId: _agentId,
+  compensation: _compensation
 }: {
-  blueprint: Blueprint;
+  blueprint: BlueprintPlanV3_2;
   agentId: string;
   compensation: any;
-}) {
-  const { writerPrompt } = blueprint;
+}): Promise<GeneratedItem[]> {
+  const items: GeneratedItem[] = [];
 
-  console.log("=== WRITER: Prompt Received ==="); 
-  console.log(writerPrompt);
+  for (const slot of blueprint.slots) {
+    const prompt = buildWriterPrompt(blueprint, slot);
 
-  // --- REAL LLM CALL GOES HERE ---
-  const rawModelResponse = await callAI(writerPrompt);
+    // ⭐ Call the real LLM directly — no runAgent inside Writer
+    const raw = await callGemini({
+      model: "gemini-2.5-flash",
+      prompt,
+      temperature: 0.2,
+      maxOutputTokens: 4096,
+    });
 
-  console.log("=== WRITER: Raw Model Response ==="); 
-  console.log(rawModelResponse);
+    // Strip markdown code fences if present
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
 
-  return {
-    writerPrompt,
-    rawModelResponse
-    // rawModelResponse,
-  };
+    let parsed: GeneratedItem;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (err) {
+      throw new Error(
+        `Writer returned invalid JSON for slot ${slot.id}: ${cleaned}`
+      );
+    }
+
+    // Enforce slot binding
+    parsed.slotId = slot.id;
+    parsed.questionType = slot.questionType;
+
+    items.push(parsed);
+  }
+
+  return items;
 }

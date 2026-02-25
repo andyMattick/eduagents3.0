@@ -1,28 +1,38 @@
-// utils/runAgent.ts
 import { PipelineTrace } from "@/types/Trace";
-import { logAgentStep } from "@/utils/trace";
 
-export async function runAgent<TInput, TOutput>(
+export async function runAgent(
   trace: PipelineTrace,
-  agentName: string,
-  agentFn: (input: TInput) => Promise<TOutput>,
-  input: TInput
-): Promise<TOutput> {
+  label: string,
+  fn: (input: any) => Promise<any>,
+  input: any
+) {
   const startedAt = Date.now();
 
   try {
-    const output = await agentFn(input);
+    const output = await fn(input);
 
-    logAgentStep(trace, agentName, { ...input, _startedAt: startedAt }, output);
-    return output;
+    trace.steps.push({
+      agent: label,
+      input,
+      output,
+      errors: [],
+      startedAt,
+      finishedAt: Date.now(),
+      duration: Date.now() - startedAt,
+    });
+
+    return output; // ⭐ THIS IS THE FIX
   } catch (err: any) {
-    logAgentStep(
-      trace,
-      agentName,
-      { ...input, _startedAt: startedAt },
-      null,
-      [err.message]
-    );
+    trace.steps.push({
+      agent: label,
+      input,
+      output: null,
+      errors: [err.message],
+      startedAt,
+      finishedAt: Date.now(),
+      duration: Date.now() - startedAt,
+    });
+
     throw err;
   }
 }

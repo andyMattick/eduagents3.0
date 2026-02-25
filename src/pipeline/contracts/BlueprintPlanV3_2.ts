@@ -1,3 +1,5 @@
+import type { BlueprintSlot } from "@/types/Blueprint";
+
 export type CognitiveProcess =
   | "remember"
   | "understand"
@@ -52,21 +54,7 @@ export type BlueprintPlanV3_2 = {
   pacingToleranceSeconds: number; // NEW
 
   // Binding, ordered slots
-  slots: {
-    index: number; // 1-based
-
-    cognitiveProcess: CognitiveProcess;
-
-    type: QuestionType;
-
-    // Per-slot difficulty relative to overall profile
-    difficultyModifier: DifficultyModifier;
-
-    // Optional conceptual tag for breadth control
-    conceptTag?: string;
-
-    estimatedTimeSeconds: number;
-  }[];
+  slots: BlueprintSlot[];
 
   // Validation contract (NEW)
   validation: {

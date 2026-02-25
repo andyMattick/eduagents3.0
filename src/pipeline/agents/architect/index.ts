@@ -1,75 +1,78 @@
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { buildArchitectUAR } from "@/pipeline/contracts/UnifiedAssessmentRequest";
 import { Blueprint } from "@/pipeline/contracts/Blueprint";
+import { buildArchitectPrompt } from "./architectPrompt";
+import { buildWriterPrompt } from "@/pipeline/agents/writer/writerPrompt";
+import { callGemini } from "@/pipeline/llm/gemini";
+
+
 import {
   BlueprintPlanV3_2,
   CognitiveProcess,
   DifficultyProfile,
   DifficultyModifier,
-  OrderingStrategy,
-  QuestionType
+  OrderingStrategy
 } from "@/pipeline/contracts/BlueprintPlanV3_2";
-import { buildWriterPrompt } from "@/pipeline/agents/writer/writerPrompt";
 
 export async function runArchitect({
   uar,
-  agentId,
-  compensation
+  agentId: _agentId,
+  compensation: _compensation
 }: {
   uar: UnifiedAssessmentRequest;
   agentId: string;
   compensation: any;
 }): Promise<Blueprint> {
 
-  // Intensity from time
+  //
+  // 0. Normalize to ArchitectUAR before any planning
+  //
+  const architectUAR = buildArchitectUAR(uar);
+
+  //
+  // 1. Your deterministic planning logic (unchanged)
+  //
+
   const intensity: BlueprintPlanV3_2["intensity"] =
-    uar.time <= 10 ? "light" :
-    uar.time <= 25 ? "moderate" :
+    architectUAR.timeMinutes <= 10 ? "light" :
+    architectUAR.timeMinutes <= 25 ? "moderate" :
     "deep";
 
-  // Difficulty profile – keep simple/onLevel for now, could later key off studentLevel
   const difficultyProfile: DifficultyProfile = "onLevel";
 
-  // Ordering strategy from assessmentType
   const orderingStrategy: OrderingStrategy =
-    uar.assessmentType === "testReview" || uar.assessmentType === "worksheet"
+    architectUAR.assessmentType === "testReview" || architectUAR.assessmentType === "worksheet"
       ? "mixed"
       : "progressive";
 
-  // Pacing per item by assessmentType
   const pacingSecondsPerItem =
-    uar.assessmentType === "bellRinger" || uar.assessmentType === "exitTicket"
+    architectUAR.assessmentType === "bellRinger" || architectUAR.assessmentType === "exitTicket"
       ? 30
-      : uar.assessmentType === "quiz"
+      : architectUAR.assessmentType === "quiz"
       ? 45
       : 60;
 
-  const totalEstimatedTimeSeconds = uar.time * 60;
+  const totalEstimatedTimeSeconds = architectUAR.timeMinutes * 60;
 
-  // Question count from time and pacing
   const questionCount = Math.max(
     1,
-    Math.floor(totalEstimatedTimeSeconds / pacingSecondsPerItem)
+    architectUAR.questionCount ?? Math.floor(totalEstimatedTimeSeconds / pacingSecondsPerItem)
   );
 
   const pacingToleranceSeconds = 10;
 
   //
-  // 2. Choose a target cognitive distribution (weights)
+  // 2. Cognitive distribution (unchanged)
   //
 
   const baseDistribution: Record<CognitiveProcess, number> =
-    uar.assessmentType === "bellRinger" || uar.assessmentType === "exitTicket"
+    architectUAR.assessmentType === "bellRinger" || architectUAR.assessmentType === "exitTicket"
       ? { remember: 0.5, understand: 0.4, apply: 0.1, analyze: 0, evaluate: 0 }
-      : uar.assessmentType === "quiz"
+      : architectUAR.assessmentType === "quiz"
       ? { remember: 0.2, understand: 0.4, apply: 0.3, analyze: 0.1, evaluate: 0 }
-      : uar.assessmentType === "test" || uar.assessmentType === "testReview"
+      : architectUAR.assessmentType === "test" || architectUAR.assessmentType === "testReview"
       ? { remember: 0.15, understand: 0.25, apply: 0.3, analyze: 0.2, evaluate: 0.1 }
-      : // worksheet default
-        { remember: 0.2, understand: 0.3, apply: 0.3, analyze: 0.15, evaluate: 0.05 };
-
-  //
-  // 3. Generate cognitiveProcess sequence for slots
-  //
+      : { remember: 0.2, understand: 0.3, apply: 0.3, analyze: 0.15, evaluate: 0.05 };
 
   const cpOrder: CognitiveProcess[] = [
     "remember",
@@ -82,22 +85,11 @@ export async function runArchitect({
   const cps: CognitiveProcess[] = [];
   for (const cp of cpOrder) {
     const count = Math.round(baseDistribution[cp] * questionCount);
-    for (let i = 0; i < count; i++) {
-      cps.push(cp);
-    }
+    for (let i = 0; i < count; i++) cps.push(cp);
   }
 
-  // Adjust length to exactly questionCount
-  while (cps.length < questionCount) {
-    cps.push("understand");
-  }
-  if (cps.length > questionCount) {
-    cps.length = questionCount;
-  }
-
-  //
-  // 4. Derive depth band from actual cps used
-  //
+  while (cps.length < questionCount) cps.push("understand");
+  if (cps.length > questionCount) cps.length = questionCount;
 
   const usedSet = new Set<CognitiveProcess>(cps);
   const usedOrdered = cpOrder.filter(cp => usedSet.has(cp));
@@ -106,12 +98,14 @@ export async function runArchitect({
     usedOrdered[usedOrdered.length - 1] ?? "understand";
 
   //
-  // 5. Build slots
+  // 3. Build extensible slots (unchanged)
   //
 
-  const defaultType: QuestionType = "multipleChoice";
+  const teacherTypes = architectUAR.questionTypes
 
-  const slots: BlueprintPlanV3_2["slots"] = cps.map((cp, i) => {
+  const slots = cps.map((cp, i) => {
+    const questionType = teacherTypes[i % teacherTypes.length];
+
     const difficultyModifier: DifficultyModifier =
       cp === "remember"
         ? "low"
@@ -122,17 +116,21 @@ export async function runArchitect({
         : "high";
 
     return {
-      index: i + 1, // 1-based
-      cognitiveProcess: cp,
-      type: defaultType,
-      difficultyModifier,
-      conceptTag: undefined,
-      estimatedTimeSeconds: pacingSecondsPerItem
+      id: `slot_${i + 1}`,
+      questionType,
+      cognitiveDemand: cp,
+      difficulty: difficultyModifier === "low" ? "easy" :
+                  difficultyModifier === "medium" ? "medium" : "hard",
+      pacing: "normal",
+      requiresImage: questionType === "image",
+      media: questionType === "image"
+        ? { type: "image", url: undefined, alt: undefined }
+        : undefined
     };
   });
 
   //
-  // 6. Compute actual cognitiveDistribution from slots
+  // 4. Cognitive distribution (unchanged)
   //
 
   const cognitiveDistribution: BlueprintPlanV3_2["cognitiveDistribution"] = {
@@ -144,11 +142,11 @@ export async function runArchitect({
   };
 
   for (const slot of slots) {
-    cognitiveDistribution[slot.cognitiveProcess] += 1 / questionCount;
+    cognitiveDistribution[slot.cognitiveDemand as CognitiveProcess] += 1 / questionCount;
   }
 
   //
-  // 7. Validation contract
+  // 5. Validation contract (unchanged)
   //
 
   const validation: BlueprintPlanV3_2["validation"] = {
@@ -161,22 +159,18 @@ export async function runArchitect({
     enforceScopeWidth: true
   };
 
-  //
-  // 8. Scope width – simple default for now
-  //
-
   const scopeWidth: BlueprintPlanV3_2["scopeWidth"] =
-    uar.assessmentType === "test" || uar.assessmentType === "testReview"
+    architectUAR.assessmentType === "test" || architectUAR.assessmentType === "testReview"
       ? "broad"
-      : uar.assessmentType === "quiz"
+      : architectUAR.assessmentType === "quiz"
       ? "focused"
       : "narrow";
 
   //
-  // 9. Assemble plan
+  // 6. Assemble deterministic plan
   //
 
-  const plan: BlueprintPlanV3_2 = {
+  const deterministicPlan: BlueprintPlanV3_2 = {
     intensity,
     scopeWidth,
     depthFloor,
@@ -193,22 +187,52 @@ export async function runArchitect({
   };
 
   //
-  // 10. Constraints + writerPrompt + Blueprint
+  // 7. LLM refinement step
   //
 
-  const constraints: Blueprint["constraints"] = {
-    mustAlignToTopic: true,
-    avoidTrickQuestions: true,
-    avoidSensitiveContent: true,
-    respectTimeLimit: true
+  const architectPrompt = buildArchitectPrompt(architectUAR, deterministicPlan);
+
+  const llmRaw = await callGemini({
+    model: "gemini-2.5-flash",
+    prompt: architectPrompt,
+    temperature: 0.2,
+    maxOutputTokens: 4096
+  });
+
+
+
+
+  let llmPlan: Partial<BlueprintPlanV3_2>;
+  try {
+    // Strip markdown code fences if present (LLMs often wrap JSON in ```json ... ```)
+    const cleaned = llmRaw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+    llmPlan = JSON.parse(cleaned);
+  } catch {
+    // If the LLM returns invalid JSON, fall back to deterministic plan
+    console.warn("[Architect] LLM returned invalid JSON, using deterministic plan");
+    llmPlan = {};
+  }
+
+  //
+  // 8. Merge deterministic plan + LLM refinements
+  //
+
+  const finalPlan: BlueprintPlanV3_2 = {
+    ...deterministicPlan,
+    ...llmPlan
   };
 
-  const writerPrompt = buildWriterPrompt(uar, plan, constraints);
+  //
+  // 9. Constraints + writerPrompt + Blueprint
+  //
 
-  return {
-    uar,
-    writerPrompt,
-    plan,
-    constraints
-  };
+  const firstSlot = finalPlan.slots?.[0];
+  const writerPrompt = firstSlot
+    ? buildWriterPrompt(finalPlan as any, firstSlot)
+    : `Write a ${architectUAR.assessmentType} assessment on ${architectUAR.topic} for ${architectUAR.grade} ${architectUAR.domain}.`;
+
+  return { uar, writerPrompt, plan: finalPlan, constraints: { mustAlignToTopic: true, avoidTrickQuestions: true, avoidSensitiveContent: true, respectTimeLimit: true } };
 }

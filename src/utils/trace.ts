@@ -27,6 +27,7 @@ export function logAgentStep(
     violations,
     startedAt: Date.now(),
     finishedAt: Date.now(),
+    duration: 0, // This will be updated after the step is completed
   };
 
   trace.steps.push(step);

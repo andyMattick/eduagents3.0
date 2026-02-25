@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { CustomSection } from '../components/Pipeline/SectionBuilder';
-import { UnifiedAssessmentResponse } from "@/components/Pipeline/contracts/assessmentContracts";
+import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
+
+/** Inline type — original SectionBuilder module was removed during restructuring */
+export interface CustomSection {
+  id: string;
+  name: string;
+  problemType: string;
+  questionCount?: number;
+}
 
 export type UserGoal = 'create' | 'analyze';
 

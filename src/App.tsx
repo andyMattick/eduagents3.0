@@ -5,14 +5,13 @@ import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
 import { TeacherDashboard } from './components_new/TeacherSystem/TeacherDashboard';
-import { PipelineRouter } from './components_new/Pipeline/PipelineRouter';
 import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
-import { ThemeProvider, useTheme } from './hooks/useTheme';
-import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
+import { ThemeProvider } from './hooks/useTheme';
+import { UserFlowProvider } from './hooks/useUserFlow';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
-
 import './App.css';
+import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 
 console.log("ENV CHECK", import.meta.env);
 
@@ -37,7 +36,7 @@ export interface AssignmentContext {
 --------------------------------*/
 function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
-  const [assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
+  const [_assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
   const { logout, user } = useAuth();
   
   const handleLogout = async () => await logout();
@@ -137,16 +136,15 @@ function TeacherAppContent() {
         )}
 
         {activeTab === 'pipeline' && (
-          <PipelineRouter
-            assignmentContext={assignmentContext}
-            userId={user?.id ?? null}     // ⭐ ADD THIS
-            onAssignmentSaved={() => {
-              setAssignmentContext(null);
-              setActiveTab('dashboard');
+          <ConversationalAssessmentWrapper
+            userId={user?.id ?? null}
+            onResult={(data) => {
+              console.log("Pipeline result:", data);
             }}
-/>
-
+          />
         )}
+
+
 
         {activeTab === 'what-we-infer' && (
    <WhatWeInferPage />
@@ -165,7 +163,7 @@ function TeacherAppContent() {
    Auth Gate
 --------------------------------*/
 function AppContent() {
-  const { user, isLoading, logout, signIn, signUp, error } = useAuth();
+  const { user, isLoading, logout: _logout, signIn, signUp: _signUp, error } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -192,17 +190,15 @@ function AppContent() {
   }
 
   if (user.isAdmin) {
-    return <AdminDashboard onLogout={() => logout()} />;
+    return <AdminDashboard />;
   }
 
-  return (
-    <NotepadProvider>
-      <UserFlowProvider>
-        <TeacherAppContent />
-        <APICallNotifier />
-      </UserFlowProvider>
-    </NotepadProvider>
-  );
+return (
+  <>
+    <TeacherAppContent />
+    <APICallNotifier />
+  </>
+);
 }
 
 /* ------------------------------

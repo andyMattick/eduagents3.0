@@ -1,34 +1,22 @@
 import { supabase } from "../../supabase/client";
-import {
-  LoginRequest,
-  SignUpRequest,
-} from "@/types/teacherSystem";
 
-
-export async function login(request: LoginRequest) {
-  const { email, password } = request;
+export async function login(email: string, password: string) {
+  if (!supabase) return { data: null, error: new Error("Supabase not configured") };
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-  if (error) throw error;
-
-  return {
-    userId: data.user?.id ?? "",
-    email: data.user?.email ?? "",
-    sessionToken: data.session?.access_token ?? "",
-    tier: data.user?.user_metadata?.tier ?? "teacher"
-  };
+  return { data, error };
 }
 
-
 export async function signUp(email: string, password: string) {
+  if (!supabase) return { data: null, error: new Error("Supabase not configured") };
   return supabase.auth.signUp({ email, password });
 }
 
 export async function logout() {
+  if (!supabase) return { error: null };
   return supabase.auth.signOut();
 }
-
 export async function getCurrentUser() {
+  if (!supabase) return null;
   const { data } = await supabase.auth.getUser();
-  return data.user;
+  return data?.user ?? null;
 }

@@ -1,33 +1,33 @@
 // system/dossier/DossierManager.ts
 import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
 import type { Violation } from "@/pipeline/agents/gatekeeper/ViolationCatalog";
-import type { WriterDossier } from "./types/WriterDossier";
-import type { ArchitectDossier } from "./types/ArchitectDossier";
-import type { AstronomerDossier } from "./types/AstronomerDossier";
 import { supabase } from "../../supabase/client";
 
-type _AnyDossier =
-  | WriterDossier
-  | ArchitectDossier
-  | AstronomerDossier;
+
 
 export class DossierManager {
+  static table = "system_agent_dossiers";
+
   // -----------------------------
   // LOAD
   // -----------------------------
   static async load(userId: string, agentType: string) {
     const { data, error } = await supabase
-      .from("system_agent_dossiers")
+      .from(this.table)
       .select("*")
       .eq("user_id", userId)
       .eq("agent_type", agentType);
 
-    if (error) throw error;
+    if (error) {
+      console.error("[DossierManager] Load error:", error);
+      throw error;
+    }
+
     return data ?? [];
   }
 
   // -----------------------------
-  // BASELINE
+  // CREATE BASELINE
   // -----------------------------
   static async createBaseline(userId: string, agentType: string) {
     const baseline = {
@@ -44,7 +44,7 @@ export class DossierManager {
     const instanceId = crypto.randomUUID();
 
     const { error } = await supabase
-      .from("system_agent_dossiers")
+      .from(this.table)
       .insert({
         user_id: userId,
         agent_type: agentType,
@@ -53,7 +53,10 @@ export class DossierManager {
         version: 1
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error("[DossierManager] Baseline create error:", error);
+      throw error;
+    }
 
     return {
       instanceId,
@@ -78,11 +81,33 @@ export class DossierManager {
     gatekeeperReport: GatekeeperReport;
     finalAssessment: any;
   }) {
-    // Load existing dossier
-    const dossiers = await this.load(userId, agentType);
-    const entry = dossiers.find(d => d.instance_id === instanceId);
+    // Load existing dossier(s)
+    let dossiers = await this.load(userId, agentType);
 
-    if (!entry) throw new Error("Dossier not found for update.");
+    // Auto-create if missing
+    if (!dossiers || dossiers.length === 0) {
+      const created = await this.createBaseline(userId, agentType);
+      dossiers = [
+        {
+          instance_id: created.instanceId,
+          dossier: created.dossier,
+          version: created.version
+        }
+      ];
+    }
+
+    // Find the correct instance
+    let entry = dossiers.find((d: any) => d.instance_id === instanceId);
+
+    // If instanceId doesn't exist, create a new one
+    if (!entry) {
+      const created = await this.createBaseline(userId, agentType);
+      entry = {
+        instance_id: created.instanceId,
+        dossier: created.dossier,
+        version: created.version
+      };
+    }
 
     const dossier = entry.dossier;
 
@@ -90,27 +115,33 @@ export class DossierManager {
     dossier.weaknesses ??= {};
 
     // Update weaknesses based on Gatekeeper
-    const violations: Violation[] = gatekeeperReport.violations ?? [];
+    const violations: Violation[] = gatekeeperReport?.violations ?? [];
     for (const v of violations) {
       dossier.weaknesses[v.type] = (dossier.weaknesses[v.type] ?? 0) + 1;
     }
 
     // Update trust/stability
     dossier.trustScore = Math.max(0, dossier.trustScore - violations.length);
-    dossier.stabilityScore = Math.max(0, dossier.stabilityScore - (finalAssessment?.rewriteCount ?? 0));
+    dossier.stabilityScore = Math.max(
+      0,
+      dossier.stabilityScore - (finalAssessment?.rewriteCount ?? 0)
+    );
 
     // Save updated dossier
     const { error } = await supabase
-      .from("system_agent_dossiers")
+      .from(this.table)
       .update({
         dossier,
         updated_at: new Date().toISOString()
       })
       .eq("user_id", userId)
       .eq("agent_type", agentType)
-      .eq("instance_id", instanceId);
+      .eq("instance_id", entry.instance_id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("[DossierManager] Update error:", error);
+      throw error;
+    }
 
     return dossier;
   }

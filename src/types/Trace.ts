@@ -8,6 +8,7 @@ export type AgentTrace = {
   finishedAt: number;
   errors?: string[];
   violations?: any[];
+  duration: number;
 };
 
 export type PipelineTrace = {

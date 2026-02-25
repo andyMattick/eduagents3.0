@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MinimalTeacherIntent } from "pipeline/contracts";
 
 import { ASSESSMENT_TYPES, AssessmentTypeKey } from "@/pipeline/contracts/assessmentTypes";
@@ -17,9 +17,9 @@ interface MinimalAssessmentFormProps {
 }
 
 export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) {
-  console.log("[Form] Mounted");
-
-  const [debug, setDebug] = useState<any | null>(null);
+  useEffect(() => {
+    console.log("[Form] Mounted");
+  }, []);
 
   const [form, setForm] = useState<MinimalTeacherIntent>({
     gradeLevels: [],
@@ -166,22 +166,7 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
       <button type="submit">
         Generate Assessment
       </button>
-      <button
-  type="button"
-  onClick={async () => {
-    const uar = convertMinimalToUAR(form);
-    const result = await runArchitectWriterDebug(uar);
-    setDebug(result);
-  }}
->
-  Debug Architect + Writer
-</button>
-
-      {debug && (
-  <PipelineDebugPanel debug={debug} />
-)}
-
-
+ 
     </form>
   );
 }

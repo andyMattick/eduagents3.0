@@ -3,94 +3,131 @@
 import { useState } from "react";
 
 export function TraceViewer({ trace }: { trace: any }) {
-
-  const [open, setOpen] = useState(false);
-
   if (!trace) return null;
 
+  const steps = trace.steps ?? [];
+
   return (
-    <div style={{ marginTop: "2rem", border: "1px solid #ddd", padding: "1rem", borderRadius: 8 }}>
+    <div
+      style={{
+        marginTop: "2rem",
+        border: "1px solid #ddd",
+        padding: "1rem",
+        borderRadius: 8,
+        background: "#fafafa"
+      }}
+    >
+      <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: "0.5rem" }}>
+        Pipeline Trace
+      </h2>
+
+      <div style={{ fontSize: 12, color: "#666", marginBottom: "1rem" }}>
+        {trace.runId && <div>Run ID: {trace.runId}</div>}
+        {trace.startedAt && (
+          <div>Started: {new Date(trace.startedAt).toLocaleString()}</div>
+        )}
+        {trace.finishedAt && (
+          <div>Finished: {new Date(trace.finishedAt).toLocaleString()}</div>
+        )}
+      </div>
+
+      {steps.map((step: any, i: number) => (
+        <TraceStep key={i} step={step} index={i} />
+      ))}
+    </div>
+  );
+}
+
+function TraceStep({ step, index }: { step: any; index: number }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div
+      style={{
+        marginBottom: "1rem",
+        border: "1px solid #eee",
+        padding: "1rem",
+        borderRadius: 6,
+        background: "white"
+      }}
+    >
       <button
         onClick={() => setOpen(!open)}
         style={{
           fontSize: 14,
           fontWeight: 600,
-          textDecoration: "underline",
           cursor: "pointer",
           background: "none",
           border: "none",
-          padding: 0
+          padding: 0,
+          display: "flex",
+          justifyContent: "space-between",
+          width: "100%"
         }}
       >
-        {open ? "Hide Pipeline Trace" : "Show Pipeline Trace"}
+        <span>
+          {index + 1}. {step.agent}
+        </span>
+        {step.durationMs && (
+          <span style={{ fontSize: 12, color: "#888" }}>
+            {step.durationMs} ms
+          </span>
+        )}
       </button>
 
       {open && (
-        <div style={{ marginTop: "1rem" }}>
-          <div style={{ fontSize: 12, color: "#666", marginBottom: "1rem" }}>
-            <div>Run ID: {trace.runId}</div>
-            <div>Started: {new Date(trace.startedAt).toLocaleString()}</div>
-            {trace.finishedAt && (
-              <div>Finished: {new Date(trace.finishedAt).toLocaleString()}</div>
-            )}
-          </div>
+        <div style={{ marginTop: "0.75rem" }}>
+          {step.input && (
+            <JsonBlock label="Input" value={step.input} />
+          )}
 
-          {trace.steps.map((step: any, i: number) => (
+          {step.output && (
+            <JsonBlock label="Output" value={step.output} />
+          )}
 
-            <TraceStep key={i} step={step} index={i} />
-          ))}
+          {step.errors?.length > 0 && (
+            <JsonBlock
+              label="Errors"
+              value={step.errors}
+              color="#ffecec"
+              borderColor="#ffb3b3"
+            />
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function TraceStep({ step, index }: { step: any; index: number }) {
-
-  const [open, setOpen] = useState(false);
-
+function JsonBlock({
+  label,
+  value,
+  color = "#f7f7f7",
+  borderColor = "#e5e5e5"
+}: {
+  label: string;
+  value: any;
+  color?: string;
+  borderColor?: string;
+}) {
   return (
-    <div style={{ marginBottom: "1rem", border: "1px solid #eee", padding: "1rem", borderRadius: 6 }}>
-      <button
-        onClick={() => setOpen(!open)}
+    <div style={{ marginBottom: "0.75rem" }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: "0.25rem" }}>
+        {label}
+      </div>
+      <pre
         style={{
-          fontSize: 14,
-          fontWeight: 600,
-          cursor: "pointer",
-          background: "none",
-          border: "none",
-          padding: 0
+          background: color,
+          border: `1px solid ${borderColor}`,
+          padding: "0.5rem",
+          borderRadius: 4,
+          overflowX: "auto",
+          fontSize: 12,
+          maxHeight: 300
         }}
       >
-        {index + 1}. {step.agent}
-      </button>
-
-      {open && (
-        <div style={{ marginTop: "0.5rem" }}>
-          <div style={{ marginBottom: "0.5rem" }}>
-            <strong>Input</strong>
-            <pre style={{ background: "#f7f7f7", padding: "0.5rem", borderRadius: 4, overflowX: "auto" }}>
-              {JSON.stringify(step.input, null, 2)}
-            </pre>
-          </div>
-
-          <div style={{ marginBottom: "0.5rem" }}>
-            <strong>Output</strong>
-            <pre style={{ background: "#f7f7f7", padding: "0.5rem", borderRadius: 4, overflowX: "auto" }}>
-              {JSON.stringify(step.output, null, 2)}
-            </pre>
-          </div>
-
-          {step.errors?.length > 0 && (
-            <div>
-              <strong style={{ color: "red" }}>Errors</strong>
-              <pre style={{ background: "#ffecec", padding: "0.5rem", borderRadius: 4, overflowX: "auto" }}>
-                {JSON.stringify(step.errors, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
+        {JSON.stringify(value, null, 2)}
+      </pre>
     </div>
   );
 }
