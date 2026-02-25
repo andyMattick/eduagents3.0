@@ -54,9 +54,9 @@ SLOT REQUIREMENTS (MANDATORY)
 - difficulty: ${slot.difficulty}
 
 SCRIBE BEHAVIORAL GUIDANCE
-Required Behaviors: ${scribe.requiredBehaviors.join("; ") || "none"}
-Forbidden Behaviors: ${scribe.forbiddenBehaviors.join("; ") || "none"}
-Compensate For: ${scribe.weaknesses.join("; ") || "none"}
+Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
+Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
+Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
 
 OUTPUT FORMAT (STRICT JSON ONLY)
 {

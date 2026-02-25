@@ -51,7 +51,6 @@ export async function runWriter({
 
     // ⭐ Build the new Writer v3.6 prompt
     const prompt = buildWriterPrompt(
-      blueprint,
       slot,
       context,
       scribePrescriptions
