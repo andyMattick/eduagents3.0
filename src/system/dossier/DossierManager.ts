@@ -120,12 +120,45 @@ export class DossierManager {
       dossier.weaknesses[v.type] = (dossier.weaknesses[v.type] ?? 0) + 1;
     }
 
-    // Update trust/stability
-    dossier.trustScore = Math.max(0, dossier.trustScore - violations.length);
-    dossier.stabilityScore = Math.max(
-      0,
-      dossier.stabilityScore - (finalAssessment?.rewriteCount ?? 0)
-    );
+    // ── Success + failure tracking ──────────────────────────────────────────
+    // Previously only decremented on failures. Now clean runs earn increases
+    // and domain performance is recorded (strengths + domainMastery).
+
+    const rewriteCount = finalAssessment?.rewriteCount ?? 0;
+    const questionCount = finalAssessment?.items?.length ?? 0;
+    const isCleanRun = violations.length === 0;
+    const isLowFriction = violations.length <= 2 && rewriteCount <= 3;
+    const domain = finalAssessment?.domain ?? agentType.split(":")[1] ?? "unknown";
+
+    // Trust: subtract 1 per violation, add 1 for clean run (clamp 0–10)
+    if (isCleanRun) {
+      dossier.trustScore = Math.min(10, (dossier.trustScore ?? 5) + 1);
+    } else {
+      dossier.trustScore = Math.max(0, (dossier.trustScore ?? 5) - violations.length);
+    }
+
+    // Stability: subtract proportional to rewrite ratio, add 1 for low-friction (clamp 0–10)
+    if (isLowFriction) {
+      dossier.stabilityScore = Math.min(10, (dossier.stabilityScore ?? 5) + 1);
+    } else {
+      const penalty = Math.ceil(rewriteCount / Math.max(1, questionCount));
+      dossier.stabilityScore = Math.max(0, (dossier.stabilityScore ?? 5) - penalty);
+    }
+
+    // Strengths: record successful domains (clean or low-friction)
+    dossier.strengths ??= {};
+    if (isLowFriction && domain !== "unknown") {
+      dossier.strengths[domain] = (dossier.strengths[domain] ?? 0) + 1;
+    }
+
+    // Domain mastery: track run count + success rate per domain
+    dossier.domainMastery ??= {};
+    if (domain !== "unknown") {
+      const dm = dossier.domainMastery[domain] ?? { runs: 0, cleanRuns: 0 };
+      dm.runs += 1;
+      if (isCleanRun) dm.cleanRuns += 1;
+      dossier.domainMastery[domain] = dm;
+    }
 
     // Save updated dossier
     const { error } = await supabase

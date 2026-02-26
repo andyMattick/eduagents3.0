@@ -14,4 +14,7 @@ export interface Blueprint {
     avoidSensitiveContent: boolean;
     respectTimeLimit: boolean;
   };
+
+  /** Informational warnings from plausibility checks (never blocks the run). */
+  warnings?: string[];
 }

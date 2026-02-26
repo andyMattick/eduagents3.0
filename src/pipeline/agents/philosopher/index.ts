@@ -176,11 +176,97 @@ function analyzeWriteMode(input: {
     notes.push(`✓ All ${actualCount} items generated.`);
   }
 
+  // ── 5. Grade-level lexical complexity check ─────────────────────────────
+  // Estimate whether the generated prompts use language appropriate for the
+  // target grade. Uses three heuristics:
+  //   1. Average sentence length (words per sentence)
+  //   2. Proportion of long words (>8 chars) as proxy for abstract vocabulary
+  //   3. Proportion of abstract/mature concept words
+
+  const gradeStr = blueprint?.uar?.gradeLevels?.[0] ?? blueprint?.uar?.grade ?? "";
+  const gradeNum = parseInt(String(gradeStr), 10);
+  const allText = writerDraft.map((item: any) => item.prompt ?? "").join(" ");
+
+  if (!isNaN(gradeNum) && allText.length > 50) {
+    // Sentence count (split on .!? followed by space or end)
+    const sentences = allText.split(/[.!?]+\s+|[.!?]+$/).filter(s => s.trim().length > 0);
+    const words = allText.split(/\s+/).filter(w => w.length > 0);
+    const avgSentenceLen = sentences.length > 0 ? words.length / sentences.length : 0;
+
+    // Long-word ratio (>8 chars, excluding common function words)
+    const longWords = words.filter(w => w.replace(/[^a-zA-Z]/g, "").length > 8);
+    const longWordRatio = words.length > 0 ? longWords.length / words.length : 0;
+
+    // Abstract concept density
+    const ABSTRACT_WORDS = [
+      "responsibility", "guilt", "morality", "justice", "consequence",
+      "destruction", "vengeance", "ambiguity", "perspective", "ethical",
+      "philosophical", "existential", "ideological", "inevitably",
+      "fundamentally", "paradox", "dilemma", "implications", "rhetoric",
+      "consciousness", "alienation", "symbolism", "irony", "metaphor",
+      "juxtaposition", "sovereignty", "autonomy", "hegemony"
+    ];
+    const lowerText = allText.toLowerCase();
+    const abstractHits = ABSTRACT_WORDS.filter(w => lowerText.includes(w)).length;
+
+    // Thresholds by grade band
+    let lexicalWarning = false;
+    if (gradeNum <= 5) {
+      // Elementary: avg sentence > 18 words OR > 15% long words OR > 3 abstract concepts
+      if (avgSentenceLen > 18 || longWordRatio > 0.15 || abstractHits > 3) {
+        lexicalWarning = true;
+      }
+    } else if (gradeNum <= 8) {
+      // Middle school: more lenient
+      if (avgSentenceLen > 25 || longWordRatio > 0.25 || abstractHits > 8) {
+        lexicalWarning = true;
+      }
+    }
+
+    if (lexicalWarning) {
+      notes.push(
+        `⚠ Lexical complexity may exceed grade ${gradeNum} level ` +
+        `(avg sentence: ${avgSentenceLen.toFixed(1)} words, ` +
+        `long-word ratio: ${(longWordRatio * 100).toFixed(0)}%, ` +
+        `abstract concepts: ${abstractHits}). ` +
+        `Consider simplifying vocabulary and shortening sentences.`
+      );
+    } else {
+      notes.push(`✓ Lexical complexity appears appropriate for grade ${gradeNum}.`);
+    }
+  }
+
+  // ── 6. Blueprint warnings (from Architect plausibility checks) ───────────
+  const architectWarnings: string[] = blueprint?.warnings ?? [];
+  for (const w of architectWarnings) {
+    notes.push(`⚠ ${w}`);
+  }
+
+  // ── 7. Pacing realism check ──────────────────────────────────────────────
+  const realisticMinutes = blueprint?.plan?.realisticTotalMinutes;
+  const budgetMinutes = blueprint?.uar?.time ?? blueprint?.uar?.timeMinutes;
+  if (realisticMinutes && budgetMinutes && realisticMinutes > budgetMinutes * 1.15) {
+    notes.push(
+      `⚠ Pacing: weighted estimate is ~${realisticMinutes} min for a ${budgetMinutes}-min window. ` +
+      `Some students may not finish in time.`
+    );
+  }
+
   // ── Quality score (informational, displayed in Philosopher's Report) ───────
   let deductions = 0;
   deductions += Math.min(5, Math.ceil(violations.length / 2));
   deductions += redundantPairs.length > 0 ? 1 : 0;
   deductions += (expectedCount > 0 && actualCount < expectedCount) ? 1 : 0;
+  // Grade-awareness deductions
+  deductions += architectWarnings.length > 0 ? 1 : 0; // plausibility warning
+  if (!isNaN(gradeNum) && allText.length > 50) {
+    const sentences = allText.split(/[.!?]+\s+|[.!?]+$/).filter(s => s.trim().length > 0);
+    const wordsList = allText.split(/\s+/).filter(w => w.length > 0);
+    const avgSL = sentences.length > 0 ? wordsList.length / sentences.length : 0;
+    const longR = wordsList.length > 0 ? wordsList.filter(w => w.replace(/[^a-zA-Z]/g, "").length > 8).length / wordsList.length : 0;
+    if (gradeNum <= 5 && (avgSL > 18 || longR > 0.15)) deductions += 1;
+  }
+  if (realisticMinutes && budgetMinutes && realisticMinutes > budgetMinutes * 1.15) deductions += 1;
   const qualityScore = Math.max(0, 10 - deductions);
 
   if (qualityScore >= 8) {

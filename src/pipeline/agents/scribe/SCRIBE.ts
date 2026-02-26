@@ -249,24 +249,24 @@ export class SCRIBE {
     });
 
     // 2b. Insert assessment record into Supabase
-    await supabase.from("teacher_assessment_history").insert({
+    // Non-fatal — log the error but never throw, so a schema mismatch
+    // doesn't kill the pipeline and swallow the user's result.
+    const { error: insertError } = await supabase.from("teacher_assessment_history").insert({
       teacher_id: userId,
-      domain: uar?.course ?? null, // FIXED
+      domain: uar?.course ?? null,
       grade: uar?.gradeLevels?.join(", ") ?? null,
       assessment_type: uar?.assessmentType ?? null,
       question_count: finalAssessment.items?.length ?? 0,
       question_types: finalAssessment.items?.map((item: any) => item.questionType).join(", ") ?? null,
-
-      // SAFE JSON INSERTS
       cognitive_distribution: blueprint?.plan?.cognitiveDistribution ?? null,
       difficulty_profile: blueprint?.plan?.difficultyProfile ?? null,
-
       ordering_strategy: blueprint?.plan?.orderingStrategy ?? null,
       pacing_seconds_per_item: blueprint?.plan?.pacingSecondsPerItem ?? null,
-
       guardrails: (uar as any).guardrails ?? null,
     });
-
+    if (insertError) {
+      console.warn("[SCRIBE] teacher_assessment_history insert failed (non-fatal):", insertError.message);
+    }
 
     // 3. Load full history for this teacher to compute defaults
     const { data: history } = await supabase
@@ -278,7 +278,7 @@ export class SCRIBE {
     const defaults = computeDefaults(history ?? []);
 
     // 5. Upsert predictive defaults for this teacher
-    await supabase.from("teacher_defaults").upsert(
+    const { error: upsertError } = await supabase.from("teacher_defaults").upsert(
       {
         teacher_id: userId,
         ...defaults,
@@ -287,6 +287,9 @@ export class SCRIBE {
       },
       { onConflict: "teacher_id" }
     );
+    if (upsertError) {
+      console.warn("[SCRIBE] teacher_defaults upsert failed (non-fatal):", upsertError.message);
+    }
 
     return { dossierResult, defaults };
   }

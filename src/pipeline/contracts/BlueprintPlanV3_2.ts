@@ -53,6 +53,10 @@ export type BlueprintPlanV3_2 = {
   totalEstimatedTimeSeconds: number;
   pacingToleranceSeconds: number; // NEW
 
+  // Weighted pacing estimates (computed per-slot, then summed)
+  realisticTotalSeconds?: number;
+  realisticTotalMinutes?: number;
+
   // Binding, ordered slots
   slots: BlueprintSlot[];
 

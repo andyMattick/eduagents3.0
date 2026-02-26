@@ -44,18 +44,72 @@ export async function runArchitect({
       ? "mixed"
       : "progressive";
 
-  const pacingSecondsPerItem =
+  // ── Weighted pacing model ─────────────────────────────────────────────────
+  // Instead of a flat seconds-per-item, we estimate time per slot based on:
+  //   question type × cognitive demand × grade-level adjustment
+  //
+  // Base seconds by question type:
+  const PACING_BASE: Record<string, number> = {
+    multipleChoice: 45,
+    trueFalse: 30,
+    shortAnswer: 90,
+    constructedResponse: 180,
+    fillInTheBlank: 60,
+    matching: 60,
+    ordering: 75,
+    image: 60,
+  };
+
+  // Cognitive-demand multiplier (higher Bloom → more time)
+  const BLOOM_MULTIPLIER: Record<string, number> = {
+    remember: 1.0,
+    understand: 1.15,
+    apply: 1.3,
+    analyze: 1.5,
+    evaluate: 1.7,
+    create: 2.0,
+  };
+
+  // Grade-level adjustment: younger students need more time per cognitive unit
+  const gradeNum = parseInt(architectUAR.grade, 10);
+  const gradeMultiplier =
+    !isNaN(gradeNum) && gradeNum <= 3 ? 1.6 :
+    !isNaN(gradeNum) && gradeNum <= 5 ? 1.35 :
+    !isNaN(gradeNum) && gradeNum <= 8 ? 1.15 :
+    1.0; // high school baseline
+
+  // Assessment-type speed factor (bellRingers/exitTickets are faster-paced)
+  const assessmentSpeedFactor =
     architectUAR.assessmentType === "bellRinger" || architectUAR.assessmentType === "exitTicket"
-      ? 30
+      ? 0.6
       : architectUAR.assessmentType === "quiz"
-      ? 45
-      : 60;
+      ? 0.8
+      : 1.0;
+
+  /** Estimate realistic seconds for a single slot */
+  function estimateSlotSeconds(qType: string, cognitiveDemand: string): number {
+    const base = PACING_BASE[qType] ?? 60;
+    const bloom = BLOOM_MULTIPLIER[cognitiveDemand] ?? 1.0;
+    return Math.round(base * bloom * gradeMultiplier * assessmentSpeedFactor);
+  }
+
+  // For the initial question-count inference we use a weighted average
+  // across the teacher's requested question types.
+  const requestedTypes = architectUAR.questionTypes?.length
+    ? architectUAR.questionTypes
+    : ["multipleChoice", "shortAnswer"];
+  const avgBaseSeconds =
+    requestedTypes.reduce((sum, t) => sum + (PACING_BASE[t] ?? 60), 0) / requestedTypes.length;
+  const avgPacingSeconds = Math.round(avgBaseSeconds * 1.2 * gradeMultiplier * assessmentSpeedFactor);
+
+  // Legacy flat value kept on the plan for backward compatibility (used by Gatekeeper)
+  const pacingSecondsPerItem = avgPacingSeconds;
 
   const totalEstimatedTimeSeconds = architectUAR.timeMinutes * 60;
 
   const questionCount = Math.max(
     1,
-    architectUAR.questionCount ?? Math.floor(totalEstimatedTimeSeconds / pacingSecondsPerItem)
+    architectUAR.questionCount ?? Math.floor(totalEstimatedTimeSeconds / avgPacingSeconds)
   );
 
   const pacingToleranceSeconds = 10;
@@ -225,18 +279,85 @@ export async function runArchitect({
   };
 
   //
-  // 9. Constraints + writerPrompt + Blueprint
+  // 9. Grade-text plausibility check
+  //
+  // Flag when canonical complex literature or mature content is paired
+  // with a primary or elementary grade level. This is informational — it
+  // never blocks the run, but surfaces a warning for the teacher.
+  //
+
+  const COMPLEX_TEXTS = [
+    "frankenstein", "1984", "lord of the flies", "macbeth", "hamlet",
+    "romeo and juliet", "the great gatsby", "to kill a mockingbird",
+    "animal farm", "brave new world", "the crucible", "the odyssey",
+    "the iliad", "beowulf", "heart of darkness", "crime and punishment",
+    "war and peace", "les misérables", "moby dick", "dracula",
+    "of mice and men", "the scarlet letter", "fahrenheit 451",
+    "a tale of two cities", "jane eyre", "wuthering heights",
+    "pride and prejudice", "the catcher in the rye", "slaughterhouse-five",
+    "beloved", "invisible man", "their eyes were watching god",
+    "the handmaid's tale", "things fall apart", "an inspector calls"
+  ];
+
+  const warnings: string[] = [];
+
+  if (!isNaN(gradeNum) && gradeNum <= 6) {
+    const searchText = [
+      architectUAR.unitName ?? "",
+      architectUAR.lessonName ?? "",
+      architectUAR.topic ?? ""
+    ].join(" ").toLowerCase();
+
+    const matchedText = COMPLEX_TEXTS.find(t => searchText.includes(t));
+    if (matchedText) {
+      warnings.push(
+        `Grade–text plausibility: "${matchedText}" is typically studied at the secondary level. ` +
+        `This assessment targets grade ${gradeNum}. The literary work may exceed typical reading ` +
+        `level and content appropriateness for this age group. Confirm intent?`
+      );
+    }
+  }
+
+  //
+  // 10. Realistic time check using weighted pacing
+  //
+  // Now that we have final slots, compute the realistic total time using
+  // per-slot weighted estimates.
+  //
+
+  const realisticTotalSeconds = (finalPlan.slots ?? slots).reduce(
+    (sum: number, slot: any) => sum + estimateSlotSeconds(slot.questionType, slot.cognitiveDemand),
+    0
+  );
+  const realisticTotalMinutes = Math.round(realisticTotalSeconds / 60);
+
+  if (realisticTotalMinutes > architectUAR.timeMinutes * 1.2) {
+    warnings.push(
+      `Time realism: weighted pacing estimates ~${realisticTotalMinutes} min for a ` +
+      `${architectUAR.timeMinutes}-min window. The assessment may exceed the time limit ` +
+      `for this grade level (grade ${architectUAR.grade}). Consider reducing question count ` +
+      `or lowering cognitive demand on constructed-response items.`
+    );
+  }
+
+  //
+  // 11. Constraints + writerPrompt + Blueprint
   //
 
   return {
     uar,
     writerPrompt: "",
-    plan: finalPlan,
+    plan: {
+      ...finalPlan,
+      realisticTotalSeconds,
+      realisticTotalMinutes,
+    },
     constraints: {
       mustAlignToTopic: true,
       avoidTrickQuestions: true,
       avoidSensitiveContent: true,
       respectTimeLimit: true
-    }
+    },
+    warnings,
   };
 }
