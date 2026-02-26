@@ -1,15 +1,58 @@
 import type { BlueprintPlanV3_2 } from "@/types/Blueprint";
+import type { BlueprintSlot } from "@/types/Blueprint";
 import type { GeneratedItem } from "../writer/types";
 
-interface GatekeeperViolation {
+export interface GatekeeperViolation {
   slotId: string;
   type: string;
   message: string;
 }
 
-interface GatekeeperValidationResult {
+export interface GatekeeperValidationResult {
   ok: boolean;
   violations: GatekeeperViolation[];
+}
+
+/**
+ * RewriteMode — tells the Rewriter what kind of surgery to perform.
+ * Derived from the first (most critical) Gatekeeper violation.
+ */
+export type RewriteMode =
+  | "formatFix"
+  | "distractorStrengthen"
+  | "clarityFix"
+  | "cognitiveAdjust"
+  | "difficultyAdjust"
+  | "topicGrounding";
+
+export interface GatekeeperSingleResult {
+  ok: boolean;
+  mode: RewriteMode;
+  violations: GatekeeperViolation[];
+}
+
+/** Maps a violation type string to the most appropriate RewriteMode. */
+function violationToMode(type: string): RewriteMode {
+  switch (type) {
+    case "mcq_options_invalid":
+    case "mcq_answer_mismatch":
+    case "mcq_options_unexpected":
+    case "question_type_mismatch":
+      return "formatFix";
+    case "topic_mismatch":
+    case "domain_mismatch":
+      return "topicGrounding";
+    case "cognitive_demand_mismatch":
+      return "cognitiveAdjust";
+    case "difficulty_mismatch":
+      return "difficultyAdjust";
+    case "pacing_violation":
+    case "scope_width_violation":
+    case "missing_misconception_alignment":
+    case "forbidden_content":
+    default:
+      return "clarityFix";
+  }
 }
 
 export class Gatekeeper {
@@ -186,6 +229,39 @@ export class Gatekeeper {
     return {
       ok: violations.length === 0,
       violations
+    };
+  }
+
+  /**
+   * validateSingle — per-problem validation used by the adaptive writer loop.
+   *
+   * Returns `ok`, the dominant `mode` (RewriteMode) derived from the first
+   * violation, and the full violations list.
+   */
+  static validateSingle(
+    slot: BlueprintSlot,
+    item: GeneratedItem,
+    uar: Record<string, any> = {},
+    scopeWidth?: BlueprintPlanV3_2["scopeWidth"]
+  ): GatekeeperSingleResult {
+    // Delegate to validate() by synthesising a minimal blueprint-like object
+    const minimalBlueprint = {
+      slots: [slot],
+      scopeWidth: scopeWidth ?? "focused",
+      uar,
+    } as unknown as BlueprintPlanV3_2;
+
+    const result = Gatekeeper.validate(minimalBlueprint, [item]);
+
+    const mode: RewriteMode =
+      result.violations.length > 0
+        ? violationToMode(result.violations[0].type)
+        : "clarityFix";
+
+    return {
+      ok: result.ok,
+      mode,
+      violations: result.violations,
     };
   }
 }

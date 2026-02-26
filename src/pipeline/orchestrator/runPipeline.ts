@@ -3,7 +3,10 @@ import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
-import { runWriter } from "@/pipeline/agents/writer";
+import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
+
+/** Dispatch flag: 'build' runs Phase 1 only; 'playtest' continues to Phase 2. */
+export type PipelineMode = "build" | "playtest";
 // import { runGatekeeper } from "@/pipeline/agents/gatekeeper";
 import { runAstronomerPhase1 } from "@/pipeline/agents/astronomer/phase1";
 import { runSpaceCamp } from "@/pipeline/agents/spacecamp";
@@ -84,6 +87,20 @@ const writerDraft = await runAgent(trace, "Writer", runWriter, {
   compensation: selected.compensationProfile
 });
 
+// 2b. Count invariant — fail early if Writer dropped any slots
+if (writerDraft.length !== blueprint.plan.slots.length) {
+  throw new Error(
+    `[Pipeline] Invariant violation: Writer returned ${writerDraft.length} items but blueprint has ${blueprint.plan.slots.length} slots.`
+  );
+}
+
+// 2c. Capture Writer adaptive-chunking telemetry into the trace
+const writerTelemetry = getLastWriterTelemetry();
+if (writerTelemetry) {
+  logAgentStep(trace, "Writer.telemetry", {}, writerTelemetry);
+  console.log("[Pipeline] Writer telemetry:", JSON.stringify(writerTelemetry));
+}
+
 // 3. Gatekeeper — validate the draft
 const gatekeeperResult = Gatekeeper.validate(blueprint.plan, writerDraft);
 logAgentStep(trace, "Gatekeeper", { blueprint, writerDraft }, gatekeeperResult);
@@ -114,7 +131,7 @@ const philosopherWrite = await runAgent(
 // WRITE MODE BRANCHING
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Skip playtest, skip compare → go straight to Builder
-  const finalAssessment = await runAgent(trace, "Builder", runBuilder, writerDraft);
+  const finalAssessment = await runAgent(trace, "Builder", runBuilder, { items: writerDraft, blueprint });
 
   const scribeResult = await runAgent(
     trace,
@@ -156,7 +173,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   const gatekeeperFinal = Gatekeeper.validate(blueprint.plan, rewritten);
   logAgentStep(trace, "Gatekeeper (Final)", { blueprint: blueprint.plan, rewritten }, gatekeeperFinal);
 
-  const finalAssessment = await runAgent(trace, "Builder", runBuilder, rewritten);
+  const finalAssessment = await runAgent(trace, "Builder", runBuilder, { items: rewritten, blueprint });
 
   const scribeResult = await runAgent(
     trace,
@@ -250,7 +267,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   const gatekeeperFinal = Gatekeeper.validate(blueprint.plan, rewritten);
   logAgentStep(trace, "Gatekeeper (Final)", { blueprint: blueprint.plan, rewritten }, gatekeeperFinal);
 
-  const finalAssessment = await runAgent(trace, "Builder", runBuilder, rewritten);
+  const finalAssessment = await runAgent(trace, "Builder", runBuilder, { items: rewritten, blueprint });
 
   const scribeResult = await runAgent(
     trace,
@@ -294,7 +311,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 
 // 9. BUILDER — FINAL ASSEMBLY (no rewrites needed)
 // ===============================
 
-const finalAssessment = await runAgent(trace, "Builder", runBuilder, writerDraft);
+const finalAssessment = await runAgent(trace, "Builder", runBuilder, { items: writerDraft, blueprint });
 
 const scribeResult = await runAgent(
   trace,

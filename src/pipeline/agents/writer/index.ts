@@ -1,8 +1,18 @@
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
 import { GeneratedItem } from "./types";
-import { buildWriterPrompt } from "./writerPrompt";
-import { callGemini } from "@/pipeline/llm/gemini";
+import { writerParallel } from "./chunk/writerParallel";
+import type { WriterTelemetry } from "./telemetry";
+
+/**
+ * Last telemetry snapshot from the most recent runWriter call.
+ * Read this in the pipeline after runWriter returns for logging.
+ */
+let _lastWriterTelemetry: WriterTelemetry | null = null;
+
+export function getLastWriterTelemetry(): WriterTelemetry | null {
+  return _lastWriterTelemetry;
+}
 
 export async function runWriter({
   blueprint,
@@ -21,70 +31,9 @@ export async function runWriter({
   agentId: string;
   compensation: any;
 }): Promise<GeneratedItem[]> {
-  const items: GeneratedItem[] = [];
+  const { items, telemetry } = await writerParallel(blueprint, uar, scribePrescriptions);
 
-  for (const slot of blueprint.slots) {
-
-    // ⭐ Build WriterContext
-    const context = {
-      domain: uar.course ?? "unknown",
-      topic: uar.topic ?? "unknown",
-      grade: uar.gradeLevels?.[0] ?? "unknown",
-      unitName: uar.unitName ?? "",
-      lessonName: uar.lessonName ?? "",
-      additionalDetails: uar.additionalDetails ?? null,
-      focusAreas: (uar as any).focusAreas ?? null,
-      misconceptions: (uar as any).misconceptions ?? null,
-      avoidList: (uar as any).avoidList ?? null,
-      scopeWidth: blueprint.scopeWidth,
-      previousSlotsSummary: blueprint.slots
-        .filter(s => s.id !== slot.id)
-        .map(s => ({
-          id: s.id,
-          questionType: s.questionType as string,
-          cognitiveDemand: s.cognitiveDemand ?? "understand",
-          difficulty: s.difficulty ?? "medium",
-          topicAngle: undefined
-        }))
-    };
-
-
-    // ⭐ Build the new Writer v3.6 prompt
-    const prompt = buildWriterPrompt(
-      slot,
-      context,
-      scribePrescriptions
-    );
-
-    // ⭐ Call the real LLM directly
-    const raw = await callGemini({
-      model: "gemini-2.5-flash",
-      prompt,
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-    });
-
-    // Strip markdown code fences if present
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-
-    let parsed: GeneratedItem;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch (err) {
-      throw new Error(
-        `Writer returned invalid JSON for slot ${slot.id}: ${cleaned}`
-      );
-    }
-
-    // Enforce slot binding
-    parsed.slotId = slot.id;
-    parsed.questionType = slot.questionType;
-
-    items.push(parsed);
-  }
+  _lastWriterTelemetry = telemetry;
 
   return items;
 }

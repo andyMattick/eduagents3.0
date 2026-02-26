@@ -53,6 +53,15 @@ SLOT REQUIREMENTS (MANDATORY)
 - cognitiveDemand: ${slot.cognitiveDemand}
 - difficulty: ${slot.difficulty}
 
+COGNITIVE DEMAND DEFINITIONS
+For cognitiveDemand:
+- remember → ask for recall only
+- understand → ask for explanation or meaning
+- apply → ask to use a procedure
+- analyze → ask to compare, categorize, or break something into parts
+- evaluate → ask to judge or justify with reasons
+- create → ask to design, generate, or construct something new
+
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
 Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}

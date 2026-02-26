@@ -199,25 +199,22 @@ export class SCRIBE {
     // 2b. Insert assessment record into Supabase
     await supabase.from("teacher_assessment_history").insert({
       teacher_id: userId,
-      domain: blueprint?.plan?.domain ?? null,
+      domain: uar?.course ?? null, // FIXED
       grade: uar?.gradeLevels?.join(", ") ?? null,
       assessment_type: uar?.assessmentType ?? null,
       question_count: finalAssessment.items?.length ?? 0,
       question_types: finalAssessment.items?.map((item: any) => item.questionType).join(", ") ?? null,
-      cognitive_distribution: blueprint?.plan?.cognitiveDistribution
-        ? JSON.stringify(blueprint.plan.cognitiveDistribution)
-        : null,
-      difficulty_profile: blueprint?.plan?.difficultyProfile
-        ? (typeof blueprint.plan.difficultyProfile === "object"
-            ? JSON.stringify(blueprint.plan.difficultyProfile)
-            : blueprint.plan.difficultyProfile)
-        : null,
+
+      // SAFE JSON INSERTS
+      cognitive_distribution: blueprint?.plan?.cognitiveDistribution ?? null,
+      difficulty_profile: blueprint?.plan?.difficultyProfile ?? null,
+
       ordering_strategy: blueprint?.plan?.orderingStrategy ?? null,
       pacing_seconds_per_item: blueprint?.plan?.pacingSecondsPerItem ?? null,
-      guardrails: (uar as any).guardrails
-        ? JSON.stringify((uar as any).guardrails)
-        : null,
+
+      guardrails: (uar as any).guardrails ?? null,
     });
+
 
     // 3. Load full history for this teacher to compute defaults
     const { data: history } = await supabase
