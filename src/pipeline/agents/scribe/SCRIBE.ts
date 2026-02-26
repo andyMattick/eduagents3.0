@@ -85,65 +85,106 @@ export class SCRIBE {
   // -----------------------------------------------------
   // 2. UPDATE AGENT DOSSIER
   // -----------------------------------------------------
-  static updateWriterDossier(gatekeeperResult: { violations: { slotId: string; type: string }[] }) {
+
+  /**
+   * S1: Accept writer telemetry alongside gatekeeper violations.
+   * S2: Apply threshold gate — only escalate prescriptions when the Writer
+   *     needed excessive rewrites (rewriteCount / questionCount > 0.5 or > 10).
+   * S6: Prune each category to MAX_PRESCRIPTIONS_PER_CATEGORY after update.
+   */
+  static updateWriterDossier(
+    gatekeeperResult: { violations: { slotId: string; type: string }[] },
+    telemetry?: { rewriteCount?: number; finalProblemCount?: number; gatekeeperViolations?: number } | null
+  ) {
+  const MAX_PER_CATEGORY = 5;
   const now = Date.now();
 
+  // S2: Only generate new prescriptions when the run was actually troubled.
+  const rewriteCount = telemetry?.rewriteCount ?? 0;
+  const questionCount = telemetry?.finalProblemCount ?? Math.max(1, gatekeeperResult.violations.length);
+  const rewriteRatio = rewriteCount / Math.max(1, questionCount);
+  const isHighRewrite = rewriteCount > 10 || rewriteRatio > 0.5;
+
+  // Log telemetry summary if present
+  if (telemetry) {
+    console.log(
+      `[SCRIBE] Writer telemetry — rewrites: ${rewriteCount}, questions: ${questionCount}, ` +
+      `ratio: ${rewriteRatio.toFixed(2)}, violations: ${telemetry.gatekeeperViolations ?? 0}. ` +
+      `High-rewrite threshold: ${isHighRewrite ? "TRIGGERED" : "ok"}`
+    );
+  }
+
   for (const v of gatekeeperResult.violations) {
-    // 1. Append history
+    // 1. Append history (always)
     writerDossier.history.push({
       slotId: v.slotId,
       violations: [v.type],
       timestamp: now
     });
 
-    // 2. Learn weaknesses
+    // 2. Learn weaknesses (always, capped by S6 pruning below)
     if (!writerDossier.weaknesses.includes(v.type)) {
       writerDossier.weaknesses.push(v.type);
     }
 
     // 3. Auto-generate forbidden + required behaviors
-    switch (v.type) {
-      case "topic_mismatch":
-        addForbidden("drifting off-topic");
-        addRequired("explicitly reference the topic in the prompt");
-        break;
+    //    S2: Only add prescriptions when run was high-rewrite, or the violation
+    //    type is so severe it warrants immediate correction regardless.
+    const alwaysAct = ["mcq_options_invalid", "mcq_answer_mismatch", "forbidden_content"].includes(v.type);
+    if (isHighRewrite || alwaysAct) {
+      switch (v.type) {
+        case "topic_mismatch":
+          addForbidden("drifting off-topic");
+          addRequired("explicitly reference the topic in the prompt");
+          break;
 
-      case "domain_mismatch":
-        addForbidden("using content outside the subject domain");
-        break;
+        case "domain_mismatch":
+          addForbidden("using content outside the subject domain");
+          break;
 
-      case "mcq_options_invalid":
-        addForbidden("malformed MCQ option arrays");
-        addRequired("produce exactly 4 options");
-        break;
+        case "mcq_options_invalid":
+          addForbidden("malformed MCQ option arrays");
+          addRequired("produce exactly 4 options");
+          break;
 
-      case "mcq_answer_mismatch":
-        addForbidden("answer not matching options");
-        break;
+        case "mcq_answer_mismatch":
+          addForbidden("answer not matching options");
+          break;
 
-      case "cognitive_demand_mismatch":
-        addRequired("use Bloom-aligned verbs");
-        break;
+        case "cognitive_demand_mismatch":
+          addRequired("use Bloom-aligned verbs");
+          break;
 
-      case "difficulty_mismatch":
-        addForbidden("producing questions above difficulty level");
-        break;
+        case "difficulty_mismatch":
+          addForbidden("producing questions above difficulty level");
+          break;
 
-      case "forbidden_content":
-        addForbidden("including teacher-forbidden content");
-        break;
+        case "forbidden_content":
+          addForbidden("including teacher-forbidden content");
+          break;
 
-      case "missing_misconception_alignment":
-        addRequired("address required misconceptions explicitly");
-        break;
+        case "missing_misconception_alignment":
+          addRequired("address required misconceptions explicitly");
+          break;
 
-      case "pacing_violation":
-        addForbidden("writing overly long prompts");
-        break;
+        case "pacing_violation":
+          addForbidden("writing overly long prompts");
+          break;
 
-      case "scope_width_violation":
-        addForbidden("integrating too many strands for narrow scope");
-        break;
+        case "scope_width_violation":
+          addForbidden("integrating too many strands for narrow scope");
+          break;
+      }
+    }
+  }
+
+  // S1: Telemetry-driven prescriptions for high-rewrite runs
+  if (isHighRewrite && rewriteCount > 0) {
+    addForbidden("using generic filler phrases like \"in general mathematics\" or \"from a general perspective\"");
+    addRequired("use subject-specific language that references the lesson topic directly");
+    if (rewriteRatio > 1.5) {
+      addForbidden("producing semantically redundant questions");
+      addRequired("vary question angles — each item should target a distinct concept or skill");
     }
   }
 
@@ -157,6 +198,17 @@ export class SCRIBE {
     if (!writerDossier.requiredBehaviors.includes(b)) {
       writerDossier.requiredBehaviors.push(b);
     }
+  }
+
+  // S6: Prune to max N per category (keep most recent additions = end of array)
+  if (writerDossier.weaknesses.length > MAX_PER_CATEGORY) {
+    writerDossier.weaknesses = writerDossier.weaknesses.slice(-MAX_PER_CATEGORY);
+  }
+  if (writerDossier.forbiddenBehaviors.length > MAX_PER_CATEGORY) {
+    writerDossier.forbiddenBehaviors = writerDossier.forbiddenBehaviors.slice(-MAX_PER_CATEGORY);
+  }
+  if (writerDossier.requiredBehaviors.length > MAX_PER_CATEGORY) {
+    writerDossier.requiredBehaviors = writerDossier.requiredBehaviors.slice(-MAX_PER_CATEGORY);
   }
 }
   static getWriterPrescriptions() {

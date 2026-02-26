@@ -103,9 +103,10 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
 
       {/* Topic */}
       <div>
-        <label><strong>Specific Topic</strong></label>
+        <label><strong>Specific Topic</strong> <span style={{ fontWeight: 400, color: "var(--gray-500, #888)" }}>(optional)</span></label>
         <input
           value={form.topic ?? ""}
+          placeholder="Leave blank if the lesson name covers it"
           onChange={(e) => update("topic", e.target.value)}
         />
       </div>
@@ -155,9 +156,10 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
 
       {/* Additional Details */}
       <div>
-        <label><strong>Additional Details</strong></label>
+        <label><strong>Additional Details</strong> <span style={{ fontWeight: 400, color: "var(--gray-500, #888)" }}>(optional)</span></label>
         <textarea
           value={form.additionalDetails ?? ""}
+          placeholder="Any constraints, goals, or notes — leave blank if none"
           onChange={(e) => update("additionalDetails", e.target.value)}
         />
       </div>

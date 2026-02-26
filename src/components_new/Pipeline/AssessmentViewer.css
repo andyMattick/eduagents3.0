@@ -1,0 +1,414 @@
+/* ── AssessmentViewer ──────────────────────────────────────────────────────── */
+
+.av-root {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.av-header {
+  border-bottom: 2px solid var(--fg);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+.av-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.av-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  line-height: 1.2;
+}
+
+.av-subtitle {
+  font-size: 0.85rem;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+.av-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.av-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.av-btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.av-btn-primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.av-btn-outline {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.av-btn-outline:hover {
+  background: var(--bg-muted);
+}
+
+.av-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Meta row ───────────────────────────────────────────────────────────────── */
+
+.av-meta {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--gray-500);
+}
+
+.av-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+/* ── Student header fields ──────────────────────────────────────────────────── */
+
+.av-student-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+}
+
+.av-field-line {
+  border-bottom: 1px solid var(--fg);
+  padding: 0.15rem 0;
+  margin-bottom: 0.5rem;
+  min-height: 1.4rem;
+}
+
+.av-field-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+}
+
+/* ── Questions ──────────────────────────────────────────────────────────────── */
+
+.av-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.av-question {
+  display: flex;
+  gap: 1rem;
+}
+
+.av-q-number {
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-width: 1.6rem;
+  padding-top: 0.05rem;
+  flex-shrink: 0;
+  color: var(--fg);
+}
+
+.av-q-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.av-q-prompt {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  margin: 0 0 0.6rem;
+}
+
+/* MCQ options */
+.av-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.av-option {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  padding-left: 0.25rem;
+}
+
+/* Short answer lines */
+.av-answer-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.av-answer-line {
+  border-bottom: 1px solid var(--fg);
+  height: 1.6rem;
+}
+
+/* Bloom badge */
+.av-bloom-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  margin-bottom: 0.4rem;
+  color: var(--gray-500);
+}
+
+/* ── Answer key ─────────────────────────────────────────────────────────────── */
+
+.av-answer-key {
+  margin-top: 2.5rem;
+  border-top: 2px dashed var(--border);
+  padding-top: 1.25rem;
+  page-break-before: always;
+}
+
+.av-answer-key-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+  color: var(--gray-500);
+}
+
+.av-answer-key-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.4rem 1.5rem;
+  font-size: 0.85rem;
+}
+
+.av-ak-entry {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.av-ak-num {
+  font-weight: 700;
+  min-width: 1.2rem;
+}
+
+/* ── Cognitive summary ──────────────────────────────────────────────────────── */
+
+.av-cog-summary {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.av-cog-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+
+/* ── Answer key toggle ──────────────────────────────────────────────────────── */
+
+.av-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+}
+
+.av-toggle-label {
+  font-size: 0.8rem;
+  color: var(--gray-500);
+  cursor: pointer;
+}
+
+/* ── Print ──────────────────────────────────────────────────────────────────── */
+
+@media print {
+  .av-actions { display: none; }
+  .av-toggle-row { display: none; }
+  .av-answer-key { display: block !important; }
+  .av-report { display: none; }
+}
+
+/* ── Ghost button (disabled Playtest) ───────────────────────────────────────── */
+
+.av-btn-ghost {
+  background: transparent;
+  color: var(--gray-500);
+  border-color: var(--border);
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Philosopher's Report ───────────────────────────────────────────────────── */
+
+.av-report {
+  margin-top: 3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.88rem;
+}
+
+.av-report-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-muted);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  user-select: none;
+}
+
+.av-report-toggle:hover {
+  background: var(--border);
+}
+
+.av-report-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.av-report-label {
+  flex: 1;
+  letter-spacing: 0.01em;
+}
+
+.av-report-chevron {
+  font-size: 0.65rem;
+  color: var(--gray-500);
+}
+
+.av-report-body {
+  padding: 1.25rem 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.av-report-tagline {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--gray-500);
+  margin: 0;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.av-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.av-report-section-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500);
+  margin: 0;
+}
+
+.av-report-section-body {
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--fg);
+  margin: 0;
+}
+
+.av-report-verdict {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 540px) {
+  .av-report-verdict {
+    grid-template-columns: 1fr;
+  }
+}
+
+.av-report-col-heading {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.4rem;
+}
+
+.av-report-col-heading--green { color: #22863a; }
+.av-report-col-heading--amber { color: #b08800; }
+
+.av-report-list {
+  margin: 0;
+  padding: 0 0 0 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--fg);
+}

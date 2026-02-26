@@ -31,12 +31,23 @@ SLOT ${i + 1}
     .map((slot) => {
       const isMC = slot.questionType === "multipleChoice";
       if (isMC) {
-        return `{ "slotId": "${slot.id}", "questionType": "${slot.questionType}", "prompt": "<stem>", "options": ["A","B","C","D"], "answer": "<answer>" }\n${END_SENTINEL}`;
+        return `{ "slotId": "${slot.id}", "questionType": "multipleChoice", "prompt": "<stem>", "options": ["A. <option A>", "B. <option B>", "C. <option C>", "D. <option D>"], "answer": "B. <option B>" }\n${END_SENTINEL}`;
       }
       // Non-MC: omit "options" entirely — do NOT output undefined
-      return `{ "slotId": "${slot.id}", "questionType": "${slot.questionType}", "prompt": "<stem>", "answer": "<answer>" }\n${END_SENTINEL}`;
+      return `{ "slotId": "${slot.id}", "questionType": "${slot.questionType}", "prompt": "<stem>", "answer": "<answer text>" }\n${END_SENTINEL}`;
     })
     .join("\n");
+
+  // MCQ answer rule injected once, applies to all MC slots in the batch
+  const hasMC = slots.some((s) => s.questionType === "multipleChoice");
+  const mcqRule = hasMC
+    ? `MCQ CONTRACT (mandatory for all multipleChoice slots):
+- "options": exactly 4 strings, each prefixed with its letter: "A. ...", "B. ...", "C. ...", "D. ..."
+- "answer": the FULL text of the correct option (e.g. "B. Find a common denominator") — NOT just the letter.
+- The "answer" value MUST be an exact copy of one of the "options" strings.
+
+`
+    : "";
 
   return `
 You are WRITER v4.0. Generate exactly ${slots.length} question(s), one per slot below.
@@ -54,12 +65,25 @@ GROUNDING (MANDATORY FOR ALL SLOTS)
 - Scope Width: ${context.scopeWidth}
 
 COGNITIVE DEMAND DEFINITIONS
-- remember → recall only
+- remember   → recall only
 - understand → explanation or meaning
-- apply → use a procedure
-- analyze → compare, categorize, or decompose
-- evaluate → judge or justify with reasons
-- create → design, generate, or construct something new
+- apply      → use a procedure
+- analyze    → compare, categorize, or decompose
+- evaluate   → judge or justify with reasons
+- create     → design, generate, or construct something new
+
+BLOOM ACTION VERBS (every question prompt MUST use at least one verb from its level)
+  remember   → name, list, recall, identify, define, state
+  understand → explain, describe, summarize, classify, paraphrase, interpret
+  apply      → calculate, solve, use, demonstrate, show how, compute
+  analyze    → compare, contrast, distinguish, categorize, examine, trace, identify differences
+  evaluate   → judge, justify, assess, defend, critique, evaluate, argue
+  create     → design, construct, develop, compose, generate, formulate
+
+ANALYZE CONTRACT (mandatory for all analyze slots)
+- The prompt MUST require comparison, error-detection, or multi-step reasoning.
+- The prompt must NOT be answerable by simple recall.
+- Include at least one of: "compare", "contrast", "identify the error", "explain why", "trace the steps".
 
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
@@ -76,7 +100,7 @@ OUTPUT FORMAT (STRICT)
 - For multipleChoice: include "options" array with exactly 4 strings.
 - For other types: omit "options".
 
-EXAMPLE OUTPUT SHAPE
+${mcqRule}EXAMPLE OUTPUT SHAPE
 ${outputExamples}
 `;
 }

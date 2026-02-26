@@ -8,7 +8,7 @@ export interface UnifiedAssessmentRequest {
   course: string;
   unitName: string;
   lessonName: string | null;
-  topic: string;
+  topic: string | null;
 
   // Assessment context
   assessmentType:
@@ -63,7 +63,7 @@ export interface ArchitectUAR {
   studentLevel: "remedial" | "standard" | "honors" | "ap";
 
   // Content context
-  topic: string;
+  topic: string | null;
   unitName: string;
   lessonName: string | null;
 
@@ -91,10 +91,13 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
       : defaultQuestionTypes(uar.assessmentType),
 
 
-    // Question count (infer from time if missing)
+    // Question count (infer from time + question type mix if missing)
     questionCount:
       uar.questionCount ??
-      inferQuestionCountFromTime(uar.time),
+      inferQuestionCount(
+        uar.time,
+        uar.questionTypes?.length ? uar.questionTypes : defaultQuestionTypes(uar.assessmentType)
+      ),
 
     // Content context
     topic: uar.topic,
@@ -111,12 +114,30 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
   };
 }
 
-function inferQuestionCountFromTime(time: number): number {
-  if (time <= 10) return 3;
-  if (time <= 20) return 5;
-  if (time <= 30) return 7;
-  return 10;
+/** Minutes a student typically spends on each question type. */
+const PACING_MINUTES: Record<string, number> = {
+  multipleChoice:       1.0,
+  trueFalse:            0.5,
+  matching:             0.75,
+  shortAnswer:          2.5,
+  constructedResponse:  6.0,
+  essay:                10.0,
+  fillInTheBlank:       1.5,
+};
+const DEFAULT_PACING = 2.0; // fallback for unknown types
+
+/**
+ * Infer question count from available time and the mix of question types.
+ * Computes a weighted-average minutes-per-question from the type list, then
+ * divides total time by that average.
+ */
+export function inferQuestionCount(time: number, questionTypes: string[]): number {
+  const types = questionTypes.length > 0 ? questionTypes : ["multipleChoice", "shortAnswer"];
+  const avgPacing =
+    types.reduce((sum, t) => sum + (PACING_MINUTES[t] ?? DEFAULT_PACING), 0) / types.length;
+  return Math.max(1, Math.round(time / avgPacing));
 }
+
 
 function defaultQuestionTypes(assessmentType: string): string[] {
   switch (assessmentType) {

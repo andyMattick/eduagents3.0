@@ -87,10 +87,12 @@ const writerDraft = await runAgent(trace, "Writer", runWriter, {
   compensation: selected.compensationProfile
 });
 
-// 2b. Count invariant — fail early if Writer dropped any slots
+// 2b. Count invariant — warn if Writer dropped any slots, but continue
+// with what we have rather than aborting the entire run.
 if (writerDraft.length !== blueprint.plan.slots.length) {
-  throw new Error(
-    `[Pipeline] Invariant violation: Writer returned ${writerDraft.length} items but blueprint has ${blueprint.plan.slots.length} slots.`
+  console.error(
+    `[Pipeline] Warning: Writer returned ${writerDraft.length} items but blueprint has ${blueprint.plan.slots.length} slots. ` +
+    `Proceeding with partial draft — missing slots will be absent from the final assessment.`
   );
 }
 
@@ -105,7 +107,8 @@ if (writerTelemetry) {
 const gatekeeperResult = Gatekeeper.validate(blueprint.plan, writerDraft);
 logAgentStep(trace, "Gatekeeper", { blueprint, writerDraft }, gatekeeperResult);
 // 3a. SCRIBE learns from Gatekeeper violations (Writer-specific dossier)
-SCRIBE.updateWriterDossier(gatekeeperResult);
+// Pass writer telemetry so SCRIBE can apply threshold-gated prescriptions (S1+S2)
+SCRIBE.updateWriterDossier(gatekeeperResult, writerTelemetry);
 
 if (process.env.NODE_ENV === "development") {
   console.log("Gatekeeper Report:", gatekeeperResult);

@@ -8,7 +8,7 @@ export interface ArchitectUAR {
   assessmentType: string;
   questionTypes: string[];
   questionCount: number;
-  topic: string;
+  topic: string | null;
   unitName: string;
   lessonName: string | null;
   studentLevel: "remedial" | "standard" | "honors" | "ap";
@@ -28,7 +28,10 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
 
     questionCount:
       uar.questionCount ??
-      inferQuestionCountFromTime(uar.time),
+      inferQuestionCount(
+        uar.time,
+        uar.questionTypes?.length ? uar.questionTypes : ["multipleChoice", "shortAnswer"]
+      ),
 
     topic: uar.topic,
     unitName: uar.unitName,
@@ -39,9 +42,4 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
   };
 }
 
-function inferQuestionCountFromTime(time: number): number {
-  if (time <= 10) return 3;
-  if (time <= 20) return 5;
-  if (time <= 30) return 7;
-  return 10;
-}
+import { inferQuestionCount } from "@/pipeline/contracts/UnifiedAssessmentRequest";

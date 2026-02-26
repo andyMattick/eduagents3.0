@@ -90,20 +90,58 @@ export class Gatekeeper {
       // 2. Topic/domain grounding
       //
       const promptLower = item.prompt.toLowerCase();
-      if (uar.topic && !promptLower.includes(uar.topic.toLowerCase())) {
-        violations.push({
-          slotId: slot.id,
-          type: "topic_mismatch",
-          message: `Prompt must reference topic "${uar.topic}".`
-        });
+
+      if (uar.topic) {
+        // Normalize math expressions: strip spaces around = + - * / so that
+        // "y=mx+b" and "y = mx + b" are treated as identical.
+        const normTopic = (uar.topic as string)
+          .toLowerCase()
+          .replace(/\s*([=+\-*/])\s*/g, "$1");
+        const normPrompt = promptLower.replace(/\s*([=+\-*/])\s*/g, "$1");
+
+        // First try the full normalized phrase
+        let topicMatches = normPrompt.includes(normTopic);
+
+        // Fallback: keyword matching — extract significant words (≥3 chars,
+        // not stopwords) from the topic and require ≥1 to appear in the prompt.
+        if (!topicMatches) {
+          const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "parts", "each"]);
+          const keywords = normTopic
+            .split(/[\s\-_,]+/)
+            .filter((w) => w.length >= 3 && !stopwords.has(w));
+          topicMatches = keywords.some((kw) => normPrompt.includes(kw));
+        }
+
+        if (!topicMatches) {
+          violations.push({
+            slotId: slot.id,
+            type: "topic_mismatch",
+            message: `Prompt must reference topic "${uar.topic}".`
+          });
+        }
       }
 
-      if (uar.course && !promptLower.includes(uar.course.toLowerCase())) {
-        violations.push({
-          slotId: slot.id,
-          type: "domain_mismatch",
-          message: `Prompt must be grounded in domain "${uar.course}".`
-        });
+      if (uar.course) {
+        // Domain check: single generic subject nouns (Math, ELA, Science…)
+        // don't appear literally in well-written prompts — skip those to
+        // avoid false positives. Only flag when the course name is specific
+        // enough to be a discriminating keyword (2+ words, or ≥ 5 chars after
+        // excluding known generic single-word subjects).
+        const genericSubjects = new Set([
+          "math", "mathematics", "ela", "english", "science", "history",
+          "geography", "art", "music", "pe", "health", "social studies",
+          "reading", "writing", "language", "biology", "chemistry", "physics"
+        ]);
+        const courseLower = (uar.course as string).toLowerCase().trim();
+        const isGeneric = genericSubjects.has(courseLower) || courseLower.split(/\s+/).length === 1 && courseLower.length <= 8;
+
+        if (!isGeneric && !promptLower.includes(courseLower)) {
+          violations.push({
+            slotId: slot.id,
+            type: "domain_mismatch",
+            message: `Prompt must be grounded in domain "${uar.course}".`
+          });
+        }
       }
 
       //
@@ -150,35 +188,41 @@ export class Gatekeeper {
 
       //
       // 4. Cognitive demand (Bloom-aligned)
-      // Verb lists cover both formal Bloom verbs and natural question phrasing.
-      // The check is intentionally inclusive — it should pass any reasonable
-      // question at the right level, not police surface wording.
+      //
+      // Philosophy: trust the LLM's level judgment. Only flag when the prompt
+      // contains NO recognizable Bloom verb from the assigned level or any level
+      // below it. A "remember" question phrased as "what does X represent?" will
+      // naturally use "understand" phrasing — that's fine. We do NOT force
+      // exact level-specific vocab, we just ensure the question isn't completely
+      // devoid of pedagogical signal.
       //
       if (slot.cognitiveDemand) {
+        const bloomOrder = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
         const bloom: Record<string, string[]> = {
           remember: [
             "define", "identify", "recall", "list", "state", "name", "label",
             "match", "select", "what is", "what are", "which", "when", "who",
-            "where", "how many", "first step", "step", "term"
+            "where", "how many", "first step", "step", "term", "represent",
+            "stands for", "notation"
           ],
           understand: [
             "explain", "summarize", "describe", "interpret", "why",
             "how does", "what does", "what concept", "what mathematical",
             "what process", "paraphrase", "classify", "give an example",
-            "difference between", "is necessary", "reason", "means"
+            "difference between", "is necessary", "reason", "means", "tell"
           ],
           apply: [
             "solve", "use", "calculate", "apply", "add", "subtract",
             "multiply", "divide", "find", "compute", "evaluate",
             "determine", "simplify", "convert", "what is the sum",
             "what is the product", "what is the result", "complete",
-            "perform", "carry out", "demonstrate"
+            "perform", "carry out", "demonstrate", "given", "if"
           ],
           analyze: [
             "compare", "contrast", "categorize", "analyze", "analyse",
             "distinguish", "differentiate", "examine", "break down",
             "what relationship", "how are", "why does", "classify",
-            "what pattern", "what effect", "infer"
+            "what pattern", "what effect", "infer", "both", "neither"
           ],
           evaluate: [
             "justify", "critique", "evaluate", "assess", "judge",
@@ -191,8 +235,14 @@ export class Gatekeeper {
           ]
         };
 
-        const verbs = bloom[slot.cognitiveDemand as string] ?? [];
-        const matchesVerb = verbs.some((v) => promptLower.includes(v));
+        // Collect verbs for the assigned level and all levels below it
+        const assignedIdx = bloomOrder.indexOf((slot.cognitiveDemand as string).toLowerCase());
+        const levelsToCheck = assignedIdx >= 0
+          ? bloomOrder.slice(0, assignedIdx + 1)
+          : bloomOrder;
+
+        const allVerbs = levelsToCheck.flatMap((l) => bloom[l] ?? []);
+        const matchesVerb = allVerbs.some((v) => promptLower.includes(v));
 
         if (!matchesVerb) {
           violations.push({

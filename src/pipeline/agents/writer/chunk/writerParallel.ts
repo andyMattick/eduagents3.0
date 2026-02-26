@@ -42,13 +42,73 @@ const GROUP_SIZE = 5;
 /** Max retries for missing slots in the fallback round */
 const MAX_RETRY_ROUNDS = 2;
 
-/** Tokens-per-slot budget for maxOutputTokens */
-const TOKENS_PER_SLOT = 900;
+/** Tokens-per-slot budget for maxOutputTokens.
+ * 1400 gives ~500 tokens for the JSON skeleton + 900 for a full multi-sentence
+ * short-answer response — comfortable even for single-slot retry calls. */
+const TOKENS_PER_SLOT = 1400;
+
+/**
+ * Max Gatekeeper-triggered rewrite attempts for a single stubborn slot.
+ * After this cap the best attempt is accepted and the run continues.
+ */
+const MAX_REWRITES_PER_SLOT = 2;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Walk the string character-by-character and escape any `"` that appears
+ * *inside* a JSON string value (i.e. it is not a structural open/close quote).
+ *
+ * Decision rule for a `"` while `inString === true`:
+ *   - If the immediately following non-whitespace chars look like a JSON
+ *     structural token (`,`, `:`, `}`, `]`) → closing quote, end string.
+ *   - If we are at the very end of input → closing quote.
+ *   - Otherwise → inner quote, escape it as `\"`.
+ *
+ * This correctly handles prompts like:
+ *   "what does the letter "m" represent?"
+ */
+function repairInnerQuotes(json: string): string {
+  let out = "";
+  let inString = false;
+  let i = 0;
+  while (i < json.length) {
+    const ch = json[i];
+    // Handle already-escaped sequences — pass through unchanged
+    if (ch === "\\" && inString) {
+      out += ch + (json[i + 1] ?? "");
+      i += 2;
+      continue;
+    }
+    if (ch === '"') {
+      if (!inString) {
+        inString = true;
+        out += ch;
+      } else {
+        // Peek ahead (skip whitespace) to decide if this is structural
+        let j = i + 1;
+        while (j < json.length && (json[j] === " " || json[j] === "\t")) j++;
+        const next = json[j] ?? "";
+        const isStructural = next === "" || /[,:\}\]]/.test(next);
+        if (isStructural) {
+          inString = false;
+          out += ch;
+        } else {
+          // Inner quote — escape it
+          out += '\\"';
+        }
+      }
+      i++;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
 function cleanLLMJson(raw: string): string {
-  return raw
+  const step1 = raw
     // Strip markdown fences
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
@@ -59,6 +119,15 @@ function cleanLLMJson(raw: string): string {
     // Replace single-quoted strings with double-quoted (best effort)
     .replace(/'([^'\n]*)'/g, '"$1"')
     .trim();
+
+  // If standard cleaning already produces valid JSON, return as-is.
+  // Otherwise run the inner-quote repair and try again.
+  try {
+    JSON.parse(step1.match(/\{[\s\S]*\}/)?.[0] ?? "null");
+    return step1;
+  } catch {
+    return repairInnerQuotes(step1);
+  }
 }
 
 function extractJson(block: string): GeneratedItem | null {
@@ -113,7 +182,7 @@ export async function writerParallel(
 
   const context: WriterContext = {
     domain: uar.course ?? "unknown",
-    topic: uar.topic ?? "unknown",
+    topic: uar.topic ?? uar.lessonName ?? uar.unitName ?? "general",
     grade: uar.gradeLevels?.[0] ?? "unknown",
     unitName: uar.unitName ?? "",
     lessonName: uar.lessonName ?? null,
@@ -208,6 +277,52 @@ export async function writerParallel(
     // ── Step 5: Rewrite only offensive items (in parallel) ────────────────
     await rewriteOffendingItems(
       allViolations,
+      allItems,
+      allSlots,
+      uar,
+      blueprint,
+      telemetry
+    );
+  }
+
+  // ── Step 5b: Forbidden generic-phrase post-scan ──────────────────────────
+  // These patterns are never subject-specific and consistently trigger
+  // Gatekeeper topic/domain violations in subsequent runs. Catch them here
+  // before they leave the Writer so SCRIBE never learns them as weaknesses.
+  const FORBIDDEN_PHRASES = [
+    "in general mathematics",
+    "from a general perspective",
+    "in everyday terms",
+    "as a matter of general knowledge",
+    "generally speaking",
+    "in mathematics generally",
+    "in general terms",
+    "in a general sense",
+    "as a general rule",
+  ];
+
+  const phraseScanViolations: { slotId: string; type: string; message: string }[] = [];
+  for (const slot of allSlots) {
+    const item = allItems.get(slot.id);
+    if (!item) continue;
+    const text = (item.prompt ?? "").toLowerCase();
+    const matched = FORBIDDEN_PHRASES.filter((p) => text.includes(p));
+    if (matched.length > 0) {
+      phraseScanViolations.push({
+        slotId: slot.id,
+        type: "forbidden_phrase",
+        message: `Prompt contains generic filler phrases: "${matched.join('", "')}". Replace with subject-specific language tied to the lesson topic.`,
+      });
+      telemetry.gatekeeperViolations += 1;
+    }
+  }
+
+  if (phraseScanViolations.length > 0) {
+    console.warn(
+      `[writerParallel] Forbidden-phrase scan found ${phraseScanViolations.length} item(s). Rewriting...`
+    );
+    await rewriteOffendingItems(
+      phraseScanViolations,
       allItems,
       allSlots,
       uar,
@@ -331,6 +446,10 @@ async function callGroupLLM(
 }
 
 // ── Gatekeeper-driven rewrite (only offensive items) ──────────────────────────
+//
+// Each offending slot gets up to MAX_REWRITES_PER_SLOT attempts.
+// After the cap the best attempt is accepted — the run never hard-fails
+// because of a single stubborn slot.
 
 async function rewriteOffendingItems(
   violations: { slotId: string; type: string; message: string }[],
@@ -348,56 +467,72 @@ async function rewriteOffendingItems(
     violationsBySlot.set(v.slotId, list);
   }
 
-  // Build rewrite tasks — only for slots that have an existing item
+  // Build one async task per offending slot — each task runs its own
+  // iterative rewrite loop capped at MAX_REWRITES_PER_SLOT.
   const rewriteTasks: Promise<void>[] = [];
 
-  for (const [slotId, slotViolations] of violationsBySlot) {
-    const item = allItems.get(slotId);
-    if (!item) continue; // missing item — handled by retry, not rewrite
-
+  for (const [slotId, initialViolations] of violationsBySlot) {
     const slot = allSlots.find((s) => s.id === slotId);
     if (!slot) continue;
 
-    telemetry.rewriteCount++;
-
-    // Determine dominant RewriteMode from the Gatekeeper
-    const singleResult = Gatekeeper.validateSingle(
-      slot,
-      item,
-      uar as Record<string, any>,
-      blueprint.scopeWidth
-    );
+    const startingItem = allItems.get(slotId);
+    if (!startingItem) continue; // missing item handled by retry round, not here
 
     rewriteTasks.push(
-      rewriteSingle({
-        item,
-        violations: slotViolations.map((v) => v.message),
-        mode: singleResult.mode,
-      }).then((rewritten) => {
-        // Gate 2 — verify the rewrite fixed the issue
-        const gate2 = Gatekeeper.validateSingle(
-          slot,
-          rewritten,
-          uar as Record<string, any>,
-          blueprint.scopeWidth
-        );
+      (async () => {
+        let current = startingItem;
+        let currentViolations = initialViolations.map((v) => v.message);
 
-        telemetry.gatekeeperViolations += gate2.violations.length;
+        for (let attempt = 1; attempt <= MAX_REWRITES_PER_SLOT; attempt++) {
+          telemetry.rewriteCount++;
 
-        if (!gate2.ok) {
-          console.error(
-            `[writerParallel] Slot "${slotId}" still has violations after rewrite:`,
-            gate2.violations
+          const singleResult = Gatekeeper.validateSingle(
+            slot,
+            current,
+            uar as Record<string, any>,
+            blueprint.scopeWidth
           );
-          // Accept best-effort rewrite — better than a gap
-        }
 
-        allItems.set(slotId, rewritten);
-      })
+          const rewritten = await rewriteSingle({
+            item: current,
+            violations: currentViolations,
+            mode: singleResult.mode,
+          });
+
+          const gateResult = Gatekeeper.validateSingle(
+            slot,
+            rewritten,
+            uar as Record<string, any>,
+            blueprint.scopeWidth
+          );
+
+          telemetry.gatekeeperViolations += gateResult.violations.length;
+
+          if (gateResult.ok) {
+            // Clean — commit and stop retrying
+            allItems.set(slotId, rewritten);
+            return;
+          }
+
+          // Promote the rewrite as the new candidate regardless — it may be
+          // partially improved even if still failing.
+          current = rewritten;
+          currentViolations = gateResult.violations.map((v) => v.message);
+
+          if (attempt === MAX_REWRITES_PER_SLOT) {
+            console.warn(
+              `[writerParallel] Slot "${slotId}" hit rewrite cap (${MAX_REWRITES_PER_SLOT} attempts). ` +
+              `Accepting best-effort item. Remaining violations: [${currentViolations.join(" | ")}]`
+            );
+            // Accept the last rewrite — forward progress is better than none
+            allItems.set(slotId, current);
+          }
+        }
+      })()
     );
   }
 
-  // Fire all rewrites in parallel
+  // Fire all slot-rewrite tasks in parallel (each slot's loop is independent)
   const settled = await Promise.allSettled(rewriteTasks);
 
   for (const outcome of settled) {
