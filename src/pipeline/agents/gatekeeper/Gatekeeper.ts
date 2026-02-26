@@ -91,32 +91,35 @@ export class Gatekeeper {
       //
       const promptLower = item.prompt.toLowerCase();
 
-      if (uar.topic) {
-        // Normalize math expressions: strip spaces around = + - * / so that
-        // "y=mx+b" and "y = mx + b" are treated as identical.
-        const normTopic = (uar.topic as string)
-          .toLowerCase()
-          .replace(/\s*([=+\-*/])\s*/g, "$1");
+      // Topic anchor: check topic → lessonName → unitName (in order of specificity).
+      // At least one keyword from any of these three fields must appear in the prompt.
+      const topicSources = [
+        uar.topic,
+        uar.lessonName,
+        uar.unitName,
+      ].filter(Boolean) as string[];
+
+      if (topicSources.length > 0) {
+        const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "parts", "each", "a", "an", "of", "to", "in", "is"]);
         const normPrompt = promptLower.replace(/\s*([=+\-*/])\s*/g, "$1");
 
-        // First try the full normalized phrase
-        let topicMatches = normPrompt.includes(normTopic);
-
-        // Fallback: keyword matching — extract significant words (≥3 chars,
-        // not stopwords) from the topic and require ≥1 to appear in the prompt.
-        if (!topicMatches) {
-          const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "parts", "each"]);
-          const keywords = normTopic
+        const anchorMatches = topicSources.some(src => {
+          const normSrc = src.toLowerCase().replace(/\s*([=+\-*/])\s*/g, "$1");
+          // Try full phrase first
+          if (normPrompt.includes(normSrc)) return true;
+          // Keyword fallback: any significant word from the source appears in prompt
+          const keywords = normSrc
             .split(/[\s\-_,]+/)
-            .filter((w) => w.length >= 3 && !stopwords.has(w));
-          topicMatches = keywords.some((kw) => normPrompt.includes(kw));
-        }
+            .filter(w => w.length >= 3 && !stopwords.has(w));
+          return keywords.some(kw => normPrompt.includes(kw));
+        });
 
-        if (!topicMatches) {
+        if (!anchorMatches) {
+          const anchorLabel = topicSources[0];
           violations.push({
             slotId: slot.id,
             type: "topic_mismatch",
-            message: `Prompt must reference topic "${uar.topic}".`
+            message: `Prompt must reference topic "${anchorLabel}".`
           });
         }
       }
@@ -191,12 +194,21 @@ export class Gatekeeper {
       //
       // Philosophy: trust the LLM's level judgment. Only flag when the prompt
       // contains NO recognizable Bloom verb from the assigned level or any level
-      // below it. A "remember" question phrased as "what does X represent?" will
-      // naturally use "understand" phrasing — that's fine. We do NOT force
-      // exact level-specific vocab, we just ensure the question isn't completely
-      // devoid of pedagogical signal.
+      // below it.
       //
-      if (slot.cognitiveDemand) {
+      // Special case — "remember" false-positive exemption:
+      // MC questions with a single factual answer and no explanation verbs
+      // (why/explain/how/describe) are cognitively valid "remember" items even
+      // if they use phrasing like "what was the primary reason". Don't penalise.
+      //
+      const explanationVerbs = ["why", "explain", "how", "describe", "interpret", "justify", "analyse", "analyze"];
+      const hasExplanationVerb = explanationVerbs.some(v => promptLower.includes(v));
+      const isRememberMC =
+        slot.cognitiveDemand === "remember" &&
+        item.questionType === "multipleChoice" &&
+        !hasExplanationVerb;
+
+      if (slot.cognitiveDemand && !isRememberMC) {
         const bloomOrder = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
         const bloom: Record<string, string[]> = {
           remember: [

@@ -99,18 +99,24 @@ export class SCRIBE {
   const MAX_PER_CATEGORY = 5;
   const now = Date.now();
 
-  // S2: Only generate new prescriptions when the run was actually troubled.
+  // S2: Two-tier rewrite threshold.
+  //   > 0.75 → systemic friction (full prescription set)
+  //   0.40–0.75 → mild pattern (light notes only)
+  //   < 0.40 → do not log friction (clean run)
   const rewriteCount = telemetry?.rewriteCount ?? 0;
   const questionCount = telemetry?.finalProblemCount ?? Math.max(1, gatekeeperResult.violations.length);
   const rewriteRatio = rewriteCount / Math.max(1, questionCount);
-  const isHighRewrite = rewriteCount > 10 || rewriteRatio > 0.5;
+  const isSystemicFriction = rewriteRatio > 0.75 || rewriteCount > 10;
+  const isMildPattern = !isSystemicFriction && rewriteRatio >= 0.40;
+  const isHighRewrite = isSystemicFriction; // kept for existing switch-case consumers
 
   // Log telemetry summary if present
   if (telemetry) {
+    const tier = isSystemicFriction ? "SYSTEMIC" : isMildPattern ? "MILD" : "ok";
     console.log(
       `[SCRIBE] Writer telemetry — rewrites: ${rewriteCount}, questions: ${questionCount}, ` +
       `ratio: ${rewriteRatio.toFixed(2)}, violations: ${telemetry.gatekeeperViolations ?? 0}. ` +
-      `High-rewrite threshold: ${isHighRewrite ? "TRIGGERED" : "ok"}`
+      `Friction tier: ${tier}`
     );
   }
 
@@ -178,14 +184,15 @@ export class SCRIBE {
     }
   }
 
-  // S1: Telemetry-driven prescriptions for high-rewrite runs
-  if (isHighRewrite && rewriteCount > 0) {
+  // S1: Telemetry-driven prescriptions — tiered by severity
+  if (isSystemicFriction) {
     addForbidden("using generic filler phrases like \"in general mathematics\" or \"from a general perspective\"");
     addRequired("use subject-specific language that references the lesson topic directly");
-    if (rewriteRatio > 1.5) {
-      addForbidden("producing semantically redundant questions");
-      addRequired("vary question angles — each item should target a distinct concept or skill");
-    }
+    addForbidden("producing semantically redundant questions");
+    addRequired("vary question angles — each item should target a distinct concept or skill");
+  } else if (isMildPattern) {
+    // Mild friction: just remind about topic grounding, don't flood the dossier
+    addRequired("ensure every prompt references at least one keyword from the lesson topic or unit name");
   }
 
   function addForbidden(b: string) {

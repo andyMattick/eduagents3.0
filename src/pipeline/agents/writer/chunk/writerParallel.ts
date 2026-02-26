@@ -247,6 +247,58 @@ export async function writerParallel(
     }
   }
 
+  // ── Step 3b: Micro self-check (zero LLM cost) ──────────────────────────
+  // A fast boolean pre-screen before the expensive Gatekeeper pass.
+  // Catches the two most common issues that lead to rewrites:
+  //   (a) prompt has no keyword anchor from topic/lesson/unit
+  //   (b) prompt has no verb that plausibly matches cognitiveDemand
+  // Items that fail are flagged with a hint comment so the Gatekeeper
+  // (which runs immediately after) has better violation messages.
+  {
+    const topicKeywords = [
+      uar.topic ?? "",
+      uar.lessonName ?? "",
+      uar.unitName ?? "",
+    ]
+      .join(" ")
+      .toLowerCase()
+      .split(/[\s\-_,]+/)
+      .filter(w => w.length >= 3);
+
+    const BLOOM_SIGNAL: Record<string, string[]> = {
+      remember:  ["what", "which", "who", "when", "where", "list", "name", "define", "recall", "identify"],
+      understand: ["explain", "describe", "summarize", "why", "how does", "what does", "classify", "means"],
+      apply:     ["solve", "calculate", "use", "find", "compute", "convert", "show", "if", "given"],
+      analyze:   ["compare", "contrast", "examine", "distinguish", "both", "why does", "identify"],
+      evaluate:  ["justify", "defend", "judge", "assess", "which is best", "argue", "evaluate"],
+      create:    ["design", "construct", "generate", "write", "formulate", "develop"],
+    };
+
+    for (const slot of allSlots) {
+      const item = allItems.get(slot.id);
+      if (!item) continue;
+      const pLower = (item.prompt ?? "").toLowerCase();
+
+      // (a) Topic anchor check
+      const hasTopicKeyword = topicKeywords.length === 0 || topicKeywords.some(kw => pLower.includes(kw));
+      if (!hasTopicKeyword) {
+        console.warn(`[writerParallel] Micro-check: slot "${slot.id}" prompt has no topic keyword. ` +
+          `Topic sources: ${[uar.topic, uar.lessonName, uar.unitName].filter(Boolean).join(", ")}`);
+      }
+
+      // (b) Bloom verb signal check (MC remember slots are exempt — they rarely use explicit verbs)
+      const demand = (slot.cognitiveDemand ?? "").toLowerCase();
+      const isRememberMC = demand === "remember" && slot.questionType === "multipleChoice";
+      if (demand && !isRememberMC) {
+        const signals = BLOOM_SIGNAL[demand] ?? [];
+        const hasSignal = signals.some(s => pLower.includes(s));
+        if (!hasSignal) {
+          console.warn(`[writerParallel] Micro-check: slot "${slot.id}" prompt may lack Bloom verb for "${demand}".`);
+        }
+      }
+    }
+  }
+
   // ── Step 4: Gatekeeper pass on ALL collected items ──────────────────────
   // Use validateSingle per item (avoids type mismatch between contract and
   // types BlueprintPlanV3_2 — same pattern writerAdaptive used).

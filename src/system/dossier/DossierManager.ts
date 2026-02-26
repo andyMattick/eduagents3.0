@@ -130,12 +130,16 @@ export class DossierManager {
     const isLowFriction = violations.length <= 2 && rewriteCount <= 3;
     const domain = finalAssessment?.domain ?? agentType.split(":")[1] ?? "unknown";
 
-    // Trust: subtract 1 per violation, add 1 for clean run (clamp 0–10)
+    // Trust: only penalise if violations > 2 (single noise violations are ignored).
+    // Reward clean runs with +1.
     if (isCleanRun) {
       dossier.trustScore = Math.min(10, (dossier.trustScore ?? 5) + 1);
-    } else {
-      dossier.trustScore = Math.max(0, (dossier.trustScore ?? 5) - violations.length);
+    } else if (violations.length > 2) {
+      // Scale penalty: -1 for 3-4 violations, -2 for 5+
+      const penalty = violations.length >= 5 ? 2 : 1;
+      dossier.trustScore = Math.max(0, (dossier.trustScore ?? 5) - penalty);
     }
+    // else: 1–2 violations → trustScore unchanged (expected noise)
 
     // Stability: subtract proportional to rewrite ratio, add 1 for low-friction (clamp 0–10)
     if (isLowFriction) {

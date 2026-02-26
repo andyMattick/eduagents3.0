@@ -50,13 +50,13 @@ export async function runArchitect({
   //
   // Base seconds by question type:
   const PACING_BASE: Record<string, number> = {
-    multipleChoice: 45,
+    multipleChoice: 60,
     trueFalse: 30,
-    shortAnswer: 90,
-    constructedResponse: 180,
-    fillInTheBlank: 60,
-    matching: 60,
-    ordering: 75,
+    shortAnswer: 150,
+    constructedResponse: 240,
+    fillInTheBlank: 75,
+    matching: 75,
+    ordering: 90,
     image: 60,
   };
 
@@ -143,6 +143,18 @@ export async function runArchitect({
 
   while (cps.length < questionCount) cps.push("understand");
   if (cps.length > questionCount) cps.length = questionCount;
+
+  // Depth cap: assessments under 25 minutes should not demand deep Bloom levels.
+  // Replace any "analyze" or "evaluate" entries with "apply" to keep the workload
+  // realistic for shorter tests where students won't have time to reason deeply.
+  const timeMinutes: number = architectUAR.timeMinutes ?? 40;
+  if (timeMinutes < 25) {
+    for (let i = 0; i < cps.length; i++) {
+      if (cps[i] === "analyze" || cps[i] === "evaluate") {
+        cps[i] = "apply";
+      }
+    }
+  }
 
   const usedSet = new Set<CognitiveProcess>(cps);
   const usedOrdered = cpOrder.filter(cp => usedSet.has(cp));
