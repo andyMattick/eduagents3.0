@@ -118,15 +118,28 @@ export class Gatekeeper {
           });
         }
 
-        if (!item.options?.includes(item.answer ?? "")) {
+        // Accept both exact match and letter-prefix match.
+        // LLMs commonly output "B" when the full option is "B. Find a common..."
+        const answerStr = (item.answer ?? "").trim();
+        const opts = item.options ?? [];
+        const answerMatches =
+          opts.includes(answerStr) ||
+          opts.some(
+            (opt) =>
+              // "B" matches "B. ...", "B) ...", "B: ...", "B ..."
+              opt.trim().match(new RegExp(`^${answerStr}[.):\s]`, "i")) !== null
+          );
+
+        if (!answerMatches) {
           violations.push({
             slotId: slot.id,
             type: "mcq_answer_mismatch",
-            message: "Answer must match one of the provided options."
+            message: `Answer "${answerStr}" must match one of the provided options.`
           });
         }
       } else {
-        if ("options" in item) {
+        // Only flag if options is genuinely populated (not null/undefined from JSON cleanup)
+        if (Array.isArray(item.options) && item.options.length > 0) {
           violations.push({
             slotId: slot.id,
             type: "mcq_options_unexpected",
@@ -137,18 +150,49 @@ export class Gatekeeper {
 
       //
       // 4. Cognitive demand (Bloom-aligned)
+      // Verb lists cover both formal Bloom verbs and natural question phrasing.
+      // The check is intentionally inclusive — it should pass any reasonable
+      // question at the right level, not police surface wording.
       //
       if (slot.cognitiveDemand) {
-        const bloom = {
-          remember: ["define", "identify", "recall", "list", "state"],
-          understand: ["explain", "summarize", "describe", "interpret"],
-          apply: ["solve", "use", "calculate", "apply"],
-          analyze: ["compare", "contrast", "categorize", "analyze"],
-          evaluate: ["justify", "critique", "evaluate"]
+        const bloom: Record<string, string[]> = {
+          remember: [
+            "define", "identify", "recall", "list", "state", "name", "label",
+            "match", "select", "what is", "what are", "which", "when", "who",
+            "where", "how many", "first step", "step", "term"
+          ],
+          understand: [
+            "explain", "summarize", "describe", "interpret", "why",
+            "how does", "what does", "what concept", "what mathematical",
+            "what process", "paraphrase", "classify", "give an example",
+            "difference between", "is necessary", "reason", "means"
+          ],
+          apply: [
+            "solve", "use", "calculate", "apply", "add", "subtract",
+            "multiply", "divide", "find", "compute", "evaluate",
+            "determine", "simplify", "convert", "what is the sum",
+            "what is the product", "what is the result", "complete",
+            "perform", "carry out", "demonstrate"
+          ],
+          analyze: [
+            "compare", "contrast", "categorize", "analyze", "analyse",
+            "distinguish", "differentiate", "examine", "break down",
+            "what relationship", "how are", "why does", "classify",
+            "what pattern", "what effect", "infer"
+          ],
+          evaluate: [
+            "justify", "critique", "evaluate", "assess", "judge",
+            "defend", "argue", "which is best", "what would you recommend",
+            "rate", "rank", "support", "do you agree", "is it better"
+          ],
+          create: [
+            "design", "create", "construct", "generate", "compose",
+            "produce", "write", "formulate", "develop", "plan"
+          ]
         };
 
-        const verbs = (bloom as Record<string, string[]>)[slot.cognitiveDemand as string] ?? [];
-        const matchesVerb = verbs.some((v: string) => promptLower.includes(v));
+        const verbs = bloom[slot.cognitiveDemand as string] ?? [];
+        const matchesVerb = verbs.some((v) => promptLower.includes(v));
 
         if (!matchesVerb) {
           violations.push({
