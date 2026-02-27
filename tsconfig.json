@@ -21,8 +21,22 @@
     "noFallthroughCasesInSwitch": true,
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+
+    /* Path alias */
+    "baseUrl": "src",
+    "paths": { "@/*": ["./*"] }
+
+
   },
-  "include": ["src"],
+
+  "include": ["src", "src/types"],
+  "exclude": ["supabase"],
+  
+
+
+  /* ⭐ ADD THIS ⭐ */
+  
+
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -1,43 +1,51 @@
 import { useState } from 'react';
-import { AuthProvider, useAuth } from './hooks/useAuth';
-import { SignIn } from './components/Auth/SignIn';
-import { SignUp } from './components/Auth/SignUp';
-import { AdminDashboard } from './components/Admin/AdminDashboard';
-import { TeacherDashboard } from './components/TeacherSystem/TeacherDashboard';
-import { PipelineRouter } from './components/Pipeline/PipelineRouter';
-import { TeacherNotepad } from './components/Pipeline/TeacherNotepad';
-import { APICallNotifier } from './components/APICallNotifier';
+import { AuthProvider } from "./components_new/Auth/useAuth";
+import { useAuth } from "./components_new/Auth/useAuth";
+import { SignIn } from './components_new/Auth/SignIn';
+import { SignUp } from './components_new/Auth/SignUp';
+import { AdminDashboard } from './components_new/Admin/AdminDashboard';
+import { TeacherDashboard } from './components_new/TeacherSystem/TeacherDashboard';
+import { MyAssessmentsPage } from './components_new/TeacherSystem/MyAssessmentsPage';
+import { MyAgentsPage } from './components_new/TeacherSystem/MyAgentsPage';
+import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
-import { UserFlowProvider, useUserFlow } from './hooks/useUserFlow';
-import { getCurrentAIMode } from './config/aiConfig';
+import { UserFlowProvider } from './hooks/useUserFlow';
+import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 import './App.css';
+import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad';
+console.log("ENV CHECK", import.meta.env);
+
+type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents';
+
 type AuthPage = 'signin' | 'signup';
 
-interface AssignmentContext {
+export interface AssignmentContext {
   assignmentId: string;
-  action: 'view' | 'edit' | 'clone';
+  action:
+    | 'view'
+    | 'edit'
+    | 'report-results'
+    | 'generate-new-version'
+    | 'view answer-key'
+    | 'view rubric';
 }
 
+
+/* ------------------------------
+   Teacher App (with theme toggle)
+--------------------------------*/
 function TeacherAppContent() {
-  const [activeTab, setActiveTab] = useState<AppTab>('dashboard');
-  const [assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
-  const { reset } = useUserFlow();
+  const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
+  const [_assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
   const { logout, user } = useAuth();
-
-  const handleResetFlow = () => {
-    reset();
-  };
-
-  const handleLogout = async () => {
-    await logout();
-  };
+  
+  const handleLogout = async () => await logout();
 
   return (
     <div className="app-container">
-      {/* Header with Tab Navigation */}
+      {/* Header */}
       <div className="app-header">
         <div className="app-header-content">
           <div className="app-tabs">
@@ -48,6 +56,7 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📊</span>
               Dashboard
             </button>
+
             <button
               className={`app-tab ${activeTab === 'pipeline' ? 'active' : ''}`}
               onClick={() => setActiveTab('pipeline')}
@@ -55,65 +64,141 @@ function TeacherAppContent() {
               <span className="app-tab-icon">📝</span>
               Pipeline
             </button>
-            {/* Notebook tab disabled */}
-            {/* <button
-              className={`app-tab ${activeTab === 'notepad' ? 'active' : ''}`}
-              onClick={() => setActiveTab('notepad')}
+            <button
+              className={`app-tab ${activeTab === 'my-assessments' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-assessments')}
             >
-              <span className="app-tab-icon">📔</span>
-              Notepad
-            </button> */}
-          </div>
-          <div className="app-header-actions">
-            {/* AI Status Indicator */}
-            <div className="ai-status-indicator">
-              <span className="ai-status-icon">
-                {getCurrentAIMode() === 'real' ? '✨' : '🔄'}
-              </span>
-              <span className="ai-status-label">
-                Gemini API
-              </span>
-            </div>
-            {activeTab === 'pipeline' && (
-              <button onClick={handleResetFlow} className="reset-button" title="Reset the user flow">
-                🔄 Reset
-              </button>
-            )}
+              <span className="app-tab-icon">📋</span>
+              My Assessments
+            </button>
+
+            <button
+              className={`app-tab ${activeTab === 'my-agents' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-agents')}
+            >
+              <span className="app-tab-icon">🤖</span>
+              My Agents
+            </button>
+
+            <button
+              className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
+              onClick={() => setActiveTab('what-we-infer')}
+            >
+              🔍 How Your Inputs Drive the Process
+            </button>
+            {/* Theme Toggle */}
+
             <button onClick={handleLogout} className="logout-button">
               Sign Out
             </button>
+
+
           </div>
+
         </div>
       </div>
 
+      {/* Content — all tabs stay mounted; CSS hides inactive ones so pipeline state survives navigation */}
       <div className="app-content">
-        {activeTab === 'dashboard' && <TeacherDashboard teacherId={user?.id || ''} onNavigate={(page, data) => {
-          if (page === 'pipeline' || page === 'create-assignment') {
-            setAssignmentContext(null);
-            setActiveTab('pipeline');
-          } else if (page === 'view-assignment' && data?.assignmentId) {
-            setAssignmentContext({ assignmentId: data.assignmentId, action: 'view' });
-            setActiveTab('pipeline');
-          } else if (page === 'edit-assignment' && data?.assignmentId) {
-            setAssignmentContext({ assignmentId: data.assignmentId, action: 'edit' });
-            setActiveTab('pipeline');
-          } else if (page === 'clone-assignment' && data?.assignmentId) {
-            setAssignmentContext({ assignmentId: data.assignmentId, action: 'clone' });
-            setActiveTab('pipeline');
-          }
-        }} />}
-        {activeTab === 'pipeline' && <PipelineRouter assignmentContext={assignmentContext} onAssignmentSaved={() => {
-          setAssignmentContext(null);
-          setActiveTab('dashboard');
-        }} />}
-        {activeTab === 'notepad' && <TeacherNotepad />}
+        <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
+          <TeacherDashboard
+            teacherId={user?.id || ''}
+            teacherName={user?.name || user?.email || ''}
+            onNavigate={(page, data) => {
+  // Existing routes
+              if (page === 'pipeline' || page === 'create-assignment' || page === 'createAssessment') {
+                setAssignmentContext(null);
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'viewAssessments') {
+                setActiveTab('my-assessments');
+              }
+
+              else if (page === 'viewAgentsBySubject') {
+                setActiveTab('my-agents');
+              }
+
+              else if (page === 'view-assignment' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view' });
+                setActiveTab('pipeline');
+              }
+
+              else if (page === 'edit-assignment' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'edit' });
+                setActiveTab('pipeline');
+              }
+
+             
+
+             
+
+              else if (page === 'report-results' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'report-results' });
+                setActiveTab('pipeline');
+              }
+
+              
+
+              else if (page === 'generate-new-version' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'generate-new-version' });
+                setActiveTab('pipeline');
+              }
+
+             
+              else if (page === 'view-answer-key' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view answer-key' });
+                setActiveTab('pipeline');
+              }
+              else if (page === 'view-rubric' && data?.assignmentId) {
+                setAssignmentContext({ assignmentId: data.assignmentId, action: 'view rubric' });
+                setActiveTab('pipeline');
+              }
+}}
+
+          />
+        </div>
+
+        <div style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
+          <ConversationalAssessmentWrapper
+            userId={user?.id ?? null}
+            onResult={(data) => {
+              console.log("Pipeline result:", data);
+            }}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 'my-assessments' ? 'block' : 'none' }}>
+          <MyAssessmentsPage
+            teacherId={user?.id ?? ''}
+            onNewAssessment={() => { setActiveTab('pipeline'); }}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 'my-agents' ? 'block' : 'none' }}>
+          <MyAgentsPage
+            userId={user?.id ?? ''}
+            onNewAssessment={() => { setActiveTab('pipeline'); }}
+          />
+        </div>
+
+        <div style={{ display: activeTab === 'what-we-infer' ? 'block' : 'none' }}>
+          <WhatWeInferPage />
+        </div>
+
+
+        
+
       </div>
     </div>
   );
 }
 
+/* ------------------------------
+   Auth Gate
+--------------------------------*/
 function AppContent() {
-  const { user, isLoading, logout, signIn, signUp, error } = useAuth();
+  const { user, isLoading, logout: _logout, signIn, signUp: _signUp, error } = useAuth();
   const [authPage, setAuthPage] = useState<AuthPage>('signin');
 
   if (isLoading) {
@@ -130,7 +215,7 @@ function AppContent() {
       return <SignUp onSignInClick={() => setAuthPage('signin')} />;
     }
     return (
-      <SignIn 
+      <SignIn
         onSignUpClick={() => setAuthPage('signup')}
         onSignIn={signIn}
         isLoading={isLoading}
@@ -140,27 +225,33 @@ function AppContent() {
   }
 
   if (user.isAdmin) {
-    return <AdminDashboard onLogout={() => logout()} />;
+    return <AdminDashboard />;
   }
 
+return (
+  <>
+    <TeacherAppContent />
+    <APICallNotifier />
+  </>
+);
+}
+
+/* ------------------------------
+   Root App
+--------------------------------*/
+function App() {
   return (
-    <NotepadProvider>
-      <UserFlowProvider>
-        <TeacherAppContent />
-        <APICallNotifier />
-      </UserFlowProvider>
-    </NotepadProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <NotepadProvider>
+          <UserFlowProvider>
+            <AppContent />
+          </UserFlowProvider>
+        </NotepadProvider>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 
-function App() {
-  return (
-    <ThemeProvider>
-      <AuthProvider>
-        <AppContent />
-      </AuthProvider>
-    </ThemeProvider>
-  );
-}
 
 export default App;
