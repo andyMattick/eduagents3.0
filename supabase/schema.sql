@@ -183,6 +183,24 @@ $$;
 -- Drop trigger if it already exists (safe to re-run)
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
+-- Only fire on INSERT (not UPDATE) — Supabase internally updates auth.users
+-- rows frequently (last_sign_in, etc.) and we don't want those to cascade.
 CREATE TRIGGER on_auth_user_created
-  AFTER INSERT OR UPDATE ON auth.users
+  AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+
+-- ────────────────────────────────────────────────────────────
+-- 7. BACKFILL
+--    Retroactively create teachers rows for any auth.users
+--    that signed up before this schema was applied.
+--    Safe to re-run (ON CONFLICT DO NOTHING).
+-- ────────────────────────────────────────────────────────────
+INSERT INTO public.teachers (id, email, name, school_name)
+SELECT
+  id,
+  email,
+  raw_user_meta_data->>'name',
+  raw_user_meta_data->>'schoolName'
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
