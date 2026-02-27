@@ -93,51 +93,27 @@ CREATE POLICY "td: own row update"
 
 
 -- ────────────────────────────────────────────────────────────
--- 4. SYSTEM_AGENT_DOSSIERS
---    Per-user, per-agent-type learning dossier.
---    One row per agent instance.
--- ────────────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS public.system_agent_dossiers (
-  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id     uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
-  agent_type  text        NOT NULL,
-  instance_id text        NOT NULL,
-  dossier     jsonb       NOT NULL DEFAULT '{}',
-  version     integer     NOT NULL DEFAULT 1,
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, agent_type, instance_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_sad_user_agent
-  ON public.system_agent_dossiers (user_id, agent_type);
-
-ALTER TABLE public.system_agent_dossiers ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "sad: own rows select"
-  ON public.system_agent_dossiers FOR SELECT
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "sad: own rows insert"
-  ON public.system_agent_dossiers FOR INSERT
-  WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "sad: own rows update"
-  ON public.system_agent_dossiers FOR UPDATE
-  USING (auth.uid() = user_id);
-
-
--- ────────────────────────────────────────────────────────────
--- 5. DOSSIERS  (UserDossierManager)
---    One row per user — stores full pipeline run history
---    as JSONB arrays per agent type.
+-- 4. DOSSIERS  (unified — one row per user)
+--    Combines agent governance metrics (trust, stability,
+--    weaknesses, domain mastery) with pipeline run history.
+--    Replaces both the old system_agent_dossiers and dossiers
+--    tables.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.dossiers (
   id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id             uuid        NOT NULL UNIQUE REFERENCES public.teachers(id) ON DELETE CASCADE,
+
+  -- Agent governance dossiers (JSONB objects)
+  writer_dossier      jsonb       NOT NULL DEFAULT '{}',
+  architect_dossier   jsonb       NOT NULL DEFAULT '{}',
+  astronomer_dossier  jsonb       NOT NULL DEFAULT '{}',
+
+  -- Pipeline run history (JSONB arrays)
   writer_history      jsonb       NOT NULL DEFAULT '[]',
   architect_history   jsonb       NOT NULL DEFAULT '[]',
   astronomer_history  jsonb       NOT NULL DEFAULT '[]',
   philosopher_history jsonb       NOT NULL DEFAULT '[]',
+
   updated_at          timestamptz NOT NULL DEFAULT now()
 );
 
@@ -154,6 +130,10 @@ CREATE POLICY "dossiers: own row insert"
 CREATE POLICY "dossiers: own row update"
   ON public.dossiers FOR UPDATE
   USING (auth.uid() = user_id);
+
+-- Migration helper: drop the old system_agent_dossiers table if it exists.
+-- Uncomment the next line when you are ready to drop it from a live database:
+-- DROP TABLE IF EXISTS public.system_agent_dossiers;
 
 
 -- ────────────────────────────────────────────────────────────

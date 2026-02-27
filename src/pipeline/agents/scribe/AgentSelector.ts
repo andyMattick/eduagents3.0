@@ -1,4 +1,8 @@
 // pipeline/agents/scribe/AgentSelector.ts
+//
+// Simplified: one dossier per (user, agentType) stored in the unified
+// `dossiers` table.  No more instance-based selection or multi-row queries.
+// ─────────────────────────────────────────────────────────────────────
 type SubscriptionTier = "free" | "tier1" | "tier2" | "admin";
 import { SupabaseClient } from "@supabase/supabase-js";
 
@@ -31,29 +35,13 @@ export async function selectAgents(supabase: SupabaseClient, userId: string) {
 import { DossierManager } from "@/system/dossier/DossierManager";
 
 export class AgentSelector {
+  /**
+   * Returns the governance dossier for a single agent type.
+   * There is exactly one dossier per (userId, agentType) now —
+   * no instance proliferation.
+   */
   static async selectAgent(userId: string, agentType: string) {
-    // Load all dossier instances for this agent type
-    const dossiers = await DossierManager.load(userId, agentType);
-
-    // If none exist, create a baseline instance
-    if (!dossiers || dossiers.length === 0) {
-      const baseline = await DossierManager.createBaseline(userId, agentType);
-      return baseline;
-    }
-
-    // Sort by trustScore (highest first)
-    const sorted = dossiers.sort((a, b) => {
-      const da = a.dossier;
-      const db = b.dossier;
-      return (db.trustScore ?? 0) - (da.trustScore ?? 0);
-    });
-
-    const best = sorted[0];
-
-    return {
-      instanceId: best.instance_id,
-      dossier: best.dossier,
-      version: best.version
-    };
+    const dossier = await DossierManager.loadAgentDossier(userId, agentType);
+    return { dossier };
   }
 }

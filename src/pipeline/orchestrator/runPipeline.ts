@@ -20,8 +20,9 @@ import { createTrace, logAgentStep } from "@/utils/trace";
 import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
+import { resetLLMGate } from "@/pipeline/llm/gemini";
 
-console.log("[Pipeline] Loaded runPipeline.ts — Version 2.1.0");
+console.log("[Pipeline] Loaded runPipeline.ts — Version 2.2.0");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lean helpers — extract only what each downstream agent actually reads.
@@ -156,6 +157,10 @@ async function validateAndScore(
 }
 
 export async function runPipeline(uar: UnifiedAssessmentRequest) {
+  // ── Security: re-arm the LLM gate so the first LLM call in this run
+  //    triggers the server-side daily-limit check.
+  resetLLMGate();
+
   // 0. Load predictive teacher defaults
 const { data: defaults } = await supabase
   .from("teacher_defaults")
@@ -167,23 +172,19 @@ const { data: defaults } = await supabase
 const uarWithDefaults: UnifiedAssessmentRequest = {
   ...uar,
 
+  // Column names must match the teacher_defaults schema exactly.
   questionTypes:
-    defaults?.preferred_question_types ?? uar.questionTypes,
+    uar.questionTypes,
 
   questionCount:
-    defaults?.preferred_question_count ?? uar.questionCount,
+    defaults?.avg_question_count ?? uar.questionCount,
 
   difficultyPreference:
-    defaults?.preferred_difficulty_profile ?? uar.difficultyPreference,
+    defaults?.preferred_difficulty ?? uar.difficultyPreference,
 
-  orderingStrategy:
-    defaults?.preferred_ordering_strategy ?? uar.orderingStrategy,
-
-  pacingSecondsPerItem:
-    defaults?.preferred_pacing_seconds ?? uar.pacingSecondsPerItem,
-
-  guardrails:
-    defaults?.preferred_guardrails ?? uar.guardrails,
+  // assessmentType can inherit the teacher's most-common type
+  assessmentType:
+    uar.assessmentType ?? defaults?.preferred_assessment_type,
 };
 
   
@@ -202,7 +203,6 @@ const uarWithDefaults: UnifiedAssessmentRequest = {
   
   const blueprint = await runAgent(trace, "Architect", runArchitect, {
     uar: uarWithDefaults,
-    agentId: selected.architectInstanceId,
     compensation: selected.compensationProfile
   });
   // 1. Architect — build the blueprint
@@ -215,7 +215,6 @@ const writerDraft = await runAgent(trace, "Writer", runWriter, {
   blueprint: blueprint.plan,
   uar: uarForWriter(blueprint.uar), // slim: only the 10 fields writerParallel.ts reads
   scribePrescriptions: writerPrescriptions,
-  agentId: selected.writerInstanceId,
   compensation: selected.compensationProfile
 });
 
@@ -249,12 +248,15 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
-      userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
+      userId: uar.userId, agentType: `writer:${selected.domain}`,
       gatekeeperReport: gatekeeperResult,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
+
+  // Persist the full assessment + trace to writer_history
+  await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
   trace.finishedAt = Date.now();
   return {
@@ -281,12 +283,15 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
-      userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
+      userId: uar.userId, agentType: `writer:${selected.domain}`,
       gatekeeperReport: gatekeeperFinal,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
+
+  // Persist the full assessment + trace to writer_history
+  await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
   trace.finishedAt = Date.now();
   return {
@@ -312,7 +317,6 @@ const astro1 = await runAgent(
   {
     writerDraft,
     gatekeeperResult,
-    agentID: selected.astronomerInstanceId,
   }
 );
 
@@ -327,7 +331,6 @@ const astro2 = await runAgent(
   {
     spaceCampResult,
     compensation: selected.compensationProfile,
-    agentID: selected.astronomerInstanceId,
   }
 );
 
@@ -363,12 +366,15 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
-      userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
+      userId: uar.userId, agentType: `writer:${selected.domain}`,
       gatekeeperReport: gatekeeperFinal,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
+
+  // Persist the full assessment + trace to writer_history
+  await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
   trace.finishedAt = Date.now();
   return {
@@ -393,12 +399,15 @@ const finalAssessment = await runAgent(trace, "Builder", runBuilder,
 const scribeResult = await runAgent(
   trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
   {
-    userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
+    userId: uar.userId, agentType: `writer:${selected.domain}`,
     gatekeeperReport: gatekeeperResult,
     finalAssessment: finalAssessmentForScribe(finalAssessment),
     blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
   }
 );
+
+// Persist the full assessment + trace to writer_history
+await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
 trace.finishedAt = Date.now();
 

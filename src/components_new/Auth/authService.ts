@@ -2,7 +2,7 @@ import { supabase } from "../../supabase/client";
 
 /**
  * Upserts a row in `teachers` so that every FK-dependent table
- * (teacher_assessment_history, teacher_defaults, agent_dossiers, etc.)
+ * (teacher_assessment_history, teacher_defaults, dossiers, etc.)
  * can insert without a foreign-key violation.  Non-fatal on error.
  */
 export async function ensureTeacherRow(
