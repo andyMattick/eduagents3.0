@@ -196,3 +196,31 @@
   margin: 4px 0;
   font-family: 'Courier New', monospace;
 }
+
+/* ─── Auth mobile ─────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .auth-container {
+    padding: 1rem;
+    align-items: flex-start;
+    padding-top: 3rem;
+  }
+  .auth-card {
+    padding: 24px 20px;
+    border-radius: 10px;
+    max-width: 100%;
+  }
+  .auth-header h1 {
+    font-size: 24px;
+  }
+  .auth-form h2 {
+    font-size: 17px;
+  }
+  .form-group input {
+    padding: 10px;
+    font-size: 16px;  /* prevents iOS zoom on focus */
+  }
+  .auth-button {
+    padding: 14px;
+    font-size: 15px;
+  }
+}

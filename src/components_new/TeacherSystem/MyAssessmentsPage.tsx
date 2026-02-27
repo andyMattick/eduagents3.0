@@ -121,59 +121,94 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment }: MyAssessmentsP
       )}
 
       {!loading && filtered.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
-            <thead>
-              <tr style={{ borderBottom: "2px solid var(--border-color, #e5e7eb)", textAlign: "left" }}>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Subject</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Grade</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Type</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Questions</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Difficulty</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Guardrails</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((row, i) => (
-                <tr
-                  key={row.id}
-                  style={{
-                    borderBottom: "1px solid var(--color-border, #e5e7eb)",
-                    background: i % 2 === 0 ? "transparent" : "var(--color-surface-alt, #f9fafb)",
-                  }}
-                >
-                  <td style={{ padding: "0.6rem 0.75rem", fontWeight: 500 }}>
-                    {row.domain ?? "—"}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>{row.grade ?? "—"}</td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>
-                    <span
-                      style={{
-                        background: "var(--color-accent-muted, #ede9fe)",
-                        color: "var(--color-accent, #4f46e5)",
-                        padding: "0.2rem 0.6rem",
-                        borderRadius: "999px",
-                        fontSize: "0.78rem",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {row.assessment_type ?? "—"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>{row.question_count ?? "—"}</td>
-                  <td style={{ padding: "0.6rem 0.75rem" }}>{row.difficulty_profile ?? "—"}</td>
-                  <td style={{ padding: "0.6rem 0.75rem", fontSize: "0.78rem", color: "var(--text-secondary, #6b7280)" }}>
-                    {row.guardrails ? guardrailSummary(row.guardrails) : "—"}
-                  </td>
-                  <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-secondary, #6b7280)" }}>
-                    {row.created_at ? fmt(row.created_at) : "—"}
-                  </td>
+        <>
+          {/* Desktop table — hidden on phone */}
+          <div className="assessments-table-wrap" style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", minWidth: "700px", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--border-color, #e5e7eb)", textAlign: "left" }}>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Subject</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Grade</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Type</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Questions</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Difficulty</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Guardrails</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Created</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtered.map((row, i) => (
+                  <tr
+                    key={row.id}
+                    style={{
+                      borderBottom: "1px solid var(--border-color, #e5e7eb)",
+                      background: i % 2 === 0 ? "transparent" : "var(--bg-tertiary, #f9fafb)",
+                    }}
+                  >
+                    <td style={{ padding: "0.6rem 0.75rem", fontWeight: 500 }}>
+                      {row.domain ?? "—"}
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>{row.grade ?? "—"}</td>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>
+                      <span
+                        style={{
+                          background: "var(--color-accent-muted, #ede9fe)",
+                          color: "var(--color-accent, #4f46e5)",
+                          padding: "0.2rem 0.6rem",
+                          borderRadius: "999px",
+                          fontSize: "0.78rem",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {row.assessment_type ?? "—"}
+                      </span>
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>{row.question_count ?? "—"}</td>
+                    <td style={{ padding: "0.6rem 0.75rem" }}>{row.difficulty_profile ?? "—"}</td>
+                    <td style={{ padding: "0.6rem 0.75rem", fontSize: "0.78rem", color: "var(--text-secondary, #6b7280)" }}>
+                      {row.guardrails ? guardrailSummary(row.guardrails) : "—"}
+                    </td>
+                    <td style={{ padding: "0.6rem 0.75rem", color: "var(--text-secondary, #6b7280)" }}>
+                      {row.created_at ? fmt(row.created_at) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile cards — visible on phone only */}
+          <div className="assessments-card-list">
+            {filtered.map(row => (
+              <div className="dashboard-card" key={row.id} style={{ gap: "0.5rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <strong style={{ fontSize: "1rem" }}>{row.domain ?? "General"}</strong>
+                  <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)" }}>
+                    {row.created_at ? fmt(row.created_at) : ""}
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", fontSize: "0.82rem" }}>
+                  {row.grade && <span style={{ color: "var(--text-secondary)" }}>Grade {row.grade}</span>}
+                  {row.grade && row.assessment_type && <span style={{ color: "var(--text-secondary)" }}>·</span>}
+                  {row.assessment_type && (
+                    <span style={{ background: "#4f46e522", color: "#4f46e5", padding: "0.1rem 0.5rem", borderRadius: "999px", fontWeight: 600, fontSize: "0.78rem" }}>
+                      {row.assessment_type}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", gap: "1rem", fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                  <span>{row.question_count ?? "?"} questions</span>
+                  {row.difficulty_profile && <span>· {row.difficulty_profile}</span>}
+                </div>
+                {row.guardrails && Object.keys(row.guardrails).length > 0 && (
+                  <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+                    Guardrails: {guardrailSummary(row.guardrails)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
