@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import type { Plugin } from 'vite'
@@ -10,7 +10,7 @@ import type { Plugin } from 'vite'
  * Security note: GEMINI_API_KEY is read by the Vite Node.js process and
  * is NEVER sent to the browser — it stays server-side even locally.
  */
-function localLLMProxy(): Plugin {
+function localLLMProxy(geminiApiKey: string): Plugin {
   return {
     name: 'local-llm-proxy',
     configureServer(server) {
@@ -31,8 +31,7 @@ function localLLMProxy(): Plugin {
           return;
         }
 
-        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-        if (!apiKey) {
+        if (!geminiApiKey) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'GEMINI_API_KEY not set in .env.local' }));
           return;
@@ -57,7 +56,7 @@ function localLLMProxy(): Plugin {
 
           // Call Gemini REST API from the Node.js process (key never reaches browser)
           const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -91,8 +90,14 @@ function localLLMProxy(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), localLLMProxy()],
+export default defineConfig(({ mode }) => {
+  // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
+  // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
+  const env = loadEnv(mode, process.cwd(), '');
+  const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+
+  return {
+  plugins: [react(), localLLMProxy(geminiApiKey)],
   server: {
     port: 3000,
     open: true
@@ -107,4 +112,5 @@ export default defineConfig({
     },
     extensions: ['.tsx', '.ts', '.jsx', '.js']
   }
-})
+  };
+});
