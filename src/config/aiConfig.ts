@@ -9,21 +9,25 @@ export async function generateAssessment(uar: UnifiedAssessmentRequest) {
   return await runPipeline(uar);
 }
 
-
-const apiKey = GEMINI_API_KEY;
-
-if (!apiKey) {
-  throw new Error("VITE_GEMINI_API_KEY is required.");
+// Lazy initialisation — don't throw at module load time (would crash the
+// entire app on Vercel if the env var is missing from the deployment config).
+// The error surfaces only when callAI() is actually invoked.
+function getGenAI(): GoogleGenerativeAI {
+  if (!GEMINI_API_KEY) {
+    throw new Error(
+      "VITE_GEMINI_API_KEY is not set. Add it to your Vercel project environment variables " +
+      "(Settings → Environment Variables) and redeploy."
+    );
+  }
+  return new GoogleGenerativeAI(GEMINI_API_KEY);
 }
-
-const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function callAI(prompt: string): Promise<string> {
   if (!prompt.trim()) {
     throw new Error("Prompt cannot be empty");
   }
 
-  const model = genAI.getGenerativeModel({
+  const model = getGenAI().getGenerativeModel({
     model: "gemini-2.5-flash",
   });
 
