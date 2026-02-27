@@ -1,14 +1,36 @@
 import { supabase } from "../../supabase/client";
 
+/**
+ * Upserts a row in `teachers` so that every FK-dependent table
+ * (teacher_assessment_history, teacher_defaults, agent_dossiers, etc.)
+ * can insert without a foreign-key violation.  Non-fatal on error.
+ */
+export async function ensureTeacherRow(userId: string, email?: string | null): Promise<void> {
+  if (!supabase || !userId) return;
+  const { error } = await supabase
+    .from("teachers")
+    .upsert({ id: userId, email: email ?? null }, { onConflict: "id" });
+  if (error) {
+    console.warn("[auth] teachers upsert failed (non-fatal):", error.message);
+  }
+}
+
 export async function login(email: string, password: string) {
   if (!supabase) return { data: null, error: new Error("Supabase not configured") };
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (!error && data?.user) {
+    await ensureTeacherRow(data.user.id, data.user.email);
+  }
   return { data, error };
 }
 
 export async function signUp(email: string, password: string) {
   if (!supabase) return { data: null, error: new Error("Supabase not configured") };
-  return supabase.auth.signUp({ email, password });
+  const result = await supabase.auth.signUp({ email, password });
+  if (!result.error && result.data?.user) {
+    await ensureTeacherRow(result.data.user.id, result.data.user.email);
+  }
+  return result;
 }
 
 export async function logout() {

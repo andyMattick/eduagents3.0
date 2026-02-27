@@ -70,6 +70,7 @@ export function PipelineRouter({
               title={getTitle(assessment)}
               subtitle={getSubtitle(assessment)}
               uar={(assessment as any).blueprint?.uar ?? (assessment as any).uar}
+              philosopherNotes={(assessment as any).notes}
             />
           ) : (
             <pre className="json-preview" style={{ padding: "1rem" }}>

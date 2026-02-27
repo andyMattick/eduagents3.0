@@ -87,16 +87,23 @@ export function ConversationalAssessmentWrapper({
               title={getTitle(result)}
               subtitle={getSubtitle(result)}
               uar={result.blueprint?.uar ?? result.uar}
+              philosopherNotes={(result as any).notes}
             />
           ) : (
             <pre className="json-preview" style={{ padding: "1rem" }}>
               {JSON.stringify(result, null, 2)}
             </pre>
           )}
+
           {result.trace && (
-            <div style={{ marginTop: "2rem" }}>
-              <TraceViewer trace={result.trace} />
-            </div>
+            <details className="trace-collapsible" style={{ marginTop: "2rem" }}>
+              <summary className="trace-collapsible-summary">
+                Pipeline debug trace
+              </summary>
+              <div style={{ marginTop: "0.75rem" }}>
+                <TraceViewer trace={result.trace} />
+              </div>
+            </details>
           )}
         </div>
       )}

@@ -25,8 +25,11 @@ export interface FinalAssessment {
   generatedAt: string; // ISO timestamp
   items: FinalAssessmentItem[];
   totalItems: number;
-  /** slotId → answer */
-  answerKey: Record<string, string>;
+  /**
+   * slotId → answer — optional; not computed at pipeline time.
+   * Derive at export via: Object.fromEntries(items.map(i => [i.slotId, i.answer ?? ""]))
+   */
+  answerKey?: Record<string, string>;
   /** cognitiveDemand → count */
   cognitiveDistribution: Record<string, number>;
   metadata: {

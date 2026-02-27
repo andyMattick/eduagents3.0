@@ -67,8 +67,41 @@ function uarForScribe(uar: any): Record<string, any> {
   return {
     course: uar.course,
     gradeLevels: uar.gradeLevels,
+    grade: uar.gradeLevels?.[0] ?? uar.grade ?? null,
     assessmentType: uar.assessmentType,
     guardrails: (uar as any).guardrails ?? null,
+  };
+}
+
+/**
+ * Extract the two scalars SCRIBE.updateAgentDossier reads from finalAssessment.
+ * Avoids serialising the full items array into Supabase / dossier calls.
+ * ~1,000 token saving per run on assessments with 5+ items.
+ */
+function finalAssessmentForScribe(fa: any): { questionCount: number; questionTypes: string[] } {
+  return {
+    questionCount: fa.items?.length ?? 0,
+    questionTypes: (fa.items ?? []).map((i: any) => i.questionType).filter(Boolean) as string[],
+  };
+}
+
+/**
+ * Writer only reads 10 fields from the UAR; slimming this reduces the Writer
+ * trace entry by ~300–500 tokens when additionalDetails or sourceDocuments are present.
+ */
+function uarForWriter(uar: any): Record<string, any> {
+  return {
+    gradeLevels: uar.gradeLevels,
+    grade: uar.gradeLevels?.[0] ?? uar.grade ?? null,
+    course: uar.course,
+    lessonName: uar.lessonName ?? null,
+    topic: uar.topic ?? null,
+    unitName: uar.unitName ?? null,
+    additionalDetails: uar.additionalDetails ?? null,
+    time: uar.time ?? uar.timeMinutes ?? null,
+    timeMinutes: uar.timeMinutes ?? uar.time ?? null,
+    assessmentType: uar.assessmentType,
+    studentLevel: uar.studentLevel ?? null,
   };
 }
 
@@ -180,7 +213,7 @@ const writerPrescriptions = SCRIBE.getWriterPrescriptions();
 
 const writerDraft = await runAgent(trace, "Writer", runWriter, {
   blueprint: blueprint.plan,
-  uar: blueprint.uar, // normalized Architect UAR
+  uar: uarForWriter(blueprint.uar), // slim: only the 10 fields writerParallel.ts reads
   scribePrescriptions: writerPrescriptions,
   agentId: selected.writerInstanceId,
   compensation: selected.compensationProfile
@@ -217,7 +250,8 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
       userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
-      gatekeeperReport: gatekeeperResult, finalAssessment,
+      gatekeeperReport: gatekeeperResult,
+      finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
@@ -248,7 +282,8 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
       userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
-      gatekeeperReport: gatekeeperFinal, finalAssessment,
+      gatekeeperReport: gatekeeperFinal,
+      finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
@@ -329,7 +364,8 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
       userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
-      gatekeeperReport: gatekeeperFinal, finalAssessment,
+      gatekeeperReport: gatekeeperFinal,
+      finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
     }
   );
@@ -358,7 +394,8 @@ const scribeResult = await runAgent(
   trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
   {
     userId: uar.userId, agentType: "writer", instanceId: selected.writerInstanceId,
-    gatekeeperReport: gatekeeperResult, finalAssessment,
+    gatekeeperReport: gatekeeperResult,
+    finalAssessment: finalAssessmentForScribe(finalAssessment),
     blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
   }
 );

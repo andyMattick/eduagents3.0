@@ -38,7 +38,7 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
       questionNumber: i + 1,
       slotId: item.slotId,
       questionType: item.questionType,
-      prompt: cleanText(item.prompt),
+      prompt: cleanText(item.prompt) ?? "",
       options: item.options?.map(cleanText) as string[] | undefined,
       answer: cleanText(item.answer),
       cognitiveDemand: slot?.cognitiveDemand ?? item.metadata?.cognitiveDemand,
@@ -47,14 +47,7 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
     };
   });
 
-  // Answer key: slotId → answer
-  const answerKey: Record<string, string> = {};
-  for (const item of finalItems) {
-    if (item.answer !== undefined) {
-      answerKey[item.slotId] = item.answer;
-    }
-  }
-
+  // answerKey removed from pipeline payload — item.answer is already on each item.
   // Cognitive distribution tally
   const cognitiveDistribution: Record<string, number> = {};
   for (const item of finalItems) {
@@ -67,7 +60,6 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
     generatedAt: new Date().toISOString(),
     items: finalItems,
     totalItems: finalItems.length,
-    answerKey,
     cognitiveDistribution,
     metadata: {
       difficultyProfile: plan?.difficultyProfile,

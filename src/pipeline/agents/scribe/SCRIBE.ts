@@ -235,16 +235,29 @@ export class SCRIBE {
     finalAssessment,
     blueprint,
     uar
-    
   }: {
     userId: string;
     agentType: string;
     instanceId: string;
     gatekeeperReport: GatekeeperReport;
-    finalAssessment: any;
+    /** Slim telemetry — only what SCRIBE reads. Extracted via finalAssessmentForScribe(). */
+    finalAssessment: { questionCount: number; questionTypes: string[] };
     blueprint: any;
-    uar: UnifiedAssessmentRequest;
+    /** Slim object from uarForScribe() — not the full UnifiedAssessmentRequest. */
+    uar: any;
   }) {
+
+    // 2a-pre. Guarantee the teacher row exists before any FK-dependent inserts.
+    // This is the safety net for sessions where ensureTeacherRow() at login
+    // was skipped (e.g. existing users, server-side calls, test harnesses).
+    {
+      const { error: teacherUpsertError } = await supabase
+        .from("teachers")
+        .upsert({ id: userId }, { onConflict: "id" });
+      if (teacherUpsertError) {
+        console.warn("[SCRIBE] teachers upsert failed (non-fatal):", teacherUpsertError.message);
+      }
+    }
 
     // 2a. Update agent dossier in memory
     const dossierResult = await DossierManager.updateAfterRun({
@@ -252,7 +265,7 @@ export class SCRIBE {
       agentType,
       instanceId,
       gatekeeperReport,
-      finalAssessment
+      questionCount: finalAssessment.questionCount,
     });
 
     // 2b. Insert assessment record into Supabase
@@ -261,15 +274,14 @@ export class SCRIBE {
     const { error: insertError } = await supabase.from("teacher_assessment_history").insert({
       teacher_id: userId,
       domain: uar?.course ?? null,
-      grade: uar?.gradeLevels?.join(", ") ?? null,
+      grade: Array.isArray(uar?.gradeLevels)
+        ? uar.gradeLevels.join(", ")
+        : (uar?.grade ?? null),
       assessment_type: uar?.assessmentType ?? null,
-      question_count: finalAssessment.items?.length ?? 0,
-      question_types: finalAssessment.items?.map((item: any) => item.questionType).join(", ") ?? null,
-      cognitive_distribution: blueprint?.plan?.cognitiveDistribution ?? null,
+      question_count: finalAssessment.questionCount,
+      question_types: finalAssessment.questionTypes.join(", ") || null,
       difficulty_profile: blueprint?.plan?.difficultyProfile ?? null,
-      ordering_strategy: blueprint?.plan?.orderingStrategy ?? null,
-      pacing_seconds_per_item: blueprint?.plan?.pacingSecondsPerItem ?? null,
-      guardrails: (uar as any).guardrails ?? null,
+      guardrails: uar?.guardrails ?? null,
     });
     if (insertError) {
       console.warn("[SCRIBE] teacher_assessment_history insert failed (non-fatal):", insertError.message);

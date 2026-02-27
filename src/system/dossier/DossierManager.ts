@@ -73,13 +73,14 @@ export class DossierManager {
     agentType,
     instanceId,
     gatekeeperReport,
-    finalAssessment
+    questionCount,
   }: {
     userId: string;
     agentType: string;
     instanceId: string;
     gatekeeperReport: GatekeeperReport;
-    finalAssessment: any;
+    /** Pre-extracted scalar. Avoids passing the full FinalAssessment into the dossier path. */
+    questionCount: number;
   }) {
     // Load existing dossier(s)
     let dossiers = await this.load(userId, agentType);
@@ -124,11 +125,10 @@ export class DossierManager {
     // Previously only decremented on failures. Now clean runs earn increases
     // and domain performance is recorded (strengths + domainMastery).
 
-    const rewriteCount = finalAssessment?.rewriteCount ?? 0;
-    const questionCount = finalAssessment?.items?.length ?? 0;
+    // rewriteCount tracked separately by SCRIBE.updateWriterDossier
     const isCleanRun = violations.length === 0;
-    const isLowFriction = violations.length <= 2 && rewriteCount <= 3;
-    const domain = finalAssessment?.domain ?? agentType.split(":")[1] ?? "unknown";
+    const isLowFriction = violations.length <= 2;
+    const domain = agentType.split(":")[1] ?? "unknown";
 
     // Trust: only penalise if violations > 2 (single noise violations are ignored).
     // Reward clean runs with +1.
@@ -145,7 +145,9 @@ export class DossierManager {
     if (isLowFriction) {
       dossier.stabilityScore = Math.min(10, (dossier.stabilityScore ?? 5) + 1);
     } else {
-      const penalty = Math.ceil(rewriteCount / Math.max(1, questionCount));
+      // Penalise proportionally to violation density relative to question count
+      const density = questionCount > 0 ? violations.length / questionCount : 1;
+      const penalty = density >= 0.5 ? 2 : 1;
       dossier.stabilityScore = Math.max(0, (dossier.stabilityScore ?? 5) - penalty);
     }
 

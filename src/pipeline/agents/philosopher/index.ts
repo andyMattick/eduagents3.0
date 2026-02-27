@@ -252,6 +252,84 @@ function analyzeWriteMode(input: {
     );
   }
 
+  // ── 8. Prompt quality suggestions ────────────────────────────────────────
+  // Analyse the teacher's UAR fields to identify what was helpfully provided
+  // vs. what was vague, generic, or missing. Surface concrete suggestions so
+  // the teacher can refine their next prompt for a better result.
+  {
+    const uar = blueprint?.uar ?? {};
+    const promptTips: string[] = [];
+
+    // Topic specificity
+    const topic:    string = (uar.topic       ?? "").trim();
+    const unit:     string = (uar.unitName    ?? "").trim();
+    const lesson:   string = (uar.lessonName  ?? "").trim();
+    const extras:   string = (uar.additionalDetails ?? "").trim();
+    const course:   string = (uar.course      ?? "").trim();
+
+    const hasSpecificTopic = topic.length > 8 && topic.split(" ").length >= 2;
+    const hasLesson       = lesson.length > 3;
+    const hasExtras       = extras.length > 5;
+
+    if (!hasSpecificTopic) {
+      const topicExample = unit || lesson || course
+        ? `For "${unit || lesson || course}", for example: "adding unlike denominators" or "causes of WWI"`
+        : "e.g., 'photosynthesis — light reactions only' rather than just 'science'";
+      promptTips.push(
+        `💡 Tip — Be more specific with your topic: "${topic || "(not provided)"}" is broad. ` +
+        `A precise topic produces targeted, non-generic questions. ${topicExample}.`
+      );
+    }
+
+    if (!hasLesson && !hasSpecificTopic) {
+      promptTips.push(
+        `💡 Tip — Add a lesson name to anchor the questions to a specific instructional moment ` +
+        `(e.g., "Day 3 — graphing linear equations").`
+      );
+    }
+
+    if (!hasExtras) {
+      promptTips.push(
+        `💡 Tip — The "additional details" field was left blank. Use it to shape the output: ` +
+        `"Include at least one vocabulary question", "avoid trick questions", ` +
+        `"focus on application not recall", "questions should reference the novel Holes".`
+      );
+    }
+
+    // Check if all questions ended up the same type
+    const questionTypes: string[] = Array.from(
+      new Set(writerDraft.map((item: any) => item.questionType).filter(Boolean))
+    );
+    if (questionTypes.length === 1 && writerDraft.length > 3) {
+      promptTips.push(
+        `💡 Tip — All ${writerDraft.length} items are "${questionTypes[0]}". ` +
+        `In your next prompt, request a mix of types (e.g., "3 multiple choice and 2 short answer") ` +
+        `to get better coverage of the learning objective.`
+      );
+    }
+
+    // Check if the topic keywords appear in the questions
+    const topicWords = topic.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+    if (topicWords.length > 0 && writerDraft.length > 0) {
+      const allPromptText = writerDraft.map((i: any) => (i.prompt ?? "").toLowerCase()).join(" ");
+      const hitsFound = topicWords.filter(w => allPromptText.includes(w)).length;
+      if (hitsFound === 0) {
+        promptTips.push(
+          `💡 Tip — None of the generated questions reference your topic keywords ("${topic}"). ` +
+          `If this feels off-topic, try adding more context in "additional details" ` +
+          `or providing a specific learning objective rather than a subject area.`
+        );
+      }
+    }
+
+    if (promptTips.length > 0) {
+      notes.push("\n── Prompt suggestions ──");
+      notes.push(...promptTips);
+    } else {
+      notes.push("✓ Your prompt provided enough context for strong generation.");
+    }
+  }
+
   // ── Quality score (informational, displayed in Philosopher's Report) ───────
   let deductions = 0;
   deductions += Math.min(5, Math.ceil(violations.length / 2));

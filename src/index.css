@@ -418,3 +418,275 @@ textarea {
 [data-theme="dark"] select::placeholder {
   color: var(--text-tertiary);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Conversational Assessment Interface  (.ca-*)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ca-shell {
+  display: flex;
+  flex-direction: column;
+  max-width: 640px;
+  margin: 2rem auto;
+  background: var(--surface-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  min-height: 420px;
+}
+
+/* Header -------------------------------------------------------------------- */
+.ca-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.ca-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.ca-progress-track {
+  flex: 1;
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ca-progress-fill {
+  height: 100%;
+  background: var(--primary-color);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.ca-step-label {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* Message thread ------------------------------------------------------------ */
+.ca-messages {
+  flex: 1;
+  padding: 1.25rem 1.25rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  max-height: 380px;
+}
+
+.ca-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* Bubbles ------------------------------------------------------------------- */
+.ca-bubble {
+  max-width: 82%;
+  padding: 0.65rem 0.95rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.ca-bubble--bot {
+  background: var(--bg-tertiary);
+  color: var(--text);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+}
+
+.ca-bubble--user {
+  background: var(--primary-color);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+}
+
+.ca-bubble--thinking {
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Typing dots */
+.ca-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.ca-dots span {
+  width: 5px;
+  height: 5px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  animation: ca-bounce 1.2s infinite;
+}
+.ca-dots span:nth-child(2) { animation-delay: 0.2s; }
+.ca-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes ca-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40%            { transform: translateY(-5px); }
+}
+
+/* Chips --------------------------------------------------------------------- */
+.ca-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 0 0.25rem 0;
+}
+
+.ca-chip {
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.ca-chip:hover:not(:disabled) {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.ca-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ca-chip-footer {
+  padding: 0.5rem 1.25rem 0.75rem;
+}
+
+/* Input row ----------------------------------------------------------------- */
+.ca-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.ca-input {
+  flex: 1;
+  padding: 0.6rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.ca-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(91,124,250,0.12);
+}
+
+.ca-btn-send {
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.ca-btn-send:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.ca-btn-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ca-btn-back {
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.ca-btn-back:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--text-secondary);
+}
+
+.ca-btn-back:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Collapsible trace
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.trace-collapsible {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.trace-collapsible-summary {
+  padding: 0.6rem 1rem;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-secondary);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.trace-collapsible-summary::-webkit-details-marker { display: none; }
+
+.trace-collapsible-summary::before {
+  content: "▶";
+  font-size: 0.65rem;
+  transition: transform 0.15s;
+}
+
+.trace-collapsible[open] .trace-collapsible-summary::before {
+  transform: rotate(90deg);
+}
+
+.trace-collapsible-summary:hover {
+  color: var(--text-secondary);
+}
+

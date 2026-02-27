@@ -85,6 +85,12 @@ ANALYZE CONTRACT (mandatory for all analyze slots)
 - The prompt must NOT be answerable by simple recall.
 - Include at least one of: "compare", "contrast", "identify the error", "explain why", "trace the steps".
 
+STEM VARIETY (mandatory — applies to EVERY slot in this batch)
+- No two question prompts may begin with the same word or phrase.
+- Overused starters to actively AVOID (use each at most once across all slots): "What is", "Which of the following", "Which one", "What are".
+- Draw from varied openers: "Explain...", "Calculate...", "Compare...", "A student notices...", "Given that...", "Identify...", "Describe...", "Why does...", "How would...", "Determine...", "In the context of...", "A researcher finds...".
+- Each question must have a distinctly different opening phrase than every other question in this batch.
+
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
 Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}

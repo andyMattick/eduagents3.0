@@ -124,10 +124,12 @@ function PhilosophersReport({
   assessment,
   title,
   uar,
+  philosopherNotes,
 }: {
   assessment: FinalAssessment;
   title: string;
   uar?: Record<string, any>;
+  philosopherNotes?: string;
 }) {
   const [open, setOpen] = useState(true);
   const report = computeReport(assessment, title, uar);
@@ -183,6 +185,23 @@ function PhilosophersReport({
               )}
             </div>
           )}
+
+          {philosopherNotes && (() => {
+            const tips = philosopherNotes
+              .split("\n")
+              .filter((l) => l.startsWith("💡"));
+            if (tips.length === 0) return null;
+            return (
+              <div className="av-report-tips">
+                <p className="av-report-col-heading av-report-col-heading--blue">💡 Prompt Suggestions</p>
+                <ul className="av-report-list">
+                  {tips.map((tip) => (
+                    <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
@@ -259,9 +278,11 @@ interface AssessmentViewerProps {
   subtitle?: string;
   /** Raw UAR object from the blueprint — referenced by the Philosopher's Report */
   uar?: Record<string, any>;
+  /** Free-text notes from the Philosopher agent, including 💡 Tip suggestions */
+  philosopherNotes?: string;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -380,7 +401,7 @@ export function AssessmentViewer({ assessment, title, subtitle, uar }: Assessmen
       )}
 
       {/* ── Philosopher's Report ────────────────────────────────── */}
-      <PhilosophersReport assessment={assessment} title={displayTitle} uar={uar} />
+      <PhilosophersReport assessment={assessment} title={displayTitle} uar={uar} philosopherNotes={philosopherNotes} />
     </div>
   );
 }
