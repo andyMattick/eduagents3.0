@@ -98,14 +98,7 @@ export const SignIn: React.FC<SignInProps> = ({ onSignIn, onSignUpClick, isLoadi
           </p>
         </div>
 
-        <div className="auth-demo">
-          <p className="demo-label">Demo Accounts:</p>
-          <code>teacher@example.com / password</code>
-          <code>admin@example.com / password</code>
-          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '8px' }}>
-            💡 Use the credentials above to test the app
-          </p>
-        </div>
+      
       </div>
     </div>
   );
