@@ -2,7 +2,22 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { END_SENTINEL } from "@/pipeline/agents/writer/chunk/parseChunk";
 
-const client = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+// Lazy init — avoids baking `undefined` into the client when the env var is
+// missing at Vite build time (e.g. first Vercel deploy before secrets are set).
+let _client: GoogleGenerativeAI | null = null;
+function getClient(): GoogleGenerativeAI {
+  if (!_client) {
+    const key = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!key) {
+      throw new Error(
+        "VITE_GEMINI_API_KEY is not set. Add it to your Vercel project " +
+        "environment variables (Settings → Environment Variables) and redeploy."
+      );
+    }
+    _client = new GoogleGenerativeAI(key);
+  }
+  return _client;
+}
 
 // ── Blocking call (used everywhere except the chunked writer) ─────────────
 
@@ -18,7 +33,7 @@ export async function callGemini({
   maxOutputTokens?: number;
 }): Promise<string> {
   try {
-    const gen = client.getGenerativeModel({ model });
+    const gen = getClient().getGenerativeModel({ model });
 
     const result = await gen.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -60,7 +75,7 @@ export async function callGeminiStreaming({
   onTruncation?: (leftover: string) => void;
 }): Promise<string> {
   try {
-    const gen = client.getGenerativeModel({ model });
+    const gen = getClient().getGenerativeModel({ model });
 
     const result = await gen.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
