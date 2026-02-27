@@ -98,9 +98,9 @@ function TeacherAppContent() {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content — all tabs stay mounted; CSS hides inactive ones so pipeline state survives navigation */}
       <div className="app-content">
-        {activeTab === 'dashboard' && (
+        <div style={{ display: activeTab === 'dashboard' ? 'block' : 'none' }}>
           <TeacherDashboard
             teacherId={user?.id || ''}
             teacherName={user?.name || user?.email || ''}
@@ -157,37 +157,34 @@ function TeacherAppContent() {
 }}
 
           />
-        )}
+        </div>
 
-        {activeTab === 'pipeline' && (
+        <div style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
           <ConversationalAssessmentWrapper
             userId={user?.id ?? null}
             onResult={(data) => {
               console.log("Pipeline result:", data);
             }}
           />
-        )}
+        </div>
 
-
-
-        {activeTab === 'my-assessments' && (
+        <div style={{ display: activeTab === 'my-assessments' ? 'block' : 'none' }}>
           <MyAssessmentsPage
             teacherId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
           />
-        )}
+        </div>
 
-        {activeTab === 'my-agents' && (
+        <div style={{ display: activeTab === 'my-agents' ? 'block' : 'none' }}>
           <MyAgentsPage
             userId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
           />
-        )}
+        </div>
 
-        {activeTab === 'what-we-infer' && (
-   <WhatWeInferPage />
-
-  )}
+        <div style={{ display: activeTab === 'what-we-infer' ? 'block' : 'none' }}>
+          <WhatWeInferPage />
+        </div>
 
 
         

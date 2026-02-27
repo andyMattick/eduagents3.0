@@ -93,8 +93,8 @@ export function ConversationalAssessmentWrapper({
   return (
     <div className="pipeline-surface">
 
-      {/* Daily usage indicator */}
-      {usage && !result && (
+      {/* Daily usage indicator — always visible so teachers can see usage after generating */}
+      {usage && (
         <div style={{
           display: "flex",
           alignItems: "center",
@@ -102,7 +102,7 @@ export function ConversationalAssessmentWrapper({
           marginBottom: "1rem",
           fontSize: "0.82rem",
           color: usage.canGenerate
-            ? (usage.remaining <= 1 ? "#b45309" : "var(--color-muted, #6b7280)")
+            ? (usage.remaining <= 1 ? "#b45309" : "var(--text-secondary, #6b7280)")
             : "#dc2626",
         }}>
           {[...Array(usage.limit)].map((_, i) => (
@@ -113,18 +113,18 @@ export function ConversationalAssessmentWrapper({
                 height: "10px",
                 borderRadius: "50%",
                 display: "inline-block",
-                background: i < usage.count
-                  ? (usage.canGenerate ? "#d1d5db" : "#dc2626")
-                  : "#4f46e5",
+                background: i < (usage.limit - usage.remaining)
+                  ? "#d1d5db"
+                  : (usage.canGenerate ? "#4f46e5" : "#dc2626"),
                 border: "1.5px solid",
-                borderColor: i < usage.count ? "#d1d5db" : "#4f46e5",
+                borderColor: i < (usage.limit - usage.remaining) ? "#d1d5db" : (usage.canGenerate ? "#4f46e5" : "#dc2626"),
               }}
             />
           ))}
           <span>
             {usage.canGenerate
-              ? `${usage.remaining} free assessment${usage.remaining !== 1 ? "s" : ""} remaining today`
-              : "Daily limit reached"}
+              ? `${usage.remaining} of ${usage.limit} free assessment${usage.limit !== 1 ? "s" : ""} remaining today`
+              : "Daily limit reached — come back tomorrow or upgrade"}
           </span>
         </div>
       )}
