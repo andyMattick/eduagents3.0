@@ -162,11 +162,14 @@ export async function runPipeline(uar: UnifiedAssessmentRequest) {
   resetLLMGate();
 
   // 0. Load predictive teacher defaults
-const { data: defaults } = await supabase
-  .from("teacher_defaults")
-  .select("*")
-  .eq("teacher_id", uar.userId)
-  .maybeSingle();
+  // Use .limit(1) + array access instead of .maybeSingle() to avoid
+  // PostgREST 406 "Not Acceptable" errors when the table has no row yet.
+  const { data: defaultsRows } = await supabase
+    .from("teacher_defaults")
+    .select("*")
+    .eq("teacher_id", uar.userId)
+    .limit(1);
+  const defaults = defaultsRows?.[0] ?? null;
 
 // 1. Merge predictive defaults into the UAR
 const uarWithDefaults: UnifiedAssessmentRequest = {
