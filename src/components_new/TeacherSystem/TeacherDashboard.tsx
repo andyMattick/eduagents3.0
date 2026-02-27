@@ -6,11 +6,13 @@ import { useUserFlow } from "../../hooks/useUserFlow";
 
 interface TeacherDashboardProps {
   teacherId: string;
+  teacherName?: string;
   onNavigate: (page: string, data?: any) => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   teacherId,
+  teacherName,
   onNavigate,
 }) => {
   const { reset } = useUserFlow();
@@ -27,7 +29,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         <div className="header-welcome">
           <h1>Teacher Dashboard</h1>
           <p className="school-name">
-            You’re signed in as <strong>{teacherId}</strong>
+            Welcome back{teacherName ? `, ${teacherName}` : ""}!
           </p>
         </div>
         <div className="header-tier">
@@ -55,9 +57,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
           <button
             className="btn-secondary"
-            onClick={() => onNavigate("questionBank")}
+            onClick={() => onNavigate("viewAgentsBySubject")}
           >
-            Open question bank
+            View my agents
           </button>
         </div>
       </section>

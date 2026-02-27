@@ -95,6 +95,8 @@ export type ConversationalIntent = {
 interface ConversationalAssessmentProps {
   onComplete: (intent: ConversationalIntent) => void;
   isLoading: boolean;
+  /** When true, all inputs and submit are disabled (e.g. daily limit reached). */
+  disabled?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -102,7 +104,9 @@ interface ConversationalAssessmentProps {
 export function ConversationalAssessment({
   onComplete,
   isLoading,
+  disabled = false,
 }: ConversationalAssessmentProps) {
+  const isBlocked = isLoading || disabled;
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<StepId, string>>({
     gradeLevels:       "",
@@ -217,7 +221,7 @@ export function ConversationalAssessment({
                     type="button"
                     className="ca-chip"
                     onClick={() => handleChipClick(chip.value)}
-                    disabled={isLoading}
+                    disabled={isBlocked}
                   >
                     {chip.label}
                   </button>
@@ -240,14 +244,14 @@ export function ConversationalAssessment({
       </div>
 
       {/* Text input bar */}
-      {!isChipStep && !isLoading && (
+      {!isChipStep && !isBlocked && (
         <form onSubmit={handleTextSubmit} className="ca-input-row">
           {stepIndex > 0 && (
             <button
               type="button"
               className="ca-btn-back"
               onClick={handleBack}
-              disabled={isLoading}
+              disabled={isBlocked}
               title="Go back"
             >
               ←
@@ -259,17 +263,17 @@ export function ConversationalAssessment({
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             placeholder={currentStep.placeholder ?? ""}
-            disabled={isLoading}
+            disabled={isBlocked}
             autoComplete="off"
           />
-          <button type="submit" className="ca-btn-send" disabled={isLoading}>
+          <button type="submit" className="ca-btn-send" disabled={isBlocked}>
             {stepIndex === STEPS.length - 1 ? "Generate" : "→"}
           </button>
         </form>
       )}
 
       {/* Back button visible during chip steps (after step 0) */}
-      {isChipStep && !isLoading && stepIndex > 0 && (
+      {isChipStep && !isBlocked && stepIndex > 0 && (
         <div className="ca-chip-footer">
           <button type="button" className="ca-btn-back" onClick={handleBack}>
             ← Back

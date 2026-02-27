@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
 
 /** Inline type — original SectionBuilder module was removed during restructuring */
@@ -180,7 +180,7 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setAssignmentVersions([...assignmentVersions, newVersion]);
   };
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setGoal(null);
     setHasSourceDocs(null);
     setSourceFile(null);
@@ -195,7 +195,7 @@ export function UserFlowProvider({ children }: { children: ReactNode }) {
     setReadyForEditing(false);
     setReadyForRewrite(false);
     setAssignmentVersions([]);
-  };
+  }, []); // useState setters are stable — safe empty dep array
 
   const getCurrentRoute = (): string => {
     // Step 0: No goal selected - show unified Launchpad

@@ -23,6 +23,7 @@ import {
 interface AuthUser {
   id: string;
   email: string;
+  name: string;
   isAdmin: boolean;
 }
 
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser({
             id: currentUser.id,
             email: currentUser.email ?? "",
+            name: currentUser.user_metadata?.name ?? "",
             isAdmin: currentUser.user_metadata?.tier === "admin",
           });
         }
@@ -67,12 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
-      const authSession = await login(request);
-      setSession(authSession);
+      const { data, error: loginError } = await login(request.email, request.password);
+      if (loginError) throw loginError;
+      if (!data?.user?.id) throw new Error("Login failed — no user returned.");
+      setSession(null); // Supabase manages the session internally
       setUser({
-        id: authSession.userId,
-        email: authSession.email,
-        isAdmin: authSession.tier === "admin",
+        id: data.user.id,
+        email: data.user.email ?? "",
+        name: data.user.user_metadata?.name ?? "",
+        isAdmin: data.user.user_metadata?.tier === "admin",
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Login failed";
@@ -88,11 +93,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
       setError(null);
       try {
-        const authSession = await signUp(request);
-        setSession(authSession);
+        const { data, error: signUpError } = await signUp(
+          request.email,
+          request.password,
+          request.name,
+          request.schoolName,
+        );
+        if (signUpError) throw signUpError;
+        if (!data?.user?.id) {
+          // Supabase returned no error but also no user — email confirmation likely required
+          throw new Error("Account created! Please check your email to confirm before signing in.");
+        }
+        // If session is null, Supabase requires email confirmation before the user can log in
+        if (!data.session) {
+          throw new Error("Account created! Please check your email to confirm your account, then sign in.");
+        }
+        setSession(null);
         setUser({
-          id: authSession.userId,
-          email: authSession.email,
+          id: data.user.id,
+          email: data.user.email ?? "",
+          name: request.name ?? "",
           isAdmin: request.isAdmin || false,
         });
       } catch (err) {

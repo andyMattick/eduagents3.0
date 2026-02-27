@@ -5,6 +5,8 @@ import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
 import { TeacherDashboard } from './components_new/TeacherSystem/TeacherDashboard';
+import { MyAssessmentsPage } from './components_new/TeacherSystem/MyAssessmentsPage';
+import { MyAgentsPage } from './components_new/TeacherSystem/MyAgentsPage';
 import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
@@ -15,7 +17,7 @@ import { ConversationalAssessmentWrapper } from './components_new/Pipeline/Conve
 
 console.log("ENV CHECK", import.meta.env);
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer';
+type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents';
 
 type AuthPage = 'signin' | 'signup';
 
@@ -63,15 +65,28 @@ function TeacherAppContent() {
               Pipeline
             </button>
             <button
+              className={`app-tab ${activeTab === 'my-assessments' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-assessments')}
+            >
+              <span className="app-tab-icon">📋</span>
+              My Assessments
+            </button>
+
+            <button
+              className={`app-tab ${activeTab === 'my-agents' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-agents')}
+            >
+              <span className="app-tab-icon">🤖</span>
+              My Agents
+            </button>
+
+            <button
               className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
               onClick={() => setActiveTab('what-we-infer')}
             >
               🔍 How Your Inputs Drive the Process
             </button>
             {/* Theme Toggle */}
-            
-
-          
 
             <button onClick={handleLogout} className="logout-button">
               Sign Out
@@ -88,11 +103,20 @@ function TeacherAppContent() {
         {activeTab === 'dashboard' && (
           <TeacherDashboard
             teacherId={user?.id || ''}
+            teacherName={user?.name || user?.email || ''}
             onNavigate={(page, data) => {
   // Existing routes
-              if (page === 'pipeline' || page === 'create-assignment') {
+              if (page === 'pipeline' || page === 'create-assignment' || page === 'createAssessment') {
                 setAssignmentContext(null);
                 setActiveTab('pipeline');
+              }
+
+              else if (page === 'viewAssessments') {
+                setActiveTab('my-assessments');
+              }
+
+              else if (page === 'viewAgentsBySubject') {
+                setActiveTab('my-agents');
               }
 
               else if (page === 'view-assignment' && data?.assignmentId) {
@@ -145,6 +169,20 @@ function TeacherAppContent() {
         )}
 
 
+
+        {activeTab === 'my-assessments' && (
+          <MyAssessmentsPage
+            teacherId={user?.id ?? ''}
+            onNewAssessment={() => { setActiveTab('pipeline'); }}
+          />
+        )}
+
+        {activeTab === 'my-agents' && (
+          <MyAgentsPage
+            userId={user?.id ?? ''}
+            onNewAssessment={() => { setActiveTab('pipeline'); }}
+          />
+        )}
 
         {activeTab === 'what-we-infer' && (
    <WhatWeInferPage />
