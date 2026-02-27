@@ -470,9 +470,39 @@
   border-radius: 8px;
 }
 
-/* Responsive Design */
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — TABLET (≤ 768px)
+   ═══════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 768px) {
   .app-container {
+    padding: 0;
+  }
+
+  .app-header-content {
+    padding: 0 0.75rem;
+  }
+
+  /* Horizontal-scroll tabs instead of wrapping/overflow */
+  .app-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;          /* Firefox */
+  }
+  .app-tabs::-webkit-scrollbar {
+    display: none;                  /* Chrome/Safari */
+  }
+
+  .app-tab {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    gap: 6px;
+  }
+
+  .app-tab-icon {
+    font-size: 1rem;
+  }
+
+  .app-content {
     padding: 1rem;
   }
 
@@ -480,30 +510,85 @@
     padding: 1.5rem 1rem;
   }
 
-  h1 {
-    font-size: 1.875rem;
-  }
-
-  h2 {
-    font-size: 1.5rem;
-  }
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.25rem; }
 
   .grid-2, .grid-3 {
     grid-template-columns: 1fr;
   }
 
-  .step-indicator {
-    gap: 0.5rem;
+  .step-indicator { gap: 0.5rem; }
+  .step-item { gap: 0.25rem; }
+  .step-label { font-size: 0.75rem; max-width: 60px; }
+
+  /* Dashboard grid → single column on tablet */
+  .dashboard-grid {
+    grid-template-columns: 1fr;
   }
 
-  .step-item {
-    gap: 0.25rem;
+  .dashboard-card {
+    padding: 1.25rem;
   }
 
-  .step-label {
-    font-size: 0.75rem;
-    max-width: 60px;
+  /* Dashboard header stacks */
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.75rem;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RESPONSIVE — PHONE (≤ 480px)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .app-header-content {
+    padding: 0 0.5rem;
+  }
+
+  .app-tab {
+    padding: 10px 10px;
+    font-size: 0.78rem;
+    gap: 4px;
+  }
+
+  .app-content {
+    padding: 0.75rem;
+  }
+
+  h1 { font-size: 1.25rem; }
+  h2 { font-size: 1.1rem; }
+
+  .dashboard-card {
+    padding: 1rem;
+  }
+
+  .dashboard-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  /* Logout button shrinks */
+  .logout-button {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  /* Assessments: hide table, show card list on phones */
+  .assessments-table-wrap {
+    display: none;
+  }
+  .assessments-card-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASSESSMENTS: DEFAULT — table visible, cards hidden
+   ═══════════════════════════════════════════════════════════════════════════ */
+.assessments-card-list {
+  display: none;
 }
 
 /* Accessibility */
@@ -691,7 +776,7 @@
 /* Grid for assignment cards */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
   gap: 1.75rem;
   padding: 1rem 0;
 }
