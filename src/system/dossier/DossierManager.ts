@@ -1,181 +1,218 @@
 // system/dossier/DossierManager.ts
+//
+// Unified manager for the single `dossiers` table.
+// One row per user.  Each agent type has two JSONB columns:
+//   - {agent}_dossier  → per-domain governance metrics (trust, stability, …)
+//                        Structure: Record<domain, AgentDossierData>
+//                        e.g. { "Math": { trustScore: 7, … }, "English": { trustScore: 5, … } }
+//   - {agent}_history  → append-only pipeline run traces
+//
+// SCRIBE pulls the domain-specific dossier so each subject gets its own
+// agent team with independent trust/weakness tracking.
+// ───────────────────────────────────────────────────────────────────
 import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
 import type { Violation } from "@/pipeline/agents/gatekeeper/ViolationCatalog";
 import { supabase } from "../../supabase/client";
 
+/** Canonical agent type keys (prefix before the colon in "writer:Math"). */
+type AgentKey = "writer" | "architect" | "astronomer";
 
+/** Shape stored per domain inside the *_dossier JSONB column. */
+export interface AgentDossierData {
+  trustScore: number;
+  stabilityScore: number;
+  weaknesses: Record<string, number>;
+  strengths: Record<string, number>;
+  domainMastery: { runs: number; cleanRuns: number };
+  compensationProfile: Record<string, string>;
+  version: number;
+  updatedAt: string;
+}
+
+/**
+ * The full shape stored in a *_dossier column.
+ * Keyed by domain (e.g. "Math", "English").
+ */
+export type AgentDossierMap = Record<string, AgentDossierData>;
+
+function baselineDossier(): AgentDossierData {
+  return {
+    trustScore: 5,
+    stabilityScore: 5,
+    weaknesses: {},
+    strengths: {},
+    domainMastery: { runs: 0, cleanRuns: 0 },
+    compensationProfile: {},
+    version: 1,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+/** Derive the column prefix ("writer" | "architect" | "astronomer") from "writer:Math". */
+function agentKey(agentType: string): AgentKey {
+  const prefix = agentType.split(":")[0] as AgentKey;
+  if (!["writer", "architect", "astronomer"].includes(prefix)) {
+    console.warn(`[DossierManager] Unknown agent prefix "${prefix}", falling back to "writer".`);
+    return "writer";
+  }
+  return prefix;
+}
+
+/** Extract the domain from "writer:Math" → "Math".  Falls back to "General". */
+function agentDomain(agentType: string): string {
+  return agentType.split(":")[1] || "General";
+}
 
 export class DossierManager {
-  static table = "system_agent_dossiers";
+  static table = "dossiers";
 
-  // -----------------------------
-  // LOAD
-  // -----------------------------
-  static async load(userId: string, agentType: string) {
+  // ─────────────────────────────────────────────────────
+  // LOAD — returns the full dossiers row for a user
+  // ─────────────────────────────────────────────────────
+  static async loadRow(userId: string) {
     const { data, error } = await supabase
       .from(this.table)
       .select("*")
       .eq("user_id", userId)
-      .eq("agent_type", agentType);
+      .single();
 
-    if (error) {
+    if (error && error.code !== "PGRST116") {
       console.error("[DossierManager] Load error:", error);
       throw error;
     }
-
-    return data ?? [];
+    return data ?? null;
   }
 
-  // -----------------------------
-  // CREATE BASELINE
-  // -----------------------------
-  static async createBaseline(userId: string, agentType: string) {
+  // ─────────────────────────────────────────────────────
+  // ENSURE ROW — create the dossiers row if it doesn't exist
+  // ─────────────────────────────────────────────────────
+  static async ensureRow(userId: string) {
+    let row = await this.loadRow(userId);
+    if (row) return row;
+
     const baseline = {
-      trustScore: 5,
-      stabilityScore: 5,
-      weaknesses: {},
-      strengths: {},
-      domainMastery: {},
-      compensationProfile: {},
-      version: 1,
-      updatedAt: new Date().toISOString()
+      user_id: userId,
+      writer_dossier: {},   // empty map — domains added on first run
+      architect_dossier: {},
+      astronomer_dossier: {},
+      writer_history: [],
+      architect_history: [],
+      astronomer_history: [],
+      philosopher_history: [],
     };
 
-    const instanceId = crypto.randomUUID();
-
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from(this.table)
-      .insert({
-        user_id: userId,
-        agent_type: agentType,
-        instance_id: instanceId,
-        dossier: baseline,
-        version: 1
-      });
+      .insert(baseline)
+      .select()
+      .single();
 
     if (error) {
       console.error("[DossierManager] Baseline create error:", error);
       throw error;
     }
 
-    return {
-      instanceId,
-      dossier: baseline,
-      version: 1
-    };
+    return data;
   }
 
-  // -----------------------------
-  // UPDATE AFTER RUN
-  // -----------------------------
+  // ─────────────────────────────────────────────────────
+  // LOAD AGENT DOSSIER — returns governance data for one
+  //   agent type + domain (e.g. "writer:Math" → Math writer)
+  // ─────────────────────────────────────────────────────
+  static async loadAgentDossier(userId: string, agentType: string): Promise<AgentDossierData> {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
+
+    const map: AgentDossierMap = (row[col] && typeof row[col] === "object") ? row[col] : {};
+    const existing = map[domain];
+
+    if (existing && typeof existing === "object" && existing.trustScore !== undefined) {
+      return existing as AgentDossierData;
+    }
+    return baselineDossier();
+  }
+
+  // ─────────────────────────────────────────────────────
+  // UPDATE AFTER RUN — apply gatekeeper findings to the
+  //   domain-specific agent dossier
+  // ─────────────────────────────────────────────────────
   static async updateAfterRun({
     userId,
     agentType,
-    instanceId,
     gatekeeperReport,
     questionCount,
   }: {
     userId: string;
     agentType: string;
-    instanceId: string;
     gatekeeperReport: GatekeeperReport;
-    /** Pre-extracted scalar. Avoids passing the full FinalAssessment into the dossier path. */
     questionCount: number;
   }) {
-    // Load existing dossier(s)
-    let dossiers = await this.load(userId, agentType);
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
 
-    // Auto-create if missing
-    if (!dossiers || dossiers.length === 0) {
-      const created = await this.createBaseline(userId, agentType);
-      dossiers = [
-        {
-          instance_id: created.instanceId,
-          dossier: created.dossier,
-          version: created.version
-        }
-      ];
-    }
+    // Load the full domain map for this agent type
+    const map: AgentDossierMap =
+      (row[col] && typeof row[col] === "object") ? { ...row[col] } : {};
 
-    // Find the correct instance
-    let entry = dossiers.find((d: any) => d.instance_id === instanceId);
+    // Get or create the domain-specific dossier
+    const dossier: AgentDossierData =
+      (map[domain] && typeof map[domain] === "object" && map[domain].trustScore !== undefined)
+        ? { ...map[domain] }
+        : baselineDossier();
 
-    // If instanceId doesn't exist, create a new one
-    if (!entry) {
-      const created = await this.createBaseline(userId, agentType);
-      entry = {
-        instance_id: created.instanceId,
-        dossier: created.dossier,
-        version: created.version
-      };
-    }
-
-    const dossier = entry.dossier;
-
-    // Ensure weaknesses exists
+    // Ensure nested objects exist
     dossier.weaknesses ??= {};
+    dossier.strengths ??= {};
+    dossier.domainMastery ??= { runs: 0, cleanRuns: 0 };
 
-    // Update weaknesses based on Gatekeeper
+    // ── Apply gatekeeper violations ──────────────────────
     const violations: Violation[] = gatekeeperReport?.violations ?? [];
     for (const v of violations) {
       dossier.weaknesses[v.type] = (dossier.weaknesses[v.type] ?? 0) + 1;
     }
 
-    // ── Success + failure tracking ──────────────────────────────────────────
-    // Previously only decremented on failures. Now clean runs earn increases
-    // and domain performance is recorded (strengths + domainMastery).
-
-    // rewriteCount tracked separately by SCRIBE.updateWriterDossier
     const isCleanRun = violations.length === 0;
     const isLowFriction = violations.length <= 2;
-    const domain = agentType.split(":")[1] ?? "unknown";
 
-    // Trust: only penalise if violations > 2 (single noise violations are ignored).
-    // Reward clean runs with +1.
+    // Trust score — domain-specific
     if (isCleanRun) {
       dossier.trustScore = Math.min(10, (dossier.trustScore ?? 5) + 1);
     } else if (violations.length > 2) {
-      // Scale penalty: -1 for 3-4 violations, -2 for 5+
       const penalty = violations.length >= 5 ? 2 : 1;
       dossier.trustScore = Math.max(0, (dossier.trustScore ?? 5) - penalty);
     }
-    // else: 1–2 violations → trustScore unchanged (expected noise)
 
-    // Stability: subtract proportional to rewrite ratio, add 1 for low-friction (clamp 0–10)
+    // Stability score — domain-specific
     if (isLowFriction) {
       dossier.stabilityScore = Math.min(10, (dossier.stabilityScore ?? 5) + 1);
     } else {
-      // Penalise proportionally to violation density relative to question count
       const density = questionCount > 0 ? violations.length / questionCount : 1;
       const penalty = density >= 0.5 ? 2 : 1;
       dossier.stabilityScore = Math.max(0, (dossier.stabilityScore ?? 5) - penalty);
     }
 
-    // Strengths: record successful domains (clean or low-friction)
-    dossier.strengths ??= {};
-    if (isLowFriction && domain !== "unknown") {
-      dossier.strengths[domain] = (dossier.strengths[domain] ?? 0) + 1;
-    }
+    // Domain mastery — runs/cleanRuns for this specific domain
+    dossier.domainMastery.runs += 1;
+    if (isCleanRun) dossier.domainMastery.cleanRuns += 1;
 
-    // Domain mastery: track run count + success rate per domain
-    dossier.domainMastery ??= {};
-    if (domain !== "unknown") {
-      const dm = dossier.domainMastery[domain] ?? { runs: 0, cleanRuns: 0 };
-      dm.runs += 1;
-      if (isCleanRun) dm.cleanRuns += 1;
-      dossier.domainMastery[domain] = dm;
-    }
+    dossier.version = (dossier.version ?? 0) + 1;
+    dossier.updatedAt = new Date().toISOString();
 
-    // Save updated dossier
+    // Write the domain back into the map
+    map[domain] = dossier;
+
+    // Persist the full map
     const { error } = await supabase
       .from(this.table)
       .update({
-        dossier,
-        updated_at: new Date().toISOString()
+        [col]: map,
+        updated_at: new Date().toISOString(),
       })
-      .eq("user_id", userId)
-      .eq("agent_type", agentType)
-      .eq("instance_id", entry.instance_id);
+      .eq("user_id", userId);
 
     if (error) {
       console.error("[DossierManager] Update error:", error);
@@ -183,5 +220,52 @@ export class DossierManager {
     }
 
     return dossier;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // APPEND HISTORY — add a pipeline run trace for an agent type
+  // ─────────────────────────────────────────────────────
+  static async appendHistory(userId: string, agentType: string, entry: any) {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const col = `${key}_history`;
+
+    const existing: any[] = Array.isArray(row[col]) ? row[col] : [];
+    const updatedHistory = [...existing, entry];
+
+    const { error } = await supabase
+      .from(this.table)
+      .update({
+        [col]: updatedHistory,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("[DossierManager] appendHistory error:", error);
+      throw error;
+    }
+
+    return updatedHistory;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // RECORD PIPELINE RUN — convenience wrapper
+  // ─────────────────────────────────────────────────────
+  static async recordPipelineRun({
+    userId,
+    trace,
+    finalAssessment,
+  }: {
+    userId: string;
+    trace: any;
+    finalAssessment: any;
+  }) {
+    const entry = {
+      timestamp: new Date().toISOString(),
+      trace,
+      finalAssessment,
+    };
+    return await this.appendHistory(userId, "writer", entry);
   }
 }

@@ -2,7 +2,6 @@
 import { AgentSelector } from "./AgentSelector";
 import { CompensationEngine } from "./CompensationEngine";
 import { DossierManager } from "@/system/dossier/DossierManager";
-import { UserDossierManager } from "@/system/dossier/UserDossierManager";
 import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { supabase } from "@/supabase/client";
@@ -63,11 +62,11 @@ export class SCRIBE {
   // -----------------------------------------------------
   static async selectAgents(uar: any) {
     const userId = uar.userId;
-    const domain = uar.domain;
+    const domain = uar.domain ?? uar.course ?? "General";
 
+    // Ensure the dossier row exists and load the domain-specific writer dossier for compensation
     const writer = await AgentSelector.selectAgent(userId, `writer:${domain}`);
-    const architect = await AgentSelector.selectAgent(userId, `architect:${domain}`);
-    const astronomer = await AgentSelector.selectAgent(userId, `astronomer:${domain}`);
+    // Architect/Astronomer domain dossiers are auto-created at update time — no need to pre-select
 
     const compensationProfile = CompensationEngine.generateCompensation(
       writer.dossier,
@@ -75,10 +74,8 @@ export class SCRIBE {
     );
 
     return {
-      writerInstanceId: writer.instanceId,
-      architectInstanceId: architect.instanceId,
-      astronomerInstanceId: astronomer.instanceId,
-      compensationProfile
+      compensationProfile,
+      domain,   // pass through so runPipeline can forward it to updateAgentDossier
     };
   }
 
@@ -230,7 +227,6 @@ export class SCRIBE {
   static async updateAgentDossier({
     userId,
     agentType,
-    instanceId,
     gatekeeperReport,
     finalAssessment,
     blueprint,
@@ -238,7 +234,6 @@ export class SCRIBE {
   }: {
     userId: string;
     agentType: string;
-    instanceId: string;
     gatekeeperReport: GatekeeperReport;
     /** Slim telemetry — only what SCRIBE reads. Extracted via finalAssessmentForScribe(). */
     finalAssessment: { questionCount: number; questionTypes: string[] };
@@ -259,11 +254,10 @@ export class SCRIBE {
       }
     }
 
-    // 2a. Update agent dossier in memory
+    // 2a. Update agent dossier — single row per user, no instanceId needed
     const dossierResult = await DossierManager.updateAfterRun({
       userId,
       agentType,
-      instanceId,
       gatekeeperReport,
       questionCount: finalAssessment.questionCount,
     });
@@ -314,7 +308,7 @@ export class SCRIBE {
   }
 
   // -----------------------------------------------------
-  // 3. UPDATE USER DOSSIER
+  // 3. UPDATE USER DOSSIER (pipeline run history)
   // -----------------------------------------------------
   static async updateUserDossier({
     userId,
@@ -325,7 +319,7 @@ export class SCRIBE {
     trace: any;
     finalAssessment: any;
   }) {
-    return await UserDossierManager.recordPipelineRun({
+    return await DossierManager.recordPipelineRun({
       userId,
       trace,
       finalAssessment
@@ -346,7 +340,6 @@ export class SCRIBE {
     userId: string;
     agentRuns: Array<{
       agentType: string;
-      instanceId: string;
       gatekeeperReport: GatekeeperReport;
     }>;
     trace: any;
@@ -359,7 +352,6 @@ export class SCRIBE {
       await this.updateAgentDossier({
         userId,
         agentType: run.agentType,
-        instanceId: run.instanceId,
         gatekeeperReport: run.gatekeeperReport,
         finalAssessment,
         blueprint,
@@ -367,7 +359,7 @@ export class SCRIBE {
       });
     }
 
-    // 2. Update user dossier
+    // 2. Update user dossier (pipeline run history)
     await this.updateUserDossier({
       userId,
       trace,

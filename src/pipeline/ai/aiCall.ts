@@ -1,19 +1,17 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+// aiCall.ts — Thin wrapper around the secure /api/llm proxy.
+// No API keys in client code.
 
-const genAI = new GoogleGenerativeAI(
-  (import.meta as any).env.VITE_GEMINI_API_KEY
-);
+import { callGemini } from "@/pipeline/llm/gemini";
 
 export async function callAI(prompt: string): Promise<string> {
   if (!prompt.trim()) {
     throw new Error("Prompt cannot be empty");
   }
 
-  const model = genAI.getGenerativeModel({
+  return callGemini({
     model: "gemini-2.5-flash",
+    prompt,
+    temperature: 0.2,
+    maxOutputTokens: 4096,
   });
-
-  const result = await model.generateContent(prompt);
-
-  return result.response.text();
 }

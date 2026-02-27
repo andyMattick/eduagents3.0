@@ -37,8 +37,9 @@ export async function getDailyUsage(userId: string): Promise<DailyUsage> {
 
     if (error) {
       console.warn("[usageService] count query failed (non-fatal):", error.message);
-      // Be permissive on DB errors — don't block the user
-      return { count: 0, limit, remaining: limit, canGenerate: true };
+      // Fail CLOSED — if we can't verify usage, block the request.
+      // This prevents abuse when Supabase is temporarily unreachable.
+      return { count: limit, limit, remaining: 0, canGenerate: false };
     }
 
     const today = count ?? 0;
@@ -49,7 +50,8 @@ export async function getDailyUsage(userId: string): Promise<DailyUsage> {
       canGenerate: today < limit,
     };
   } catch (e) {
-    console.warn("[usageService] unexpected error (non-fatal):", e);
-    return { count: 0, limit, remaining: limit, canGenerate: true };
+    console.warn("[usageService] unexpected error:", e);
+    // Fail CLOSED
+    return { count: limit, limit, remaining: 0, canGenerate: false };
   }
 }
