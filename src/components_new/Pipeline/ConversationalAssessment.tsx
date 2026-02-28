@@ -119,7 +119,7 @@ const BASE_STEPS_AFTER: Step[] = [
 // ── Adaptive steps injected after assessmentType ──────────────────────────────
 
 /** Types that are "structured" — tests, quizzes, worksheets get extra questions */
-const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview"]);
+const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview", "bellRinger", "exitTicket"]);
 
 function getAdaptiveSteps(assessmentType: string): Step[] {
   if (!STRUCTURED_TYPES.has(assessmentType)) return [];

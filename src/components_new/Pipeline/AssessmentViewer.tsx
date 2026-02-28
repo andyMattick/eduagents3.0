@@ -27,7 +27,12 @@ function computeReport(
 ): ReportData {
   const items = assessment.items;
   const total = assessment.totalItems;
-  const cogDist = assessment.cognitiveDistribution ?? {};
+  // Derive cognitive distribution from items (not stored on FinalAssessment directly)
+  const cogDist: Record<string, number> = {};
+  for (const item of items) {
+    const demand = (item as any).cognitiveDemand as string | undefined;
+    if (demand) cogDist[demand] = (cogDist[demand] ?? 0) + 1;
+  }
   const levels = Object.keys(cogDist).sort((a, b) => cogDist[b] - cogDist[a]);
   const dominantLevel = levels[0] ?? null;
 
@@ -299,10 +304,7 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
     <div className="av-question">
       <div className="av-q-number">{item.questionNumber}.</div>
       <div className="av-q-body">
-        {item.cognitiveDemand && (
-          <span className="av-bloom-badge">{item.cognitiveDemand}</span>
-        )}
-        <p className="av-q-prompt">{item.prompt}</p>
+
 
         {isMC && item.options && (
           <ul className="av-options">
@@ -360,7 +362,6 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
 
   const displayTitle = title ?? "Assessment";
   const totalTime = totalMinutes(assessment.metadata?.totalEstimatedTimeSeconds);
-  const cogDist = assessment.cognitiveDistribution ?? {};
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
@@ -446,16 +447,7 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
           <span className="av-meta-item">📅 {formatDate(assessment.generatedAt)}</span>
         </div>
 
-        {/* Cognitive distribution pills */}
-        {Object.keys(cogDist).length > 0 && (
-          <div className="av-cog-summary">
-            {Object.entries(cogDist).map(([level, count]) => (
-              <span key={level} className="av-cog-pill">
-                {level}: {count}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Cognitive distribution pills — hidden from on-screen view, kept in PDF only */}
       </div>
 
       {/* ── Student header fields ───────────────────────────────── */}
