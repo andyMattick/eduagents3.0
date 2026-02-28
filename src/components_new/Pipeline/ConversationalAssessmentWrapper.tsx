@@ -46,6 +46,7 @@ export function ConversationalAssessmentWrapper({
   // ── Prompt Engineer state ──────────────────────────────────────────────
   const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
   const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
+  const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
 
   // ── Post-Builder teacher feedback state ────────────────────────────────
   const [isRewriting, setIsRewriting] = useState(false);
@@ -88,6 +89,8 @@ export function ConversationalAssessmentWrapper({
       if (!pendingIntent) return;
       setLimitError(null);
       setPipelineError(null);
+      // Stash estimated time before clearing the panel so loading card can display it
+      setPendingEstimatedSeconds(peResult?.estimatedCreationSeconds ?? null);
       setPeResult(null); // hide the panel
       try {
         setIsLoading(true);
@@ -243,8 +246,45 @@ export function ConversationalAssessmentWrapper({
         </div>
       )}
 
-      {/* Always show the conversational form unless a result is ready */}
-      {!result && !limitError && !peResult ? (
+      {/* While the pipeline is running, show a clean generation status card */}
+      {!result && !limitError && isLoading ? (
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "1.25rem",
+          padding: "3rem 2rem",
+          borderRadius: "12px",
+          background: "var(--bg-secondary, #f8f8f8)",
+          border: "1px solid var(--border, #e0e0e0)",
+          textAlign: "center",
+          minHeight: "220px",
+        }}>
+          <div style={{ fontSize: "2.5rem", lineHeight: 1 }}>🚀</div>
+          <div>
+            <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "1.1rem", color: "var(--fg, #111)" }}>
+              Generating your assessment…
+            </p>
+            {pendingEstimatedSeconds != null && pendingEstimatedSeconds > 0 && (
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-secondary, #555)" }}>
+                Estimated time: ~{pendingEstimatedSeconds < 60
+                  ? `${pendingEstimatedSeconds}s`
+                  : `${Math.round(pendingEstimatedSeconds / 60)} min`}
+              </p>
+            )}
+          </div>
+          <div style={{
+            width: "48px",
+            height: "48px",
+            border: "4px solid var(--border, #e0e0e0)",
+            borderTopColor: "var(--accent, #4f46e5)",
+            borderRadius: "50%",
+            animation: "spin 0.9s linear infinite",
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
           onComplete={handleConversationComplete}
           isLoading={isLoading}

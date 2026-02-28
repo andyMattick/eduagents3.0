@@ -496,6 +496,49 @@ export async function exportAssessment(
     return downloadFinalAssessmentPDF(assessment, options);
   }
 }
+/**
+ * Parse a string containing LaTeX-style math notation into an array of docx TextRuns.
+ * Supports: ^{...} for superscript, _{...} for subscript,
+ *           ^N or ^NN (bare) for superscript, _N (bare) for subscript.
+ */
+function parseMathRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  // Match ^{...}, _{...}, ^X (1-3 non-space chars), _X (1-3 non-space chars)
+  const regex = /(\^{([^}]*)})|(_{([^}]*)})|(\^([\d\w±]{1,3}))|(_([\d\w]{1,3}))/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Push any plain text before this match
+    if (match.index > lastIndex) {
+      runs.push(new TextRun({ text: text.slice(lastIndex, match.index) }));
+    }
+
+    if (match[1]) {
+      // ^{...} → superscript
+      runs.push(new TextRun({ text: match[2], superScript: true }));
+    } else if (match[3]) {
+      // _{...} → subscript
+      runs.push(new TextRun({ text: match[4], subScript: true }));
+    } else if (match[5]) {
+      // ^X → superscript
+      runs.push(new TextRun({ text: match[6], superScript: true }));
+    } else if (match[7]) {
+      // _X → subscript
+      runs.push(new TextRun({ text: match[8], subScript: true }));
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining plain text
+  if (lastIndex < text.length) {
+    runs.push(new TextRun({ text: text.slice(lastIndex) }));
+  }
+
+  return runs.length > 0 ? runs : [new TextRun({ text })];
+}
+
 export async function downloadFinalAssessmentWord(
   assessment: FinalAssessment,
   options: PDFOptions = {}
@@ -514,20 +557,19 @@ export async function downloadFinalAssessmentWord(
   children.push(new Paragraph(""));
 
   for (const item of assessment.items) {
+    // Build the question prompt with math-aware runs
     children.push(
       new Paragraph({
         children: [
-          new TextRun({
-            text: `${item.questionNumber}. ${item.prompt}`,
-            bold: false,
-          }),
+          new TextRun({ text: `${item.questionNumber}. `, bold: true }),
+          ...parseMathRuns(item.prompt ?? ""),
         ],
       })
     );
 
     if (item.questionType === "multipleChoice") {
       item.options?.forEach(opt => {
-        children.push(new Paragraph(opt));
+        children.push(new Paragraph({ children: parseMathRuns(opt) }));
       });
     } else {
       children.push(new Paragraph(" "));
@@ -537,36 +579,42 @@ export async function downloadFinalAssessmentWord(
 
     children.push(new Paragraph(""));
   }
-      if (includeAnswerKey) {
+
+  if (includeAnswerKey) {
+    children.push(new Paragraph({
+      text: "ANSWER KEY",
+      heading: HeadingLevel.HEADING_2,
+    }));
+
+    assessment.items.forEach(item => {
+      const answerText = item.answer ?? "—";
       children.push(new Paragraph({
-        text: "ANSWER KEY",
-        heading: HeadingLevel.HEADING_2,
+        children: [
+          new TextRun({ text: `${item.questionNumber}. `, bold: true }),
+          ...parseMathRuns(answerText),
+        ],
       }));
-
-      assessment.items.forEach(item => {
-        children.push(new Paragraph(
-          `${item.questionNumber}. ${item.answer ?? "—"}`
-        ));
-      });
-
-  children.push(new Paragraph(""));
-}
-if (includeRubric) {
-  children.push(new Paragraph({
-    text: "RUBRIC",
-    heading: HeadingLevel.HEADING_2,
-  }));
-
-  const rubric = buildRubric(assessment);
-
-  rubric.forEach(r => {
-    children.push(new Paragraph(`Question ${r.questionNumber}`));
-    r.criteria.forEach(c => {
-      children.push(new Paragraph(`• ${c}`));
     });
+
     children.push(new Paragraph(""));
-  });
-}
+  }
+
+  if (includeRubric) {
+    children.push(new Paragraph({
+      text: "RUBRIC",
+      heading: HeadingLevel.HEADING_2,
+    }));
+
+    const rubric = buildRubric(assessment);
+
+    rubric.forEach(r => {
+      children.push(new Paragraph(`Question ${r.questionNumber}`));
+      r.criteria.forEach(c => {
+        children.push(new Paragraph(`• ${c}`));
+      });
+      children.push(new Paragraph(""));
+    });
+  }
 
   const doc = new Document({
     sections: [{ children }],

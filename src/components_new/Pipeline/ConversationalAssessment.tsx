@@ -131,11 +131,6 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
       question: "What question formats should this include?",
       chips: QUESTION_FORMAT_CHIPS,
     },
-    {
-      id: "bloomPreference",
-      question: "What cognitive level should the questions target?",
-      chips: BLOOM_PREFERENCE_CHIPS,
-    },
   ];
 
   // Multi-part questions for longer structured assessments
