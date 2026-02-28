@@ -19,7 +19,7 @@ export interface MinimalTeacherIntent {
   additionalDetails?: string | null;
 
   // ── Adaptive fields (populated for structured assessment types) ──────
-  /** "mcqOnly" | "saOnly" | "mixed" | "auto" */
+  /** "mcqOnly" | "saOnly" | "essayOnly" | "frqOnly" | "fitbOnly" | "trueFalseOnly" | "mixed" */
   questionFormat?: string | null;
   /** "lower" | "apply" | "higher" | "balanced" */
   bloomPreference?: string | null;

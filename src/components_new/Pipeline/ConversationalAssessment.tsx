@@ -20,10 +20,13 @@ const LEVEL_CHIPS = [
 ];
 
 const QUESTION_FORMAT_CHIPS = [
-  { label: "Multiple Choice Only", value: "mcqOnly"   },
-  { label: "Short Answer Only",    value: "saOnly"    },
-  { label: "Mixed Format",         value: "mixed"     },
-  { label: "Let AI Decide",        value: "auto"      },
+  { label: "Multiple Choice",    value: "mcqOnly"       },
+  { label: "Short Answer",       value: "saOnly"        },
+  { label: "Essay",              value: "essayOnly"     },
+  { label: "Free Response",value: "frqOnly"       },
+  { label: "Fill in the Blank",  value: "fitbOnly"      },
+  { label: "True / False",       value: "trueFalseOnly" },
+  { label: "Mixed Format",       value: "mixed"         },
 ];
 
 const BLOOM_PREFERENCE_CHIPS = [

@@ -202,10 +202,13 @@ export function runPromptEngineer(
     );
   }
 
-  if (intent.questionFormat === "saOnly" && intent.assessmentType === "bellRinger") {
+  if (
+    ["saOnly", "essayOnly", "frqOnly"].includes(intent.questionFormat ?? "") &&
+    intent.assessmentType === "bellRinger"
+  ) {
     suggestions.push(
-      "Short-answer-only bell ringers may take longer to grade. " +
-      "Consider mixed format for quicker turnaround."
+      "Open-response bell ringers may take longer to grade. " +
+      "Consider mixed format or MCQ for quicker turnaround."
     );
   }
 

@@ -32,14 +32,24 @@ function mapQuestionFormat(
       return ["multipleChoice"];
     case "saOnly":
       return ["shortAnswer"];
+    case "essayOnly":
+      return ["essay"];
+    case "frqOnly":
+      // AP-style free response — richer rubric-able prompts
+      return ["freeResponse"];
+    case "fitbOnly":
+      return ["fillInTheBlank"];
+    case "trueFalseOnly":
+      return ["trueFalse"];
     case "mixed":
       // Vary the mix by assessment type
       if (assessmentType === "test")
-        return ["multipleChoice", "shortAnswer", "constructedResponse"];
+        return ["multipleChoice", "shortAnswer", "freeResponse"];
+      if (assessmentType === "quiz")
+        return ["multipleChoice", "shortAnswer"];
       return ["multipleChoice", "shortAnswer"];
-    case "auto":
     default:
-      return undefined; // let the pipeline decide
+      return undefined; // let the Architect decide
   }
 }
 
