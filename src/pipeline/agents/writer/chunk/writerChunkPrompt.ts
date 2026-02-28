@@ -10,20 +10,31 @@
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { WriterContext, ScribePrescriptions } from "../writerPrompt";
 import { END_SENTINEL } from "./parseChunk";
+import { buildBloomHintDirectives, type HintMode } from "../bloomHints";
 
 export function buildChunkPrompt(
   slots: BlueprintPlanV3_2["slots"],
   context: WriterContext,
-  scribe: ScribePrescriptions
+  scribe: ScribePrescriptions,
+  /** Bloom hint verbosity mode from the budget algorithm. Defaults to FULL. */
+  hintMode: HintMode = "FULL"
 ): string {
+  // Pre-compute per-slot Bloom intent directives (mode-aware)
+  const bloomDirectives = buildBloomHintDirectives(slots, hintMode);
+  const hintMap = new Map(bloomDirectives.map(d => [d.slotId, d.directive]));
+
   const slotDescriptions = slots
     .map(
-      (slot, i) => `
+      (slot, i) => {
+        const hint = hintMap.get(slot.id) ?? "";
+        return `
 SLOT ${i + 1}
   slotId: ${slot.id}
   questionType: ${slot.questionType}
   cognitiveDemand: ${slot.cognitiveDemand}
-  difficulty: ${slot.difficulty}`
+  difficulty: ${slot.difficulty}
+  bloomIntent: ${hint}`;
+      }
     )
     .join("\n");
 
@@ -97,6 +108,8 @@ Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
 Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
 
 SLOTS TO GENERATE
+Each slot includes a "bloomIntent" line — this is MANDATORY guidance. Use the listed verbs and
+follow the stated structure note. The exampleStarter shows a template you can adapt to the topic.
 ${slotDescriptions}
 
 OUTPUT FORMAT (STRICT)

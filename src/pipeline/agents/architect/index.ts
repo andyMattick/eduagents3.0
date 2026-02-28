@@ -3,7 +3,9 @@ import { buildArchitectUAR } from "@/pipeline/contracts/UnifiedAssessmentRequest
 import { Blueprint } from "@/pipeline/contracts/Blueprint";
 import { buildArchitectPrompt } from "./architectPrompt";
 import { callGemini } from "@/pipeline/llm/gemini";
-
+import { runConstraintEngine } from "./constraintEngine";
+import { resolveRigorProfile } from "./rigorProfile";
+import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
 
 import {
   BlueprintPlanV3_2,
@@ -27,6 +29,53 @@ export async function runArchitect({
   // 0. Normalize to ArchitectUAR before any planning
   //
   const architectUAR = buildArchitectUAR(uar);
+
+  //
+  // 0b. Constraint engine — classify, arbitrate, and translate teacher notes
+  //
+  // We run this early so that derived structural knobs (bloomBoost, preferMC, etc.)
+  // can influence every downstream planning step.
+  //
+  const constraintSource = [
+    architectUAR.additionalDetails ?? "",
+    architectUAR.topic ?? "",
+  ].join(" ");
+
+  // We don't yet know the deterministic ceiling — seed with a conservative default
+  // that will be updated after the Bloom distribution is computed below.
+  const constraintEngineResult = runConstraintEngine(constraintSource, "understand");
+  const { classifiedConstraints, resolvedConstraints, derivedStructuralConstraints } =
+    constraintEngineResult;
+
+  if (classifiedConstraints.length > 0) {
+    console.info(
+      `[Architect] Constraint engine: ${classifiedConstraints.length} classified, ` +
+      `${resolvedConstraints.filter(c => c.resolved === false).length} dropped, ` +
+      `${resolvedConstraints.filter(c => c.resolved === "softened").length} softened`
+    );
+  }
+
+  //
+  // 0c. Rigor profile — resolve canonical depth band from studentLevel + time + constraints
+  //
+  // This replaces the ad-hoc time-cap heuristic below with a principled,
+  // studentLevel-aware depth band.  The resulting depthFloor / depthCeiling
+  // are used to gate every Bloom assignment in the cps[] array.
+  //
+  const rigorProfile = resolveRigorProfile({
+    studentLevel: architectUAR.studentLevel,
+    assessmentType: architectUAR.assessmentType,
+    timeMinutes: architectUAR.timeMinutes,
+    derivedStructuralConstraints: {
+      raiseBloomCeiling: derivedStructuralConstraints.raiseBloomCeiling,
+      capBloomAt: derivedStructuralConstraints.capBloomAt,
+    },
+  });
+
+  console.info(
+    `[Architect] Rigor profile: ${rigorProfile.depthFloor} → ${rigorProfile.depthCeiling}`,
+    `| trace: ${rigorProfile.trace.join(" | ")}`
+  );
 
   //
   // 1. Your deterministic planning logic (unchanged)
@@ -144,29 +193,102 @@ export async function runArchitect({
   while (cps.length < questionCount) cps.push("understand");
   if (cps.length > questionCount) cps.length = questionCount;
 
-  // Depth cap: assessments under 25 minutes should not demand deep Bloom levels.
-  // Replace any "analyze" or "evaluate" entries with "apply" to keep the workload
-  // realistic for shorter tests where students won't have time to reason deeply.
-  const timeMinutes: number = architectUAR.timeMinutes ?? 40;
-  if (timeMinutes < 25) {
-    for (let i = 0; i < cps.length; i++) {
-      if (cps[i] === "analyze" || cps[i] === "evaluate") {
-        cps[i] = "apply";
+  // Depth band enforcement via rigorProfile.
+  // Replace any cps[] entry that exceeds depthCeiling with depthCeiling,
+  // and any that falls below depthFloor with depthFloor.
+  // This replaces the previous ad-hoc < 25-min heuristic.
+  const BLOOM_ORDER_ALL = ["remember", "understand", "apply", "analyze", "evaluate"] as const;
+  const rpFloorIdx   = BLOOM_ORDER_ALL.indexOf(rigorProfile.depthFloor  as typeof BLOOM_ORDER_ALL[number]);
+  const rpCeilingIdx = BLOOM_ORDER_ALL.indexOf(rigorProfile.depthCeiling as typeof BLOOM_ORDER_ALL[number]);
+
+  for (let i = 0; i < cps.length; i++) {
+    const cpIdx = BLOOM_ORDER_ALL.indexOf(cps[i] as typeof BLOOM_ORDER_ALL[number]);
+    if (cpIdx > rpCeilingIdx) cps[i] = rigorProfile.depthCeiling as CognitiveProcess;
+    if (cpIdx < rpFloorIdx)   cps[i] = rigorProfile.depthFloor   as CognitiveProcess;
+  }
+
+  //
+  // 2b. Apply derived structural constraints from the constraint engine
+  //
+  // bloomBoost: shift distribution fractions toward targeted Bloom levels.
+  if (derivedStructuralConstraints.bloomBoost) {
+    const boost = derivedStructuralConstraints.bloomBoost;
+    for (const cp of cpOrder) {
+      const delta = boost[cp] ?? 0;
+      if (delta === 0) continue;
+      const extra = Math.round(delta * questionCount);
+      if (extra > 0) {
+        for (let k = 0; k < extra; k++) cps.push(cp);
+      } else {
+        // Remove |extra| entries of the lowest-priority target
+        let removed = 0;
+        for (let k = cps.length - 1; k >= 0 && removed < Math.abs(extra); k--) {
+          if (cps[k] === cp) {
+            cps.splice(k, 1);
+            removed++;
+          }
+        }
       }
     }
   }
 
-  const usedSet = new Set<CognitiveProcess>(cps);
-  const usedOrdered = cpOrder.filter(cp => usedSet.has(cp));
-  const depthFloor: CognitiveProcess = usedOrdered[0] ?? "remember";
-  const depthCeiling: CognitiveProcess =
-    usedOrdered[usedOrdered.length - 1] ?? "understand";
+  // Inject extra analyze/apply slots requested by "more rigorous" translation
+  if (derivedStructuralConstraints.addAnalyzeSlots) {
+    for (let k = 0; k < derivedStructuralConstraints.addAnalyzeSlots; k++) {
+      cps.push("analyze");
+    }
+  }
+  if (derivedStructuralConstraints.addApplySlots) {
+    for (let k = 0; k < derivedStructuralConstraints.addApplySlots; k++) {
+      cps.push("apply");
+    }
+  }
+
+  // capBloomAt: secondary hard ceiling (already baked into rigorProfile, but
+  // apply again here in case bloomBoost injections pushed cps above the cap)
+  const effectiveCap = derivedStructuralConstraints.capBloomAt ?? rigorProfile.depthCeiling;
+  {
+    const capIdx = BLOOM_ORDER_ALL.indexOf(effectiveCap as typeof BLOOM_ORDER_ALL[number]);
+    for (let i = 0; i < cps.length; i++) {
+      const idx = BLOOM_ORDER_ALL.indexOf(cps[i] as typeof BLOOM_ORDER_ALL[number]);
+      if (idx > capIdx) cps[i] = effectiveCap as CognitiveProcess;
+    }
+  }
+
+  // Trim back to questionCount (additions may have pushed us over)
+  if (cps.length > questionCount) cps.length = questionCount;
+
+  // depthFloor / depthCeiling come from rigorProfile (authoritative)
+  const depthFloor: CognitiveProcess   = rigorProfile.depthFloor   as CognitiveProcess;
+  let   depthCeiling: CognitiveProcess = rigorProfile.depthCeiling as CognitiveProcess;
 
   //
-  // 3. Build extensible slots (unchanged)
+  // 3. Build extensible slots
   //
 
-  const teacherTypes = architectUAR.questionTypes
+  // Adjust available question types based on grading-efficiency constraints.
+  let effectiveTeacherTypes = [...architectUAR.questionTypes];
+
+  if (derivedStructuralConstraints.preferMultipleChoice) {
+    // Ensure multipleChoice is first (dominant) type; bump weight by prepending it twice
+    effectiveTeacherTypes = [
+      "multipleChoice",
+      "multipleChoice",
+      ...effectiveTeacherTypes.filter(t => t !== "multipleChoice"),
+    ];
+  }
+
+  if (derivedStructuralConstraints.reduceConstructedResponse) {
+    effectiveTeacherTypes = effectiveTeacherTypes.filter(t => t !== "constructedResponse");
+    if (effectiveTeacherTypes.length === 0) effectiveTeacherTypes = ["multipleChoice"];
+  }
+
+  if (derivedStructuralConstraints.reduceShortAnswer) {
+    effectiveTeacherTypes = effectiveTeacherTypes.filter(t => t !== "shortAnswer");
+    if (effectiveTeacherTypes.length === 0) effectiveTeacherTypes = ["multipleChoice"];
+  }
+
+  const teacherTypes = effectiveTeacherTypes;
 
   const slots = cps.map((cp, i) => {
     const questionType = teacherTypes[i % teacherTypes.length];
@@ -255,7 +377,12 @@ export async function runArchitect({
   // 7. LLM refinement step
   //
 
-  const architectPrompt = buildArchitectPrompt(architectUAR, deterministicPlan);
+  const architectPrompt = buildArchitectPrompt(
+    architectUAR,
+    deterministicPlan,
+    resolvedConstraints,
+    derivedStructuralConstraints
+  );
 
   const llmRaw = await callGemini({
     model: "gemini-2.5-flash",
@@ -334,27 +461,87 @@ export async function runArchitect({
   // 10. Realistic time check using weighted pacing
   //
   // Now that we have final slots, compute the realistic total time using
-  // per-slot weighted estimates.
+  // per-slot weighted estimates.  Then enforce the teacher's time window
+  // as a hard constraint via adjustPlanForTime.
   //
 
-  const realisticTotalSeconds = (finalPlan.slots ?? slots).reduce(
+  const rawRealisticTotalSeconds = (finalPlan.slots ?? slots).reduce(
     (sum: number, slot: any) => sum + estimateSlotSeconds(slot.questionType, slot.cognitiveDemand),
     0
   );
-  const realisticTotalMinutes = Math.round(realisticTotalSeconds / 60);
+  const rawRealisticTotalMinutes = Math.round(rawRealisticTotalSeconds / 60);
 
-  if (realisticTotalMinutes > architectUAR.timeMinutes * 1.2) {
-    warnings.push(
-      `Time realism: weighted pacing estimates ~${realisticTotalMinutes} min for a ` +
-      `${architectUAR.timeMinutes}-min window. The assessment may exceed the time limit ` +
-      `for this grade level (grade ${architectUAR.grade}). Consider reducing question count ` +
-      `or lowering cognitive demand on constructed-response items.`
+  // ── Hard time enforcement ────────────────────────────────────────────────────
+  // If the estimate already fits, `adjustPlanForTime` returns immediately.
+  const timeAdjResult = adjustPlanForTime(
+    finalPlan.slots ?? slots,
+    rawRealisticTotalMinutes,
+    architectUAR.timeMinutes,
+    depthFloor,
+    depthCeiling,
+    estimateSlotSeconds
+  );
+
+  // Propagate all mutations back into finalPlan
+  const adjustedSlots          = timeAdjResult.slots;
+  const realisticTotalSeconds  = timeAdjResult.realisticTotalSeconds;
+  const realisticTotalMinutes  = timeAdjResult.realisticTotalMinutes;
+  const adjustedDepthCeiling   = timeAdjResult.effectiveDepthCeiling;
+
+  if (timeAdjResult.adjustments.length > 0) {
+    console.info(
+      `[Architect] Time enforcement triggered (initial ~${rawRealisticTotalMinutes} min, ` +
+      `limit ${architectUAR.timeMinutes} min +${TIME_TOLERANCE_MINUTES} tolerance):`
     );
+    for (const adj of timeAdjResult.adjustments) {
+      console.info(`  └ ${adj}`);
+    }
   }
+
+  // Rebuild cognitive distribution from adjusted slots
+  const adjustedCognitiveDist: BlueprintPlanV3_2["cognitiveDistribution"] = {
+    remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0,
+  };
+  for (const slot of adjustedSlots) {
+    const cp = (slot.cognitiveDemand ?? "understand") as CognitiveProcess;
+    if (cp in adjustedCognitiveDist) {
+      adjustedCognitiveDist[cp] += 1 / adjustedSlots.length;
+    }
+  }
+
+  // Update the plan in-place with time-adjusted values
+  (finalPlan as any).slots              = adjustedSlots;
+  (finalPlan as any).questionCount      = adjustedSlots.length;
+  (finalPlan as any).depthCeiling       = adjustedDepthCeiling;
+  (finalPlan as any).cognitiveDistribution = adjustedCognitiveDist;
 
   //
   // 11. Constraints + writerPrompt + Blueprint
   //
+
+  // Emit a warning if any constraints were dropped during conflict resolution
+  const droppedConstraints = resolvedConstraints.filter(c => c.resolved === false);
+  for (const dropped of droppedConstraints) {
+    warnings.push(
+      `Constraint dropped: "${dropped.sourceText}" (${dropped.type}, priority ${dropped.priority}) — ` +
+      (dropped.resolutionNote ?? "overridden by higher-priority constraint")
+    );
+  }
+
+  // Surface time-adjustment actions as informational warnings so the teacher
+  // can see exactly what was changed to fit their time window.
+  for (const adj of timeAdjResult.adjustments) {
+    warnings.push(`Time adjustment: ${adj}`);
+  }
+
+  // If Phase 3 dropped questions the teacher requested, add a clear note.
+  if (!timeAdjResult.withinBudget) {
+    warnings.push(
+      `Time warning: even after all adjustments, the assessment estimates ` +
+      `~${realisticTotalMinutes} min for a ${architectUAR.timeMinutes}-min window. ` +
+      `Consider reducing question count manually.`
+    );
+  }
 
   return {
     uar,
@@ -366,10 +553,22 @@ export async function runArchitect({
     },
     constraints: {
       mustAlignToTopic: true,
-      avoidTrickQuestions: true,
-      avoidSensitiveContent: true,
-      respectTimeLimit: true
+      avoidTrickQuestions:
+        !resolvedConstraints.some(
+          c => c.resolved !== false && /trick question/i.test(c.sourceText)
+        ),
+      avoidSensitiveContent:
+        resolvedConstraints.some(
+          c => c.resolved !== false && c.type === "safety"
+        ) || true,
+      respectTimeLimit:
+        resolvedConstraints.some(
+          c => c.resolved !== false && c.type === "time"
+        ) || true,
     },
+    classifiedConstraints,
+    resolvedConstraints,
+    derivedStructuralConstraints,
     warnings,
   };
 }

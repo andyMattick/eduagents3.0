@@ -33,6 +33,24 @@ import { buildChunkPrompt } from "./writerChunkPrompt";
 import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
 import { rewriteSingle } from "@/pipeline/agents/rewriter/rewriteSingle";
 import { createTelemetry, type WriterTelemetry } from "../telemetry";
+import { computeBloomAlignment, type BloomAlignmentLog } from "@/pipeline/agents/gatekeeper/bloomClassifier";
+import {
+  runBloomHintBudget,
+  applyAdaptiveDriftBoost,
+  type HintMode,
+} from "../bloomHintBudget";
+import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
+
+// Module-level bloom alignment log — reset each run, read by SCRIBE post-run
+let _lastBloomAlignmentLog: BloomAlignmentLog = [];
+
+/** Cache the rewrite count from the most recent run for the next run's budget. */
+let _lastRunRewriteCount = 0;
+
+/** Read the bloom alignment log from the most recent writerParallel run. */
+export function getLastBloomAlignmentLog(): BloomAlignmentLog {
+  return _lastBloomAlignmentLog;
+}
 
 // ── Tunables ─────────────────────────────────────────────────────────────────
 
@@ -201,12 +219,49 @@ export async function writerParallel(
     `[writerParallel] Dispatching ${groups.length} group(s) of up to ${GROUP_SIZE} slots in parallel (${allSlots.length} total slots).`
   );
 
+  // ── Bloom Hint Budget: compute hint verbosity mode for this run ─────────
+  // Use the PREVIOUS run's drift rate (captured before log reset in Step 4).
+  const prevLog = _lastBloomAlignmentLog;
+  const prevDrift  = prevLog.length > 0
+    ? prevLog.filter(e => !e.aligned).length / prevLog.length
+    : 0;
+
+  // Compute depthCeiling from the blueprint slots
+  const BLOOMS = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
+  const maxBloomIdx = allSlots.reduce((max, s) => {
+    const idx = BLOOMS.indexOf((s.cognitiveDemand ?? "understand") as typeof BLOOMS[number]);
+    return idx > max ? idx : max;
+  }, 0);
+  const depthCeiling = BLOOMS[maxBloomIdx];
+
+  const rawStudentLevel = (uar as any).studentLevel ?? "standard";
+  const studentLevel: "remedial" | "standard" | "honors" | "ap" =
+    ["remedial", "standard", "honors", "ap"].includes(rawStudentLevel)
+      ? rawStudentLevel
+      : "standard";
+
+  const budgetResult = runBloomHintBudget({
+    slotCount:                allSlots.length,
+    timeMinutes:              (uar as any).timeLimit ?? (uar as any).durationMinutes ?? 30,
+    depthCeiling,
+    studentLevel,
+    bloomDriftRate:           prevDrift,
+    trustScore:               SCRIBE.getWriterTrustScore(),
+    previousRunRewriteCount:  _lastRunRewriteCount,
+  });
+  const hintMode: HintMode = budgetResult.hintMode;
+  console.log(
+    `[writerParallel] BloomHintBudget: mode=${hintMode}, risk=${budgetResult.riskScore}`,
+    budgetResult.trace
+  );
+
   // ── Step 1: Dispatch all groups in parallel ─────────────────────────────
   const groupResults = await dispatchGroupsParallel(
     groups,
     context,
     scribePrescriptions,
-    telemetry
+    telemetry,
+    hintMode
   );
 
   // ── Step 2: Merge into a single map ─────────────────────────────────────
@@ -230,7 +285,8 @@ export async function writerParallel(
         missingSlots,
         context,
         scribePrescriptions,
-        telemetry
+        telemetry,
+        hintMode
       );
 
       for (const [slotId, item] of retryResult.items) {
@@ -304,6 +360,9 @@ export async function writerParallel(
   // types BlueprintPlanV3_2 — same pattern writerAdaptive used).
   const allViolations: { slotId: string; type: string; message: string }[] = [];
 
+  // Reset the module-level bloom log for this run
+  _lastBloomAlignmentLog = [];
+
   for (const slot of allSlots) {
     const item = allItems.get(slot.id);
     if (!item) continue;
@@ -317,6 +376,29 @@ export async function writerParallel(
 
     telemetry.gatekeeperViolations += result.violations.length;
     allViolations.push(...result.violations);
+
+    // Bloom alignment logging: compare slot intent vs detected Bloom level
+    if (slot.cognitiveDemand) {
+      const entry = computeBloomAlignment(
+        slot.id,
+        slot.cognitiveDemand as any,
+        item.prompt ?? ""
+      );
+      _lastBloomAlignmentLog.push(entry);
+
+      if (!entry.aligned) {
+        console.warn(
+          `[Bloom] ${slot.id}: intent=${entry.writerBloom} | ` +
+          `detected=${entry.gatekeeperBloom ?? "none"} | ` +
+          `direction=${entry.direction} [MISMATCH]`
+        );
+      } else {
+        console.log(
+          `[Bloom] ${slot.id}: intent=${entry.writerBloom} | ` +
+          `detected=${entry.gatekeeperBloom} [✓]`
+        );
+      }
+    }
   }
 
   if (allViolations.length === 0) {
@@ -390,6 +472,18 @@ export async function writerParallel(
   });
 
   telemetry.finalProblemCount = finalItems.length;
+
+  // ── Adaptive Drift Boost (Step 6 of budget algorithm) ───────────────────
+  // Compute the drift rate for THIS run and schedule a hint boost if needed.
+  const thisRunDrift = _lastBloomAlignmentLog.length > 0
+    ? _lastBloomAlignmentLog.filter(e => !e.aligned).length / _lastBloomAlignmentLog.length
+    : 0;
+  const boostMsg = applyAdaptiveDriftBoost(thisRunDrift);
+  console.log(boostMsg);
+
+  // Cache rewrite count for the budget algorithm's stability check next run.
+  _lastRunRewriteCount = telemetry.rewriteCount;
+
   return { items: finalItems, telemetry };
 }
 
@@ -399,10 +493,11 @@ async function dispatchGroupsParallel(
   groups: BlueprintPlanV3_2["slots"][],
   context: WriterContext,
   scribe: ScribePrescriptions,
-  telemetry: WriterTelemetry
+  telemetry: WriterTelemetry,
+  hintMode: HintMode = "FULL"
 ): Promise<GroupResult[]> {
   const promises = groups.map((group, idx) =>
-    callGroupLLM(group, context, scribe, telemetry).then((result) => ({
+    callGroupLLM(group, context, scribe, telemetry, hintMode).then((result) => ({
       ...result,
       groupIndex: idx,
     }))
@@ -435,14 +530,15 @@ async function callGroupLLM(
   slots: BlueprintPlanV3_2["slots"],
   context: WriterContext,
   scribe: ScribePrescriptions,
-  telemetry: WriterTelemetry
+  telemetry: WriterTelemetry,
+  hintMode: HintMode = "FULL"
 ): Promise<GroupResult> {
   telemetry.chunkSizes.push(slots.length);
 
   const rawBlocks: string[] = [];
   let truncated = false;
 
-  const prompt = buildChunkPrompt(slots, context, scribe);
+  const prompt = buildChunkPrompt(slots, context, scribe, hintMode);
 
   await callGeminiStreaming({
     model: "gemini-2.5-flash",
@@ -511,7 +607,8 @@ async function rewriteOffendingItems(
   blueprint: BlueprintPlanV3_2,
   telemetry: WriterTelemetry
 ): Promise<void> {
-  // Group violations by slotId
+  const slotCount = allSlots.length;
+
   const violationsBySlot = new Map<string, typeof violations>();
   for (const v of violations) {
     const list = violationsBySlot.get(v.slotId) ?? [];
@@ -519,72 +616,107 @@ async function rewriteOffendingItems(
     violationsBySlot.set(v.slotId, list);
   }
 
-  // Build one async task per offending slot — each task runs its own
-  // iterative rewrite loop capped at MAX_REWRITES_PER_SLOT.
   const rewriteTasks: Promise<void>[] = [];
 
   for (const [slotId, initialViolations] of violationsBySlot) {
+
     const slot = allSlots.find((s) => s.id === slotId);
     if (!slot) continue;
 
     const startingItem = allItems.get(slotId);
-    if (!startingItem) continue; // missing item handled by retry round, not here
+    if (!startingItem) continue;
 
-    rewriteTasks.push(
-      (async () => {
-        let current = startingItem;
-        let currentViolations = initialViolations.map((v) => v.message);
+    rewriteTasks.push((async () => {
 
-        for (let attempt = 1; attempt <= MAX_REWRITES_PER_SLOT; attempt++) {
-          telemetry.rewriteCount++;
+      let current = startingItem;
+      let currentViolations = initialViolations.map(v => v.message);
 
-          const singleResult = Gatekeeper.validateSingle(
-            slot,
-            current,
-            uar as Record<string, any>,
-            blueprint.scopeWidth
+      // ✅ Track best candidate OUTSIDE loop
+      let bestCandidate = startingItem;
+      let bestViolationCount = initialViolations.length;
+      let stagnationCount = 0;
+
+      for (let attempt = 1; attempt <= MAX_REWRITES_PER_SLOT; attempt++) {
+        const MAX_TOTAL_REWRITES = Math.min(slotCount * 3, 30);
+        // 🔒 GLOBAL CAP CHECK (before increment + rewrite)
+        if (telemetry.rewriteCount >= MAX_TOTAL_REWRITES) {
+          console.warn(
+            `[writerParallel] Global rewrite cap reached (${MAX_TOTAL_REWRITES}). ` +
+            `Accepting best candidate for slot "${slotId}".`
           );
-
-          const rewritten = await rewriteSingle({
-            item: current,
-            violations: currentViolations,
-            mode: singleResult.mode,
-          });
-
-          const gateResult = Gatekeeper.validateSingle(
-            slot,
-            rewritten,
-            uar as Record<string, any>,
-            blueprint.scopeWidth
-          );
-
-          telemetry.gatekeeperViolations += gateResult.violations.length;
-
-          if (gateResult.ok) {
-            // Clean — commit and stop retrying
-            allItems.set(slotId, rewritten);
-            return;
-          }
-
-          // Promote the rewrite as the new candidate regardless — it may be
-          // partially improved even if still failing.
-          current = rewritten;
-          currentViolations = gateResult.violations.map((v) => v.message);
-
-          if (attempt === MAX_REWRITES_PER_SLOT) {
-            console.warn(
-              `[writerParallel] Slot "${slotId}" hit rewrite cap (${MAX_REWRITES_PER_SLOT} attempts). ` +
-              `Accepting best-effort item. Remaining violations: [${currentViolations.join(" | ")}]`
-            );
-            // Accept the last rewrite — forward progress is better than none
-            allItems.set(slotId, current);
-          }
+          allItems.set(slotId, bestCandidate);
+          return;
         }
-      })()
-    );
+
+        telemetry.rewriteCount++;
+
+        const singleResult = Gatekeeper.validateSingle(
+          slot,
+          current,
+          uar as Record<string, any>,
+          blueprint.scopeWidth
+        );
+
+        const rewritten = await rewriteSingle({
+          item: current,
+          violations: currentViolations,
+          mode: singleResult.mode,
+        });
+
+        const gateResult = Gatekeeper.validateSingle(
+          slot,
+          rewritten,
+          uar as Record<string, any>,
+          blueprint.scopeWidth
+        );
+
+        telemetry.gatekeeperViolations += gateResult.violations.length;
+
+        // ✅ CLEAN SUCCESS
+        if (gateResult.ok) {
+          allItems.set(slotId, rewritten);
+          return;
+        }
+
+        const violationCount = gateResult.violations.length;
+
+        // 🏆 Track best candidate
+        if (violationCount < bestViolationCount) {
+          bestCandidate = rewritten;
+          bestViolationCount = violationCount;
+          stagnationCount = 0;
+        } else {
+          stagnationCount++;
+        }
+
+        // 🛑 STAGNATION DETECTION (prevents oscillation)
+        if (stagnationCount >= 2) {
+          console.warn(
+            `[writerParallel] Slot "${slotId}" stagnated after ${attempt} attempts. ` +
+            `Accepting best candidate.`
+          );
+          allItems.set(slotId, bestCandidate);
+          return;
+        }
+
+        // Promote rewrite for next attempt
+        current = rewritten;
+        currentViolations = gateResult.violations.map(v => v.message);
+
+        // 🔚 PER-SLOT CAP
+        if (attempt === MAX_REWRITES_PER_SLOT) {
+          console.warn(
+            `[writerParallel] Slot "${slotId}" hit rewrite cap (${MAX_REWRITES_PER_SLOT}). ` +
+            `Accepting best candidate with ${bestViolationCount} remaining violations.`
+          );
+          allItems.set(slotId, bestCandidate);
+          return;
+        }
+      }
+
+    })());
   }
 
-  // Fire all slot-rewrite tasks in parallel (each slot's loop is independent)
   const settled = await Promise.allSettled(rewriteTasks);
 
   for (const outcome of settled) {

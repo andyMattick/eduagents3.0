@@ -5,6 +5,8 @@ import { DossierManager } from "@/system/dossier/DossierManager";
 import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { supabase } from "@/supabase/client";
+import type { BloomAlignmentLog } from "@/pipeline/agents/gatekeeper/bloomClassifier";
+import { BLOOM_ORDER } from "@/pipeline/agents/gatekeeper/bloomClassifier";
 
 // Persistent in-memory dossier (simple, append-only)
 const writerDossier = {
@@ -54,6 +56,22 @@ function computeDefaults(history: any[]): Record<string, any> {
     avg_question_count: avgQuestionCount,
     preferred_difficulty: preferredDifficulty,
   };
+}
+
+/**
+ * Module-level helpers that mutate writerDossier in-place.
+ * Hoisted here so both updateWriterDossier and recalibrateFromBloomDrift can use them.
+ */
+function addForbidden(b: string) {
+  if (!writerDossier.forbiddenBehaviors.includes(b)) {
+    writerDossier.forbiddenBehaviors.push(b);
+  }
+}
+
+function addRequired(b: string) {
+  if (!writerDossier.requiredBehaviors.includes(b)) {
+    writerDossier.requiredBehaviors.push(b);
+  }
 }
 
 export class SCRIBE {
@@ -192,18 +210,6 @@ export class SCRIBE {
     addRequired("ensure every prompt references at least one keyword from the lesson topic or unit name");
   }
 
-  function addForbidden(b: string) {
-    if (!writerDossier.forbiddenBehaviors.includes(b)) {
-      writerDossier.forbiddenBehaviors.push(b);
-    }
-  }
-
-  function addRequired(b: string) {
-    if (!writerDossier.requiredBehaviors.includes(b)) {
-      writerDossier.requiredBehaviors.push(b);
-    }
-  }
-
   // S6: Prune to max N per category (keep most recent additions = end of array)
   if (writerDossier.weaknesses.length > MAX_PER_CATEGORY) {
     writerDossier.weaknesses = writerDossier.weaknesses.slice(-MAX_PER_CATEGORY);
@@ -221,6 +227,105 @@ export class SCRIBE {
       forbiddenBehaviors: [...writerDossier.forbiddenBehaviors],
       requiredBehaviors: [...writerDossier.requiredBehaviors]
     };
+  }
+
+  // -----------------------------------------------------
+  // 3. BLOOM DRIFT RECONCILIATION
+  // -----------------------------------------------------
+  /**
+   * Analyse per-slot Bloom alignment data from the Writer run and update
+   * prescriptions when drift is systematic.
+   *
+   * Drift taxonomy:
+   *   “over-bloom”  — generated questions consistently hit higher Bloom than intended
+   *                    → Writer is inflating cognitive demand (e.g. writing analyse
+   *                      questions for “remember” slots). Prescription: constrain verbs.
+   *   “under-bloom” — generated questions consistently hit lower Bloom than intended
+   *                    → Writer is under-delivering on rigor. Prescription: require
+   *                      Bloom-aligned verbs + disallow shallow substitutes.
+   *
+   * Thresholds:
+   *   mismatch rate > 0.5 → systemic drift → full prescription injection
+   *   mismatch rate 0.25–0.5 → mild drift → soft reminder only
+   *   < 0.25 → acceptable variance, no action
+   *
+   * @returns A summary string for logging (never throws).
+   */
+  /**
+   * Compute a writer trust score (0–10) from the in-memory dossier.
+   *
+   * Scoring:
+   *   Base: 7
+   *   -1 per unique weakness category (max -4 deductions)
+   *   Clamped to [0, 10]
+   *
+   * A neutral writer with no known weaknesses returns 7.
+   * A writer with ≥4 documented weaknesses returns 3 (high scaffolding needed).
+   */
+  static getWriterTrustScore(): number {
+    const deductions = Math.min(writerDossier.weaknesses.length, 4);
+    return Math.max(0, Math.min(10, 7 - deductions));
+  }
+
+  static recalibrateFromBloomDrift(log: BloomAlignmentLog): string {
+    if (!log || log.length === 0) return "[SCRIBE Bloom] No alignment data.";
+
+    const total    = log.length;
+    const misses   = log.filter(e => !e.aligned);
+    const rate     = misses.length / total;
+
+    // Count directional mismatches
+    const under    = misses.filter(e => e.direction === "under").length;
+    const over     = misses.filter(e => e.direction === "over").length;
+    const dominant = under >= over ? "under" : "over";
+
+    // Compute average Bloom gap (signed; negative = under-bloom)
+    const avgGap = misses.reduce((sum, e) => {
+      const intentIdx   = BLOOM_ORDER.indexOf(e.writerBloom);
+      const detectedIdx = e.gatekeeperBloom ? BLOOM_ORDER.indexOf(e.gatekeeperBloom) : 0;
+      return sum + (detectedIdx - intentIdx);
+    }, 0) / Math.max(1, misses.length);
+
+    const tier: "systemic" | "mild" | "ok" =
+      rate > 0.5  ? "systemic" :
+      rate > 0.25 ? "mild"     : "ok";
+
+    console.info(
+      `[SCRIBE Bloom] drift tier=${tier}, rate=${(rate * 100).toFixed(0)}%, ` +
+      `under=${under}, over=${over}, avgGap=${avgGap.toFixed(2)}`
+    );
+
+    if (tier === "ok") return `[SCRIBE Bloom] Drift within tolerance (${(rate * 100).toFixed(0)}% mismatch).`;
+
+    if (dominant === "under") {
+      // Writer is producing shallower questions than intended
+      if (tier === "systemic") {
+        addRequired("use explicit Bloom-aligned action verbs matching the slot's cognitiveDemand");
+        addRequired("escalate question complexity — avoid recall-only phrasing on apply/analyze/evaluate slots");
+        addForbidden("substituting 'what is' or 'which' for slots labelled analyze, evaluate, or apply");
+        addForbidden("producing questions answerable by bare recall when the slot demands application or higher");
+        writerDossier.weaknesses.push("systematic under-bloom: question depth consistently below intended level");
+      } else {
+        addRequired("check that every question prompt contains at least one verb from its assigned Bloom level");
+      }
+    } else {
+      // Writer is producing deeper questions than intended (less common but happens with honors prompts)
+      if (tier === "systemic") {
+        addRequired("match question complexity EXACTLY to the slot cognitiveDemand — do not over-engineer remember or understand slots");
+        addForbidden("using analyze/evaluate verbs for remember or understand slots");
+        writerDossier.weaknesses.push("systematic over-bloom: question depth consistently above intended level");
+      } else {
+        addRequired("keep question stems at the specified Bloom level — avoid raising complexity beyond the slot label");
+      }
+    }
+
+    // Prune after update
+    const MAX = 5;
+    if (writerDossier.weaknesses.length       > MAX) writerDossier.weaknesses       = writerDossier.weaknesses.slice(-MAX);
+    if (writerDossier.requiredBehaviors.length > MAX) writerDossier.requiredBehaviors = writerDossier.requiredBehaviors.slice(-MAX);
+    if (writerDossier.forbiddenBehaviors.length > MAX) writerDossier.forbiddenBehaviors = writerDossier.forbiddenBehaviors.slice(-MAX);
+
+    return `[SCRIBE Bloom] ${tier} ${dominant}-bloom drift (${(rate * 100).toFixed(0)}% mismatch). Prescriptions updated.`;
   }
 
   

@@ -75,42 +75,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           <div className="dashboard-card">
             <h3>Compare predicted vs actual</h3>
             <p>
-              Explore how your students actually performed versus what the
+              FUTURE: Explore how your students actually performed versus what the
               system predicted.
             </p>
-            <button
-              className="btn-link"
-              onClick={() => onNavigate("comparePredictedActual")}
-            >
-              Go to comparison
-            </button>
+            
           </div>
 
           <div className="dashboard-card">
             <h3>Improve future writing</h3>
             <p>
-              Use past assessments to refine prompts and instructions for next
+              FUTURE: Use past assessments to refine prompts and instructions for next
               time.
             </p>
-            <button
-              className="btn-link"
-              onClick={() => onNavigate("improveFutureWriting")}
-            >
-              Improve future writing
-            </button>
+            
           </div>
 
           <div className="dashboard-card">
             <h3>Generate a new version</h3>
             <p>
-              Spin up a new version of an assessment while keeping what worked.
+              FUTURE: Spin up a new version of an assessment while keeping what worked.
             </p>
-            <button
-              className="btn-link"
-              onClick={() => onNavigate("generateNewVersion")}
-            >
-              Generate new version
-            </button>
+           
           </div>
         </div>
       </section>

@@ -1,7 +1,13 @@
 import type { ArchitectUAR } from "@/pipeline/agents/architect/buildArchitectUAR";
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { ClassifiedConstraint, DerivedStructuralConstraints } from "./constraintEngine";
 
-export const buildArchitectPrompt = (uar: ArchitectUAR, plan: BlueprintPlanV3_2) => `
+export const buildArchitectPrompt = (
+  uar: ArchitectUAR,
+  plan: BlueprintPlanV3_2,
+  resolvedConstraints?: ClassifiedConstraint[],
+  derivedStructuralConstraints?: DerivedStructuralConstraints
+) => `
 You are ARCHITECT v3.2 — a deterministic assessment planner.
 
 Your job:
@@ -90,4 +96,33 @@ ${JSON.stringify(uar, null, 2)}
 
 Deterministic Plan:
 ${JSON.stringify(plan, null, 2)}
+
+${resolvedConstraints && resolvedConstraints.length > 0 ? `
+ACTIVE CONSTRAINTS (from teacher notes — already arbitrated by priority):
+${resolvedConstraints
+  .filter(c => c.resolved !== false)
+  .map(c => `- [${c.type.toUpperCase()} p=${c.priority}${c.resolved === "softened" ? " SOFTENED" : ""}] "${c.sourceText}"`)
+  .join("\n")}
+
+${resolvedConstraints.filter(c => c.resolved === false).length > 0 ? `DROPPED CONSTRAINTS (overridden by higher-priority rules):
+${resolvedConstraints
+  .filter(c => c.resolved === false)
+  .map(c => `- [${c.type.toUpperCase()}] "${c.sourceText}" — ${c.resolutionNote}`)
+  .join("\n")}
+` : ""}
+` : ""}
+${derivedStructuralConstraints && (derivedStructuralConstraints.raiseBloomCeiling || derivedStructuralConstraints.capBloomAt || derivedStructuralConstraints.preferMultipleChoice) ? `
+DERIVED STRUCTURAL KNOBS (translated from meta-language):
+${derivedStructuralConstraints.raiseBloomCeiling ? `- Raise Bloom depth ceiling to "${derivedStructuralConstraints.raiseBloomCeiling}"` : ""}
+${derivedStructuralConstraints.capBloomAt ? `- Cap Bloom ceiling at "${derivedStructuralConstraints.capBloomAt}" (grading/accessibility constraint)` : ""}
+${derivedStructuralConstraints.bloomBoost ? `- Bloom distribution boost: ${JSON.stringify(derivedStructuralConstraints.bloomBoost)}` : ""}
+${derivedStructuralConstraints.preferMultipleChoice ? `- Prefer multiple-choice slots for grading efficiency` : ""}
+${derivedStructuralConstraints.reduceConstructedResponse ? `- Reduce constructed-response slots` : ""}
+${derivedStructuralConstraints.reduceShortAnswer ? `- Reduce short-answer slots` : ""}
+${(derivedStructuralConstraints.addAnalyzeSlots ?? 0) > 0 ? `- Add ${derivedStructuralConstraints.addAnalyzeSlots} extra analyze slot(s)` : ""}
+${(derivedStructuralConstraints.addApplySlots ?? 0) > 0 ? `- Add ${derivedStructuralConstraints.addApplySlots} extra apply slot(s)` : ""}
+
+INSTRUCTION: Your JSON output MUST honour these knobs. Adjust slots, cognitiveDemand values,
+and questionType assignments accordingly. Do NOT ignore derived structural constraints.
+` : ""}
 `;

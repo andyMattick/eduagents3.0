@@ -4,6 +4,7 @@ import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
 import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
+import { getLastBloomAlignmentLog } from "@/pipeline/agents/writer/chunk/writerParallel";
 
 /** Dispatch flag: 'build' runs Phase 1 only; 'playtest' continues to Phase 2. */
 export type PipelineMode = "build" | "playtest";
@@ -124,6 +125,12 @@ async function validateAndScore(
 
   // SCRIBE learns from violations + telemetry before Philosopher reports
   SCRIBE.updateWriterDossier(gk, writerTelemetry);
+
+  // Bloom drift reconciliation — analyse per-slot Bloom alignment and update
+  // prescriptions if drift is systematic (under- or over-bloom).
+  const bloomLog = getLastBloomAlignmentLog();
+  const bloomDriftSummary = SCRIBE.recalibrateFromBloomDrift(bloomLog);
+  console.info(bloomDriftSummary);
 
   if (process.env.NODE_ENV === "development") {
     console.log("Gatekeeper Report:", gk);
