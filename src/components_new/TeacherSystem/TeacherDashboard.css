@@ -568,6 +568,7 @@
   border-color: #667eea;
   background: #f0f3ff;
   transform: translateY(-2px);
+  color: #4338ca;
 }
 
 .quick-link:disabled {
@@ -770,9 +771,9 @@
 }
 
 .btn-results {
-  color: #667eea;
+  color: #4338ca;
   border-color: #667eea;
-  background-color: #f0f4ff;
+  background-color: #eef2ff;
 }
 
 .btn-results:hover:not(:disabled) {

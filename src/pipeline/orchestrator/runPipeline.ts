@@ -4,6 +4,7 @@ import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
 import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
+import { getLastBloomAlignmentLog } from "@/pipeline/agents/writer/chunk/writerParallel";
 
 /** Dispatch flag: 'build' runs Phase 1 only; 'playtest' continues to Phase 2. */
 export type PipelineMode = "build" | "playtest";
@@ -107,6 +108,39 @@ function uarForWriter(uar: any): Record<string, any> {
 }
 
 /**
+ * validateSlotIntegrity — pre-Builder safety gate.
+ *
+ * Throws if any slot in the blueprint is missing a corresponding generated
+ * item, or if the item count doesn't match the slot count.  Catches phantom
+ * slots early before the Builder tries to reference them.
+ */
+function validateSlotIntegrity(
+  slots: { id: string }[],
+  items: { slotId: string }[]
+): void {
+  const itemsMap = new Map<string, { slotId: string }>();
+  for (const item of items) {
+    itemsMap.set(item.slotId, item);
+  }
+
+  for (const slot of slots) {
+    if (!itemsMap.has(slot.id)) {
+      throw new Error(
+        `[validateSlotIntegrity] Phantom slot: "${slot.id}" has no generated item. ` +
+        `Available slot IDs: [${[...itemsMap.keys()].join(", ")}]`
+      );
+    }
+  }
+
+  if (itemsMap.size !== slots.length) {
+    throw new Error(
+      `[validateSlotIntegrity] Item count mismatch: ${itemsMap.size} items for ${slots.length} slots. ` +
+      `Item slot IDs: [${[...itemsMap.keys()].join(", ")}]`
+    );
+  }
+}
+
+/**
  * ValidateAndScore — merges Gatekeeper + Philosopher (write mode) into a
  * single pipeline step.
  *
@@ -124,6 +158,12 @@ async function validateAndScore(
 
   // SCRIBE learns from violations + telemetry before Philosopher reports
   SCRIBE.updateWriterDossier(gk, writerTelemetry);
+
+  // Bloom drift reconciliation — analyse per-slot Bloom alignment and update
+  // prescriptions if drift is systematic (under- or over-bloom).
+  const bloomLog = getLastBloomAlignmentLog();
+  const bloomDriftSummary = SCRIBE.recalibrateFromBloomDrift(bloomLog);
+  console.info(bloomDriftSummary);
 
   if (process.env.NODE_ENV === "development") {
     console.log("Gatekeeper Report:", gk);
@@ -156,63 +196,66 @@ async function validateAndScore(
   return { gatekeeperResult: gk, philosopherWrite: phil };
 }
 
-export async function runPipeline(uar: UnifiedAssessmentRequest) {
+export async function runPipeline(uar: UnifiedAssessmentRequest, _depth = 0) {
+  // ── Recursion guard ────────────────────────────────────────────────────────
+  if (_depth >= 2) {
+    throw new Error(
+      "[Pipeline] Maximum retry depth (2) reached. Assessment could not complete — " +
+      "Philosopher severity >= 7 on repeated attempts. Please try again."
+    );
+  }
+
   // ── Security: re-arm the LLM gate so the first LLM call in this run
   //    triggers the server-side daily-limit check.
   resetLLMGate();
 
-  // 0. Load predictive teacher defaults
-  // Use .limit(1) + array access instead of .maybeSingle() to avoid
-  // PostgREST 406 "Not Acceptable" errors when the table has no row yet.
+  // ── Ensure required UAR fields have safe defaults ─────────────────────────
+  // mode and subscriptionTier may not be set by convertMinimalToUAR.
+  const safeUar: UnifiedAssessmentRequest = {
+    ...uar,
+    mode: uar.mode ?? "write",
+    subscriptionTier: uar.subscriptionTier ?? "free",
+  };
+
+  // ── Tier gate (before any DB/LLM calls) ───────────────────────────────────
+  if (safeUar.mode === "playtest" && safeUar.subscriptionTier !== "tier2" && safeUar.subscriptionTier !== "admin") {
+    throw new Error("Playtesting is only available for Tier 2 users.");
+  }
+
+  // ── Step 0a: load predictive teacher defaults ────────────────────────────
   const { data: defaultsRows } = await supabase
     .from("teacher_defaults")
     .select("*")
-    .eq("teacher_id", uar.userId)
+    .eq("teacher_id", safeUar.userId)
     .limit(1);
   const defaults = defaultsRows?.[0] ?? null;
 
-// 1. Merge predictive defaults into the UAR
-const uarWithDefaults: UnifiedAssessmentRequest = {
-  ...uar,
+  // ── Step 0b: merge predictive defaults into the UAR ───────────────────────
+  const uarWithDefaults: UnifiedAssessmentRequest = {
+    ...safeUar,
+    questionTypes:        safeUar.questionTypes,
+    questionCount:        defaults?.avg_question_count ?? safeUar.questionCount,
+    difficultyPreference: defaults?.preferred_difficulty ?? safeUar.difficultyPreference,
+    assessmentType:       safeUar.assessmentType ?? defaults?.preferred_assessment_type,
+  };
 
-  // Column names must match the teacher_defaults schema exactly.
-  questionTypes:
-    uar.questionTypes,
+  console.log(`[Pipeline] Version 2.2.0 — mode: ${uarWithDefaults.mode}, depth: ${_depth}`);
 
-  questionCount:
-    defaults?.avg_question_count ?? uar.questionCount,
-
-  difficultyPreference:
-    defaults?.preferred_difficulty ?? uar.difficultyPreference,
-
-  // assessmentType can inherit the teacher's most-common type
-  assessmentType:
-    uar.assessmentType ?? defaults?.preferred_assessment_type,
-};
-
-  
-  if (uar.mode === "playtest" && uar.subscriptionTier !== "tier2" && uar.subscriptionTier !== "admin") {
-  throw new Error("Playtesting is only available for Tier 2 users.");
-}
-  console.log("[Pipeline] Version 2.0.0 — runPipeline.ts");
-  
   const trace: PipelineTrace = createTrace(
-    ["write", "playtest", "compare"] // capabilities for this run 
+    ["write", "playtest", "compare"] // capabilities for this run
   );
-  // 0. SCRIBE selects the best agents for this run
+  // ── Step 1: SCRIBE selects best agents for this run ──────────────────────
   const selected = await runAgent( trace, "SCRIBE.selectAgents", SCRIBE.selectAgents, uarWithDefaults );
-
   console.log("[Pipeline] Selected Agents:", selected);
-  
+
+  // ── Step 2: Architect — build the blueprint ───────────────────────────────
   const blueprint = await runAgent(trace, "Architect", runArchitect, {
     uar: uarWithDefaults,
     compensation: selected.compensationProfile
   });
-  // 1. Architect — build the blueprint
-  
-  // 2. Writer — generate the initial draft
-  // 2a. SCRIBE → Writer prescriptions
-const writerPrescriptions = SCRIBE.getWriterPrescriptions();
+
+  // ── Step 3: Writer — generate the initial draft ───────────────────────────
+  const writerPrescriptions = SCRIBE.getWriterPrescriptions();
 
 const writerDraft = await runAgent(trace, "Writer", runWriter, {
   blueprint: blueprint.plan,
@@ -245,6 +288,7 @@ const { gatekeeperResult, philosopherWrite } = await validateAndScore(
 // WRITE MODE BRANCHING
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Skip playtest, skip compare → go straight to Builder
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
 
@@ -280,6 +324,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     { slotCount: blueprint.plan?.slots?.length ?? 0, itemCount: rewritten.length },
     { ok: gatekeeperFinal.ok, violationCount: gatekeeperFinal.violations?.length ?? 0 });
 
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
@@ -305,8 +350,8 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
 }
 
 if (philosopherWrite.status === "rewrite" && philosopherWrite.severity >= 7) {
-  // Structural failure → restart pipeline
-  return await runPipeline(uar);
+  // Structural failure → restart pipeline with depth counter
+  return await runPipeline(uar, _depth + 1);
 }
 
 // ===============================
@@ -363,6 +408,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     { slotCount: blueprint.plan?.slots?.length ?? 0, itemCount: rewritten.length },
     { ok: gatekeeperFinal.ok, violationCount: gatekeeperFinal.violations?.length ?? 0 });
 
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
@@ -389,13 +435,14 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
 }
 
 if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 7) {
-  return await runPipeline(uar);
+  return await runPipeline(uar, _depth + 1);
 }
 
 // ===============================
 // 9. BUILDER — FINAL ASSEMBLY (no rewrites needed)
 // ===============================
 
+validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
 const finalAssessment = await runAgent(trace, "Builder", runBuilder,
   { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
 

@@ -10,20 +10,31 @@
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { WriterContext, ScribePrescriptions } from "../writerPrompt";
 import { END_SENTINEL } from "./parseChunk";
+import { buildBloomHintDirectives, type HintMode } from "../bloomHints";
 
 export function buildChunkPrompt(
   slots: BlueprintPlanV3_2["slots"],
   context: WriterContext,
-  scribe: ScribePrescriptions
+  scribe: ScribePrescriptions,
+  /** Bloom hint verbosity mode from the budget algorithm. Defaults to FULL. */
+  hintMode: HintMode = "FULL"
 ): string {
+  // Pre-compute per-slot Bloom intent directives (mode-aware)
+  const bloomDirectives = buildBloomHintDirectives(slots, hintMode);
+  const hintMap = new Map(bloomDirectives.map(d => [d.slotId, d.directive]));
+
   const slotDescriptions = slots
     .map(
-      (slot, i) => `
+      (slot, i) => {
+        const hint = hintMap.get(slot.id) ?? "";
+        return `
 SLOT ${i + 1}
   slotId: ${slot.id}
   questionType: ${slot.questionType}
   cognitiveDemand: ${slot.cognitiveDemand}
-  difficulty: ${slot.difficulty}`
+  difficulty: ${slot.difficulty}
+  bloomIntent: ${hint}`;
+      }
     )
     .join("\n");
 
@@ -91,12 +102,27 @@ STEM VARIETY (mandatory — applies to EVERY slot in this batch)
 - Draw from varied openers: "Explain...", "Calculate...", "Compare...", "A student notices...", "Given that...", "Identify...", "Describe...", "Why does...", "How would...", "Determine...", "In the context of...", "A researcher finds...".
 - Each question must have a distinctly different opening phrase than every other question in this batch.
 
+STEM NATURALISM (hard rule — zero exceptions unless teacher notes explicitly request otherwise)
+- NEVER begin a prompt with: "In [Course]...", "In the study of...", "In this lesson...", "As part of...", "When learning about...", "In Algebra...", "In Biology...", or any course/unit name as a preamble.
+- NEVER add meta-commentary explaining the academic context (e.g. "Demonstrate your understanding of... by...").
+- Start as close to the cognitive task as possible. Prefer imperative form for procedural tasks.
+- The course, unit, and topic are context FOR YOU — do not echo them into the student-facing stem.
+- Bloom-keyed preferred opening patterns:
+    remember   → "Define...", "State...", "Identify...", "List the steps..."
+    understand → "Explain why...", "Describe how...", "What is the difference between..."
+    apply      → Direct imperative: "Factor...", "Solve...", "Calculate...", "Simplify..."
+    analyze    → "Compare...", "Identify the error in...", "Examine the relationship between..."
+    evaluate   → "Which approach is more efficient and why?", "Justify...", "Critique..."
+    create     → "Design...", "Construct...", "Develop a model that..."
+
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
 Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
 Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
 
 SLOTS TO GENERATE
+Each slot includes a "bloomIntent" line — this is MANDATORY guidance. Use the listed verbs and
+follow the stated structure note. The exampleStarter shows a template you can adapt to the topic.
 ${slotDescriptions}
 
 OUTPUT FORMAT (STRICT)

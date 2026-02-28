@@ -35,6 +35,14 @@ export interface UnifiedAssessmentRequest {
   // Additional teacher notes
   additionalDetails: string | null;
 
+  // ── Adaptive fields from conversational flow ──────────────────────
+  questionFormat?: string | null;
+  bloomPreference?: string | null;
+  sectionStructure?: string | null;
+  standards?: string | null;
+  /** "yes" | "no" — include multi-part questions where parts chain: A → B → C */
+  multiPartQuestions?: string | null;
+
   // Optional teacher-provided materials
   sourceDocuments: Array<{
     id: string;
@@ -75,6 +83,37 @@ export interface ArchitectUAR {
 }
 
 export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
+  // Enrich additionalDetails with adaptive fields so the Architect prompt sees them
+  const detailParts: string[] = [];
+  if (uar.additionalDetails) detailParts.push(uar.additionalDetails);
+  if (uar.bloomPreference && uar.bloomPreference !== "balanced") {
+    const bloomDescriptions: Record<string, string> = {
+      lower:  "Focus on Remember and Understand (recall-heavy).",
+      apply:  "Emphasize Application-level questions.",
+      higher: "Prioritize Analyze, Evaluate, and Create (higher-order thinking).",
+    };
+    detailParts.push(`Bloom preference: ${bloomDescriptions[uar.bloomPreference] ?? uar.bloomPreference}`);
+  }
+  if (uar.sectionStructure === "multiple") {
+    detailParts.push("Structure the assessment in multiple sections (e.g., Section 1: MCQ, Section 2: Short Answer).");
+  }
+  if (uar.standards && uar.standards !== "none") {
+    const stdLabels: Record<string, string> = {
+      commonCore: "Align items to Common Core standards where applicable.",
+      state: "Align items to state standards where applicable.",
+      ap: "Align items to the AP framework.",
+    };
+    detailParts.push(stdLabels[uar.standards] ?? `Standards: ${uar.standards}`);
+  }
+  if (uar.multiPartQuestions === "yes") {
+    detailParts.push(
+      "Include multi-part questions where each part depends on the previous " +
+      "(e.g., Part A gives context, Part B requires applying that result, Part C extends further). " +
+      "Label them Part A, Part B, Part C."
+    );
+  }
+  const enrichedDetails = detailParts.length > 0 ? detailParts.join(" ") : null;
+
   return {
     version: "3.2",
 
@@ -109,8 +148,8 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
     // Time context
     timeMinutes: uar.time,
 
-    // Additional notes
-    additionalDetails: uar.additionalDetails,
+    // Additional notes (enriched with adaptive fields)
+    additionalDetails: enrichedDetails,
   };
 }
 

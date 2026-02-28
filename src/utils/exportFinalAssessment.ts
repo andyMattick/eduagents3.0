@@ -8,6 +8,36 @@
 
 import jsPDF from "jspdf";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { saveAs } from "file-saver";
+
+
+const QUESTION_TYPE_INSTRUCTIONS: Record<string, string> = {
+  multipleChoice: "Select the best answer for each question.",
+  shortAnswer: "Answer each question clearly and concisely.",
+  freeResponse: "Show all reasoning and justify your answers.",
+  essay: "Write a well-organized response using complete sentences.",
+  fillInTheBlank: "Fill in each blank with the correct answer.",
+  matching: "Match each item in Column A with the correct option in Column B.",
+  trueFalse: "Indicate whether each statement is true or false.",
+};
+const QUESTION_TYPE_LABELS: Record<string, string> = {
+  multipleChoice: "Multiple Choice",
+  shortAnswer: "Short Answer",
+  freeResponse: "Free Response",
+  essay: "Essay",
+  fillInTheBlank: "Fill in the Blank",
+};
+
+const QUESTION_TYPE_ORDER: string[] = [
+  "multipleChoice",
+  "matching",
+  "trueFalse",
+  "fillInTheBlank",
+  "shortAnswer",
+  "freeResponse",
+  "essay",
+];
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -21,6 +51,88 @@ const FONT_LARGE = 15;
 const LINE_H = 6.5;      // mm between text lines
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function renderSectionHeader(
+  doc: jsPDF,
+  type: string,
+  sectionNumber: number,
+  y: number
+): number {
+  y = guardSpace(doc, y, 16);
+
+  const title = `SECTION ${toRoman(sectionNumber)} — ${formatTypeLabel(type)}`;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text(title, MARGIN, y);
+
+  doc.setLineWidth(0.3);
+  doc.line(MARGIN, y + 2, PAGE_W - MARGIN, y + 2);
+
+  y += 7;
+
+  const instruction = QUESTION_TYPE_INSTRUCTIONS[type];
+  if (instruction) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(instruction, MARGIN, y);
+    doc.setTextColor(0);
+    y += 6;
+  }
+
+  return y;
+}
+
+function formatTypeLabel(type: string): string {
+  if (QUESTION_TYPE_LABELS[type]) return QUESTION_TYPE_LABELS[type];
+
+  // fallback: camelCase → Title Case
+  return type
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, s => s.toUpperCase());
+}
+
+function toRoman(num: number): string {
+  const romans: [string, number][] = [
+    ["M", 1000], ["CM", 900], ["D", 500], ["CD", 400],
+    ["C", 100], ["XC", 90], ["L", 50], ["XL", 40],
+    ["X", 10], ["IX", 9], ["V", 5], ["IV", 4], ["I", 1]
+  ];
+
+  let result = "";
+  for (const [letter, value] of romans) {
+    while (num >= value) {
+      result += letter;
+      num -= value;
+    }
+  }
+  return result;
+}
+function groupAndOrderItems(items: FinalAssessmentItem[]) {
+  const groups: Record<string, FinalAssessmentItem[]> = {};
+
+  for (const item of items) {
+    if (!groups[item.questionType]) {
+      groups[item.questionType] = [];
+    }
+    groups[item.questionType].push(item);
+  }
+
+  // Sort by defined priority; unknown types go last
+  const orderedTypes = Object.keys(groups).sort((a, b) => {
+    const indexA = QUESTION_TYPE_ORDER.indexOf(a);
+    const indexB = QUESTION_TYPE_ORDER.indexOf(b);
+
+    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+
+    return indexA - indexB;
+  });
+
+  return { groups, orderedTypes };
+}
 
 function pageFooter(doc: jsPDF, page: number, total: number, id: string) {
   doc.setFontSize(7);
@@ -63,12 +175,29 @@ function guardSpace(
 }
 
 // ── Public interface ──────────────────────────────────────────────────────────
+function filterAssessmentForVersion(
+  assessment: FinalAssessment,
+  version: "student" | "teacher"
+): FinalAssessment {
+  if (version === "student") {
+    return {
+      ...assessment,
+      items: assessment.items.map(item => ({
+        ...item,
+        answer: undefined,
+      }))
+    };
+  }
+
+  return assessment;
+}
 
 export interface PDFOptions {
   title?: string;
   subtitle?: string;
-  /** When true, answer key is appended on the final page. Default: true. */
   includeAnswerKey?: boolean;
+  includeRubric?: boolean;
+  version?: "student" | "teacher";
 }
 
 /**
@@ -89,12 +218,14 @@ export async function downloadFinalAssessmentPDF(
 export function buildPDF(
   assessment: FinalAssessment,
   options: PDFOptions = {}
-): jsPDF {
-  const {
-    title = "Assessment",
-    subtitle,
-    includeAnswerKey = true,
-  } = options;
+): jsPDF {const {
+  title = "Assessment",
+  subtitle,
+  includeAnswerKey = false,
+  includeRubric = false,
+  version = "student",
+} = options;
+assessment = filterAssessmentForVersion(assessment, version);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
@@ -138,18 +269,6 @@ export function buildPDF(
   doc.setTextColor(0);
   y += 5;
 
-  // Cognitive distribution
-  const cogDist = assessment.cognitiveDistribution;
-  if (Object.keys(cogDist).length > 0) {
-    doc.setFontSize(8);
-    doc.setTextColor(120);
-    const distText = Object.entries(cogDist)
-      .map(([k, v]) => `${k}: ${v}`)
-      .join("  |  ");
-    doc.text(distText, MARGIN, y);
-    doc.setTextColor(0);
-    y += 5;
-  }
 
   // Student header fields
   y += 2;
@@ -174,10 +293,20 @@ export function buildPDF(
   doc.setDrawColor(0);
   y += 6;
 
-  // ── Questions ───────────────────────────────────────────────────────────────
+  // ── Questions (grouped by type, ordered by section priority) ──────────────
 
-  for (const item of assessment.items) {
-    y = renderQuestion(doc, item, y);
+  const { groups, orderedTypes } = groupAndOrderItems(assessment.items);
+  let sectionIndex = 1;
+  let questionNumber = 1;
+
+  for (const type of orderedTypes) {
+    y = renderSectionHeader(doc, type, sectionIndex, y);
+
+    for (const item of groups[type]) {
+      y = renderQuestion(doc, { ...item, questionNumber: questionNumber++ }, y);
+    }
+
+    sectionIndex++;
   }
 
   // ── Answer key (separate page) ──────────────────────────────────────────────
@@ -222,6 +351,41 @@ export function buildPDF(
     }
   }
 
+  if (includeRubric) {
+  doc.addPage();
+  y = MARGIN + 4;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(FONT_BODY);
+  doc.text("RUBRIC", MARGIN, y);
+
+  doc.setLineWidth(0.4);
+  doc.line(MARGIN, y + 2, PAGE_W - MARGIN, y + 2);
+  y += 9;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(FONT_BODY);
+
+  const rubric = buildRubric(assessment);
+
+  for (const r of rubric) {
+    y = guardSpace(doc, y, 14);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`Question ${r.questionNumber}`, MARGIN, y);
+    y += 5;
+
+    doc.setFont("helvetica", "normal");
+
+    for (const criterion of r.criteria) {
+      doc.text(`• ${criterion}`, MARGIN + 5, y);
+      y += 5;
+    }
+
+    y += 4;
+  }
+}
+
   // ── Page numbers ─────────────────────────────────────────────────────────────
 
   const pageCount = (doc as any).internal.getNumberOfPages();
@@ -258,15 +422,6 @@ function renderQuestion(
 
   y = guardSpace(doc, y, needed);
 
-  // Bloom badge
-  if (item.cognitiveDemand) {
-    doc.setFontSize(7);
-    doc.setTextColor(140);
-    doc.text(item.cognitiveDemand.toUpperCase(), bodyX, y);
-    doc.setTextColor(0);
-    y += 4;
-  }
-
   // Question number
   doc.setFont("helvetica", "bold");
   doc.setFontSize(FONT_BODY);
@@ -300,4 +455,196 @@ function renderQuestion(
   }
 
   return y;
+}
+
+export function assessmentContainsMath(assessment: FinalAssessment): boolean {
+  const mathRegex = /\\frac|\\sqrt|\^|\d+x|\d+\s*[+\-*/]\s*\d+|=/;
+
+  return assessment.items.some(item => {
+    const combined =
+      (item.prompt ?? "") +
+      (item.answer ?? "") +
+      (item.options?.join(" ") ?? "");
+
+    return mathRegex.test(combined);
+  });
+}
+export type ExportFormat = "auto" | "pdf" | "word" | "both";
+
+export async function exportAssessment(
+  assessment: FinalAssessment,
+  options?: PDFOptions & { format?: ExportFormat }
+) {
+  const format = options?.format ?? "auto";
+  const hasMath = assessmentContainsMath(assessment);
+
+  const finalFormat =
+    format === "auto"
+      ? (hasMath ? "pdf" : "word")
+      : format;
+
+  if (finalFormat === "pdf") {
+    return downloadFinalAssessmentPDF(assessment, options);
+  }
+
+  if (finalFormat === "word") {
+    return downloadFinalAssessmentWord(assessment, options);
+  }
+
+  if (finalFormat === "both") {
+    await downloadFinalAssessmentWord(assessment, options);
+    return downloadFinalAssessmentPDF(assessment, options);
+  }
+}
+/**
+ * Parse a string containing LaTeX-style math notation into an array of docx TextRuns.
+ * Supports: ^{...} for superscript, _{...} for subscript,
+ *           ^N or ^NN (bare) for superscript, _N (bare) for subscript.
+ */
+function parseMathRuns(text: string): TextRun[] {
+  const runs: TextRun[] = [];
+  // Match ^{...}, _{...}, ^X (1-3 non-space chars), _X (1-3 non-space chars)
+  const regex = /(\^{([^}]*)})|(_{([^}]*)})|(\^([\d\w±]{1,3}))|(_([\d\w]{1,3}))/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Push any plain text before this match
+    if (match.index > lastIndex) {
+      runs.push(new TextRun({ text: text.slice(lastIndex, match.index) }));
+    }
+
+    if (match[1]) {
+      // ^{...} → superscript
+      runs.push(new TextRun({ text: match[2], superScript: true }));
+    } else if (match[3]) {
+      // _{...} → subscript
+      runs.push(new TextRun({ text: match[4], subScript: true }));
+    } else if (match[5]) {
+      // ^X → superscript
+      runs.push(new TextRun({ text: match[6], superScript: true }));
+    } else if (match[7]) {
+      // _X → subscript
+      runs.push(new TextRun({ text: match[8], subScript: true }));
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining plain text
+  if (lastIndex < text.length) {
+    runs.push(new TextRun({ text: text.slice(lastIndex) }));
+  }
+
+  return runs.length > 0 ? runs : [new TextRun({ text })];
+}
+
+export async function downloadFinalAssessmentWord(
+  assessment: FinalAssessment,
+  options: PDFOptions = {}
+) {
+  const { includeAnswerKey = false, includeRubric = false } = options;
+  const children = [];
+
+  // Title
+  children.push(
+    new Paragraph({
+      text: "Assessment",
+      heading: HeadingLevel.HEADING_1,
+    })
+  );
+
+  children.push(new Paragraph(""));
+
+  const { groups, orderedTypes } = groupAndOrderItems(assessment.items);
+  let wordQNum = 1;
+
+  for (const type of orderedTypes) {
+    for (const item of groups[type]) {
+      // Build the question prompt with math-aware runs
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${wordQNum}. `, bold: true }),
+            ...parseMathRuns(item.prompt ?? ""),
+          ],
+        })
+      );
+
+      if (item.questionType === "multipleChoice") {
+        item.options?.forEach(opt => {
+          children.push(new Paragraph({ children: parseMathRuns(opt) }));
+        });
+      } else {
+        children.push(new Paragraph(" "));
+        children.push(new Paragraph(" "));
+        children.push(new Paragraph(" "));
+      }
+
+      children.push(new Paragraph(""));
+      wordQNum++;
+    }
+  }
+
+  if (includeAnswerKey) {
+    children.push(new Paragraph({
+      text: "ANSWER KEY",
+      heading: HeadingLevel.HEADING_2,
+    }));
+
+    let akNum = 1;
+    for (const type of orderedTypes) {
+      for (const item of groups[type]) {
+        const answerText = item.answer ?? "—";
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: `${akNum}. `, bold: true }),
+            ...parseMathRuns(answerText),
+          ],
+        }));
+        akNum++;
+      }
+    }
+
+    children.push(new Paragraph(""));
+  }
+
+  if (includeRubric) {
+    children.push(new Paragraph({
+      text: "RUBRIC",
+      heading: HeadingLevel.HEADING_2,
+    }));
+
+    const rubric = buildRubric(assessment);
+
+    rubric.forEach(r => {
+      children.push(new Paragraph(`Question ${r.questionNumber}`));
+      r.criteria.forEach(c => {
+        children.push(new Paragraph(`• ${c}`));
+      });
+      children.push(new Paragraph(""));
+    });
+  }
+
+  const doc = new Document({
+    sections: [{ children }],
+  });
+
+  const blob = await Packer.toBlob(doc);
+  saveAs(blob, `assessment_${assessment.id}.docx`);
+}
+function buildRubric(assessment: FinalAssessment) {
+  return assessment.items
+    .filter(item =>
+      ["shortAnswer", "freeResponse", "essay"].includes(item.questionType)
+    )
+    .map(item => ({
+      questionNumber: item.questionNumber,
+      criteria: [
+        "Accuracy of content",
+        "Clarity of explanation",
+        "Use of appropriate terminology",
+        "Completeness of response"
+      ]
+    }));
 }

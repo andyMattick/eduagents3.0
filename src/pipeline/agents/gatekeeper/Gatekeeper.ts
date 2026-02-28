@@ -89,63 +89,14 @@ export class Gatekeeper {
       //
       // 2. Topic/domain grounding
       //
+      // Intentional design: we do NOT check whether topic/course keywords appear
+      // verbatim in the prompt text.  Forcing keyword presence causes the Writer
+      // to prepend robotic preambles ("In Algebra 2, ...").  Instead, the Writer
+      // is guided by structured GROUNDING context and the Bloom verb check (§4)
+      // provides a content-quality signal independent of literal phrasing.
+      // Topic alignment is a Writer responsibility enforced via the system prompt;
+      // Gatekeeper validates structure, cognition, and format — not stem wording.
       const promptLower = item.prompt.toLowerCase();
-
-      // Topic anchor: check topic → lessonName → unitName (in order of specificity).
-      // At least one keyword from any of these three fields must appear in the prompt.
-      const topicSources = [
-        uar.topic,
-        uar.lessonName,
-        uar.unitName,
-      ].filter(Boolean) as string[];
-
-      if (topicSources.length > 0) {
-        const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "into", "parts", "each", "a", "an", "of", "to", "in", "is"]);
-        const normPrompt = promptLower.replace(/\s*([=+\-*/])\s*/g, "$1");
-
-        const anchorMatches = topicSources.some(src => {
-          const normSrc = src.toLowerCase().replace(/\s*([=+\-*/])\s*/g, "$1");
-          // Try full phrase first
-          if (normPrompt.includes(normSrc)) return true;
-          // Keyword fallback: any significant word from the source appears in prompt
-          const keywords = normSrc
-            .split(/[\s\-_,]+/)
-            .filter(w => w.length >= 3 && !stopwords.has(w));
-          return keywords.some(kw => normPrompt.includes(kw));
-        });
-
-        if (!anchorMatches) {
-          const anchorLabel = topicSources[0];
-          violations.push({
-            slotId: slot.id,
-            type: "topic_mismatch",
-            message: `Prompt must reference topic "${anchorLabel}".`
-          });
-        }
-      }
-
-      if (uar.course) {
-        // Domain check: single generic subject nouns (Math, ELA, Science…)
-        // don't appear literally in well-written prompts — skip those to
-        // avoid false positives. Only flag when the course name is specific
-        // enough to be a discriminating keyword (2+ words, or ≥ 5 chars after
-        // excluding known generic single-word subjects).
-        const genericSubjects = new Set([
-          "math", "mathematics", "ela", "english", "science", "history",
-          "geography", "art", "music", "pe", "health", "social studies",
-          "reading", "writing", "language", "biology", "chemistry", "physics"
-        ]);
-        const courseLower = (uar.course as string).toLowerCase().trim();
-        const isGeneric = genericSubjects.has(courseLower) || courseLower.split(/\s+/).length === 1 && courseLower.length <= 8;
-
-        if (!isGeneric && !promptLower.includes(courseLower)) {
-          violations.push({
-            slotId: slot.id,
-            type: "domain_mismatch",
-            message: `Prompt must be grounded in domain "${uar.course}".`
-          });
-        }
-      }
 
       //
       // 3. MCQ structural rules
@@ -294,13 +245,20 @@ export class Gatekeeper {
       //
       // 7. Misconceptions
       //
+      // Check both prompt and answer fields — a question can address a
+      // misconception through its answer/distractor layout without echoing the
+      // misconception keyword verbatim in the stem.
+      //
       if (uar.misconceptions) {
+        const answerLower = (item.answer ?? "").toLowerCase();
+        const optionsLower = (item.options ?? []).join(" ").toLowerCase();
+        const fullText = `${promptLower} ${answerLower} ${optionsLower}`;
         for (const misconception of uar.misconceptions) {
-          if (!promptLower.includes(misconception.toLowerCase())) {
+          if (!fullText.includes(misconception.toLowerCase())) {
             violations.push({
               slotId: slot.id,
               type: "missing_misconception_alignment",
-              message: `Prompt does not address required misconception: "${misconception}".`
+              message: `Item does not address required misconception: "${misconception}".`
             });
           }
         }

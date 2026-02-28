@@ -8,6 +8,17 @@
   margin: 0 auto;
 }
 
+/* Force all headings inside the white assessment viewer to use
+   --fg (dark) rather than --text which may be near-white in dark mode */
+.av-root h1,
+.av-root h2,
+.av-root h3,
+.av-root h4,
+.av-root h5,
+.av-root h6 {
+  color: var(--fg);
+}
+
 /* ── Header ─────────────────────────────────────────────────────────────────── */
 
 .av-header {
@@ -155,6 +166,8 @@
   font-size: 0.95rem;
   line-height: 1.55;
   margin: 0 0 0.6rem;
+  white-space: pre-wrap;
+  color: var(--fg);
 }
 
 /* MCQ options */
@@ -171,6 +184,7 @@
   font-size: 0.9rem;
   line-height: 1.45;
   padding-left: 0.25rem;
+  color: var(--fg);
 }
 
 /* Short answer lines */
@@ -184,6 +198,23 @@
 .av-answer-line {
   border-bottom: 1px solid var(--fg);
   height: 1.6rem;
+}
+
+/* Inline answer shown when "Show answer key" is toggled for non-MCQ items */
+.av-inline-answer {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  border-left: 3px solid var(--primary);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.9rem;
+  color: var(--fg);
+  line-height: 1.5;
+}
+
+.av-inline-answer-label {
+  font-weight: 700;
+  color: var(--primary);
 }
 
 /* Bloom badge */

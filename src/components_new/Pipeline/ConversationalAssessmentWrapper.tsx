@@ -3,8 +3,12 @@ import { useState, useCallback, useEffect } from "react";
 import { ConversationalAssessment, ConversationalIntent } from "./ConversationalAssessment";
 import { TraceViewer } from "./TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
+import { PromptEngineerPanel } from "./PromptEngineerPanel";
+import { TeacherFeedbackPanel } from "./TeacherFeedbackPanel";
 import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
 import { generateAssessment } from "@/config/aiConfig";
+import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
+import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 
@@ -39,6 +43,15 @@ export function ConversationalAssessmentWrapper({
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [limitError, setLimitError] = useState<string | null>(null);
 
+  // ── Prompt Engineer state ──────────────────────────────────────────────
+  const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
+  const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
+  const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
+
+  // ── Post-Builder teacher feedback state ────────────────────────────────
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+
   const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
 
   // Load (or refresh) daily usage
@@ -50,9 +63,35 @@ export function ConversationalAssessmentWrapper({
 
   useEffect(() => { refreshUsage(); }, [refreshUsage]);
 
-  const handleComplete = useCallback(
-    async (intent: ConversationalIntent) => {
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+
+  // ── Prompt Engineer: intercepts intent before pipeline ─────────────────
+  const handleConversationComplete = useCallback(
+    (intent: ConversationalIntent) => {
       setLimitError(null);
+      setPipelineError(null);
+      const validation = runPromptEngineer(intent);
+      setPendingIntent(intent);
+      setPeResult(validation);
+    },
+    []
+  );
+
+  // ── Called when teacher clicks "Edit Inputs" in Prompt Engineer panel ──
+  const handleEditInputs = useCallback(() => {
+    setPendingIntent(null);
+    setPeResult(null);
+  }, []);
+
+  // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
+  const handleProceed = useCallback(
+    async () => {
+      if (!pendingIntent) return;
+      setLimitError(null);
+      setPipelineError(null);
+      // Stash estimated time before clearing the panel so loading card can display it
+      setPendingEstimatedSeconds(peResult?.estimatedCreationSeconds ?? null);
+      setPeResult(null); // hide the panel
       try {
         setIsLoading(true);
         setResult(null);
@@ -67,9 +106,14 @@ export function ConversationalAssessmentWrapper({
         }
 
         const minimalIntent: MinimalTeacherIntent = {
-          ...intent,
-          assessmentType: intent.assessmentType as MinimalTeacherIntent["assessmentType"],
-          time: intent.time ?? 10,
+          ...pendingIntent,
+          assessmentType: pendingIntent.assessmentType as MinimalTeacherIntent["assessmentType"],
+          time: pendingIntent.time ?? 10,
+          questionFormat: pendingIntent.questionFormat ?? null,
+          bloomPreference: pendingIntent.bloomPreference ?? null,
+          sectionStructure: pendingIntent.sectionStructure ?? null,
+          standards: pendingIntent.standards ?? null,
+          multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
         };
 
         const uar = {
@@ -80,14 +124,48 @@ export function ConversationalAssessmentWrapper({
         const data = await generateAssessment(uar);
         setResult(data);
         onResult(data);
+        setPendingIntent(null);
 
         // Refresh counter after a successful run
         await refreshUsage();
+      } catch (err: any) {
+        const msg: string =
+          err?.message ?? "An unexpected error occurred. Please try again.";
+        console.error("[Pipeline] Error:", err);
+        setPipelineError(msg);
       } finally {
         setIsLoading(false);
       }
     },
-    [safeUserId, onResult, refreshUsage]
+    [pendingIntent, safeUserId, onResult, refreshUsage]
+  );
+
+  // ── Post-Builder teacher feedback → targeted rewrite ───────────────────
+  const handleTeacherFeedback = useCallback(
+    async (comments: string) => {
+      if (!result?.finalAssessment || !comments.trim()) return;
+      setRewriteError(null);
+      setIsRewriting(true);
+      try {
+        const rewritten = await runTeacherRewrite({
+          finalAssessment: result.finalAssessment,
+          teacherComments: comments,
+          blueprint: result.blueprint,
+        });
+        // Merge rewritten assessment back into result
+        setResult((prev: any) => ({
+          ...prev,
+          finalAssessment: rewritten,
+          teacherRewriteApplied: true,
+        }));
+      } catch (err: any) {
+        console.error("[TeacherRewrite] Error:", err);
+        setRewriteError(err?.message ?? "Rewrite failed. Please try again.");
+      } finally {
+        setIsRewriting(false);
+      }
+    },
+    [result]
   );
 
   return (
@@ -144,16 +222,85 @@ export function ConversationalAssessmentWrapper({
         </div>
       )}
 
-      {/* Always show the conversational form unless a result is ready */}
-      {!result && !limitError ? (
+      {/* Pipeline error — shown whenever the pipeline throws */}
+      {pipelineError && (
+        <div style={{
+          background: "#fff7ed",
+          border: "1px solid #fdba74",
+          color: "#7c2d12",
+          borderRadius: "8px",
+          padding: "1rem 1.25rem",
+          marginBottom: "1rem",
+          fontSize: "0.9rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "1rem",
+        }}>
+          <span>⚠️ <strong>Generation failed:</strong> {pipelineError}</span>
+          <button
+            onClick={() => setPipelineError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", lineHeight: 1, flexShrink: 0 }}
+            aria-label="Dismiss error"
+          >✕</button>
+        </div>
+      )}
+
+      {/* While the pipeline is running, show a clean generation status card */}
+      {!result && !limitError && isLoading ? (
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "1.25rem",
+          padding: "3rem 2rem",
+          borderRadius: "12px",
+          background: "var(--bg-secondary, #f8f8f8)",
+          border: "1px solid var(--border, #e0e0e0)",
+          textAlign: "center",
+          minHeight: "220px",
+        }}>
+          <div style={{ fontSize: "2.5rem", lineHeight: 1 }}>🚀</div>
+          <div>
+            <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "1.1rem", color: "var(--fg, #111)" }}>
+              Generating your assessment…
+            </p>
+            {pendingEstimatedSeconds != null && pendingEstimatedSeconds > 0 && (
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-secondary, #555)" }}>
+                Estimated time: ~{pendingEstimatedSeconds < 60
+                  ? `${pendingEstimatedSeconds}s`
+                  : `${Math.round(pendingEstimatedSeconds / 60)} min`}
+              </p>
+            )}
+          </div>
+          <div style={{
+            width: "48px",
+            height: "48px",
+            border: "4px solid var(--border, #e0e0e0)",
+            borderTopColor: "var(--accent-color, #4f46e5)",
+            borderRadius: "50%",
+            animation: "spin 0.9s linear infinite",
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
-          onComplete={handleComplete}
+          onComplete={handleConversationComplete}
           isLoading={isLoading}
           disabled={usage !== null && !usage.canGenerate}
         />
-      ) : !result && limitError ? null : (
+      ) : !result && !peResult && limitError ? null : !result && peResult ? (
+        /* Prompt Engineer validation panel — shown before pipeline fires */
+        <PromptEngineerPanel
+          result={peResult}
+          onProceed={handleProceed}
+          onEdit={handleEditInputs}
+          onOverride={handleProceed}
+        />
+      ) : (
         <button
-          onClick={() => { setResult(null); setLimitError(null); refreshUsage(); }}
+          onClick={() => { setResult(null); setLimitError(null); setPipelineError(null); setPeResult(null); setPendingIntent(null); setRewriteError(null); refreshUsage(); }}
           style={{ marginBottom: "1rem", cursor: "pointer" }}
         >
           ← New Assessment
@@ -163,13 +310,25 @@ export function ConversationalAssessmentWrapper({
       {result && (
         <div style={{ marginTop: "1rem" }}>
           {result.finalAssessment ? (
-            <AssessmentViewer
-              assessment={result.finalAssessment}
-              title={getTitle(result)}
-              subtitle={getSubtitle(result)}
-              uar={result.blueprint?.uar ?? result.uar}
-              philosopherNotes={(result as any).notes}
-            />
+            <>
+              <AssessmentViewer
+                assessment={result.finalAssessment}
+                title={getTitle(result)}
+                subtitle={getSubtitle(result)}
+                uar={result.blueprint?.uar ?? result.uar}
+                philosopherNotes={result.philosopherWrite?.philosopherNotes}
+                philosopherAnalysis={result.philosopherWrite?.analysis}
+                teacherFeedback={result.philosopherWrite?.teacherFeedback}
+              />
+
+              {/* Post-Builder Teacher Feedback Panel */}
+              <TeacherFeedbackPanel
+                onSubmit={handleTeacherFeedback}
+                isLoading={isRewriting}
+                error={rewriteError}
+                wasRewritten={result.teacherRewriteApplied ?? false}
+              />
+            </>
           ) : (
             <pre className="json-preview" style={{ padding: "1rem" }}>
               {JSON.stringify(result, null, 2)}

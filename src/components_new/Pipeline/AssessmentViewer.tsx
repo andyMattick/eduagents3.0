@@ -7,7 +7,7 @@
 
 import { useState, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
-import { downloadFinalAssessmentPDF } from "@/utils/exportFinalAssessment";
+import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord } from "@/utils/exportFinalAssessment";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -27,7 +27,12 @@ function computeReport(
 ): ReportData {
   const items = assessment.items;
   const total = assessment.totalItems;
-  const cogDist = assessment.cognitiveDistribution ?? {};
+  // Derive cognitive distribution from items (not stored on FinalAssessment directly)
+  const cogDist: Record<string, number> = {};
+  for (const item of items) {
+    const demand = (item as any).cognitiveDemand as string | undefined;
+    if (demand) cogDist[demand] = (cogDist[demand] ?? 0) + 1;
+  }
   const levels = Object.keys(cogDist).sort((a, b) => cogDist[b] - cogDist[a]);
   const dominantLevel = levels[0] ?? null;
 
@@ -125,11 +130,15 @@ function PhilosophersReport({
   title,
   uar,
   philosopherNotes,
+  philosopherAnalysis,
+  teacherFeedback,
 }: {
   assessment: FinalAssessment;
   title: string;
   uar?: Record<string, any>;
   philosopherNotes?: string;
+  philosopherAnalysis?: any;
+  teacherFeedback?: any;
 }) {
   const [open, setOpen] = useState(true);
   const report = computeReport(assessment, title, uar);
@@ -202,6 +211,67 @@ function PhilosophersReport({
               </div>
             );
           })()}
+
+          {philosopherAnalysis && (
+            <div className="av-report-section">
+              <h3 className="av-report-section-heading">Pedagogical Analysis</h3>
+              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
+                {philosopherAnalysis.gatekeeperPassed && (
+                  <p style={{ marginBottom: "0.5rem", color: "#2e7d32" }}>
+                    ✓ <strong>Gatekeeper Passed</strong> — All items passed format and structure validation.
+                  </p>
+                )}
+                {philosopherAnalysis.qualityScore !== undefined && (
+                  <p style={{ marginBottom: "0.5rem" }}>
+                    <strong>Quality Score:</strong> {philosopherAnalysis.qualityScore}/10
+                  </p>
+                )}
+                {philosopherAnalysis.violationCount > 0 && (
+                  <p style={{ marginBottom: "0.5rem", color: "#d32f2f" }}>
+                    <strong>{philosopherAnalysis.violationCount} item(s)</strong> triggered Gatekeeper corrections.
+                  </p>
+                )}
+                {philosopherAnalysis.redundantPairs && philosopherAnalysis.redundantPairs.length > 0 && (
+                  <p style={{ marginBottom: "0.5rem", color: "#f57c00" }}>
+                    <strong>Redundancy detected:</strong> {philosopherAnalysis.redundantPairs.join(", ")} have &gt;70% word overlap.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {teacherFeedback && (
+            <div className="av-report-section">
+              <h3 className="av-report-section-heading">Teacher Feedback</h3>
+              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
+                {teacherFeedback.summary && (
+                  <p style={{ marginBottom: "0.75rem", fontStyle: "italic" }}>
+                    {teacherFeedback.summary}
+                  </p>
+                )}
+                {teacherFeedback.positives && teacherFeedback.positives.length > 0 && (
+                  <div style={{ marginBottom: "0.75rem" }}>
+                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#2e7d32" }}>✓ Positives</p>
+                    <ul style={{ marginLeft: "1rem" }}>
+                      {teacherFeedback.positives.map((p: string, i: number) => (
+                        <li key={i}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {teacherFeedback.suggestions && teacherFeedback.suggestions.length > 0 && (
+                  <div>
+                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#1976d2" }}>💡 Suggestions</p>
+                    <ul style={{ marginLeft: "1rem" }}>
+                      {teacherFeedback.suggestions.map((s: string, i: number) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -228,15 +298,12 @@ function formatDate(iso: string): string {
 
 function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAnswer: boolean }) {
   const isMC = item.questionType === "multipleChoice";
-  const answerLines = isMC ? 0 : 3;
 
   return (
     <div className="av-question">
       <div className="av-q-number">{item.questionNumber}.</div>
       <div className="av-q-body">
-        {item.cognitiveDemand && (
-          <span className="av-bloom-badge">{item.cognitiveDemand}</span>
-        )}
+        {/* Question prompt text — always shown */}
         <p className="av-q-prompt">{item.prompt}</p>
 
         {isMC && item.options && (
@@ -247,7 +314,7 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
                 className="av-option"
                 style={
                   showAnswer && opt === item.answer
-                    ? { fontWeight: 700, textDecoration: "underline" }
+                    ? { fontWeight: 700, textDecoration: "underline", color: "var(--fg)" }
                     : undefined
                 }
               >
@@ -257,11 +324,18 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
           </ul>
         )}
 
-        {!isMC && (
+        {!isMC && !showAnswer && (
           <div className="av-answer-lines">
-            {Array.from({ length: answerLines }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="av-answer-line" />
             ))}
+          </div>
+        )}
+
+        {!isMC && showAnswer && item.answer && (
+          <div className="av-inline-answer">
+            <span className="av-inline-answer-label">Answer:</span>
+            {" "}{item.answer}
           </div>
         )}
       </div>
@@ -280,16 +354,22 @@ interface AssessmentViewerProps {
   uar?: Record<string, any>;
   /** Free-text notes from the Philosopher agent, including 💡 Tip suggestions */
   philosopherNotes?: string;
+  /** Structured analysis data from Philosopher (violations, bloom profile, redundancy, quality) */
+  philosopherAnalysis?: any;
+  /** Teacher feedback with summary, positives, suggestions */
+  teacherFeedback?: any;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [wordLoading, setWordLoading] = useState(false);
+  const [answerKeyLoading, setAnswerKeyLoading] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const displayTitle = title ?? "Assessment";
   const totalTime = totalMinutes(assessment.metadata?.totalEstimatedTimeSeconds);
-  const cogDist = assessment.cognitiveDistribution ?? {};
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
@@ -300,9 +380,70 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
     }
   }
 
+  async function handleDownloadWord() {
+    setWordLoading(true);
+    try {
+      await downloadFinalAssessmentWord(assessment, { title: displayTitle, subtitle });
+    } finally {
+      setWordLoading(false);
+    }
+  }
+
+  async function handleDownloadAnswerKey() {
+    setAnswerKeyLoading(true);
+    try {
+      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true });
+    } finally {
+      setAnswerKeyLoading(false);
+    }
+  }
+
   function handlePrint() {
     setShowAnswerKey(true);
     setTimeout(() => window.print(), 150);
+  }
+
+  function handleCopyAIPrompt() {
+    const u = uar ?? {};
+    const qCount = assessment.totalItems;
+    const type = u.assessmentType ?? "assessment";
+    const grades = Array.isArray(u.gradeLevels) && u.gradeLevels.length
+      ? `Grade ${(u.gradeLevels as string[]).join("/")}`
+      : "";
+    const course = u.course ?? "";
+    const level = u.studentLevel ?? "";
+    const topic = u.topic ?? u.unitName ?? title ?? "the assigned topic";
+    const timeStr = u.time ? `${u.time} minutes` : "";
+    const formatLabel: Record<string, string> = {
+      mcqOnly: "multiple choice", saOnly: "short answer", essayOnly: "essay",
+      frqOnly: "free response (FRQ)", fitbOnly: "fill-in-the-blank",
+      trueFalseOnly: "true/false", mixed: "mixed format",
+    };
+    const fmt = u.questionFormat ? (formatLabel[u.questionFormat] ?? u.questionFormat) : "";
+    const multiPart = u.multiPartQuestions === "yes";
+
+    const lines: string[] = [
+      `Generate a ${qCount}-question ${fmt ? fmt + " " : ""}${type} for ${[grades, course, level ? level + " level" : ""].filter(Boolean).join(" ")}.`,
+      `Topic: ${topic}`,
+    ];
+    if (timeStr) lines.push(`Time available: ${timeStr}`);
+    if (multiPart) lines.push("Include multi-part questions where parts build progressively (Part A → Part B → Part C).");
+    if (u.bloomPreference && u.bloomPreference !== "balanced") {
+      const bloomMap: Record<string, string> = {
+        lower: "Focus on recall-level (Remember / Understand) questions.",
+        apply: "Emphasize application-level questions.",
+        higher: "Prioritize higher-order thinking (Analyze / Evaluate / Create).",
+      };
+      lines.push(bloomMap[u.bloomPreference] ?? "");
+    }
+    if (u.additionalDetails) lines.push(u.additionalDetails);
+    lines.push("");
+    lines.push("Provide an answer key at the end.");
+
+    navigator.clipboard.writeText(lines.filter(Boolean).join("\n")).then(() => {
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 2500);
+    });
   }
 
   return (
@@ -323,7 +464,23 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
               onClick={handleDownloadPDF}
               disabled={pdfLoading}
             >
-              {pdfLoading ? "Generating…" : "⬇ Download PDF"}
+              {pdfLoading ? "Generating…" : "⬇ PDF"}
+            </button>
+            <button
+              className="av-btn av-btn-outline"
+              onClick={handleDownloadWord}
+              disabled={wordLoading}
+              title="Download as Word document (.docx)"
+            >
+              {wordLoading ? "Exporting…" : "📄 Word"}
+            </button>
+            <button
+              className="av-btn av-btn-outline"
+              onClick={handleDownloadAnswerKey}
+              disabled={answerKeyLoading}
+              title="Download PDF with answer key appended"
+            >
+              {answerKeyLoading ? "Generating…" : "🔑 Answer Key"}
             </button>
             <button
               className="av-btn av-btn-ghost"
@@ -332,6 +489,34 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             >
               🎮 Playtest
             </button>
+            <div style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
+              <button
+                className="av-btn av-btn-outline"
+                onClick={handleCopyAIPrompt}
+                title="Copy a plain-language prompt you can paste into ChatGPT, Flint AI, or any other AI tool"
+                style={promptCopied ? { borderColor: "#16a34a", color: "#16a34a" } : undefined}
+              >
+                {promptCopied ? "✓ Copied!" : "📋 Use in AI"}
+              </button>
+              {promptCopied && (
+                <span style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  background: "#16a34a",
+                  color: "#fff",
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  padding: "0.3rem 0.6rem",
+                  borderRadius: "6px",
+                  whiteSpace: "nowrap",
+                  zIndex: 10,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                }}>
+                  → Paste in ChatGPT, Claude, or Gemini
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -341,16 +526,7 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
           <span className="av-meta-item">📅 {formatDate(assessment.generatedAt)}</span>
         </div>
 
-        {/* Cognitive distribution pills */}
-        {Object.keys(cogDist).length > 0 && (
-          <div className="av-cog-summary">
-            {Object.entries(cogDist).map(([level, count]) => (
-              <span key={level} className="av-cog-pill">
-                {level}: {count}
-              </span>
-            ))}
-          </div>
-        )}
+        {/* Cognitive distribution pills — hidden from on-screen view, kept in PDF only */}
       </div>
 
       {/* ── Student header fields ───────────────────────────────── */}
@@ -401,7 +577,14 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       )}
 
       {/* ── Philosopher's Report ────────────────────────────────── */}
-      <PhilosophersReport assessment={assessment} title={displayTitle} uar={uar} philosopherNotes={philosopherNotes} />
+      <PhilosophersReport
+        assessment={assessment}
+        title={displayTitle}
+        uar={uar}
+        philosopherNotes={philosopherNotes}
+        philosopherAnalysis={philosopherAnalysis}
+        teacherFeedback={teacherFeedback}
+      />
     </div>
   );
 }

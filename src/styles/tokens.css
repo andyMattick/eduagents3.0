@@ -11,8 +11,16 @@
   --primary-hover: #1d4ed8;
 
   --gray-500: #6b7280;
-}
 
+  /*
+   * Sync missing vars so AssessmentViewer, headings, and form inputs
+   * that inherit --text and --bg land on readable values inside
+   * any white-background container.
+   */
+  --text: #111111;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+}
 [data-theme="dark"] {
   --bg: #0f0f0f;
   --bg-muted: #1a1a1a;
@@ -21,4 +29,9 @@
 
   --primary: #3b82f6;
   --primary-hover: #2563eb;
+
+  /* Restore dark-mode text so --text isn't left as #111111 on dark backgrounds */
+  --text: #f0f0f0;
+  --text-secondary: #b0b0b0;
+  --text-tertiary: #808080;
 }
