@@ -137,6 +137,43 @@ CREATE POLICY "dossiers: own row update"
 
 
 -- ────────────────────────────────────────────────────────────
+-- 5. TEACHER_GUARDRAILS
+--    Per-(teacher, agentType, domain) behavioral guardrails.
+--    SCRIBE writes one row per combination, versioned with
+--    optimistic concurrency (version column).
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.teacher_guardrails (
+  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id   uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  agent_type   text        NOT NULL,
+  domain       text        NOT NULL DEFAULT 'General',
+  guardrails   jsonb       NOT NULL DEFAULT '[]',
+  run_count    integer     NOT NULL DEFAULT 0,
+  version      integer     NOT NULL DEFAULT 1,
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+
+  UNIQUE (teacher_id, agent_type, domain)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tg_teacher_agent_domain
+  ON public.teacher_guardrails (teacher_id, agent_type, domain);
+
+ALTER TABLE public.teacher_guardrails ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "tg: own rows select"
+  ON public.teacher_guardrails FOR SELECT
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "tg: own rows insert"
+  ON public.teacher_guardrails FOR INSERT
+  WITH CHECK (auth.uid() = teacher_id);
+
+CREATE POLICY "tg: own rows update"
+  ON public.teacher_guardrails FOR UPDATE
+  USING (auth.uid() = teacher_id);
+
+
+-- ────────────────────────────────────────────────────────────
 -- 6. HELPER FUNCTION
 --    Auto-creates the teachers row from auth metadata whenever
 --    a new user confirms their email or signs up without

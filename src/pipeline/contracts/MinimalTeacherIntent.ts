@@ -18,6 +18,16 @@ export interface MinimalTeacherIntent {
 
   additionalDetails?: string | null;
 
+  // ── Adaptive fields (populated for structured assessment types) ──────
+  /** "mcqOnly" | "saOnly" | "mixed" | "auto" */
+  questionFormat?: string | null;
+  /** "lower" | "apply" | "higher" | "balanced" */
+  bloomPreference?: string | null;
+  /** "single" | "multiple" | "auto" */
+  sectionStructure?: string | null;
+  /** "commonCore" | "state" | "ap" | "none" */
+  standards?: string | null;
+
   sourceDocuments?: Array<{
     id: string;
     name: string;

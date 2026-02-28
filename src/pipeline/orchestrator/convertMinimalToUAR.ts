@@ -18,10 +18,43 @@ function sanitizeOptional(value: string | null | undefined): string | null {
   return trimmed;
 }
 
+/**
+ * Maps the teacher's questionFormat chip answer to the pipeline's
+ * questionTypes[] array.  Falls back to undefined to let the Architect
+ * infer from assessment type.
+ */
+function mapQuestionFormat(
+  format: string | null | undefined,
+  assessmentType: string
+): string[] | undefined {
+  switch (format) {
+    case "mcqOnly":
+      return ["multipleChoice"];
+    case "saOnly":
+      return ["shortAnswer"];
+    case "mixed":
+      // Vary the mix by assessment type
+      if (assessmentType === "test")
+        return ["multipleChoice", "shortAnswer", "constructedResponse"];
+      return ["multipleChoice", "shortAnswer"];
+    case "auto":
+    default:
+      return undefined; // let the pipeline decide
+  }
+}
+
 export function convertMinimalToUAR(
   intent: MinimalTeacherIntent
 ): UnifiedAssessmentRequest {
   return {
+    // ── Required UAR fields with safe defaults ──────────────────────────
+    // mode and subscriptionTier are overridden by callers that supply them;
+    // these defaults prevent "undefined" from leaking into the pipeline.
+    mode: "write" as const,
+    subscriptionTier: "free" as const,
+    userId: "",  // callers MUST override this with the authenticated user id
+
+    // ── Intent fields ─────────────────────────────────────────────────
     gradeLevels: intent.gradeLevels,
     course: intent.course,
     unitName: intent.unitName,
@@ -31,6 +64,16 @@ export function convertMinimalToUAR(
     studentLevel: intent.studentLevel,
     time: intent.time,
     additionalDetails: sanitizeOptional(intent.additionalDetails),
+
+    // ── Adaptive fields ───────────────────────────────────────────────
+    questionFormat: intent.questionFormat ?? null,
+    bloomPreference: intent.bloomPreference ?? null,
+    sectionStructure: intent.sectionStructure ?? null,
+    standards: intent.standards ?? null,
+
+    // ── Question types mapped from questionFormat ─────────────────────
+    questionTypes: mapQuestionFormat(intent.questionFormat, intent.assessmentType),
+
     sourceDocuments: intent.sourceDocuments ?? [],
     exampleAssessment: intent.exampleAssessment,
   };

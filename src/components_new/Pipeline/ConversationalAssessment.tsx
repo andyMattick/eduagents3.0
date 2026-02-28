@@ -1,5 +1,5 @@
 // src/components_new/Pipeline/ConversationalAssessment.tsx
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 
 // ── Chip option data ──────────────────────────────────────────────────────────
 
@@ -19,6 +19,33 @@ const LEVEL_CHIPS = [
   { label: "AP / Advanced", value: "AP"        },
 ];
 
+const QUESTION_FORMAT_CHIPS = [
+  { label: "Multiple Choice Only", value: "mcqOnly"   },
+  { label: "Short Answer Only",    value: "saOnly"    },
+  { label: "Mixed Format",         value: "mixed"     },
+  { label: "Let AI Decide",        value: "auto"      },
+];
+
+const BLOOM_PREFERENCE_CHIPS = [
+  { label: "Recall & Understanding", value: "lower"  },
+  { label: "Application Focus",      value: "apply"  },
+  { label: "Higher-Order Analysis",  value: "higher" },
+  { label: "Balanced Mix",           value: "balanced" },
+];
+
+const SECTION_STRUCTURE_CHIPS = [
+  { label: "Single Section",    value: "single"   },
+  { label: "Multiple Sections", value: "multiple" },
+  { label: "Let AI Decide",     value: "auto"     },
+];
+
+const STANDARDS_CHIPS = [
+  { label: "Common Core",     value: "commonCore"  },
+  { label: "State Standards", value: "state"       },
+  { label: "AP Framework",   value: "ap"          },
+  { label: "No Preference",  value: "none"        },
+];
+
 // ── Step definitions ──────────────────────────────────────────────────────────
 
 type StepId =
@@ -26,6 +53,10 @@ type StepId =
   | "course"
   | "topic"
   | "assessmentType"
+  | "questionFormat"
+  | "bloomPreference"
+  | "sectionStructure"
+  | "standards"
   | "studentLevel"
   | "time"
   | "additionalDetails";
@@ -38,7 +69,9 @@ interface Step {
   chips?: Array<{ label: string; value: string }>;
 }
 
-const STEPS: Step[] = [
+// ── Base steps (always shown, in order) ───────────────────────────────────────
+
+const BASE_STEPS_BEFORE: Step[] = [
   {
     id: "gradeLevels",
     question: "What grade level(s) are you teaching?",
@@ -59,6 +92,9 @@ const STEPS: Step[] = [
     question: "What type of assessment?",
     chips: ASSESSMENT_CHIPS,
   },
+];
+
+const BASE_STEPS_AFTER: Step[] = [
   {
     id: "studentLevel",
     question: "What level are your students?",
@@ -77,6 +113,53 @@ const STEPS: Step[] = [
   },
 ];
 
+// ── Adaptive steps injected after assessmentType ──────────────────────────────
+
+/** Types that are "structured" — tests, quizzes, worksheets get extra questions */
+const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview"]);
+
+function getAdaptiveSteps(assessmentType: string): Step[] {
+  if (!STRUCTURED_TYPES.has(assessmentType)) return [];
+
+  const steps: Step[] = [
+    {
+      id: "questionFormat",
+      question: "What question formats should this include?",
+      chips: QUESTION_FORMAT_CHIPS,
+    },
+    {
+      id: "bloomPreference",
+      question: "What thinking level should dominate?",
+      chips: BLOOM_PREFERENCE_CHIPS,
+    },
+  ];
+
+  // Tests get standards alignment and section structure
+  if (assessmentType === "test") {
+    steps.push({
+      id: "standards",
+      question: "Any standards alignment preference?",
+      chips: STANDARDS_CHIPS,
+    });
+    steps.push({
+      id: "sectionStructure",
+      question: "Should this test have sections (e.g., MCQ section, then short answer)?",
+      chips: SECTION_STRUCTURE_CHIPS,
+    });
+  }
+
+  // Quizzes also benefit from standards awareness
+  if (assessmentType === "quiz") {
+    steps.push({
+      id: "standards",
+      question: "Any standards alignment preference?",
+      chips: STANDARDS_CHIPS,
+    });
+  }
+
+  return steps;
+}
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export type ConversationalIntent = {
@@ -90,6 +173,16 @@ export type ConversationalIntent = {
   assessmentType: string;
   time: number | null;
   additionalDetails?: string;
+
+  // ── Adaptive fields (populated for structured assessment types) ────────
+  /** "mcqOnly" | "saOnly" | "mixed" | "auto" */
+  questionFormat?: string;
+  /** "lower" | "apply" | "higher" | "balanced" */
+  bloomPreference?: string;
+  /** "single" | "multiple" | "auto" */
+  sectionStructure?: string;
+  /** "commonCore" | "state" | "ap" | "none" */
+  standards?: string;
 };
 
 interface ConversationalAssessmentProps {
@@ -113,6 +206,10 @@ export function ConversationalAssessment({
     course:            "",
     topic:             "",
     assessmentType:    "",
+    questionFormat:    "",
+    bloomPreference:   "",
+    sectionStructure:  "",
+    standards:         "",
     studentLevel:      "",
     time:              "",
     additionalDetails: "",
@@ -121,8 +218,16 @@ export function ConversationalAssessment({
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
-  const currentStep = STEPS[stepIndex];
-  const isChipStep  = Boolean(currentStep.chips?.length);
+  // ── Compute the dynamic step list based on assessmentType answer ────────
+  const steps: Step[] = useMemo(() => {
+    const adaptiveSteps = answers.assessmentType
+      ? getAdaptiveSteps(answers.assessmentType)
+      : [];
+    return [...BASE_STEPS_BEFORE, ...adaptiveSteps, ...BASE_STEPS_AFTER];
+  }, [answers.assessmentType]);
+
+  const currentStep = steps[stepIndex];
+  const isChipStep  = Boolean(currentStep?.chips?.length);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -133,13 +238,21 @@ export function ConversationalAssessment({
 
   function commitAnswer(value: string) {
     const trimmed = value.trim();
+    if (!currentStep) return;
     if (!trimmed && !currentStep.optional) return;
 
     const next: Record<StepId, string> = { ...answers, [currentStep.id]: trimmed };
     setAnswers(next);
     setInputValue("");
 
-    if (stepIndex < STEPS.length - 1) {
+    // After assessmentType is answered, the steps list will recompute.
+    // We need to compute the new step list to know the correct next index.
+    const newAdaptive = next.assessmentType
+      ? getAdaptiveSteps(next.assessmentType)
+      : [];
+    const newSteps = [...BASE_STEPS_BEFORE, ...newAdaptive, ...BASE_STEPS_AFTER];
+
+    if (stepIndex < newSteps.length - 1) {
       setStepIndex(stepIndex + 1);
       return;
     }
@@ -158,6 +271,12 @@ export function ConversationalAssessment({
       assessmentType:   next.assessmentType,
       time:             next.time ? Number(next.time) : null,
       additionalDetails: next.additionalDetails || undefined,
+
+      // Adaptive fields — only present for structured types
+      questionFormat:    next.questionFormat || undefined,
+      bloomPreference:   next.bloomPreference || undefined,
+      sectionStructure:  next.sectionStructure || undefined,
+      standards:         next.standards || undefined,
     };
     onComplete(intent);
   }
@@ -171,12 +290,12 @@ export function ConversationalAssessment({
 
   const handleBack = () => {
     if (stepIndex === 0) return;
-    const prevStep = STEPS[stepIndex - 1];
+    const prevStep = steps[stepIndex - 1];
     setInputValue(answers[prevStep.id] || "");
     setStepIndex(stepIndex - 1);
   };
 
-  const progressPct = Math.round((stepIndex / STEPS.length) * 100);
+  const progressPct = Math.round((stepIndex / steps.length) * 100);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -189,12 +308,12 @@ export function ConversationalAssessment({
         <div className="ca-progress-track">
           <div className="ca-progress-fill" style={{ width: `${progressPct}%` }} />
         </div>
-        <span className="ca-step-label">{stepIndex + 1} / {STEPS.length}</span>
+        <span className="ca-step-label">{stepIndex + 1} / {steps.length}</span>
       </div>
 
       {/* Message thread */}
       <div className="ca-messages">
-        {STEPS.slice(0, stepIndex + 1).map((step, idx) => (
+        {steps.slice(0, stepIndex + 1).map((step, idx) => (
           <div key={step.id} className="ca-exchange">
 
             {/* Bot bubble */}
@@ -262,12 +381,12 @@ export function ConversationalAssessment({
             className="ca-input"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
-            placeholder={currentStep.placeholder ?? ""}
+            placeholder={currentStep?.placeholder ?? ""}
             disabled={isBlocked}
             autoComplete="off"
           />
           <button type="submit" className="ca-btn-send" disabled={isBlocked}>
-            {stepIndex === STEPS.length - 1 ? "Generate" : "→"}
+            {stepIndex === steps.length - 1 ? "Generate" : "→"}
           </button>
         </form>
       )}
