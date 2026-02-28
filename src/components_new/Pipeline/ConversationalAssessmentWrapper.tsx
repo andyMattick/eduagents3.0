@@ -110,6 +110,7 @@ export function ConversationalAssessmentWrapper({
           bloomPreference: pendingIntent.bloomPreference ?? null,
           sectionStructure: pendingIntent.sectionStructure ?? null,
           standards: pendingIntent.standards ?? null,
+          multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
         };
 
         const uar = {
@@ -255,6 +256,7 @@ export function ConversationalAssessmentWrapper({
           result={peResult}
           onProceed={handleProceed}
           onEdit={handleEditInputs}
+          onOverride={handleProceed}
         />
       ) : (
         <button

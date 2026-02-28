@@ -13,12 +13,15 @@ interface PromptEngineerPanelProps {
   result: PromptEngineerResult;
   onProceed: () => void;
   onEdit: () => void;
+  /** Allow teacher to override a blocked result and generate anyway */
+  onOverride?: () => void;
 }
 
 export function PromptEngineerPanel({
   result,
   onProceed,
   onEdit,
+  onOverride,
 }: PromptEngineerPanelProps) {
   const hasIssues = result.contradictions.length > 0 || result.missingInfo.length > 0;
   const hasSuggestions = result.suggestions.length > 0;
@@ -172,9 +175,29 @@ export function PromptEngineerPanel({
         )}
 
         {result.shouldBlock && (
-          <span style={{ fontSize: "0.82rem", color: "#b91c1c", alignSelf: "center" }}>
-            Please fix the contradictions above before generating.
-          </span>
+          <>
+            <span style={{ fontSize: "0.82rem", color: "#b91c1c", alignSelf: "center" }}>
+              Fix the issues above, or override to generate anyway.
+            </span>
+            {onOverride && (
+              <button
+                onClick={onOverride}
+                style={{
+                  padding: "0.5rem 1.1rem",
+                  borderRadius: "6px",
+                  border: "1.5px solid #d97706",
+                  background: "rgba(217,119,6,0.08)",
+                  color: "#92400e",
+                  cursor: "pointer",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                }}
+                title="Generate anyway — the Philosopher will flag any issues in its report"
+              >
+                ⚠️ Override &amp; Generate Anyway
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

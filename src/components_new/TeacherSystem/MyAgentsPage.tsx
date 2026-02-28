@@ -174,6 +174,52 @@ function MiniTimeline({ dates }: { dates: string[] }) {
   );
 }
 
+// ─── AgentLegend ──────────────────────────────────────────────────────────────
+
+const AGENT_DESCRIPTIONS = [
+  { emoji: "🔍", name: "Prompt Engineer", role: "Validates your inputs before anything is generated. Catches contradictions (e.g., 5-minute test with 20 essay questions) and warns about impossible setups. You can override and generate anyway — the Philosopher will flag issues in its report." },
+  { emoji: "🗺️", name: "Architect", role: "Designs the blueprint: how many questions, which Bloom levels, section layout, and pacing. Nothing is written until the blueprint is finalized." },
+  { emoji: "✍️", name: "Writer", role: "Writes each question in parallel, following the blueprint exactly. Produces the prompt, answer choices, and correct answer for every item." },
+  { emoji: "🚪", name: "Gatekeeper", role: "Reviews every question against the blueprint — checks format, Bloom level, forbidden phrases, and answer correctness. Violations trigger automatic rewrites." },
+  { emoji: "🔄", name: "Rewriter", role: "Fixes any question that failed Gatekeeper validation. Runs targeted rewrites in the same session so the final output is always clean." },
+  { emoji: "⚗", name: "Philosopher", role: "Audits the finished assessment for pedagogical quality: Bloom breadth, redundancy, pacing, and alignment with your stated intent. Violation counts appear in the Philosopher's Report on each assessment." },
+  { emoji: "📜", name: "SCRIBE", role: "Tracks patterns across every run. Builds subject-specific trust scores and learns your guardrail preferences over time — the trust level bar on each card reflects SCRIBE's confidence in that subject." },
+];
+
+function AgentLegend() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginBottom: "1.25rem", border: "1px solid var(--border-color, #e5e7eb)", borderRadius: "10px", overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: "0.5rem",
+          padding: "0.75rem 1rem", background: "var(--bg-secondary, #f9fafb)",
+          border: "none", borderBottom: open ? "1px solid var(--border-color, #e5e7eb)" : "none",
+          cursor: "pointer", fontSize: "0.875rem", fontWeight: 600,
+          color: "var(--text-primary, #111827)", textAlign: "left",
+        }}
+      >
+        <span>🤖</span>
+        <span>About these agents</span>
+        <span style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)" }}>
+          {open ? "Hide ▲" : "What do they do? ▼"}
+        </span>
+      </button>
+      {open && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "0.75rem", padding: "1rem", background: "var(--bg-primary, #fff)" }}>
+          {AGENT_DESCRIPTIONS.map((a) => (
+            <div key={a.name} style={{ padding: "0.75rem", borderRadius: "8px", background: "var(--bg-secondary, #f9fafb)", border: "1px solid var(--border-color, #e5e7eb)" }}>
+              <p style={{ margin: "0 0 0.3rem", fontWeight: 700, fontSize: "0.875rem" }}>{a.emoji} {a.name}</p>
+              <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--text-secondary, #6b7280)", lineHeight: 1.5 }}>{a.role}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function MyAgentsPage({ userId, onNewAssessment }: MyAgentsPageProps) {
   const [rows, setRows] = useState<HistoryRow[]>([]);
@@ -294,6 +340,9 @@ export function MyAgentsPage({ userId, onNewAssessment }: MyAgentsPageProps) {
       {loading && <p>Loading…</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
 
+      {/* Agent legend — always visible */}
+      {!loading && <AgentLegend />}
+
       {!loading && !error && agents.length === 0 && (
         <div className="dashboard-card" style={{ textAlign: "center", padding: "3rem" }}>
           <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🤖</p>
@@ -330,8 +379,11 @@ export function MyAgentsPage({ userId, onNewAssessment }: MyAgentsPageProps) {
 
                 {/* Score bars */}
                 <div>
-                  <p style={{ fontSize: "0.8rem", fontWeight: 600, margin: "0 0 0.25rem" }}>Proficiency</p>
+                  <p style={{ fontSize: "0.8rem", fontWeight: 600, margin: "0 0 0.25rem" }}>Trust Level</p>
                   <ScoreBar value={proficiency} max={10} color="#4f46e5" />
+                  <p style={{ fontSize: "0.72rem", margin: "0.25rem 0 0", color: "var(--text-secondary, #6b7280)" }}>
+                    Grows with clean runs — see violations in each Philosopher’s Report
+                  </p>
                 </div>
                 <div>
                   <p style={{ fontSize: "0.8rem", fontWeight: 600, margin: "0 0 0.25rem" }}>Variety</p>

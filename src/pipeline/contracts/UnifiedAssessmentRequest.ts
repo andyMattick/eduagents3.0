@@ -40,6 +40,8 @@ export interface UnifiedAssessmentRequest {
   bloomPreference?: string | null;
   sectionStructure?: string | null;
   standards?: string | null;
+  /** "yes" | "no" — include multi-part questions where parts chain: A → B → C */
+  multiPartQuestions?: string | null;
 
   // Optional teacher-provided materials
   sourceDocuments: Array<{
@@ -102,6 +104,13 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
       ap: "Align items to the AP framework.",
     };
     detailParts.push(stdLabels[uar.standards] ?? `Standards: ${uar.standards}`);
+  }
+  if (uar.multiPartQuestions === "yes") {
+    detailParts.push(
+      "Include multi-part questions where each part depends on the previous " +
+      "(e.g., Part A gives context, Part B requires applying that result, Part C extends further). " +
+      "Label them Part A, Part B, Part C."
+    );
   }
   const enrichedDetails = detailParts.length > 0 ? detailParts.join(" ") : null;
 

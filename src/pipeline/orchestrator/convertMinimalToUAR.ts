@@ -80,6 +80,7 @@ export function convertMinimalToUAR(
     bloomPreference: intent.bloomPreference ?? null,
     sectionStructure: intent.sectionStructure ?? null,
     standards: intent.standards ?? null,
+    multiPartQuestions: intent.multiPartQuestions ?? null,
 
     // ── Question types mapped from questionFormat ─────────────────────
     questionTypes: mapQuestionFormat(intent.questionFormat, intent.assessmentType),

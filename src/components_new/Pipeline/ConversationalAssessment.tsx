@@ -58,6 +58,7 @@ type StepId =
   | "assessmentType"
   | "questionFormat"
   | "bloomPreference"
+  | "multiPartQuestions"
   | "sectionStructure"
   | "standards"
   | "studentLevel"
@@ -137,6 +138,18 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
     },
   ];
 
+  // Multi-part questions for longer structured assessments
+  if (["test", "quiz", "worksheet", "testReview"].includes(assessmentType)) {
+    steps.push({
+      id: "multiPartQuestions",
+      question: "Include multi-part questions? (Parts build progressively — need A to solve B, need B to solve C)",
+      chips: [
+        { label: "Yes — include multi-part", value: "yes" },
+        { label: "No — all standalone",       value: "no"  },
+      ],
+    });
+  }
+
   // Tests get standards alignment and section structure
   if (assessmentType === "test") {
     steps.push({
@@ -182,6 +195,8 @@ export type ConversationalIntent = {
   questionFormat?: string;
   /** "lower" | "apply" | "higher" | "balanced" */
   bloomPreference?: string;
+  /** "yes" | "no" */
+  multiPartQuestions?: string;
   sectionStructure?: string;
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string;
@@ -204,17 +219,18 @@ export function ConversationalAssessment({
   const isBlocked = isLoading || disabled;
   const [stepIndex, setStepIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<StepId, string>>({
-    gradeLevels:       "",
-    course:            "",
-    topic:             "",
-    assessmentType:    "",
-    questionFormat:    "",
-    bloomPreference:   "",
-    sectionStructure:  "",
-    standards:         "",
-    studentLevel:      "",
-    time:              "",
-    additionalDetails: "",
+    gradeLevels:         "",
+    course:              "",
+    topic:               "",
+    assessmentType:      "",
+    questionFormat:      "",
+    bloomPreference:     "",
+    multiPartQuestions:  "",
+    sectionStructure:    "",
+    standards:           "",
+    studentLevel:        "",
+    time:                "",
+    additionalDetails:   "",
   });
   const [inputValue, setInputValue] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -275,10 +291,11 @@ export function ConversationalAssessment({
       additionalDetails: next.additionalDetails || undefined,
 
       // Adaptive fields — only present for structured types
-      questionFormat:    next.questionFormat || undefined,
-      bloomPreference:   next.bloomPreference || undefined,
-      sectionStructure:  next.sectionStructure || undefined,
-      standards:         next.standards || undefined,
+      questionFormat:       next.questionFormat || undefined,
+      bloomPreference:      next.bloomPreference || undefined,
+      multiPartQuestions:   next.multiPartQuestions || undefined,
+      sectionStructure:     next.sectionStructure || undefined,
+      standards:            next.standards || undefined,
     };
     onComplete(intent);
   }
