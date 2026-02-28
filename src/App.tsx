@@ -168,19 +168,22 @@ function TeacherAppContent() {
           />
         </div>
 
-        <div style={{ display: activeTab === 'my-assessments' ? 'block' : 'none' }}>
+        {/* Assessments and Agents are conditionally rendered (not just hidden) so
+            they remount and refetch whenever the user navigates to them.
+            This ensures new users see their data immediately after generating. */}
+        {activeTab === 'my-assessments' && (
           <MyAssessmentsPage
             teacherId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
           />
-        </div>
+        )}
 
-        <div style={{ display: activeTab === 'my-agents' ? 'block' : 'none' }}>
+        {activeTab === 'my-agents' && (
           <MyAgentsPage
             userId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
           />
-        </div>
+        )}
 
         <div style={{ display: activeTab === 'what-we-infer' ? 'block' : 'none' }}>
           <WhatWeInferPage />
