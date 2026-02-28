@@ -108,6 +108,39 @@ function uarForWriter(uar: any): Record<string, any> {
 }
 
 /**
+ * validateSlotIntegrity — pre-Builder safety gate.
+ *
+ * Throws if any slot in the blueprint is missing a corresponding generated
+ * item, or if the item count doesn't match the slot count.  Catches phantom
+ * slots early before the Builder tries to reference them.
+ */
+function validateSlotIntegrity(
+  slots: { id: string }[],
+  items: { slotId: string }[]
+): void {
+  const itemsMap = new Map<string, { slotId: string }>();
+  for (const item of items) {
+    itemsMap.set(item.slotId, item);
+  }
+
+  for (const slot of slots) {
+    if (!itemsMap.has(slot.id)) {
+      throw new Error(
+        `[validateSlotIntegrity] Phantom slot: "${slot.id}" has no generated item. ` +
+        `Available slot IDs: [${[...itemsMap.keys()].join(", ")}]`
+      );
+    }
+  }
+
+  if (itemsMap.size !== slots.length) {
+    throw new Error(
+      `[validateSlotIntegrity] Item count mismatch: ${itemsMap.size} items for ${slots.length} slots. ` +
+      `Item slot IDs: [${[...itemsMap.keys()].join(", ")}]`
+    );
+  }
+}
+
+/**
  * ValidateAndScore — merges Gatekeeper + Philosopher (write mode) into a
  * single pipeline step.
  *
@@ -252,6 +285,7 @@ const { gatekeeperResult, philosopherWrite } = await validateAndScore(
 // WRITE MODE BRANCHING
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Skip playtest, skip compare → go straight to Builder
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
 
@@ -287,6 +321,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     { slotCount: blueprint.plan?.slots?.length ?? 0, itemCount: rewritten.length },
     { ok: gatekeeperFinal.ok, violationCount: gatekeeperFinal.violations?.length ?? 0 });
 
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
@@ -370,6 +405,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     { slotCount: blueprint.plan?.slots?.length ?? 0, itemCount: rewritten.length },
     { ok: gatekeeperFinal.ok, violationCount: gatekeeperFinal.violations?.length ?? 0 });
 
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
@@ -403,6 +439,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 
 // 9. BUILDER — FINAL ASSEMBLY (no rewrites needed)
 // ===============================
 
+validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
 const finalAssessment = await runAgent(trace, "Builder", runBuilder,
   { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
 

@@ -70,17 +70,23 @@ export class DossierManager {
   // LOAD — returns the full dossiers row for a user
   // ─────────────────────────────────────────────────────
   static async loadRow(userId: string) {
-    const { data, error } = await supabase
-      .from(this.table)
-      .select("*")
-      .eq("user_id", userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from(this.table)
+        .select("*")
+        .eq("user_id", userId)
+        .single();
 
-    if (error && error.code !== "PGRST116") {
-      console.error("[DossierManager] Load error:", error);
-      throw error;
+      // PGRST116 = no rows found — expected on first run
+      if (error && error.code !== "PGRST116") {
+        console.warn("[DossierManager] Load error (non-fatal, pipeline continues):", error.message);
+        return null;  // treat as missing row
+      }
+      return data ?? null;
+    } catch (e: any) {
+      console.warn("[DossierManager] Unexpected load error (non-fatal):", e?.message ?? e);
+      return null;
     }
-    return data ?? null;
   }
 
   // ─────────────────────────────────────────────────────
@@ -92,7 +98,7 @@ export class DossierManager {
 
     const baseline = {
       user_id: userId,
-      writer_dossier: {},   // empty map — domains added on first run
+      writer_dossier: {},
       architect_dossier: {},
       astronomer_dossier: {},
       writer_history: [],
@@ -101,18 +107,28 @@ export class DossierManager {
       philosopher_history: [],
     };
 
-    const { data, error } = await supabase
-      .from(this.table)
-      .insert(baseline)
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from(this.table)
+        .insert(baseline)
+        .select()
+        .single();
 
-    if (error) {
-      console.error("[DossierManager] Baseline create error:", error);
-      throw error;
+      if (error) {
+        // Non-fatal: if the dossiers table doesn't exist or RLS blocks the insert,
+        // return an in-memory baseline so the pipeline can continue without persistence.
+        console.warn(
+          "[DossierManager] Could not persist dossier row (non-fatal, running in-memory):",
+          error.message
+        );
+        return baseline as any;
+      }
+
+      return data;
+    } catch (e: any) {
+      console.warn("[DossierManager] Unexpected insert error (non-fatal):", e?.message ?? e);
+      return baseline as any;
     }
-
-    return data;
   }
 
   // ─────────────────────────────────────────────────────

@@ -50,9 +50,12 @@ export function ConversationalAssessmentWrapper({
 
   useEffect(() => { refreshUsage(); }, [refreshUsage]);
 
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+
   const handleComplete = useCallback(
     async (intent: ConversationalIntent) => {
       setLimitError(null);
+      setPipelineError(null);
       try {
         setIsLoading(true);
         setResult(null);
@@ -83,6 +86,11 @@ export function ConversationalAssessmentWrapper({
 
         // Refresh counter after a successful run
         await refreshUsage();
+      } catch (err: any) {
+        const msg: string =
+          err?.message ?? "An unexpected error occurred. Please try again.";
+        console.error("[Pipeline] Error:", err);
+        setPipelineError(msg);
       } finally {
         setIsLoading(false);
       }
@@ -144,6 +152,30 @@ export function ConversationalAssessmentWrapper({
         </div>
       )}
 
+      {/* Pipeline error — shown whenever the pipeline throws */}
+      {pipelineError && (
+        <div style={{
+          background: "#fff7ed",
+          border: "1px solid #fdba74",
+          color: "#7c2d12",
+          borderRadius: "8px",
+          padding: "1rem 1.25rem",
+          marginBottom: "1rem",
+          fontSize: "0.9rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "1rem",
+        }}>
+          <span>⚠️ <strong>Generation failed:</strong> {pipelineError}</span>
+          <button
+            onClick={() => setPipelineError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", lineHeight: 1, flexShrink: 0 }}
+            aria-label="Dismiss error"
+          >✕</button>
+        </div>
+      )}
+
       {/* Always show the conversational form unless a result is ready */}
       {!result && !limitError ? (
         <ConversationalAssessment
@@ -153,7 +185,7 @@ export function ConversationalAssessmentWrapper({
         />
       ) : !result && limitError ? null : (
         <button
-          onClick={() => { setResult(null); setLimitError(null); refreshUsage(); }}
+          onClick={() => { setResult(null); setLimitError(null); setPipelineError(null); refreshUsage(); }}
           style={{ marginBottom: "1rem", cursor: "pointer" }}
         >
           ← New Assessment
@@ -168,7 +200,9 @@ export function ConversationalAssessmentWrapper({
               title={getTitle(result)}
               subtitle={getSubtitle(result)}
               uar={result.blueprint?.uar ?? result.uar}
-              philosopherNotes={(result as any).notes}
+              philosopherNotes={result.philosopherWrite?.philosopherNotes}
+              philosopherAnalysis={result.philosopherWrite?.analysis}
+              teacherFeedback={result.philosopherWrite?.teacherFeedback}
             />
           ) : (
             <pre className="json-preview" style={{ padding: "1rem" }}>

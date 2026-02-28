@@ -12,6 +12,7 @@ import {
   signUp,
   logout as supabaseLogout,
   getCurrentUser,
+  ensureTeacherRow,
 } from "./authService";
 
 import {
@@ -50,6 +51,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const currentUser = await getCurrentUser();
         if (currentUser) {
+          // Ensure the teachers row exists for session-restored users.
+          // login() and signUp() call this too, but page-reload session
+          // restoration only goes through getCurrentUser() — not those paths.
+          await ensureTeacherRow(
+            currentUser.id,
+            currentUser.email,
+            currentUser.user_metadata?.name ?? null,
+            currentUser.user_metadata?.schoolName ?? null,
+          );
           setUser({
             id: currentUser.id,
             email: currentUser.email ?? "",

@@ -1,6 +1,7 @@
 import type { GeneratedItem } from "@/pipeline/agents/writer/types";
 import type { FinalAssessment, FinalAssessmentItem } from "./FinalAssessment";
-
+import { normalizeMath } from "../../../utils/normalizeMath";
+import { applyLexicalCalibration } from "@/utils/lexical/Calibration";
 type BuilderInput =
   | GeneratedItem[]
   | { items: GeneratedItem[]; blueprint?: any };
@@ -15,8 +16,9 @@ function generateId(): string {
 }
 
 export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> {
+  
   const { items, blueprint } = normalise(input);
-
+ 
   const plan = blueprint?.plan ?? blueprint ?? null;
 
   /** Strip residual JSON escape artifacts from user-facing text strings. */
@@ -30,24 +32,40 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
       .trim();
   }
 
+  const grade = parseInt(
+  blueprint?.uar?.grade ?? blueprint?.uar?.gradeLevels?.[0] ?? "9",
+  10
+);
+function transformText(text?: string): string | undefined {
+  if (typeof text !== "string") return undefined;
+
+  const cleaned = cleanText(text) ?? "";
+  const normalized = normalizeMath(cleaned) ?? cleaned;
+  return applyLexicalCalibration(normalized, grade);
+}
   const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
-    // Find matching slot for enriched metadata
-    const slot = plan?.slots?.find((s: any) => s.id === item.slotId);
+  const slot = plan?.slots?.find((s: any) => s.id === item.slotId);
 
-    return {
-      questionNumber: i + 1,
-      slotId: item.slotId,
-      questionType: item.questionType,
-      prompt: cleanText(item.prompt) ?? "",
-      options: item.options?.map(cleanText) as string[] | undefined,
-      answer: cleanText(item.answer),
-      cognitiveDemand: slot?.cognitiveDemand ?? item.metadata?.cognitiveDemand,
-      difficulty: slot?.difficulty ?? item.metadata?.difficulty,
-      metadata: item.metadata,
-    };
-  });
+  return {
+    questionNumber: i + 1,
+    slotId: item.slotId,
+    questionType: item.questionType,
 
-  // answerKey removed from pipeline payload — item.answer is already on each item.
+    prompt: transformText(item.prompt) ?? "",
+
+    options: item.options?.map(opt => transformText(opt) ?? ""),
+
+    answer: transformText(item.answer),
+
+    cognitiveDemand:
+      slot?.cognitiveDemand ?? item.metadata?.cognitiveDemand,
+
+    difficulty:
+      slot?.difficulty ?? item.metadata?.difficulty,
+
+    metadata: item.metadata,
+  };
+});// answerKey removed from pipeline payload — item.answer is already on each item.
   // Cognitive distribution tally
   const cognitiveDistribution: Record<string, number> = {};
   for (const item of finalItems) {

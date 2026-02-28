@@ -125,11 +125,15 @@ function PhilosophersReport({
   title,
   uar,
   philosopherNotes,
+  philosopherAnalysis,
+  teacherFeedback,
 }: {
   assessment: FinalAssessment;
   title: string;
   uar?: Record<string, any>;
   philosopherNotes?: string;
+  philosopherAnalysis?: any;
+  teacherFeedback?: any;
 }) {
   const [open, setOpen] = useState(true);
   const report = computeReport(assessment, title, uar);
@@ -202,6 +206,67 @@ function PhilosophersReport({
               </div>
             );
           })()}
+
+          {philosopherAnalysis && (
+            <div className="av-report-section">
+              <h3 className="av-report-section-heading">Pedagogical Analysis</h3>
+              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
+                {philosopherAnalysis.gatekeeperPassed && (
+                  <p style={{ marginBottom: "0.5rem", color: "#2e7d32" }}>
+                    ✓ <strong>Gatekeeper Passed</strong> — All items passed format and structure validation.
+                  </p>
+                )}
+                {philosopherAnalysis.qualityScore !== undefined && (
+                  <p style={{ marginBottom: "0.5rem" }}>
+                    <strong>Quality Score:</strong> {philosopherAnalysis.qualityScore}/10
+                  </p>
+                )}
+                {philosopherAnalysis.violationCount > 0 && (
+                  <p style={{ marginBottom: "0.5rem", color: "#d32f2f" }}>
+                    <strong>{philosopherAnalysis.violationCount} item(s)</strong> triggered Gatekeeper corrections.
+                  </p>
+                )}
+                {philosopherAnalysis.redundantPairs && philosopherAnalysis.redundantPairs.length > 0 && (
+                  <p style={{ marginBottom: "0.5rem", color: "#f57c00" }}>
+                    <strong>Redundancy detected:</strong> {philosopherAnalysis.redundantPairs.join(", ")} have &gt;70% word overlap.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {teacherFeedback && (
+            <div className="av-report-section">
+              <h3 className="av-report-section-heading">Teacher Feedback</h3>
+              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
+                {teacherFeedback.summary && (
+                  <p style={{ marginBottom: "0.75rem", fontStyle: "italic" }}>
+                    {teacherFeedback.summary}
+                  </p>
+                )}
+                {teacherFeedback.positives && teacherFeedback.positives.length > 0 && (
+                  <div style={{ marginBottom: "0.75rem" }}>
+                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#2e7d32" }}>✓ Positives</p>
+                    <ul style={{ marginLeft: "1rem" }}>
+                      {teacherFeedback.positives.map((p: string, i: number) => (
+                        <li key={i}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {teacherFeedback.suggestions && teacherFeedback.suggestions.length > 0 && (
+                  <div>
+                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#1976d2" }}>💡 Suggestions</p>
+                    <ul style={{ marginLeft: "1rem" }}>
+                      {teacherFeedback.suggestions.map((s: string, i: number) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -280,9 +345,13 @@ interface AssessmentViewerProps {
   uar?: Record<string, any>;
   /** Free-text notes from the Philosopher agent, including 💡 Tip suggestions */
   philosopherNotes?: string;
+  /** Structured analysis data from Philosopher (violations, bloom profile, redundancy, quality) */
+  philosopherAnalysis?: any;
+  /** Teacher feedback with summary, positives, suggestions */
+  teacherFeedback?: any;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
@@ -401,7 +470,14 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       )}
 
       {/* ── Philosopher's Report ────────────────────────────────── */}
-      <PhilosophersReport assessment={assessment} title={displayTitle} uar={uar} philosopherNotes={philosopherNotes} />
+      <PhilosophersReport
+        assessment={assessment}
+        title={displayTitle}
+        uar={uar}
+        philosopherNotes={philosopherNotes}
+        philosopherAnalysis={philosopherAnalysis}
+        teacherFeedback={teacherFeedback}
+      />
     </div>
   );
 }

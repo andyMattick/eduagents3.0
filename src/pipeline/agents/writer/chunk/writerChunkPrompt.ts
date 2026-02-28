@@ -102,6 +102,19 @@ STEM VARIETY (mandatory — applies to EVERY slot in this batch)
 - Draw from varied openers: "Explain...", "Calculate...", "Compare...", "A student notices...", "Given that...", "Identify...", "Describe...", "Why does...", "How would...", "Determine...", "In the context of...", "A researcher finds...".
 - Each question must have a distinctly different opening phrase than every other question in this batch.
 
+STEM NATURALISM (hard rule — zero exceptions unless teacher notes explicitly request otherwise)
+- NEVER begin a prompt with: "In [Course]...", "In the study of...", "In this lesson...", "As part of...", "When learning about...", "In Algebra...", "In Biology...", or any course/unit name as a preamble.
+- NEVER add meta-commentary explaining the academic context (e.g. "Demonstrate your understanding of... by...").
+- Start as close to the cognitive task as possible. Prefer imperative form for procedural tasks.
+- The course, unit, and topic are context FOR YOU — do not echo them into the student-facing stem.
+- Bloom-keyed preferred opening patterns:
+    remember   → "Define...", "State...", "Identify...", "List the steps..."
+    understand → "Explain why...", "Describe how...", "What is the difference between..."
+    apply      → Direct imperative: "Factor...", "Solve...", "Calculate...", "Simplify..."
+    analyze    → "Compare...", "Identify the error in...", "Examine the relationship between..."
+    evaluate   → "Which approach is more efficient and why?", "Justify...", "Critique..."
+    create     → "Design...", "Construct...", "Develop a model that..."
+
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
 Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}

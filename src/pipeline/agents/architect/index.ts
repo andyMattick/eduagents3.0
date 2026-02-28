@@ -6,6 +6,7 @@ import { callGemini } from "@/pipeline/llm/gemini";
 import { runConstraintEngine } from "./constraintEngine";
 import { resolveRigorProfile } from "./rigorProfile";
 import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
+import { allocateBloomCounts } from "./allocateBloomCounts";
 
 import {
   BlueprintPlanV3_2,
@@ -184,14 +185,14 @@ export async function runArchitect({
     "evaluate"
   ];
 
+  // Use largest-remainder (Hamilton) method — counts sum exactly to questionCount,
+  // no Math.round drift, no silent pad/trim.
+  const lockedBloomCounts = allocateBloomCounts(baseDistribution, questionCount);
   const cps: CognitiveProcess[] = [];
   for (const cp of cpOrder) {
-    const count = Math.round(baseDistribution[cp] * questionCount);
-    for (let i = 0; i < count; i++) cps.push(cp);
+    for (let i = 0; i < lockedBloomCounts[cp]; i++) cps.push(cp);
   }
-
-  while (cps.length < questionCount) cps.push("understand");
-  if (cps.length > questionCount) cps.length = questionCount;
+  // No while-pad or length-trim — allocateBloomCounts guarantees exact count.
 
   // Depth band enforcement via rigorProfile.
   // Replace any cps[] entry that exceeds depthCeiling with depthCeiling,
@@ -289,6 +290,13 @@ export async function runArchitect({
   }
 
   const teacherTypes = effectiveTeacherTypes;
+
+  // Slot count assertion — must equal questionCount before any time adjustment
+  if (cps.length !== questionCount) {
+    throw new Error(
+      `[Architect] Slot count mismatch after cps[] build. Expected ${questionCount} got ${cps.length}`
+    );
+  }
 
   const slots = cps.map((cp, i) => {
     const questionType = teacherTypes[i % teacherTypes.length];
@@ -509,9 +517,24 @@ export async function runArchitect({
     }
   }
 
+  // Post-adjustment slot count assertion — must have at least 1 slot and
+  // must not exceed the originally requested questionCount.
+  const adjustedQuestionCount = adjustedSlots.length;
+  if (adjustedQuestionCount < 1) {
+    throw new Error(
+      `[Architect] Post-time-adjustment produced 0 slots for a ${architectUAR.timeMinutes}-min window.`
+    );
+  }
+  if (adjustedQuestionCount > questionCount) {
+    throw new Error(
+      `[Architect] Post-time-adjustment slot count ${adjustedQuestionCount} exceeds ` +
+      `original questionCount ${questionCount} — adjustPlanForTime must only reduce.`
+    );
+  }
+
   // Update the plan in-place with time-adjusted values
   (finalPlan as any).slots              = adjustedSlots;
-  (finalPlan as any).questionCount      = adjustedSlots.length;
+  (finalPlan as any).questionCount      = adjustedQuestionCount;
   (finalPlan as any).depthCeiling       = adjustedDepthCeiling;
   (finalPlan as any).cognitiveDistribution = adjustedCognitiveDist;
 
