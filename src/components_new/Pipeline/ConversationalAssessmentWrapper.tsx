@@ -278,7 +278,7 @@ export function ConversationalAssessmentWrapper({
             width: "48px",
             height: "48px",
             border: "4px solid var(--border, #e0e0e0)",
-            borderTopColor: "var(--accent, #4f46e5)",
+            borderTopColor: "var(--accent-color, #4f46e5)",
             borderRadius: "50%",
             animation: "spin 0.9s linear infinite",
           }} />

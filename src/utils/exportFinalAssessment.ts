@@ -556,28 +556,34 @@ export async function downloadFinalAssessmentWord(
 
   children.push(new Paragraph(""));
 
-  for (const item of assessment.items) {
-    // Build the question prompt with math-aware runs
-    children.push(
-      new Paragraph({
-        children: [
-          new TextRun({ text: `${item.questionNumber}. `, bold: true }),
-          ...parseMathRuns(item.prompt ?? ""),
-        ],
-      })
-    );
+  const { groups, orderedTypes } = groupAndOrderItems(assessment.items);
+  let wordQNum = 1;
 
-    if (item.questionType === "multipleChoice") {
-      item.options?.forEach(opt => {
-        children.push(new Paragraph({ children: parseMathRuns(opt) }));
-      });
-    } else {
-      children.push(new Paragraph(" "));
-      children.push(new Paragraph(" "));
-      children.push(new Paragraph(" "));
+  for (const type of orderedTypes) {
+    for (const item of groups[type]) {
+      // Build the question prompt with math-aware runs
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${wordQNum}. `, bold: true }),
+            ...parseMathRuns(item.prompt ?? ""),
+          ],
+        })
+      );
+
+      if (item.questionType === "multipleChoice") {
+        item.options?.forEach(opt => {
+          children.push(new Paragraph({ children: parseMathRuns(opt) }));
+        });
+      } else {
+        children.push(new Paragraph(" "));
+        children.push(new Paragraph(" "));
+        children.push(new Paragraph(" "));
+      }
+
+      children.push(new Paragraph(""));
+      wordQNum++;
     }
-
-    children.push(new Paragraph(""));
   }
 
   if (includeAnswerKey) {
@@ -586,15 +592,19 @@ export async function downloadFinalAssessmentWord(
       heading: HeadingLevel.HEADING_2,
     }));
 
-    assessment.items.forEach(item => {
-      const answerText = item.answer ?? "—";
-      children.push(new Paragraph({
-        children: [
-          new TextRun({ text: `${item.questionNumber}. `, bold: true }),
-          ...parseMathRuns(answerText),
-        ],
-      }));
-    });
+    let akNum = 1;
+    for (const type of orderedTypes) {
+      for (const item of groups[type]) {
+        const answerText = item.answer ?? "—";
+        children.push(new Paragraph({
+          children: [
+            new TextRun({ text: `${akNum}. `, bold: true }),
+            ...parseMathRuns(answerText),
+          ],
+        }));
+        akNum++;
+      }
+    }
 
     children.push(new Paragraph(""));
   }

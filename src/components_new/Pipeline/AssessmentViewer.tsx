@@ -298,13 +298,13 @@ function formatDate(iso: string): string {
 
 function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAnswer: boolean }) {
   const isMC = item.questionType === "multipleChoice";
-  const answerLines = isMC ? 0 : 3;
 
   return (
     <div className="av-question">
       <div className="av-q-number">{item.questionNumber}.</div>
       <div className="av-q-body">
-
+        {/* Question prompt text — always shown */}
+        <p className="av-q-prompt">{item.prompt}</p>
 
         {isMC && item.options && (
           <ul className="av-options">
@@ -314,7 +314,7 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
                 className="av-option"
                 style={
                   showAnswer && opt === item.answer
-                    ? { fontWeight: 700, textDecoration: "underline" }
+                    ? { fontWeight: 700, textDecoration: "underline", color: "var(--fg)" }
                     : undefined
                 }
               >
@@ -324,11 +324,18 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
           </ul>
         )}
 
-        {!isMC && (
+        {!isMC && !showAnswer && (
           <div className="av-answer-lines">
-            {Array.from({ length: answerLines }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="av-answer-line" />
             ))}
+          </div>
+        )}
+
+        {!isMC && showAnswer && item.answer && (
+          <div className="av-inline-answer">
+            <span className="av-inline-answer-label">Answer:</span>
+            {" "}{item.answer}
           </div>
         )}
       </div>
@@ -482,14 +489,34 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             >
               🎮 Playtest
             </button>
-            <button
-              className="av-btn av-btn-outline"
-              onClick={handleCopyAIPrompt}
-              title="Copy a plain-language prompt you can paste into ChatGPT, Flint AI, or any other AI tool"
-              style={promptCopied ? { borderColor: "#16a34a", color: "#16a34a" } : undefined}
-            >
-              {promptCopied ? "✓ Copied!" : "📋 Use in AI"}
-            </button>
+            <div style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
+              <button
+                className="av-btn av-btn-outline"
+                onClick={handleCopyAIPrompt}
+                title="Copy a plain-language prompt you can paste into ChatGPT, Flint AI, or any other AI tool"
+                style={promptCopied ? { borderColor: "#16a34a", color: "#16a34a" } : undefined}
+              >
+                {promptCopied ? "✓ Copied!" : "📋 Use in AI"}
+              </button>
+              {promptCopied && (
+                <span style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  background: "#16a34a",
+                  color: "#fff",
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  padding: "0.3rem 0.6rem",
+                  borderRadius: "6px",
+                  whiteSpace: "nowrap",
+                  zIndex: 10,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                }}>
+                  → Paste in ChatGPT, Claude, or Gemini
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
