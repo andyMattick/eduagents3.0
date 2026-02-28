@@ -97,7 +97,7 @@ const BASE_STEPS_BEFORE: Step[] = [
 const BASE_STEPS_AFTER: Step[] = [
   {
     id: "studentLevel",
-    question: "What level are your students?",
+    question: "What level is your class?",
     chips: LEVEL_CHIPS,
   },
   {
@@ -129,7 +129,7 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
     },
     {
       id: "bloomPreference",
-      question: "What thinking level should dominate?",
+      question: "What cognitive level should the questions target?",
       chips: BLOOM_PREFERENCE_CHIPS,
     },
   ];
@@ -179,7 +179,6 @@ export type ConversationalIntent = {
   questionFormat?: string;
   /** "lower" | "apply" | "higher" | "balanced" */
   bloomPreference?: string;
-  /** "single" | "multiple" | "auto" */
   sectionStructure?: string;
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string;

@@ -99,6 +99,7 @@ export function TeacherFeedbackPanel({
             resize: "vertical",
             fontFamily: "inherit",
             background: "var(--surface-primary, #fff)",
+            color: "var(--text-primary, #111827)",
           }}
         />
         <button

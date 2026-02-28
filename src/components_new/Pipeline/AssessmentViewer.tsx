@@ -7,7 +7,7 @@
 
 import { useState, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
-import { downloadFinalAssessmentPDF } from "@/utils/exportFinalAssessment";
+import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord } from "@/utils/exportFinalAssessment";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -354,6 +354,8 @@ interface AssessmentViewerProps {
 export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [wordLoading, setWordLoading] = useState(false);
+  const [answerKeyLoading, setAnswerKeyLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const displayTitle = title ?? "Assessment";
@@ -366,6 +368,24 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle });
     } finally {
       setPdfLoading(false);
+    }
+  }
+
+  async function handleDownloadWord() {
+    setWordLoading(true);
+    try {
+      await downloadFinalAssessmentWord(assessment, { title: displayTitle, subtitle });
+    } finally {
+      setWordLoading(false);
+    }
+  }
+
+  async function handleDownloadAnswerKey() {
+    setAnswerKeyLoading(true);
+    try {
+      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true });
+    } finally {
+      setAnswerKeyLoading(false);
     }
   }
 
@@ -392,7 +412,23 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
               onClick={handleDownloadPDF}
               disabled={pdfLoading}
             >
-              {pdfLoading ? "Generating…" : "⬇ Download PDF"}
+              {pdfLoading ? "Generating…" : "⬇ PDF"}
+            </button>
+            <button
+              className="av-btn av-btn-outline"
+              onClick={handleDownloadWord}
+              disabled={wordLoading}
+              title="Download as Word document (.docx)"
+            >
+              {wordLoading ? "Exporting…" : "📄 Word"}
+            </button>
+            <button
+              className="av-btn av-btn-outline"
+              onClick={handleDownloadAnswerKey}
+              disabled={answerKeyLoading}
+              title="Download PDF with answer key appended"
+            >
+              {answerKeyLoading ? "Generating…" : "🔑 Answer Key"}
             </button>
             <button
               className="av-btn av-btn-ghost"

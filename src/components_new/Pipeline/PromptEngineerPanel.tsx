@@ -36,15 +36,18 @@ export function PromptEngineerPanel({
     }}>
       {/* Header */}
       <div style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-        <span>{hasIssues ? "⚠️" : "✅"}</span>
+        <span style={{ fontSize: "0.95rem", lineHeight: 1 }}>{hasIssues ? "⚠️" : "✅"}</span>
         <span>{hasIssues ? "Input Review" : "Looks Good!"}</span>
         {result.estimatedTimeMinutes !== null && (
           <span style={{
             marginLeft: "auto",
-            fontSize: "0.82rem",
-            background: "rgba(0,0,0,0.06)",
-            borderRadius: "6px",
-            padding: "2px 8px",
+            fontSize: "0.78rem",
+            fontWeight: 600,
+            background: hasIssues ? "rgba(185, 28, 28, 0.12)" : "rgba(22, 163, 74, 0.15)",
+            color: hasIssues ? "#b91c1c" : "#15803d",
+            border: `1px solid ${hasIssues ? "rgba(185,28,28,0.2)" : "rgba(22,163,74,0.25)"}`,
+            borderRadius: "20px",
+            padding: "3px 10px",
           }}>
             ~{result.estimatedTimeMinutes} min student time
           </span>
@@ -56,15 +59,17 @@ export function PromptEngineerPanel({
         display: "flex",
         alignItems: "center",
         gap: "0.5rem",
-        marginBottom: "0.75rem",
-        padding: "0.6rem 0.75rem",
-        background: "rgba(79, 70, 229, 0.06)",
+        marginBottom: "1rem",
+        padding: "0.6rem 0.85rem",
+        background: "rgba(255,255,255,0.65)",
+        border: "1px solid rgba(79, 70, 229, 0.15)",
         borderRadius: "8px",
         fontSize: "0.85rem",
+        color: "#374151",
       }}>
-        <span style={{ fontSize: "1.1rem" }}>⏱</span>
+        <span style={{ fontSize: "1rem", flexShrink: 0 }}>⏱</span>
         <span>
-          <strong>Estimated creation time:</strong>{" "}
+          <strong style={{ color: "#1f2937" }}>Estimated creation time:</strong>{" "}
           {result.estimatedCreationSeconds < 60
             ? `~${result.estimatedCreationSeconds} seconds`
             : `~${Math.round(result.estimatedCreationSeconds / 60 * 10) / 10} minutes`
@@ -72,8 +77,14 @@ export function PromptEngineerPanel({
         </span>
         <span style={{
           marginLeft: "auto",
-          fontSize: "0.78rem",
-          color: "var(--text-secondary, #6b7280)",
+          fontSize: "0.75rem",
+          fontWeight: 500,
+          color: "#6366f1",
+          background: "rgba(99, 102, 241, 0.08)",
+          border: "1px solid rgba(99, 102, 241, 0.2)",
+          borderRadius: "12px",
+          padding: "2px 8px",
+          whiteSpace: "nowrap",
         }}>
           {result.estimatedCreationSeconds <= 20
             ? "Quick"
@@ -126,7 +137,7 @@ export function PromptEngineerPanel({
       )}
 
       {/* Action buttons */}
-      <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
+      <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.25rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(0,0,0,0.07)" }}>
         <button
           onClick={onEdit}
           style={{

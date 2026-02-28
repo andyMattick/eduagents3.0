@@ -236,10 +236,10 @@ export class SCRIBE {
   }): Promise<{ status: string }> {
     try {
       const domain = agentType.includes(":") ? agentType.split(":")[1] : "General";
-      await this.updateAgent({ userId, agentType, gatekeeperReport, finalAssessment, blueprint, uar, domain });
+      await SCRIBE.updateAgent({ userId, agentType, gatekeeperReport, finalAssessment, blueprint, uar, domain });
       return { status: "ok" };
     } catch (err: any) {
-      console.warn("[SCRIBE.updateAgentDossier] non-fatal:", err?.message);
+      console.error("[SCRIBE.updateAgentDossier]", err);
       return { status: "error" };
     }
   }
@@ -261,7 +261,7 @@ export class SCRIBE {
       await DossierManager.recordPipelineRun({ userId, trace, finalAssessment });
       return { status: "ok" };
     } catch (err: any) {
-      console.warn("[SCRIBE.updateUserDossier] non-fatal:", err?.message);
+      console.error("[SCRIBE.updateUserDossier]", err);
       return { status: "error" };
     }
   }
@@ -333,7 +333,7 @@ export class SCRIBE {
     domain
   }: any) {
 
-    await supabase
+    const { error } = await supabase
       .from("teacher_assessment_history")
       .insert({
         teacher_id: userId,
@@ -346,6 +346,8 @@ export class SCRIBE {
         question_types: finalAssessment.questionTypes.join(", ") || null,
         difficulty_profile: blueprint?.plan?.difficultyProfile ?? null
       });
+
+    if (error) throw error;
   }
 
   private static async updateGuardrails({

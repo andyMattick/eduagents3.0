@@ -209,6 +209,16 @@ export function runPromptEngineer(
     );
   }
 
+  if (
+    intent.bloomPreference === "lower" &&
+    intent.additionalDetails?.toLowerCase().includes("rigorous")
+  ) {
+    suggestions.push(
+      '"Lower-order" Bloom focus conflicts with "rigorous" in your notes. ' +
+      'Consider switching to a balanced or higher-order Bloom preference if rigor is the goal.'
+    );
+  }
+
   if (intent.standards === "ap" && intent.studentLevel !== "AP") {
     contradictions.push(
       `AP framework alignment with "${intent.studentLevel}" level students may produce ` +

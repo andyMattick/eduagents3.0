@@ -14,8 +14,6 @@ export interface FinalAssessmentItem {
   /** MCQ only */
   options?: string[];
   answer?: string;
-  cognitiveDemand?: string;
-  difficulty?: string;
   metadata?: Record<string, any>;
 }
 
@@ -31,7 +29,6 @@ export interface FinalAssessment {
    */
   answerKey?: Record<string, string>;
   /** cognitiveDemand → count */
-  cognitiveDistribution: Record<string, number>;
   metadata: {
     difficultyProfile?: string;
     orderingStrategy?: string;

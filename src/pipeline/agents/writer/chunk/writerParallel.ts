@@ -167,11 +167,23 @@ function extractJson(block: string): GeneratedItem | null {
   }
 }
 
-/** Partition an array into chunks of `size` */
+/**
+ * Partition an array into balanced chunks of at most `size`.
+ * Distributes items evenly to avoid tiny remainder groups.
+ * e.g. 6 items with size=5 → [[3],[3]] instead of [[5],[1]]
+ */
 function chunkArray<T>(arr: T[], size: number): T[][] {
+  if (arr.length === 0) return [];
+  const numGroups = Math.ceil(arr.length / size);
+  if (numGroups <= 1) return [arr.slice()];
+  const baseSize = Math.floor(arr.length / numGroups);
+  const larger = arr.length % numGroups;
   const groups: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) {
-    groups.push(arr.slice(i, i + size));
+  let offset = 0;
+  for (let i = 0; i < numGroups; i++) {
+    const groupSize = i < larger ? baseSize + 1 : baseSize;
+    groups.push(arr.slice(offset, offset + groupSize));
+    offset += groupSize;
   }
   return groups;
 }

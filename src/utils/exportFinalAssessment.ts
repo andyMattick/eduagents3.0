@@ -297,12 +297,13 @@ assessment = filterAssessmentForVersion(assessment, version);
 
   const { groups, orderedTypes } = groupAndOrderItems(assessment.items);
   let sectionIndex = 1;
+  let questionNumber = 1;
 
   for (const type of orderedTypes) {
     y = renderSectionHeader(doc, type, sectionIndex, y);
 
     for (const item of groups[type]) {
-      y = renderQuestion(doc, item, y);
+      y = renderQuestion(doc, { ...item, questionNumber: questionNumber++ }, y);
     }
 
     sectionIndex++;
