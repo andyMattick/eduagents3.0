@@ -11,6 +11,7 @@ import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
+import { useDeveloperMode } from './hooks/useDeveloperMode';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
 import './App.css';
@@ -42,6 +43,7 @@ function TeacherAppContent() {
   const [_assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { logout, user } = useAuth();
+  const { devMode, toggleDevMode } = useDeveloperMode();
   
   const handleLogout = async () => await logout();
 
@@ -74,13 +76,7 @@ function TeacherAppContent() {
               My Assessments
             </button>
 
-            <button
-              className={`app-tab ${activeTab === 'my-agents' ? 'active' : ''}`}
-              onClick={() => setActiveTab('my-agents')}
-            >
-              <span className="app-tab-icon">🤖</span>
-              My Agents
-            </button>
+            {/* My Agents tab hidden from teacher nav — component kept for internal use */}
 
             <button
               className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
@@ -88,6 +84,27 @@ function TeacherAppContent() {
             >
               🔍 How Your Inputs Drive the Process
             </button>
+
+            {/* Developer Mode toggle */}
+            <button
+              onClick={toggleDevMode}
+              title={devMode ? 'Developer Mode ON — click to hide internal data' : 'Developer Mode OFF — click to show internal data'}
+              style={{
+                marginLeft: 'auto',
+                padding: '0.3rem 0.75rem',
+                borderRadius: '8px',
+                border: `1.5px solid ${devMode ? '#7c3aed' : 'var(--border-color, #ddd)'}`,
+                background: devMode ? '#7c3aed' : 'transparent',
+                color: devMode ? '#fff' : 'var(--text-secondary, #6b7280)',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                lineHeight: 1,
+              }}
+            >
+              {devMode ? '🛠 Dev Mode ON' : '🛠 Dev'}
+            </button>
+
             {/* Theme Toggle */}
 
             <button onClick={handleLogout} className="logout-button">

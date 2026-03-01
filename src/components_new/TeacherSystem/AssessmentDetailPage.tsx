@@ -5,12 +5,14 @@
 // renders the selected version via AssessmentViewer, and lets teachers
 // regenerate the same UAR or branch it with edits.
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/supabase/client";
 import type { FinalAssessment } from "@/pipeline/agents/builder/FinalAssessment";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { generateAssessment } from "@/config/aiConfig";
 import { AssessmentViewer } from "../Pipeline/AssessmentViewer";
+import { analyzeResults } from "@/pipeline/agents/analyzeResults";
+import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -23,6 +25,8 @@ interface TemplateRow {
   uar_json: Record<string, any> | null;
   created_at: string;
   latest_version_id: string | null;
+  /** Teacher-assigned active/distributed version. Distinct from latest_version_id. */
+  active_version_id: string | null;
 }
 
 /** Editable subset of uar_json surfaced in the Branch form */
@@ -49,9 +53,41 @@ interface AssessmentDetailPageProps {
   onBack: () => void;
 }
 
+interface ResultRow {
+  id: string;
+  assessment_version_id: string;
+  /** Canonical shape: { itemStats: PerformanceEntry[] }. Most recent row is canonical. */
+  performance_json: { itemStats: PerformanceEntry[] };
+  analysis_json: AnalysisResult | null;
+  created_at: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Strict CSV parser — expects header row + rows of questionNumber,percentCorrect */
+function parseCSV(text: string): PerformanceEntry[] | string {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length === 0) return "CSV is empty.";
+  const startIdx = lines[0].toLowerCase().includes("question") ? 1 : 0;
+  const results: PerformanceEntry[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const parts = lines[i].split(",").map((s) => s.trim());
+    if (parts.length < 2 || parts.every((p) => p === "")) continue;
+    const questionNumber = parseInt(parts[0], 10);
+    const percentCorrect = parseFloat(parts[1]);
+    if (isNaN(questionNumber) || isNaN(percentCorrect)) {
+      return `Row ${i + 1} is invalid: "${lines[i]}"`;
+    }
+    if (percentCorrect < 0 || percentCorrect > 100) {
+      return `Row ${i + 1}: percentCorrect must be 0–100, got ${percentCorrect}`;
+    }
+    results.push({ questionNumber, percentCorrect });
+  }
+  if (results.length === 0) return "CSV contains no data rows.";
+  return results;
+}
 
 const ASSESSMENT_LABELS: Record<string, string> = {
   bellRinger: "Bell Ringer",
@@ -70,6 +106,508 @@ function titleFor(uar: Record<string, any>, domain: string | null): string {
   return parts.join(" – ");
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Student Results Panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+function StudentResultsPanel({
+  questionCount,
+  existingResult,
+  onSubmit,
+  isSaving,
+  saveError,
+}: {
+  questionCount: number;
+  existingResult: ResultRow | null;
+  onSubmit: (perf: PerformanceEntry[]) => Promise<void>;
+  isSaving: boolean;
+  saveError: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"manual" | "csv">("manual");
+  const [rows, setRows] = useState<{ pct: string }[]>(
+    () => Array.from({ length: Math.max(questionCount, 1) }, () => ({ pct: "" }))
+  );
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const [csvPreview, setCsvPreview] = useState<PerformanceEntry[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync row count with questionCount prop (e.g. when version changes)
+  useEffect(() => {
+    setRows(Array.from({ length: Math.max(questionCount, 1) }, () => ({ pct: "" })));
+    setCsvError(null);
+    setCsvPreview(null);
+  }, [questionCount]);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string ?? "";
+      const result = parseCSV(text);
+      if (typeof result === "string") {
+        setCsvError(result);
+        setCsvPreview(null);
+      } else {
+        setCsvError(null);
+        setCsvPreview(result);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleSubmit() {
+    let perf: PerformanceEntry[] | string;
+    if (mode === "csv") {
+      if (!csvPreview) { setCsvError("Please upload a valid CSV first."); return; }
+      perf = csvPreview;
+    } else {
+      const entries: PerformanceEntry[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const val = parseFloat(rows[i].pct);
+        if (isNaN(val)) { setCsvError(`Q${i + 1}: enter a number between 0 and 100.`); return; }
+        if (val < 0 || val > 100) { setCsvError(`Q${i + 1}: must be 0–100.`); return; }
+        entries.push({ questionNumber: i + 1, percentCorrect: val });
+      }
+      perf = entries;
+      setCsvError(null);
+    }
+    await onSubmit(perf as PerformanceEntry[]);
+    if (!saveError) setOpen(false);
+  }
+
+  const pill: React.CSSProperties = {
+    padding: "0.2rem 0.75rem",
+    borderRadius: "999px",
+    border: "1.5px solid var(--color-border, #ddd)",
+    background: "transparent",
+    color: "inherit",
+    cursor: "pointer",
+    fontSize: "0.8rem",
+    fontWeight: 600,
+  };
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-border, #e5e7eb)",
+        borderRadius: "10px",
+        marginBottom: "1.5rem",
+        overflow: "hidden",
+      }}
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.85rem 1.25rem",
+          background: "var(--bg-secondary, #f9fafb)",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "0.9rem",
+          fontWeight: 600,
+          color: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <span>
+          📊 Student Results
+          {existingResult && (
+            <span
+              style={{
+                marginLeft: "0.6rem",
+                padding: "0.1rem 0.5rem",
+                borderRadius: "999px",
+                fontSize: "0.72rem",
+                background: "#dcfce7",
+                color: "#166534",
+                fontWeight: 700,
+              }}
+            >
+              Saved
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)", fontWeight: 400 }}>
+          {open ? "Hide ▲" : "Show ▼"}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            padding: "1rem 1.25rem",
+            background: "var(--bg-primary, #fff)",
+            fontSize: "0.88rem",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.9rem",
+          }}
+        >
+          {existingResult && (
+            <p style={{ margin: 0, fontSize: "0.83rem", color: "var(--text-secondary, #6b7280)" }}>
+              Results saved on{" "}
+              {new Date(existingResult.created_at).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+              {" "}— re-enter below to update.
+            </p>
+          )}
+
+          {/* Mode toggle */}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={() => setMode("manual")}
+              style={{
+                ...pill,
+                background: mode === "manual" ? "var(--color-accent, #4f46e5)" : "transparent",
+                color: mode === "manual" ? "#fff" : "inherit",
+                borderColor: mode === "manual" ? "var(--color-accent, #4f46e5)" : "var(--color-border, #ddd)",
+              }}
+            >
+              Manual Entry
+            </button>
+            <button
+              onClick={() => setMode("csv")}
+              style={{
+                ...pill,
+                background: mode === "csv" ? "var(--color-accent, #4f46e5)" : "transparent",
+                color: mode === "csv" ? "#fff" : "inherit",
+                borderColor: mode === "csv" ? "var(--color-accent, #4f46e5)" : "var(--color-border, #ddd)",
+              }}
+            >
+              CSV Upload
+            </button>
+          </div>
+
+          {/* Manual entry table */}
+          {mode === "manual" && (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: "380px" }}>
+                <thead>
+                  <tr style={{ fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)" }}>
+                    <th style={{ textAlign: "left", padding: "0.3rem 0.5rem", fontWeight: 600 }}>Question</th>
+                    <th style={{ textAlign: "left", padding: "0.3rem 0.5rem", fontWeight: 600 }}>% Correct</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={i}>
+                      <td
+                        style={{
+                          padding: "0.3rem 0.5rem",
+                          color: "var(--text-secondary, #6b7280)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        {i + 1}
+                      </td>
+                      <td style={{ padding: "0.25rem 0.5rem" }}>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={r.pct}
+                          onChange={(e) =>
+                            setRows((prev) =>
+                              prev.map((row, j) =>
+                                j === i ? { pct: e.target.value } : row
+                              )
+                            )
+                          }
+                          placeholder="0–100"
+                          style={{
+                            width: "72px",
+                            padding: "0.3rem 0.5rem",
+                            borderRadius: "6px",
+                            border: "1.5px solid var(--color-border, #ddd)",
+                            background: "var(--bg-primary, #fff)",
+                            color: "inherit",
+                            fontSize: "0.85rem",
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* CSV upload */}
+          {mode === "csv" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "0.82rem",
+                  color: "var(--text-secondary, #6b7280)",
+                  fontFamily: "monospace",
+                  background: "var(--bg-secondary, #f9fafb)",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "6px",
+                }}
+              >
+                Expected format:<br />
+                questionNumber,percentCorrect<br />
+                1,85<br />
+                2,60<br />
+                3,40
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFileChange}
+                style={{ fontSize: "0.85rem" }}
+              />
+              {csvPreview && (
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "#166534" }}>
+                  ✓ {csvPreview.length} row{csvPreview.length !== 1 ? "s" : ""} detected
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Errors */}
+          {csvError && (
+            <p style={{ margin: 0, color: "var(--color-error, #ef4444)", fontSize: "0.83rem" }}>
+              {csvError}
+            </p>
+          )}
+          {saveError && (
+            <p style={{ margin: 0, color: "var(--color-error, #ef4444)", fontSize: "0.83rem" }}>
+              {saveError}
+            </p>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={handleSubmit}
+              disabled={isSaving}
+              style={{
+                padding: "0.5rem 1.25rem",
+                borderRadius: "8px",
+                border: "none",
+                background: "var(--color-accent, #4f46e5)",
+                color: "#fff",
+                cursor: isSaving ? "wait" : "pointer",
+                fontSize: "0.88rem",
+                fontWeight: 600,
+                opacity: isSaving ? 0.7 : 1,
+              }}
+            >
+              {isSaving ? "Saving…" : "Save Results"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Insights Panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AiInsightsPanel({
+  analysis,
+  isLoading,
+  error,
+  resultsDate,
+}: {
+  analysis: AnalysisResult | null;
+  isLoading: boolean;
+  error: string | null;
+  resultsDate: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const healthStrong = analysis?.overallAssessmentHealth === "Strong";
+
+  return (
+    <div
+      style={{
+        border: "1px solid var(--color-border, #e5e7eb)",
+        borderRadius: "10px",
+        marginBottom: "1.5rem",
+        overflow: "hidden",
+      }}
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "0.85rem 1.25rem",
+          background: "var(--bg-secondary, #f9fafb)",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "0.9rem",
+          fontWeight: 600,
+          color: "inherit",
+          textAlign: "left",
+        }}
+      >
+        <span>
+          🔍 AI Insights
+          {isLoading && (
+            <span
+              style={{
+                marginLeft: "0.6rem",
+                fontSize: "0.78rem",
+                color: "var(--text-secondary, #6b7280)",
+                fontWeight: 400,
+              }}
+            >
+              Analyzing…
+            </span>
+          )}
+          {analysis && !isLoading && (
+            <span
+              style={{
+                marginLeft: "0.6rem",
+                padding: "0.1rem 0.55rem",
+                borderRadius: "999px",
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                background: healthStrong ? "#dcfce7" : "#fef9c3",
+                color: healthStrong ? "#166534" : "#854d0e",
+              }}
+            >
+              {analysis.overallAssessmentHealth}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)", fontWeight: 400 }}>
+          {open ? "Hide ▲" : "Show ▼"}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            padding: "1rem 1.25rem",
+            background: "var(--bg-primary, #fff)",
+            fontSize: "0.88rem",
+            lineHeight: 1.65,
+            color: "var(--text-primary, #374151)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.9rem",
+          }}
+        >
+          {isLoading && (
+            <p style={{ margin: 0, color: "var(--text-secondary, #6b7280)", fontStyle: "italic" }}>
+              Generating insights — this may take a few seconds…
+            </p>
+          )}
+
+          {!isLoading && resultsDate && (
+            <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)" }}>
+              Results from:{" "}
+              <strong>
+                {new Date(resultsDate).toLocaleDateString(undefined, {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </strong>
+            </p>
+          )}
+
+          {error && (
+            <p style={{ margin: 0, color: "var(--color-error, #ef4444)" }}>
+              {error}
+            </p>
+          )}
+
+          {!isLoading && !error && !analysis && (
+            <p style={{ margin: 0, color: "var(--text-secondary, #6b7280)" }}>
+              Submit student results above to generate insights.
+            </p>
+          )}
+
+          {analysis && !isLoading && (
+            <>
+              {/* Overall health */}
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignSelf: "flex-start",
+                  alignItems: "center",
+                  padding: "0.35rem 0.9rem",
+                  borderRadius: "999px",
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  background: healthStrong ? "#dcfce7" : "#fef9c3",
+                  color: healthStrong ? "#166534" : "#854d0e",
+                }}
+              >
+                Overall: {analysis.overallAssessmentHealth}
+              </div>
+
+              {/* Confusion hotspots */}
+              {analysis.confusionHotspots.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.35rem 0", fontWeight: 600 }}>Confusion Hotspots</p>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                    {analysis.confusionHotspots.map((h, i) => (
+                      <li key={i} style={{ marginBottom: "0.25rem" }}>
+                        <strong>Q{h.questionNumber}:</strong> {h.note}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Pacing issues */}
+              {analysis.pacingIssues && (
+                <div>
+                  <p style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>Pacing Observation</p>
+                  <p style={{ margin: 0 }}>{analysis.pacingIssues}</p>
+                </div>
+              )}
+
+              {/* Cognitive load observations */}
+              {analysis.cognitiveLoadObservations.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.35rem 0", fontWeight: 600 }}>Observations</p>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                    {analysis.cognitiveLoadObservations.map((o, i) => (
+                      <li key={i} style={{ marginBottom: "0.25rem" }}>{o}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Recommended adjustments */}
+              {analysis.recommendedAdjustments.length > 0 && (
+                <div>
+                  <p style={{ margin: "0 0 0.35rem 0", fontWeight: 600 }}>Suggested Improvements</p>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                    {analysis.recommendedAdjustments.map((r, i) => (
+                      <li key={i} style={{ marginBottom: "0.25rem" }}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Generation Notes panel (teacher-language translation of quality data)
@@ -248,6 +786,17 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
 
+  // ── Phase 4 — Student Results state ──────────────────────────────────────
+  const [existingResult, setExistingResult] = useState<ResultRow | null>(null);
+  const [isSavingResults, setIsSavingResults] = useState(false);
+  const [saveResultsError, setSaveResultsError] = useState<string | null>(null);
+  const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  // Derived — placed here so Phase 4 hooks can reference it
+  const selectedVersion = versions.find((v) => v.id === selectedVersionId) ?? null;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -296,6 +845,93 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
     load();
     return () => { cancelled = true; };
   }, [templateId]);
+
+  // ── Phase 4 — Load existing results when version changes ─────────────────
+  useEffect(() => {
+    if (!selectedVersionId) {
+      setExistingResult(null);
+      setCurrentAnalysis(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadResults() {
+      const { data } = await supabase
+        .from("assessment_results")
+        .select("id, assessment_version_id, performance_json, analysis_json, created_at")
+        .eq("assessment_version_id", selectedVersionId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+      const row = data as ResultRow | null;
+      setExistingResult(row);
+      setCurrentAnalysis(row?.analysis_json ?? null);
+    }
+
+    loadResults().catch((e) => console.warn("[loadResults]", e?.message));
+    return () => { cancelled = true; };
+  }, [selectedVersionId]);
+
+  // ── Phase 4 — Submit results + run analysis ───────────────────────────────
+  const handleSubmitResults = useCallback(
+    async (perf: PerformanceEntry[]) => {
+      if (!selectedVersionId || !selectedVersion) return;
+      setSaveResultsError(null);
+      setIsSavingResults(true);
+
+      try {
+        // 1. Insert performance row (canonical shape: { itemStats: [...] })
+        const { data: inserted, error: insertErr } = await supabase
+          .from("assessment_results")
+          .insert({
+            assessment_version_id: selectedVersionId,
+            performance_json: { itemStats: perf },
+          })
+          .select("id, assessment_version_id, performance_json, analysis_json, created_at")
+          .single();
+
+        if (insertErr || !inserted) throw new Error(insertErr?.message ?? "Insert failed");
+
+        const resultRow = inserted as ResultRow;
+        setExistingResult(resultRow);
+        setIsSavingResults(false);
+
+        // 2. Run analysis (async — spinner, non-blocking)
+        setIsAnalyzing(true);
+        setAnalyzeError(null);
+
+        try {
+          const result = await analyzeResults({
+            assessmentJson: selectedVersion.assessment_json,
+            performanceJson: perf,
+            blueprintJson: selectedVersion.blueprint_json,
+          });
+
+          // 3. Persist analysis back to the result row
+          await supabase
+            .from("assessment_results")
+            .update({ analysis_json: result })
+            .eq("id", resultRow.id);
+
+          setCurrentAnalysis(result);
+          setExistingResult((prev) =>
+            prev ? { ...prev, analysis_json: result } : prev
+          );
+        } catch (aErr: any) {
+          setAnalyzeError(aErr?.message ?? "Analysis failed. Please try again.");
+        } finally {
+          setIsAnalyzing(false);
+        }
+      } catch (e: any) {
+        setSaveResultsError(e?.message ?? "Failed to save results.");
+        setIsSavingResults(false);
+      }
+    },
+    [selectedVersionId, selectedVersion]
+  );
 
   // ── Re-fetch versions after a generation and auto-select the newest ──────
   const reloadVersions = useCallback(async () => {
@@ -414,7 +1050,6 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
     }
   }, [template, selectedVersionId]);
 
-  const selectedVersion = versions.find((v) => v.id === selectedVersionId) ?? null;
   const uar = template?.uar_json ?? {};
 
 
@@ -556,7 +1191,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     return (
                       <option key={v.id} value={v.id}>
                         Version {v.version_number}
-                        {v.id === template.latest_version_id ? " (active)" : ""}
+                        {v.id === template.active_version_id ? " (active)" : ""}
                         {v.parent_version_id ? " · revised" : ""}
                         {` · ${vDate}`}
                         {v.quality_score != null ? ` · score ${v.quality_score}` : ""}
@@ -578,7 +1213,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 )}
 
                 {/* Active badge or Assign button */}
-                {selectedVersionId && selectedVersionId === template.latest_version_id ? (
+                {selectedVersionId && selectedVersionId === template.active_version_id ? (
                   <span
                     style={{
                       display: "inline-flex",
@@ -854,6 +1489,31 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
 
           {/* ── AI Generation Notes ─────────────────────────────────────── */}
           {selectedVersion && template && <AiGenerationNotes version={selectedVersion} template={template} />}
+
+          {/* ── Phase 4: Student Results + AI Insights ───────────────────── */}
+          {selectedVersion && (
+            <>
+              <StudentResultsPanel
+                questionCount={
+                  (selectedVersion.assessment_json as any)?.questions?.length ??
+                  (selectedVersion.assessment_json as any)?.totalItems ??
+                  10
+                }
+                existingResult={existingResult}
+                onSubmit={handleSubmitResults}
+                isSaving={isSavingResults}
+                saveError={saveResultsError}
+              />
+              {existingResult && (
+                <AiInsightsPanel
+                  analysis={currentAnalysis}
+                  isLoading={isAnalyzing}
+                  error={analyzeError}
+                  resultsDate={existingResult.created_at}
+                />
+              )}
+            </>
+          )}
 
           {/* ── Assessment viewer ────────────────────────────────────────── */}
           {selectedVersion?.assessment_json ? (

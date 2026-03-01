@@ -63,28 +63,17 @@ function transformText(text?: string): string | undefined {
 
     answer: transformText(item.answer),
 
-    cognitiveDemand:
-      slot?.cognitiveDemand ?? item.metadata?.cognitiveDemand,
-
-    difficulty:
-      slot?.difficulty ?? item.metadata?.difficulty,
-
+    
     metadata: item.metadata,
   };
 });// answerKey removed from pipeline payload — item.answer is already on each item.
   // Cognitive distribution tally
-  const cognitiveDistribution: Record<string, number> = {};
-  for (const item of finalItems) {
-    const level = item.cognitiveDemand ?? "unknown";
-    cognitiveDistribution[level] = (cognitiveDistribution[level] ?? 0) + 1;
-  }
-
+  
   return {
     id: generateId(),
     generatedAt: new Date().toISOString(),
     items: finalItems,
     totalItems: finalItems.length,
-    cognitiveDistribution,
     metadata: {
       difficultyProfile: plan?.difficultyProfile,
       orderingStrategy: plan?.orderingStrategy,

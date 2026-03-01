@@ -8,6 +8,7 @@
 import { useState, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
+import { useDeveloperMode } from "@/hooks/useDeveloperMode";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -141,6 +142,7 @@ function PhilosophersReport({
   teacherFeedback?: any;
 }) {
   const [open, setOpen] = useState(true);
+  const { devMode } = useDeveloperMode();
   const report = computeReport(assessment, title, uar);
 
   return (
@@ -212,7 +214,7 @@ function PhilosophersReport({
             );
           })()}
 
-          {philosopherAnalysis && (
+          {devMode && philosopherAnalysis && (
             <div className="av-report-section">
               <h3 className="av-report-section-heading">Pedagogical Analysis</h3>
               <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
@@ -536,16 +538,13 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             {subtitle && <p className="av-subtitle">{subtitle}</p>}
           </div>
           <div className="av-actions">
-            <button className="av-btn av-btn-outline" onClick={handlePrint}>
-              🖨 Print
-            </button>
             <button
               className="av-btn av-btn-primary"
               onClick={handleDownloadPDF}
               disabled={pdfLoading || hasMath}
-              title={hasMath ? "This assessment contains math notation that doesn't render correctly in PDF — use \"\uD83D\uDDB8 Print\" instead" : undefined}
+              title={hasMath ? "This assessment contains math notation that doesn't render correctly in PDF — use \"🖨 Print\" instead" : undefined}
             >
-              {pdfLoading ? "Generating\u2026" : hasMath ? "\u2B07 PDF (math\u2014use Print)" : "\u2B07 PDF"}
+              {pdfLoading ? "Generating…" : hasMath ? "⬇ PDF (math—use Print)" : "⬇ PDF"}
             </button>
             <button
               className="av-btn av-btn-outline"
@@ -559,9 +558,12 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
               className="av-btn av-btn-outline"
               onClick={handleDownloadAnswerKey}
               disabled={answerKeyLoading || hasMath}
-              title={hasMath ? "PDF answer key unavailable for math assessments — use \"\uD83D\uDDB8 Print\" with \"Show answer key\" toggled on" : "Download PDF with answer key appended"}
+              title={hasMath ? "PDF answer key unavailable for math assessments — use \"🖨 Print\" with \"Show answer key\" toggled on" : "Download PDF with answer key appended"}
             >
-              {answerKeyLoading ? "Generating\u2026" : hasMath ? "\uD83D\uDD11 Key (use Print)" : "\uD83D\uDD11 Answer Key"}
+              {answerKeyLoading ? "Generating…" : hasMath ? "🔑 Key (use Print)" : "🔑 Answer Key"}
+            </button>
+            <button className="av-btn av-btn-outline" onClick={handlePrint}>
+              🖨 Print
             </button>
             <button
               className="av-btn av-btn-ghost"
