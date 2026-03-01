@@ -10,6 +10,7 @@ import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR
 import { generateAssessment } from "@/config/aiConfig";
 import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
 import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
+import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 
@@ -177,11 +178,35 @@ export function ConversationalAssessmentWrapper({
           teacherComments: comments,
           blueprint: result.blueprint,
         });
-        // Merge rewritten assessment back into result
+
+        // Persist the teacher-revised version as a new version under the same template.
+        // previousVersionId chains it to the AI-generated version that preceded it.
+        const uar = result.blueprint?.uar ?? result.uar ?? {};
+        const domain = ((uar.course ?? "general") as string).toLowerCase();
+        let updatedScribe = result.scribe;
+        try {
+          updatedScribe = await SCRIBE.saveAssessmentVersion({
+            userId: safeUserId,
+            uar,
+            domain,
+            finalAssessment: rewritten,
+            blueprint: result.blueprint ?? {},
+            qualityScore: undefined,
+            tokenUsage: null,
+            previousVersionId: result.scribe?.versionId ?? null,
+            templateId: result.scribe?.templateId ?? null,
+          });
+        } catch (saveErr: any) {
+          // Non-fatal — still show the rewritten assessment even if save fails.
+          console.error("[TeacherRewrite] SCRIBE save failed:", saveErr?.message);
+        }
+
+        // Merge rewritten assessment + updated scribe ref back into result
         setResult((prev: any) => ({
           ...prev,
           finalAssessment: rewritten,
           teacherRewriteApplied: true,
+          scribe: updatedScribe,
         }));
       } catch (err: any) {
         console.error("[TeacherRewrite] Error:", err);
@@ -190,7 +215,7 @@ export function ConversationalAssessmentWrapper({
         setIsRewriting(false);
       }
     },
-    [result]
+    [result, safeUserId]
   );
 
   return (

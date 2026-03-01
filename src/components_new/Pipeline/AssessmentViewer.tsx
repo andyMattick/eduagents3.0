@@ -214,6 +214,16 @@ function PhilosophersReport({
             );
           })()}
 
+          {/* Teacher-visible redundancy notice — always on, no internal labels */}
+          {philosopherAnalysis?.redundantPairs && philosopherAnalysis.redundantPairs.length > 0 && (
+            <div className="av-report-section" style={{ borderTop: "1px solid var(--border-color, #e5e7eb)", paddingTop: "0.85rem", marginTop: "0.5rem" }}>
+              <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--text-secondary, #6b7280)" }}>
+                ⚠ <strong>{philosopherAnalysis.redundantPairs.length} question{philosopherAnalysis.redundantPairs.length > 1 ? " pairs" : ""}</strong> test closely overlapping concepts.
+                {" "}Consider varying coverage to give students a broader assessment of the topic.
+              </p>
+            </div>
+          )}
+
           {devMode && philosopherAnalysis && (
             <div className="av-report-section">
               <h3 className="av-report-section-heading">Pedagogical Analysis</h3>

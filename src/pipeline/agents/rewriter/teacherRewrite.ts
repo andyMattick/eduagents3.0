@@ -55,11 +55,11 @@ ${teacherComments}
 OUTPUT:
 Return ONLY a valid JSON object matching the FinalAssessment schema:
 {
-  "title": "...",
+  "id": "...",
+  "generatedAt": "...",
   "items": [ ... ],
   "totalItems": ...,
-  "metadata": { ... },
-  "cognitiveDistribution": { ... }
+  "metadata": { ... }
 }
 `;
 }
@@ -88,10 +88,10 @@ export async function runTeacherRewrite(
     parsed.metadata = input.finalAssessment.metadata;
   }
 
-  if (!parsed.cognitiveDistribution && input.finalAssessment.cognitiveDistribution) {
-    parsed.cognitiveDistribution = input.finalAssessment.cognitiveDistribution;
-  }
-
+  // Re-assign 1-based questionNumber in the order the LLM returned items.
+  // This guarantees the answer key (which reads item.answer in array order)
+  // always matches the printed question numbering — even if the LLM reordered.
+  parsed.items = parsed.items.map((item, i) => ({ ...item, questionNumber: i + 1 }));
   parsed.totalItems = parsed.items.length;
 
   return parsed;
