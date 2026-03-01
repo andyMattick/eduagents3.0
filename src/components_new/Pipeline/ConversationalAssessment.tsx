@@ -173,6 +173,8 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+export type { StepId };
+
 export type ConversationalIntent = {
   gradeLevels: string[];
   course: string;
@@ -197,11 +199,32 @@ export type ConversationalIntent = {
   standards?: string;
 };
 
+const DEFAULT_ANSWERS: Record<StepId, string> = {
+  gradeLevels:         "",
+  course:              "",
+  topic:               "",
+  assessmentType:      "",
+  questionFormat:      "",
+  bloomPreference:     "",
+  multiPartQuestions:  "",
+  sectionStructure:    "",
+  standards:           "",
+  studentLevel:        "",
+  time:                "",
+  additionalDetails:   "",
+};
+
 interface ConversationalAssessmentProps {
   onComplete: (intent: ConversationalIntent) => void;
   isLoading: boolean;
   /** When true, all inputs and submit are disabled (e.g. daily limit reached). */
   disabled?: boolean;
+  /**
+   * Pre-populate answers from a previous session (e.g. after "Edit Inputs").
+   * The component will start at the last answered step so the teacher can
+   * navigate back to any specific field using the ← Back button.
+   */
+  initialAnswers?: Partial<Record<StepId, string>>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -210,24 +233,28 @@ export function ConversationalAssessment({
   onComplete,
   isLoading,
   disabled = false,
+  initialAnswers,
 }: ConversationalAssessmentProps) {
   const isBlocked = isLoading || disabled;
-  const [stepIndex, setStepIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<StepId, string>>({
-    gradeLevels:         "",
-    course:              "",
-    topic:               "",
-    assessmentType:      "",
-    questionFormat:      "",
-    bloomPreference:     "",
-    multiPartQuestions:  "",
-    sectionStructure:    "",
-    standards:           "",
-    studentLevel:        "",
-    time:                "",
-    additionalDetails:   "",
+
+  const [answers, setAnswers] = useState<Record<StepId, string>>(() => ({
+    ...DEFAULT_ANSWERS,
+    ...(initialAnswers ?? {}),
+  }));
+
+  // When restoring from a previous session (Edit Inputs), start at the last
+  // answered step so the teacher can review everything and step back to fix.
+  const [stepIndex, setStepIndex] = useState(() => {
+    if (!initialAnswers) return 0;
+    const aType = initialAnswers.assessmentType ?? "";
+    const adaptive = aType ? getAdaptiveSteps(aType) : [];
+    const allSteps = [...BASE_STEPS_BEFORE, ...adaptive, ...BASE_STEPS_AFTER];
+    return Math.max(0, allSteps.length - 1);
   });
-  const [inputValue, setInputValue] = useState("");
+
+  const [inputValue, setInputValue] = useState(() =>
+    initialAnswers?.additionalDetails ?? ""
+  );
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 

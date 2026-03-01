@@ -21,14 +21,20 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
  
   const plan = blueprint?.plan ?? blueprint ?? null;
 
-  /** Strip residual JSON escape artifacts from user-facing text strings. */
+  /** Strip residual JSON escape artifacts and normalise typography from user-facing text strings. */
   function cleanText(s: string | undefined): string | undefined {
     if (!s) return s;
     return s
-      .replace(/\\'/g, "'")   // \' → '
-      .replace(/\\"/g, "'")   // \" → ' (escaped double-quote → apostrophe)
-      .replace(/\\n/g, " ")   // literal \n sequence → space
-      .replace(/\\t/g, " ")   // literal \t → space
+      .replace(/\\'/g, "'")              // \' → '
+      .replace(/\\"/g, "'")              // \" → ' (escaped double-quote → apostrophe)
+      .replace(/\\n/g, " ")              // literal \n sequence → space
+      .replace(/\\t/g, " ")              // literal \t → space
+      // Smart quote / typography normalisation (LLM output)
+      .replace(/[\u201C\u201D]/g, '"')   // \u201C \u201D (“”) → straight double quote
+      .replace(/[\u2018\u2019]/g, "'")   // \u2018 \u2019 (‘’) → straight apostrophe
+      .replace(/\u2014/g, "--")           // \u2014 (—) → double hyphen
+      .replace(/\u2013/g, "-")            // \u2013 (–) → hyphen
+      .replace(/\u2026/g, "...")          // \u2026 (…) → ellipsis
       .trim();
   }
 

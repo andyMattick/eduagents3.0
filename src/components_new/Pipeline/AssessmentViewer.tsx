@@ -7,7 +7,7 @@
 
 import { useState, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
-import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord } from "@/utils/exportFinalAssessment";
+import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -294,6 +294,84 @@ function formatDate(iso: string): string {
   });
 }
 
+/**
+ * Extracts the letter prefix from an MCQ option or answer string.
+ * e.g. "B. Some option text" → "B"
+ *      "C) Another option"   → "C"
+ * Returns "" if no letter prefix is found.
+ */
+function extractLetter(text: string): string {
+  const m = text?.match(/^([A-Da-d])[.)]\s*/);
+  return m ? m[1].toUpperCase() : "";
+}
+
+// ── Inline math renderer ──────────────────────────────────────────────────────
+
+type MathSegment =
+  | { type: "text"; content: string }
+  | { type: "sup"; content: string }
+  | { type: "sub"; content: string }
+  | { type: "sqrt"; content: string }
+  | { type: "frac"; num: string; den: string };
+
+function parseMathSegments(text: string): MathSegment[] {
+  const segments: MathSegment[] = [];
+  // Match \frac{num}{den}, x^{exp}, x_{sub}, \sqrt{arg}
+  const regex = /\\frac\{([^}]*)\}\{([^}]*)\}|\\sqrt\{([^}]*)\}|\^{([^}]*)}_|\^{([^}]*)}|_\{([^}]*)\}|\^([\d\w]{1,4})|_([\d\w]{1,4})/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) {
+      segments.push({ type: "text", content: text.slice(last, match.index) });
+    }
+    if (match[1] !== undefined) {
+      // \frac{num}{den}
+      segments.push({ type: "frac", num: match[1], den: match[2] });
+    } else if (match[3] !== undefined) {
+      // \sqrt{arg}
+      segments.push({ type: "sqrt", content: match[3] });
+    } else if (match[5] !== undefined) {
+      // ^{exp}
+      segments.push({ type: "sup", content: match[5] });
+    } else if (match[6] !== undefined) {
+      // _{sub}
+      segments.push({ type: "sub", content: match[6] });
+    } else if (match[7] !== undefined) {
+      // ^X (bare)
+      segments.push({ type: "sup", content: match[7] });
+    } else if (match[8] !== undefined) {
+      // _X (bare)
+      segments.push({ type: "sub", content: match[8] });
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) segments.push({ type: "text", content: text.slice(last) });
+  return segments.length > 0 ? segments : [{ type: "text", content: text }];
+}
+
+/** Renders a string that may contain LaTeX-style notation as readable React nodes. */
+function MathText({ text }: { text: string }) {
+  // Quick check — skip parsing for plain text with no math markers
+  if (!/[\\^_]/.test(text)) return <>{text}</>;
+  const segments = parseMathSegments(text);
+  return (
+    <>
+      {segments.map((seg, i) => {
+        if (seg.type === "sup") return <sup key={i}>{seg.content}</sup>;
+        if (seg.type === "sub") return <sub key={i}>{seg.content}</sub>;
+        if (seg.type === "sqrt") return <span key={i}>√<span style={{ borderTop: "1px solid currentColor", paddingTop: "1px" }}>{seg.content}</span></span>;
+        if (seg.type === "frac") return (
+          <span key={i} style={{ display: "inline-flex", flexDirection: "column", textAlign: "center", verticalAlign: "middle", lineHeight: 1.1, fontSize: "0.9em", margin: "0 2px" }}>
+            <span style={{ borderBottom: "1px solid currentColor", paddingBottom: "1px" }}>{seg.num}</span>
+            <span>{seg.den}</span>
+          </span>
+        );
+        return <span key={i}>{(seg as { type: "text"; content: string }).content}</span>;
+      })}
+    </>
+  );
+}
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAnswer: boolean }) {
@@ -304,7 +382,7 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
       <div className="av-q-number">{item.questionNumber}.</div>
       <div className="av-q-body">
         {/* Question prompt text — always shown */}
-        <p className="av-q-prompt">{item.prompt}</p>
+        <p className="av-q-prompt"><MathText text={item.prompt} /></p>
 
         {isMC && item.options && (
           <ul className="av-options">
@@ -313,12 +391,12 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
                 key={i}
                 className="av-option"
                 style={
-                  showAnswer && opt === item.answer
+                  showAnswer && extractLetter(opt) === extractLetter(item.answer ?? "")
                     ? { fontWeight: 700, textDecoration: "underline", color: "var(--fg)" }
                     : undefined
                 }
               >
-                {opt}
+                <MathText text={opt} />
               </li>
             ))}
           </ul>
@@ -335,7 +413,7 @@ function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAns
         {!isMC && showAnswer && item.answer && (
           <div className="av-inline-answer">
             <span className="av-inline-answer-label">Answer:</span>
-            {" "}{item.answer}
+            {" "}<MathText text={item.answer} />
           </div>
         )}
       </div>
@@ -370,6 +448,7 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
 
   const displayTitle = title ?? "Assessment";
   const totalTime = totalMinutes(assessment.metadata?.totalEstimatedTimeSeconds);
+  const hasMath = assessmentContainsMath(assessment);
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
@@ -392,7 +471,8 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   async function handleDownloadAnswerKey() {
     setAnswerKeyLoading(true);
     try {
-      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true });
+      // version:"teacher" is required — the default "student" strips answer fields.
+      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true, version: "teacher" });
     } finally {
       setAnswerKeyLoading(false);
     }
@@ -462,9 +542,10 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             <button
               className="av-btn av-btn-primary"
               onClick={handleDownloadPDF}
-              disabled={pdfLoading}
+              disabled={pdfLoading || hasMath}
+              title={hasMath ? "This assessment contains math notation that doesn't render correctly in PDF — use \"\uD83D\uDDB8 Print\" instead" : undefined}
             >
-              {pdfLoading ? "Generating…" : "⬇ PDF"}
+              {pdfLoading ? "Generating\u2026" : hasMath ? "\u2B07 PDF (math\u2014use Print)" : "\u2B07 PDF"}
             </button>
             <button
               className="av-btn av-btn-outline"
@@ -477,10 +558,10 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             <button
               className="av-btn av-btn-outline"
               onClick={handleDownloadAnswerKey}
-              disabled={answerKeyLoading}
-              title="Download PDF with answer key appended"
+              disabled={answerKeyLoading || hasMath}
+              title={hasMath ? "PDF answer key unavailable for math assessments — use \"\uD83D\uDDB8 Print\" with \"Show answer key\" toggled on" : "Download PDF with answer key appended"}
             >
-              {answerKeyLoading ? "Generating…" : "🔑 Answer Key"}
+              {answerKeyLoading ? "Generating\u2026" : hasMath ? "\uD83D\uDD11 Key (use Print)" : "\uD83D\uDD11 Answer Key"}
             </button>
             <button
               className="av-btn av-btn-ghost"
@@ -566,12 +647,18 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         <div className="av-answer-key">
           <p className="av-answer-key-title">Answer Key</p>
           <div className="av-answer-key-grid">
-            {assessment.items.map((item) => (
-              <div key={item.slotId} className="av-ak-entry">
-                <span className="av-ak-num">{item.questionNumber}.</span>
-                <span>{item.answer ?? "—"}</span>
-              </div>
-            ))}
+            {assessment.items.map((item) => {
+              const isMC = item.questionType === "multipleChoice";
+              const displayAnswer = isMC
+                ? (extractLetter(item.answer ?? "") || (item.answer ?? "—"))
+                : (item.answer ?? "—");
+              return (
+                <div key={item.slotId} className="av-ak-entry">
+                  <span className="av-ak-num">{item.questionNumber}.</span>
+                  <span><MathText text={displayAnswer} /></span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

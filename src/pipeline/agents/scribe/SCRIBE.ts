@@ -320,9 +320,15 @@ export class SCRIBE {
   // =====================================================
 
   private static async ensureTeacherRow(userId: string) {
-    await supabase
-      .from("teachers")
-      .upsert({ id: userId }, { onConflict: "id" });
+    
+    const { error } = await supabase
+  .from("teachers")
+  .upsert({ id: userId }, { onConflict: "id" });
+
+  if (error) {
+    console.error("Teacher upsert failed:", error);
+    throw error;
+}
   }
 
   private static async insertAssessmentHistory({

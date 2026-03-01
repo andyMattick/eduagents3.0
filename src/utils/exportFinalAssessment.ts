@@ -332,7 +332,14 @@ assessment = filterAssessmentForVersion(assessment, version);
 
     for (const item of assessment.items) {
       const xPos = MARGIN + col * colW;
-      const answerText = item.answer ?? "—";
+      // For MCQ, show only the letter (e.g. "B") — the full option text is too long for a key grid
+      const isMC = item.questionType === "multipleChoice";
+      let rawAnswer = item.answer ?? "—";
+      if (isMC && rawAnswer !== "—") {
+        const letterMatch = rawAnswer.match(/^([A-Da-d])[.)]\s*/);
+        rawAnswer = letterMatch ? letterMatch[1].toUpperCase() : rawAnswer;
+      }
+      const answerText = rawAnswer;
 
       // Number
       doc.setFont("helvetica", "bold");
@@ -457,8 +464,15 @@ function renderQuestion(
   return y;
 }
 
+/**
+ * Returns true when the assessment contains LaTeX-normalised math that jsPDF
+ * cannot render (fractions, square roots, super/subscripts).  Used to gate the
+ * PDF download button in the UI — teachers should use browser Print instead.
+ */
 export function assessmentContainsMath(assessment: FinalAssessment): boolean {
-  const mathRegex = /\\frac|\\sqrt|\^|\d+x|\d+\s*[+\-*/]\s*\d+|=/;
+  // Only match patterns that normalizeMath() actually emits and that jsPDF
+  // would render as raw escape sequences rather than proper math notation.
+  const mathRegex = /\\frac\{|\\sqrt\{|\^\{|_\{|[\u00B2\u00B3\u2070-\u2079\u2080-\u2089\u221A\u221B\u2211\u222B\u00B1\u2260\u2264\u2265]/;
 
   return assessment.items.some(item => {
     const combined =

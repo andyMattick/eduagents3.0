@@ -38,7 +38,7 @@ CREATE POLICY "teachers: own row update"
 --    by getDailyUsage() to count free-tier usage.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.teacher_assessment_history (
-  id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id                 uuid        PRIMARY KEY DEFAULT session.user.id(),
   teacher_id         uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   domain             text,
   grade              text,
@@ -100,7 +100,7 @@ CREATE POLICY "td: own row update"
 --    tables.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.dossiers (
-  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id                  uuid        PRIMARY KEY DEFAULT session.user.id(),
   user_id             uuid        NOT NULL UNIQUE REFERENCES public.teachers(id) ON DELETE CASCADE,
 
   -- Agent governance dossiers (JSONB objects)
@@ -143,7 +143,7 @@ CREATE POLICY "dossiers: own row update"
 --    optimistic concurrency (version column).
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.teacher_guardrails (
-  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id           uuid        PRIMARY KEY DEFAULT session.user.id(),
   teacher_id   uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   agent_type   text        NOT NULL,
   domain       text        NOT NULL DEFAULT 'General',
