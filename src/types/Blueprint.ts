@@ -21,6 +21,19 @@ export interface BlueprintSlot {
   // Required: the type of question to generate
   questionType: QuestionType;
 
+  /**
+   * Multi-select: Writer picks ONE type per slot.
+   * When present, any type in this array is accepted by the Gatekeeper.
+   * Takes precedence over `questionType` for validation.
+   */
+  questionTypes?: QuestionType[];
+
+  /**
+   * Arithmetic fluency only: constrains which operation the expression uses.
+   * "any" means the Writer may choose freely.
+   */
+  operation?: "add" | "subtract" | "multiply" | "divide" | "any";
+
   // Optional: cognitive demand
   cognitiveDemand?: 
     | "remember"

@@ -70,6 +70,51 @@ function repairRewriterQuotes(json: string): string {
   return out;
 }
 
+/** Regenerates a fresh arithmetic expression from scratch — no LLM call.
+ *  Preserves the original operator if detectable, otherwise defaults to +.
+ */
+function regenerateArithmeticItem(item: GeneratedItem): GeneratedItem {
+  const original = item.prompt ?? "";
+  const opMatch = original.match(/[+\-×÷*/]/);
+  const rawOp = opMatch?.[0] ?? "+";
+  const op = rawOp === "*" ? "×" : rawOp === "/" ? "÷" : rawOp;
+
+  const randInt = (max: number) => Math.floor(Math.random() * max) + 1;
+  let a = randInt(20);
+  let b = randInt(20);
+  let answer: number;
+
+  switch (op) {
+    case "+":
+      answer = a + b;
+      break;
+    case "-":
+      // Ensure non-negative result
+      if (a < b) { const tmp = a; a = b; b = tmp; }
+      answer = a - b;
+      break;
+    case "×":
+      a = randInt(12); b = randInt(12);
+      answer = a * b;
+      break;
+    case "÷":
+      // Ensure whole-number quotient
+      answer = randInt(12);
+      b = randInt(12);
+      a = answer * b;
+      break;
+    default:
+      answer = a + b;
+  }
+
+  return {
+    ...item,
+    prompt: `${a} ${op} ${b}`,
+    answer: String(answer),
+    options: undefined,
+  };
+}
+
 export async function rewriteSingle({
   item,
   violations,
@@ -79,6 +124,12 @@ export async function rewriteSingle({
   violations: string[];
   mode: RewriteMode;
 }): Promise<GeneratedItem> {
+  // Arithmetic fluency items must never go through LLM rewrites.
+  // A bad expression (wrong answer / bad format) is regenerated locally — fast, zero tokens.
+  if (item.questionType === "arithmeticFluency") {
+    return regenerateArithmeticItem(item);
+  }
+
   const isMC = item.questionType === "multipleChoice";
   const instruction = MODE_INSTRUCTIONS[mode];
 

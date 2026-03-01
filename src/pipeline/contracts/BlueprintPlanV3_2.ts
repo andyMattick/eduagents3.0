@@ -10,7 +10,8 @@ export type CognitiveProcess =
 export type QuestionType =
   | "multipleChoice"
   | "shortAnswer"
-  | "constructedResponse";
+  | "constructedResponse"
+  | "arithmeticFluency";
 
 export type DifficultyProfile = "easy" | "onLevel" | "challenge";
 
