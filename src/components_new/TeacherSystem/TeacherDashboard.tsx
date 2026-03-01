@@ -216,6 +216,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               tmpl.latestVersion?.assessment_json?.items?.length ??
               null;
             const score = tmpl.latestVersion?.quality_score ?? null;
+            const topic = uar.topic ?? null;
+            const timeMin = uar.time ? Number(uar.time) : null;
+            const studentLevel = uar.studentLevel ?? null;
 
             return (
               <div
@@ -244,12 +247,32 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   style={{
                     fontSize: "1rem",
                     fontWeight: 700,
-                    color: "var(--text-primary, #1f2937)",
+                    color: "var(--text, #1f2937)",
                     lineHeight: 1.3,
                   }}
                 >
                   {title}
                 </div>
+
+                {/* Topic + level + time subtitle */}
+                {(topic || studentLevel || timeMin) && (
+                  <div
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "var(--text-secondary, #6b7280)",
+                      lineHeight: 1.4,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: "0.3rem 0.6rem",
+                    }}
+                  >
+                    {topic && <span>{topic}</span>}
+                    {studentLevel && topic && <span style={{ color: "var(--border-color, #d1d5db)" }}>·</span>}
+                    {studentLevel && <span>{studentLevel}</span>}
+                    {timeMin && (studentLevel || topic) && <span style={{ color: "var(--border-color, #d1d5db)" }}>·</span>}
+                    {timeMin && <span>{timeMin} min</span>}
+                  </div>
+                )}
 
                 {/* Meta row */}
                 <div
