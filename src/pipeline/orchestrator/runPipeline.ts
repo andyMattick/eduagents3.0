@@ -280,6 +280,10 @@ if (writerTelemetry) {
   console.log("[Pipeline] Writer telemetry:", JSON.stringify(writerTelemetry));
 }
 
+// token_usage column is integer — WriterTelemetry has no raw API token count yet.
+// Set to null until a token counter is wired into writerParallel.
+const actualTokenCount: number | null = null;
+
 // 3+4. ValidateAndScore — Gatekeeper + Philosopher write-mode merged (no full-object echoing)
 const { gatekeeperResult, philosopherWrite } = await validateAndScore(
   blueprint, writerDraft, trace, writerTelemetry
@@ -299,7 +303,8 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
     finalAssessment,
     blueprint: blueprintForScribe(blueprint),
     qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
-    tokenUsage: writerTelemetry ?? null,
+    tokenUsage: actualTokenCount ?? null,
+
     previousVersionId: uar.previousVersionId ?? null,
     templateId: uar.templateId ?? null,
   });
@@ -347,7 +352,8 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     finalAssessment,
     blueprint: blueprintForScribe(blueprint),
     qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
-    tokenUsage: writerTelemetry ?? null,
+    tokenUsage: actualTokenCount ?? null,
+
     previousVersionId: uar.previousVersionId ?? null,
     templateId: uar.templateId ?? null,
   });
@@ -443,7 +449,8 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     finalAssessment,
     blueprint: blueprintForScribe(blueprint),
     qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
-    tokenUsage: writerTelemetry ?? null,
+    tokenUsage: actualTokenCount ?? null,
+
     previousVersionId: uar.previousVersionId ?? null,
     templateId: uar.templateId ?? null,
   });
@@ -489,7 +496,8 @@ await SCRIBE.saveAssessmentVersion({
   finalAssessment,
   blueprint: blueprintForScribe(blueprint),
   qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
-  tokenUsage: writerTelemetry ?? null,
+  tokenUsage: actualTokenCount ?? null,
+
   previousVersionId: uar.previousVersionId ?? null,
   templateId: uar.templateId ?? null,
 });

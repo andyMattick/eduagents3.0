@@ -336,6 +336,7 @@ export class SCRIBE {
         blueprint_json:    blueprint,
         quality_score:     qualityScore ?? null,
         token_usage:       tokenUsage ?? null,
+
         hash,
       })
       .select("id")
