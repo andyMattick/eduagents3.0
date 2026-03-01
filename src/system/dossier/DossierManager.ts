@@ -19,6 +19,7 @@ type AgentKey = "writer" | "architect" | "astronomer";
 
 /** Shape stored per domain inside the *_dossier JSONB column. */
 export interface AgentDossierData {
+  // ── Core governance (0–10 scale, used by hint budget algo) ────────────────
   trustScore: number;
   stabilityScore: number;
   weaknesses: Record<string, number>;
@@ -27,6 +28,45 @@ export interface AgentDossierData {
   compensationProfile: Record<string, string>;
   version: number;
   updatedAt: string;
+
+  // ── Extended health record (0–100 scale, set by updateWriterAgentDossier) ─
+  alignmentScore?: number;
+  trustScore100?: number;
+  stabilityScore100?: number;
+
+  topicMastery?: Record<string, number>;   // per-topic mastery 0–100
+
+  weaknessCategories?: {
+    spacing: number;
+    notation: number;
+    drift: number;
+    hallucination: number;
+    difficultyMismatch: number;
+    structureViolations: number;
+  };
+
+  extendedCompensationProfile?: {
+    spacingFixes: number;
+    notationFixes: number;
+    rewriteBias: number;
+    difficultyBias: number;
+    operationBias: number;
+  };
+
+  rewriteHistory?: {
+    totalRewrites: number;
+    last10: number[];
+  };
+
+  passFailByDomain?: Record<string, { passes: number; fails: number }>;
+
+  errorPatterns?: {
+    spacingMerges: number;
+    latexBreaks: number;
+    operatorConfusion: number;
+    wordiness: number;
+    arithmeticParaphrasing: number;
+  };
 }
 
 /**
@@ -148,6 +188,36 @@ export class DossierManager {
       return existing as AgentDossierData;
     }
     return baselineDossier();
+  }
+
+  // ─────────────────────────────────────────────────────
+  // SAVE AGENT DOSSIER — merge-write a full dossier data
+  //   object for one agent type + domain.  Used by
+  //   updateWriterAgentDossier to persist extended fields.
+  // ─────────────────────────────────────────────────────
+  static async saveAgentDossier(
+    userId: string,
+    agentType: string,
+    data: AgentDossierData
+  ): Promise<void> {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
+
+    const map: AgentDossierMap =
+      (row[col] && typeof row[col] === "object") ? { ...row[col] } : {};
+
+    map[domain] = { ...data, updatedAt: new Date().toISOString() };
+
+    const { error } = await supabase
+      .from(this.table)
+      .update({ [col]: map, updated_at: new Date().toISOString() })
+      .eq("user_id", userId);
+
+    if (error) {
+      console.warn("[DossierManager.saveAgentDossier] non-fatal:", error.message);
+    }
   }
 
   // ─────────────────────────────────────────────────────

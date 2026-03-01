@@ -111,6 +111,73 @@
   gap: 0.3rem;
 }
 
+/* ── Generation quality / reliability block ─────────────────────────────────── */
+
+.av-reliability {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: var(--surface-2, #f9fafb);
+}
+
+.av-reliability-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gray-500, #6b7280);
+  margin-bottom: 0.6rem;
+}
+
+.av-reliability-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.av-reliability-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.av-reliability-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.av-reliability-row-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gray-700, #374151);
+}
+
+.av-reliability-row-score {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.av-reliability-bar {
+  height: 5px;
+  background: var(--border, #e5e7eb);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.av-reliability-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.av-reliability-desc {
+  font-size: 0.75rem;
+  color: var(--gray-500, #6b7280);
+  line-height: 1.4;
+}
+
 /* ── Student header fields ──────────────────────────────────────────────────── */
 
 .av-student-fields {

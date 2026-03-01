@@ -520,19 +520,75 @@ export async function exportAssessment(
   }
 }
 /**
+ * Pre-process a math string to normalise common LLM math representations
+ * into a consistent form before TextRun splitting.
+ *
+ * Transforms (in order):
+ *  1. \frac{a}{b}        → (a/b)
+ *  2. \sqrt{x}           → √x
+ *  3. \sqrt[n]{x}        → ∜/∛/√... (simplified as n√x)
+ *  4. \log_{b}(x)        → log_b(x)
+ *  5. e^(expr) / x^(expr) style parenthesised exponents → ^{expr}
+ *  6. log₂ / log₃ etc (subscript unicode digits) → kept as-is (plain text fine)
+ *  7. Trailing bare variable after closing paren: f(x)=2x where x should be
+ *     plain (NOT superscript) — handled by not over-matching
+ */
+function normaliseMath(text: string): string {
+  let t = text;
+
+  // \frac{numerator}{denominator} → (numerator/denominator)
+  // Handle nested braces up to one level deep
+  t = t.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "($1/$2)");
+
+  // \sqrt{x} → √x   |  \sqrt[n]{x} → n√x
+  t = t.replace(/\\sqrt\[([^\]]+)\]\{([^{}]*)\}/g, "$1√$2");
+  t = t.replace(/\\sqrt\{([^{}]*)\}/g, "√$1");
+  t = t.replace(/\\sqrt\s+(\S+)/g, "√$1");
+
+  // ^(expr) with optional sign/chars inside parens → ^{expr}
+  // Matches things like ^(x+1), ^(-x), ^(0.05t), ^(x-1)
+  t = t.replace(/\^\(([^)]+)\)/g, "^{$1}");
+
+  // _(expr in parens)
+  t = t.replace(/_\(([^)]+)\)/g, "_{$1}");
+
+  // Strip remaining unrecognised LaTeX commands (e.g. \cdot → ·, \times → ×)
+  t = t.replace(/\\cdot/g, "·");
+  t = t.replace(/\\times/g, "×");
+  t = t.replace(/\\div/g, "÷");
+  t = t.replace(/\\pm/g, "±");
+  t = t.replace(/\\infty/g, "∞");
+  t = t.replace(/\\leq/g, "≤");
+  t = t.replace(/\\geq/g, "≥");
+  t = t.replace(/\\neq/g, "≠");
+  // Remove any remaining \word commands that weren't handled
+  t = t.replace(/\\[a-zA-Z]+/g, "");
+
+  // Fix LLM tokenization artifacts: "50rabbits" → "50 rabbits", "1unit" → "1 unit"
+  t = t.replace(/(\d)([A-Za-z])/g, "$1 $2");
+  t = t.replace(/([A-Za-z])(\d)/g, "$1 $2");
+
+  return t;
+}
+
+/**
  * Parse a string containing LaTeX-style math notation into an array of docx TextRuns.
  * Supports: ^{...} for superscript, _{...} for subscript,
  *           ^N or ^NN (bare) for superscript, _N (bare) for subscript.
+ * Call normaliseMath() first for broader LLM math patterns.
  */
-function parseMathRuns(text: string): TextRun[] {
+function parseMathRuns(rawText: string): TextRun[] {
+  const text = normaliseMath(rawText);
   const runs: TextRun[] = [];
-  // Match ^{...}, _{...}, ^X (1-3 non-space chars), _X (1-3 non-space chars)
-  const regex = /(\^{([^}]*)})|(_{([^}]*)})|(\^([\d\w±]{1,3}))|(_([\d\w]{1,3}))/g;
+
+  // Ordered: curly-brace forms first (greedy), then bare 1-6 char forms
+  // ^{...} covers multi-char exponents; ^X covers single/short bare ones.
+  // Added bare ^X up to 6 chars to catch things like ^{-x} that become ^-x after stripping
+  const regex = /(\^{([^}]*)})|(_{([^}]*)})|(\^([-\w±./]{1,8}))|(_([-\w]{1,4}))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
-    // Push any plain text before this match
     if (match.index > lastIndex) {
       runs.push(new TextRun({ text: text.slice(lastIndex, match.index) }));
     }
@@ -554,7 +610,6 @@ function parseMathRuns(text: string): TextRun[] {
     lastIndex = match.index + match[0].length;
   }
 
-  // Remaining plain text
   if (lastIndex < text.length) {
     runs.push(new TextRun({ text: text.slice(lastIndex) }));
   }
@@ -583,6 +638,25 @@ export async function downloadFinalAssessmentWord(
   let wordQNum = 1;
 
   for (const type of orderedTypes) {
+    // Section heading + instruction line (mirrors the PDF renderSectionHeader)
+    children.push(
+      new Paragraph({
+        text: formatTypeLabel(type).toUpperCase(),
+        heading: HeadingLevel.HEADING_2,
+      })
+    );
+    const sectionInstruction = QUESTION_TYPE_INSTRUCTIONS[type];
+    if (sectionInstruction) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: sectionInstruction, italics: true, color: "555555" }),
+          ],
+        })
+      );
+    }
+    children.push(new Paragraph(""));
+
     for (const item of groups[type]) {
       // Build the question prompt with math-aware runs
       children.push(

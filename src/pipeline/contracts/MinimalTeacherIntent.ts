@@ -27,6 +27,8 @@ export interface MinimalTeacherIntent {
   sectionStructure?: string | null;
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string | null;
+  /** State abbreviation when standards === "state", e.g. "GA" */
+  stateCode?: string | null;
   /** "yes" | "no" — whether to include multi-part questions (A → B → C) */
   multiPartQuestions?: string | null;
 

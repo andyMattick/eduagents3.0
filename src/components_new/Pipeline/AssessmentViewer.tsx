@@ -448,9 +448,11 @@ interface AssessmentViewerProps {
   philosopherAnalysis?: any;
   /** Teacher feedback with summary, positives, suggestions */
   teacherFeedback?: any;
+  /** Writer reliability scores (0–100) from the most recent dossier update */
+  reliability?: { trust: number; alignment: number; stability: number };
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, reliability }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -464,7 +466,8 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   async function handleDownloadPDF() {
     setPdfLoading(true);
     try {
-      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle });
+      // Answer key is always included as a separate final page.
+      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true, version: "teacher" });
     } finally {
       setPdfLoading(false);
     }
@@ -473,7 +476,8 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   async function handleDownloadWord() {
     setWordLoading(true);
     try {
-      await downloadFinalAssessmentWord(assessment, { title: displayTitle, subtitle });
+      // Answer key is always included as a separate final page.
+      await downloadFinalAssessmentWord(assessment, { title: displayTitle, subtitle, includeAnswerKey: true });
     } finally {
       setWordLoading(false);
     }
@@ -554,6 +558,87 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
           <span className="av-meta-item">⏱ {totalTime}</span>
           <span className="av-meta-item">📅 {formatDate(assessment.generatedAt)}</span>
         </div>
+
+        {reliability && (
+          <div className="av-reliability">
+            <div className="av-reliability-header">How this generation went</div>
+            <div className="av-reliability-rows">
+
+              {/* Trust / Reliability */}
+              <div className="av-reliability-row">
+                <div className="av-reliability-row-top">
+                  <span className="av-reliability-row-label">Reliability</span>
+                  <span className="av-reliability-row-score"
+                    style={{ color: reliability.trust >= 80 ? "#166534" : reliability.trust >= 55 ? "#854d0e" : "#991b1b" }}>
+                    {reliability.trust}/100
+                  </span>
+                </div>
+                <div className="av-reliability-bar">
+                  <div className="av-reliability-fill" style={{
+                    width: `${reliability.trust}%`,
+                    background: reliability.trust >= 80 ? "#22c55e" : reliability.trust >= 55 ? "#f59e0b" : "#ef4444",
+                  }} />
+                </div>
+                <div className="av-reliability-desc">
+                  {reliability.trust >= 80
+                    ? "Questions matched your subject and level well."
+                    : reliability.trust >= 55
+                    ? "Most questions aligned — a few adjustments were applied automatically."
+                    : "More corrections than usual were needed. The system is learning this subject."}
+                </div>
+              </div>
+
+              {/* Alignment / Topic Fit */}
+              <div className="av-reliability-row">
+                <div className="av-reliability-row-top">
+                  <span className="av-reliability-row-label">Topic Fit</span>
+                  <span className="av-reliability-row-score"
+                    style={{ color: reliability.alignment >= 80 ? "#166534" : reliability.alignment >= 55 ? "#854d0e" : "#991b1b" }}>
+                    {reliability.alignment}/100
+                  </span>
+                </div>
+                <div className="av-reliability-bar">
+                  <div className="av-reliability-fill" style={{
+                    width: `${reliability.alignment}%`,
+                    background: reliability.alignment >= 80 ? "#22c55e" : reliability.alignment >= 55 ? "#f59e0b" : "#ef4444",
+                  }} />
+                </div>
+                <div className="av-reliability-desc">
+                  {reliability.alignment >= 80
+                    ? "Questions stayed on your topic throughout."
+                    : reliability.alignment >= 55
+                    ? "Slight drift from your topic was detected and corrected."
+                    : "Topic alignment needed extra review for this run."}
+                </div>
+              </div>
+
+              {/* Stability / Consistency */}
+              <div className="av-reliability-row">
+                <div className="av-reliability-row-top">
+                  <span className="av-reliability-row-label">Consistency</span>
+                  <span className="av-reliability-row-score"
+                    style={{ color: reliability.stability >= 80 ? "#166534" : reliability.stability >= 55 ? "#854d0e" : "#991b1b" }}>
+                    {reliability.stability}/100
+                  </span>
+                </div>
+                <div className="av-reliability-bar">
+                  <div className="av-reliability-fill" style={{
+                    width: `${reliability.stability}%`,
+                    background: reliability.stability >= 80 ? "#22c55e" : reliability.stability >= 55 ? "#f59e0b" : "#ef4444",
+                  }} />
+                </div>
+                <div className="av-reliability-desc">
+                  {reliability.stability >= 80
+                    ? "The system is performing consistently in this subject."
+                    : reliability.stability >= 55
+                    ? "Output quality varies slightly run to run — improving over time."
+                    : "This subject is still calibrating. Quality will improve with more runs."}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
 
         {/* Cognitive distribution pills — hidden from on-screen view, kept in PDF only */}
       </div>

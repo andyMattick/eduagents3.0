@@ -139,6 +139,7 @@ export function ConversationalAssessmentWrapper({
           bloomPreference: pendingIntent.bloomPreference ?? null,
           sectionStructure: pendingIntent.sectionStructure ?? null,
           standards: pendingIntent.standards ?? null,
+          stateCode: pendingIntent.stateCode ?? null,
           multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
         };
 
@@ -382,6 +383,7 @@ export function ConversationalAssessmentWrapper({
                 philosopherNotes={result.philosopherWrite?.philosopherNotes}
                 philosopherAnalysis={result.philosopherWrite?.analysis}
                 teacherFeedback={result.philosopherWrite?.teacherFeedback}
+                reliability={result.scribe?.reliability}
               />
 
               {/* Post-Builder Teacher Feedback Panel */}

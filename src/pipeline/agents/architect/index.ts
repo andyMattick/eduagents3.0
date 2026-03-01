@@ -324,6 +324,25 @@ export async function runArchitect({
     };
   });
 
+  // ── Graph interpretation slot injection ─────────────────────────────────
+  // If the topic involves graphing, transformations, or quadratics, replace
+  // the first analysis-level short-answer / free-response slot with a
+  // graphInterpretation slot (keeps total count unchanged).
+  const graphTopics = /graph|parabola|quadratic|transform|coordinat|scatter/i;
+  const topicStr = (architectUAR.topic ?? architectUAR.unitName ?? "");
+  if (graphTopics.test(topicStr)) {
+    const targetIdx = slots.findIndex(
+      s =>
+        (s.cognitiveDemand === "analyze" || s.cognitiveDemand === "apply") &&
+        (s.questionType === "shortAnswer" || s.questionType === "freeResponse" ||
+         s.questionType === "constructedResponse")
+    );
+    if (targetIdx !== -1) {
+      slots[targetIdx] = { ...slots[targetIdx], questionType: "graphInterpretation" };
+      console.info(`[Architect] Injected graphInterpretation slot at index ${targetIdx} (topic: "${topicStr}")`);
+    }
+  }
+
   //
   // 4. Cognitive distribution (unchanged)
   //
