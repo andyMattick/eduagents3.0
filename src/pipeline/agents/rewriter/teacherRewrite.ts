@@ -89,9 +89,17 @@ export async function runTeacherRewrite(
   }
 
   // Re-assign 1-based questionNumber in the order the LLM returned items.
-  // This guarantees the answer key (which reads item.answer in array order)
-  // always matches the printed question numbering — even if the LLM reordered.
-  parsed.items = parsed.items.map((item, i) => ({ ...item, questionNumber: i + 1 }));
+  // Also normalize number-letter spacing ("254and" → "254 and") introduced
+  // by the LLM — same fix applied in parseChunk for Writer output.
+  const fixSpacing = (s: string) =>
+    s.replace(/(\d)([A-Za-z])/g, "$1 $2").replace(/([A-Za-z])(\d)/g, "$1 $2");
+
+  parsed.items = parsed.items.map((item, i) => ({
+    ...item,
+    questionNumber: i + 1,
+    prompt: fixSpacing(item.prompt ?? ""),
+    answer: item.answer ? fixSpacing(item.answer) : item.answer,
+  }));
   parsed.totalItems = parsed.items.length;
 
   return parsed;

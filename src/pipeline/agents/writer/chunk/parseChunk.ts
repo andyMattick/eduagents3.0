@@ -13,6 +13,27 @@
 
 import type { GeneratedItem } from "../types";
 
+/**
+ * Ensures a space between a digit and an adjacent letter (or vice-versa).
+ * Fixes LLM artifacts like "254and" → "254 and", "132without" → "132 without".
+ * Safe for expressions like "254 + 132" (already has spaces) and
+ * for math symbols — only inserts between [0-9] ↔ [A-Za-z].
+ */
+function fixNumberSpacing(text: string): string {
+  return text
+    .replace(/(\d)([A-Za-z])/g, "$1 $2")
+    .replace(/([A-Za-z])(\d)/g, "$1 $2");
+}
+
+function normalizeItem(item: GeneratedItem): GeneratedItem {
+  return {
+    ...item,
+    prompt: fixNumberSpacing(item.prompt ?? ""),
+    answer: item.answer ? fixNumberSpacing(item.answer) : item.answer,
+    options: item.options?.map(fixNumberSpacing),
+  };
+}
+
 export interface ParseChunkResult {
   items: GeneratedItem[];
   truncated: boolean;
@@ -47,7 +68,7 @@ export function parseChunk(raw: string): ParseChunkResult {
         const parsed = JSON.parse(jsonMatch[0]) as GeneratedItem;
         // Valid JSON, no sentinel — accept the item but still flag truncated
         // so the adaptive engine knows the LLM is dropping sentinels.
-        items.push(parsed);
+        items.push(normalizeItem(parsed));
       } catch {
         failedBlocks.push(cleaned);
       }
@@ -83,7 +104,7 @@ export function parseChunk(raw: string): ParseChunkResult {
 
     try {
       const parsed = JSON.parse(jsonMatch[0]) as GeneratedItem;
-      items.push(parsed);
+      items.push(normalizeItem(parsed));
     } catch {
       failedBlocks.push(cleaned);
       truncated = true;
