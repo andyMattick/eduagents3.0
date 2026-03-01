@@ -35,6 +35,10 @@ export interface UnifiedAssessmentRequest {
   // Additional teacher notes
   additionalDetails: string | null;
 
+  // Versioned storage — passed from UI when regenerating or branching
+  templateId?: string | null;
+  previousVersionId?: string | null;
+
   // ── Adaptive fields from conversational flow ──────────────────────
   questionFormat?: string | null;
   bloomPreference?: string | null;
