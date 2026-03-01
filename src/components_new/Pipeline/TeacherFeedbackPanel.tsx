@@ -94,12 +94,12 @@ export function TeacherFeedbackPanel({
             flex: 1,
             padding: "0.6rem 0.75rem",
             borderRadius: "6px",
-            border: "1px solid var(--border-primary, #d1d5db)",
+            border: "1px solid #d1d5db",
             fontSize: "0.85rem",
             resize: "vertical",
             fontFamily: "inherit",
-            background: "var(--surface-primary, #fff)",
-            color: "var(--text-primary, #111827)",
+            background: "#ffffff",
+            color: "#111827",
           }}
         />
         <button

@@ -289,8 +289,8 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
         <h4>📊 Badge Reference</h4>
         <div className="legend-grid">
           <div className="legend-item">
-            <span className="bloom-badge">Bloom</span>
-            <span className="legend-label">Cognitive level (Remember → Create)</span>
+            <span className="bloom-badge">Skill</span>
+            <span className="legend-label">Cognitive skill level (recall → synthesis)</span>
           </div>
           <div className="legend-item">
             <span className="subject-badge">Subject</span>
@@ -351,7 +351,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
               className="filter-section-toggle"
               onClick={() => toggleFilterSectionCollapsed('bloom')}
             >
-              {collapsedFilterSections.has('bloom') ? '▶' : '▼'} Bloom Level
+              {collapsedFilterSections.has('bloom') ? '▶' : '▼'} Skill Level
             </button>
             {!collapsedFilterSections.has('bloom') && (
               <div className="filter-section-content">
@@ -575,7 +575,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                             >
                               <div className="question-item-header">
                                 <div className="question-title">
-                                  <span className="bloom-badge" title="Bloom's Taxonomy Level">
+                                  <span className="bloom-badge" title="Reasoning Level">
                                     {entry.problem.cognitive.bloomLevel}
                                   </span>
                                   <span className="subject-badge" title="Subject">

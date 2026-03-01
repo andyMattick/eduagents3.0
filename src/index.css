@@ -621,6 +621,28 @@ textarea {
   cursor: not-allowed;
 }
 
+.ca-chip--selected {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.ca-chip--selected:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.ca-chip--confirm {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.ca-chip--confirm:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
 .ca-chip-footer {
   padding: 0.5rem 1.25rem 0.75rem;
 }

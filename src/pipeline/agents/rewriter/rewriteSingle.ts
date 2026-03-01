@@ -70,6 +70,143 @@ function repairRewriterQuotes(json: string): string {
   return out;
 }
 
+/** Regenerates a fresh arithmetic expression scaled to grade level and topic.
+ *  No LLM call — deterministic and instant.
+ */
+export interface ArithmeticContext {
+  /** Numeric grade level, e.g. 6. Parsed from the first element of uar.gradeLevels. */
+  grade?: number;
+  /** Topic string (e.g. "multi-digit multiplication and long division") */
+  topic?: string;
+  /** Slot-level operator constraint ("add"|"subtract"|"multiply"|"divide"|"any") */
+  operation?: string;
+}
+
+/** Pick a random int in [min, max] inclusive. */
+function randRange(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/** Detect which operators the topic implies. Returns null when topic is neutral. */
+function operatorsFromTopic(topic: string): string[] | null {
+  const t = topic.toLowerCase();
+  const hasMul = /multipl|times|product/.test(t);
+  const hasDiv = /divis|quotient|divided/.test(t);
+  const hasAdd = /addit|sum|plus/.test(t);
+  const hasSub = /subtract|minus|difference/.test(t);
+  const ops: string[] = [];
+  if (hasMul) ops.push("×");
+  if (hasDiv) ops.push("÷");
+  if (hasAdd) ops.push("+");
+  if (hasSub) ops.push("-");
+  return ops.length > 0 ? ops : null;
+}
+
+export function generateArithmeticItem(
+  item: GeneratedItem,
+  ctx: ArithmeticContext = {}
+): GeneratedItem {
+  const grade = ctx.grade ?? 4;
+  const topic = ctx.topic ?? "";
+
+  // ── Pick operator ──────────────────────────────────────────────────────
+  //  Priority: 1. slot.operation constraint  2. topic keywords  3. fallback from item
+  let op: string;
+
+  if (ctx.operation && ctx.operation !== "any") {
+    const opMap: Record<string, string> = {
+      add: "+", subtract: "-", multiply: "×", divide: "÷",
+    };
+    op = opMap[ctx.operation] ?? "+";
+  } else {
+    const topicOps = operatorsFromTopic(topic);
+    if (topicOps) {
+      op = topicOps[Math.floor(Math.random() * topicOps.length)];
+    } else {
+      // Fall back to original item's operator if detectable
+      const original = item.prompt ?? "";
+      const opMatch = original.match(/[+\-×÷*/]/);
+      const rawOp = opMatch?.[0] ?? "+";
+      op = rawOp === "*" ? "×" : rawOp === "/" ? "÷" : rawOp;
+    }
+  }
+
+  // ── Grade-scaled number ranges ─────────────────────────────────────────
+  let a: number;
+  let b: number;
+  let answer: number;
+
+  if (op === "+" || op === "-") {
+    if (grade <= 2) {
+      a = randRange(1, 10); b = randRange(1, 10);
+    } else if (grade <= 4) {
+      a = randRange(10, 99); b = randRange(1, 49);
+    } else if (grade <= 5) {
+      a = randRange(100, 499); b = randRange(10, 99);
+    } else if (grade <= 6) {
+      a = randRange(100, 999); b = randRange(100, 499);
+    } else {
+      a = randRange(1000, 9999); b = randRange(100, 999);
+    }
+    if (op === "-") {
+      if (a < b) { const tmp = a; a = b; b = tmp; }
+      answer = a - b;
+    } else {
+      answer = a + b;
+    }
+  } else if (op === "×") {
+    if (grade <= 3) {
+      a = randRange(1, 9); b = randRange(1, 9);
+    } else if (grade <= 4) {
+      a = randRange(1, 12); b = randRange(1, 12);
+    } else if (grade <= 5) {
+      a = randRange(10, 29); b = randRange(2, 9);
+    } else if (grade <= 6) {
+      // 2-digit × 2-digit or 3-digit × 1-digit
+      if (Math.random() < 0.5) {
+        a = randRange(11, 59); b = randRange(11, 19);
+      } else {
+        a = randRange(100, 399); b = randRange(2, 9);
+      }
+    } else {
+      // Grade 7+: 3-digit × 2-digit
+      a = randRange(100, 499); b = randRange(12, 49);
+    }
+    answer = a * b;
+  } else {
+    // Division (÷) — always whole-number quotient, no remainders
+    if (grade <= 3) {
+      answer = randRange(1, 9); b = randRange(1, 9);
+    } else if (grade <= 4) {
+      answer = randRange(1, 12); b = randRange(1, 12);
+    } else if (grade <= 5) {
+      answer = randRange(2, 19); b = randRange(2, 9);
+    } else if (grade <= 6) {
+      // 3-digit ÷ 1-digit  or  4-digit ÷ 2-digit
+      if (Math.random() < 0.5) {
+        answer = randRange(10, 99); b = randRange(2, 9);       // → 3-digit ÷ 1-digit
+      } else {
+        answer = randRange(10, 99); b = randRange(10, 49);     // → 4-digit ÷ 2-digit
+      }
+    } else {
+      answer = randRange(10, 199); b = randRange(10, 99);
+    }
+    a = answer * b;
+  }
+
+  return {
+    ...item,
+    prompt: `${a} ${op} ${b}`,
+    answer: String(answer),
+    options: undefined,
+  };
+}
+
+/** Thin wrapper kept for internal rewriteSingle call-site (no context available). */
+function regenerateArithmeticItem(item: GeneratedItem): GeneratedItem {
+  return generateArithmeticItem(item);
+}
+
 export async function rewriteSingle({
   item,
   violations,
@@ -79,6 +216,12 @@ export async function rewriteSingle({
   violations: string[];
   mode: RewriteMode;
 }): Promise<GeneratedItem> {
+  // Arithmetic fluency items must never go through LLM rewrites.
+  // A bad expression (wrong answer / bad format) is regenerated locally — fast, zero tokens.
+  if (item.questionType === "arithmeticFluency") {
+    return regenerateArithmeticItem(item);
+  }
+
   const isMC = item.questionType === "multipleChoice";
   const instruction = MODE_INSTRUCTIONS[mode];
 
@@ -156,6 +299,12 @@ ${mcqExample}`;
     // Preserve slot binding — LLM must not drift these
     rewritten.slotId = item.slotId;
     rewritten.questionType = item.questionType;
+    // Fix LLM tokenization artifacts: "10or" → "10 or", "789is" → "789 is"
+    const fixSpacing = (s: string) =>
+      s.replace(/(\d)([A-Za-z])/g, "$1 $2").replace(/([A-Za-z])(\d)/g, "$1 $2");
+    rewritten.prompt  = fixSpacing(rewritten.prompt ?? "");
+    if (rewritten.answer) rewritten.answer = fixSpacing(rewritten.answer);
+    if (rewritten.options) rewritten.options = rewritten.options.map(fixSpacing);
     return rewritten;
   } catch {
     console.error(`[rewriteSingle] Parse error for slot ${item.slotId}`);

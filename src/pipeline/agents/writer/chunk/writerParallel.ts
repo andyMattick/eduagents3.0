@@ -31,7 +31,7 @@ import type { GeneratedItem } from "../types";
 import { callGeminiStreaming } from "@/pipeline/llm/gemini";
 import { buildChunkPrompt } from "./writerChunkPrompt";
 import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
-import { rewriteSingle } from "@/pipeline/agents/rewriter/rewriteSingle";
+import { rewriteSingle, generateArithmeticItem } from "@/pipeline/agents/rewriter/rewriteSingle";
 import { createTelemetry, type WriterTelemetry } from "../telemetry";
 import { computeBloomAlignment, type BloomAlignmentLog } from "@/pipeline/agents/gatekeeper/bloomClassifier";
 import {
@@ -225,10 +225,46 @@ export async function writerParallel(
   };
 
   const allSlots = [...blueprint.slots];
-  const groups = chunkArray(allSlots, GROUP_SIZE);
+
+  // ── Step 0: Pre-generate arithmetic fluency slots locally ─────────────
+  // These never go to the LLM — deterministic, zero tokens, grade-scaled.
+  const rawGrade = parseInt(String(uar.gradeLevels?.[0] ?? "4"), 10);
+  const grade = isNaN(rawGrade) ? 4 : rawGrade;
+  const topic = uar.topic ?? uar.lessonName ?? uar.unitName ?? "";
+
+  const preGeneratedIds = new Set<string>();
+  const preGenMap = new Map<string, GeneratedItem>();
+
+  for (const slot of allSlots) {
+    const acceptedTypes: string[] = (slot.questionTypes && slot.questionTypes.length > 0)
+      ? slot.questionTypes
+      : [slot.questionType];
+    if (!acceptedTypes.includes("arithmeticFluency")) continue;
+
+    const stub: GeneratedItem = {
+      slotId: slot.id,
+      questionType: "arithmeticFluency",
+      prompt: "",
+      answer: "",
+    };
+    const generated = generateArithmeticItem(stub, {
+      grade,
+      topic,
+      operation: (slot as any).operation,
+    });
+    preGenMap.set(slot.id, generated);
+    preGeneratedIds.add(slot.id);
+  }
+
+  // Only send non-arithmetic slots to the LLM
+  const llmSlots = allSlots.filter(s => !preGeneratedIds.has(s.id));
+  const groups = chunkArray(llmSlots, GROUP_SIZE);
 
   console.log(
-    `[writerParallel] Dispatching ${groups.length} group(s) of up to ${GROUP_SIZE} slots in parallel (${allSlots.length} total slots).`
+    `[writerParallel] Dispatching ${groups.length} group(s) of up to ${GROUP_SIZE} slots in parallel` +
+    ` (${llmSlots.length} LLM slots` +
+    (preGeneratedIds.size > 0 ? ` + ${preGeneratedIds.size} arithmetic pre-generated` : "") +
+    `).\n  Total: ${allSlots.length} slots.`
   );
 
   // ── Bloom Hint Budget: compute hint verbosity mode for this run ─────────
@@ -282,6 +318,13 @@ export async function writerParallel(
     for (const [slotId, item] of gr.items) {
       allItems.set(slotId, item);
     }
+  }
+  // Inject pre-generated arithmetic items (Step 0) — they bypass the LLM entirely
+  for (const [slotId, item] of preGenMap) {
+    allItems.set(slotId, item);
+  }
+  if (preGenMap.size > 0) {
+    console.log(`[writerParallel] Pre-generated ${preGenMap.size} arithmetic fluency slot(s) locally (grade=${grade}).`);
   }
 
   // ── Step 3: Identify missing slots & retry (fallback, serial) ───────────

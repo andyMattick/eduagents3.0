@@ -55,11 +55,11 @@ ${teacherComments}
 OUTPUT:
 Return ONLY a valid JSON object matching the FinalAssessment schema:
 {
-  "title": "...",
+  "id": "...",
+  "generatedAt": "...",
   "items": [ ... ],
   "totalItems": ...,
-  "metadata": { ... },
-  "cognitiveDistribution": { ... }
+  "metadata": { ... }
 }
 `;
 }
@@ -88,10 +88,18 @@ export async function runTeacherRewrite(
     parsed.metadata = input.finalAssessment.metadata;
   }
 
-  if (!parsed.cognitiveDistribution && input.finalAssessment.cognitiveDistribution) {
-    parsed.cognitiveDistribution = input.finalAssessment.cognitiveDistribution;
-  }
+  // Re-assign 1-based questionNumber in the order the LLM returned items.
+  // Also normalize number-letter spacing ("254and" → "254 and") introduced
+  // by the LLM — same fix applied in parseChunk for Writer output.
+  const fixSpacing = (s: string) =>
+    s.replace(/(\d)([A-Za-z])/g, "$1 $2").replace(/([A-Za-z])(\d)/g, "$1 $2");
 
+  parsed.items = parsed.items.map((item, i) => ({
+    ...item,
+    questionNumber: i + 1,
+    prompt: fixSpacing(item.prompt ?? ""),
+    answer: item.answer ? fixSpacing(item.answer) : item.answer,
+  }));
   parsed.totalItems = parsed.items.length;
 
   return parsed;

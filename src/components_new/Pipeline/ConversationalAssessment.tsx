@@ -20,13 +20,14 @@ const LEVEL_CHIPS = [
 ];
 
 const QUESTION_FORMAT_CHIPS = [
-  { label: "Multiple Choice",    value: "mcqOnly"       },
-  { label: "Short Answer",       value: "saOnly"        },
-  { label: "Essay",              value: "essayOnly"     },
-  { label: "Free Response",value: "frqOnly"       },
-  { label: "Fill in the Blank",  value: "fitbOnly"      },
-  { label: "True / False",       value: "trueFalseOnly" },
-  { label: "Mixed Format",       value: "mixed"         },
+  { label: "Multiple Choice",    value: "mcqOnly"           },
+  { label: "Short Answer",       value: "saOnly"            },
+  { label: "Essay",              value: "essayOnly"         },
+  { label: "Free Response",      value: "frqOnly"           },
+  { label: "Fill in the Blank",  value: "fitbOnly"          },
+  { label: "True / False",       value: "trueFalseOnly"     },
+  { label: "Arithmetic Fluency", value: "arithmeticFluency" },
+  { label: "Mixed Format",       value: "mixed"             },
 ];
 
 const BLOOM_PREFERENCE_CHIPS = [
@@ -70,6 +71,8 @@ interface Step {
   question: string;
   placeholder?: string;
   optional?: boolean;
+  /** When true, multiple chips can be toggled before confirming. */
+  multiSelect?: boolean;
   chips?: Array<{ label: string; value: string }>;
 }
 
@@ -128,8 +131,9 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
   const steps: Step[] = [
     {
       id: "questionFormat",
-      question: "What question formats should this include?",
+      question: "What question formats should this include? (Pick one or more)",
       chips: QUESTION_FORMAT_CHIPS,
+      multiSelect: true,
     },
   ];
 //test change
@@ -173,6 +177,8 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
+export type { StepId };
+
 export type ConversationalIntent = {
   gradeLevels: string[];
   course: string;
@@ -197,11 +203,32 @@ export type ConversationalIntent = {
   standards?: string;
 };
 
+const DEFAULT_ANSWERS: Record<StepId, string> = {
+  gradeLevels:         "",
+  course:              "",
+  topic:               "",
+  assessmentType:      "",
+  questionFormat:      "",
+  bloomPreference:     "",
+  multiPartQuestions:  "",
+  sectionStructure:    "",
+  standards:           "",
+  studentLevel:        "",
+  time:                "",
+  additionalDetails:   "",
+};
+
 interface ConversationalAssessmentProps {
   onComplete: (intent: ConversationalIntent) => void;
   isLoading: boolean;
   /** When true, all inputs and submit are disabled (e.g. daily limit reached). */
   disabled?: boolean;
+  /**
+   * Pre-populate answers from a previous session (e.g. after "Edit Inputs").
+   * The component will start at the last answered step so the teacher can
+   * navigate back to any specific field using the ← Back button.
+   */
+  initialAnswers?: Partial<Record<StepId, string>>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -210,24 +237,31 @@ export function ConversationalAssessment({
   onComplete,
   isLoading,
   disabled = false,
+  initialAnswers,
 }: ConversationalAssessmentProps) {
   const isBlocked = isLoading || disabled;
-  const [stepIndex, setStepIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<StepId, string>>({
-    gradeLevels:         "",
-    course:              "",
-    topic:               "",
-    assessmentType:      "",
-    questionFormat:      "",
-    bloomPreference:     "",
-    multiPartQuestions:  "",
-    sectionStructure:    "",
-    standards:           "",
-    studentLevel:        "",
-    time:                "",
-    additionalDetails:   "",
+
+  const [answers, setAnswers] = useState<Record<StepId, string>>(() => ({
+    ...DEFAULT_ANSWERS,
+    ...(initialAnswers ?? {}),
+  }));
+
+  // When restoring from a previous session (Edit Inputs), start at the last
+  // answered step so the teacher can review everything and step back to fix.
+  const [stepIndex, setStepIndex] = useState(() => {
+    if (!initialAnswers) return 0;
+    const aType = initialAnswers.assessmentType ?? "";
+    const adaptive = aType ? getAdaptiveSteps(aType) : [];
+    const allSteps = [...BASE_STEPS_BEFORE, ...adaptive, ...BASE_STEPS_AFTER];
+    return Math.max(0, allSteps.length - 1);
   });
-  const [inputValue, setInputValue] = useState("");
+
+  const [inputValue, setInputValue] = useState(() =>
+    initialAnswers?.additionalDetails ?? ""
+  );
+
+  // Buffer for multi-select chip steps — cleared whenever the step changes.
+  const [multiSelectBuffer, setMultiSelectBuffer] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -246,6 +280,9 @@ export function ConversationalAssessment({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     if (!isChipStep) setTimeout(() => inputRef.current?.focus(), 50);
   }, [stepIndex, isChipStep]);
+
+  // Reset multi-select buffer whenever the step changes.
+  useEffect(() => { setMultiSelectBuffer([]); }, [stepIndex]);
 
   // ── Commit an answer and advance ─────────────────────────────────────────
 
@@ -300,7 +337,22 @@ export function ConversationalAssessment({
     commitAnswer(inputValue);
   };
 
-  const handleChipClick = (value: string) => commitAnswer(value);
+  const handleChipClick = (value: string) => {
+    if (currentStep?.multiSelect) {
+      // Toggle the chip in/out of the selection buffer.
+      setMultiSelectBuffer(prev =>
+        prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+      );
+    } else {
+      commitAnswer(value);
+    }
+  };
+
+  const handleMultiSelectConfirm = () => {
+    if (multiSelectBuffer.length > 0) {
+      commitAnswer(multiSelectBuffer.join(","));
+    }
+  };
 
   const handleBack = () => {
     if (stepIndex === 0) return;
@@ -338,10 +390,11 @@ export function ConversationalAssessment({
             {/* Previous user answer */}
             {idx < stepIndex && answers[step.id] && (
               <div className="ca-bubble ca-bubble--user">
-                {step.chips
-                  ? (step.chips.find(c => c.value === answers[step.id])?.label
-                     ?? answers[step.id])
-                  : answers[step.id]}
+                {step.chips && step.multiSelect
+                  ? answers[step.id].split(",").map(v => step.chips!.find(c => c.value === v)?.label ?? v).join(", ")
+                  : step.chips
+                    ? (step.chips.find(c => c.value === answers[step.id])?.label ?? answers[step.id])
+                    : answers[step.id]}
               </div>
             )}
 
@@ -352,13 +405,27 @@ export function ConversationalAssessment({
                   <button
                     key={chip.value}
                     type="button"
-                    className="ca-chip"
+                    className={`ca-chip${
+                      step.multiSelect && multiSelectBuffer.includes(chip.value)
+                        ? " ca-chip--selected"
+                        : ""
+                    }`}
                     onClick={() => handleChipClick(chip.value)}
                     disabled={isBlocked}
                   >
                     {chip.label}
                   </button>
                 ))}
+                {step.multiSelect && multiSelectBuffer.length > 0 && (
+                  <button
+                    type="button"
+                    className="ca-chip ca-chip--confirm"
+                    onClick={handleMultiSelectConfirm}
+                    disabled={isBlocked}
+                  >
+                    ✓ Confirm ({multiSelectBuffer.length} selected)
+                  </button>
+                )}
               </div>
             )}
           </div>

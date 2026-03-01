@@ -1,6 +1,7 @@
 // src/components_new/Pipeline/ConversationalAssessmentWrapper.tsx
 import { useState, useCallback, useEffect } from "react";
 import { ConversationalAssessment, ConversationalIntent } from "./ConversationalAssessment";
+import type { StepId } from "./ConversationalAssessment";
 import { TraceViewer } from "./TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
 import { PromptEngineerPanel } from "./PromptEngineerPanel";
@@ -9,6 +10,7 @@ import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR
 import { generateAssessment } from "@/config/aiConfig";
 import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
 import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
+import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 
@@ -52,6 +54,10 @@ export function ConversationalAssessmentWrapper({
   const [isRewriting, setIsRewriting] = useState(false);
   const [rewriteError, setRewriteError] = useState<string | null>(null);
 
+  // ── Form restore state (populated when teacher clicks "← Edit Inputs") ──
+  const [formInitialAnswers, setFormInitialAnswers] = useState<Partial<Record<StepId, string>> | null>(null);
+
+
   const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
 
   // Load (or refresh) daily usage
@@ -70,6 +76,7 @@ export function ConversationalAssessmentWrapper({
     (intent: ConversationalIntent) => {
       setLimitError(null);
       setPipelineError(null);
+      setFormInitialAnswers(null); // clear restore state when teacher completes a fresh form
       const validation = runPromptEngineer(intent);
       setPendingIntent(intent);
       setPeResult(validation);
@@ -79,9 +86,28 @@ export function ConversationalAssessmentWrapper({
 
   // ── Called when teacher clicks "Edit Inputs" in Prompt Engineer panel ──
   const handleEditInputs = useCallback(() => {
+    // Restore the teacher's previous answers so they land on the last step
+    // and can use ← Back to navigate to any specific field to fix.
+    if (pendingIntent) {
+      const restored: Partial<Record<StepId, string>> = {
+        gradeLevels:        pendingIntent.gradeLevels.join(", "),
+        course:             pendingIntent.course,
+        topic:              pendingIntent.topic || pendingIntent.unitName || "",
+        assessmentType:     pendingIntent.assessmentType,
+        questionFormat:     pendingIntent.questionFormat ?? "",
+        bloomPreference:    pendingIntent.bloomPreference ?? "",
+        multiPartQuestions: pendingIntent.multiPartQuestions ?? "",
+        sectionStructure:   pendingIntent.sectionStructure ?? "",
+        standards:          pendingIntent.standards ?? "",
+        studentLevel:       pendingIntent.studentLevel,
+        time:               pendingIntent.time?.toString() ?? "",
+        additionalDetails:  pendingIntent.additionalDetails ?? "",
+      };
+      setFormInitialAnswers(restored);
+    }
     setPendingIntent(null);
     setPeResult(null);
-  }, []);
+  }, [pendingIntent]);
 
   // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
   const handleProceed = useCallback(
@@ -152,11 +178,35 @@ export function ConversationalAssessmentWrapper({
           teacherComments: comments,
           blueprint: result.blueprint,
         });
-        // Merge rewritten assessment back into result
+
+        // Persist the teacher-revised version as a new version under the same template.
+        // previousVersionId chains it to the AI-generated version that preceded it.
+        const uar = result.blueprint?.uar ?? result.uar ?? {};
+        const domain = ((uar.course ?? "general") as string).toLowerCase();
+        let updatedScribe = result.scribe;
+        try {
+          updatedScribe = await SCRIBE.saveAssessmentVersion({
+            userId: safeUserId,
+            uar,
+            domain,
+            finalAssessment: rewritten,
+            blueprint: result.blueprint ?? {},
+            qualityScore: undefined,
+            tokenUsage: null,
+            previousVersionId: result.scribe?.versionId ?? null,
+            templateId: result.scribe?.templateId ?? null,
+          });
+        } catch (saveErr: any) {
+          // Non-fatal — still show the rewritten assessment even if save fails.
+          console.error("[TeacherRewrite] SCRIBE save failed:", saveErr?.message);
+        }
+
+        // Merge rewritten assessment + updated scribe ref back into result
         setResult((prev: any) => ({
           ...prev,
           finalAssessment: rewritten,
           teacherRewriteApplied: true,
+          scribe: updatedScribe,
         }));
       } catch (err: any) {
         console.error("[TeacherRewrite] Error:", err);
@@ -165,7 +215,7 @@ export function ConversationalAssessmentWrapper({
         setIsRewriting(false);
       }
     },
-    [result]
+    [result, safeUserId]
   );
 
   return (
@@ -286,12 +336,14 @@ export function ConversationalAssessmentWrapper({
         </div>
       ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
+          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : "fresh"}
           onComplete={handleConversationComplete}
           isLoading={isLoading}
           disabled={usage !== null && !usage.canGenerate}
+          initialAnswers={formInitialAnswers ?? undefined}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
-        /* Prompt Engineer validation panel — shown before pipeline fires */
+        /* Input Review validation panel — shown before pipeline fires */
         <PromptEngineerPanel
           result={peResult}
           onProceed={handleProceed}
@@ -300,7 +352,18 @@ export function ConversationalAssessmentWrapper({
         />
       ) : (
         <button
-          onClick={() => { setResult(null); setLimitError(null); setPipelineError(null); setPeResult(null); setPendingIntent(null); setRewriteError(null); refreshUsage(); }}
+          onClick={() => {
+            setResult(null);
+            setLimitError(null);
+            setPipelineError(null);
+            setPeResult(null);
+            setPendingIntent(null);
+            setRewriteError(null);
+            setIsLoading(false);
+            setPendingEstimatedSeconds(null);
+            setFormInitialAnswers(null);
+            refreshUsage();
+          }}
           style={{ marginBottom: "1rem", cursor: "pointer" }}
         >
           ← New Assessment

@@ -177,12 +177,12 @@ function MiniTimeline({ dates }: { dates: string[] }) {
 // ─── AgentLegend ──────────────────────────────────────────────────────────────
 
 const AGENT_DESCRIPTIONS = [
-  { emoji: "🔍", name: "Prompt Engineer", role: "Validates your inputs before anything is generated. Catches contradictions (e.g., 5-minute test with 20 essay questions) and warns about impossible setups. You can override and generate anyway — the Philosopher will flag issues in its report." },
-  { emoji: "🗺️", name: "Architect", role: "Designs the blueprint: how many questions, which Bloom levels, section layout, and pacing. Nothing is written until the blueprint is finalized." },
+  { emoji: "🔍", name: "Input Review", role: "Validates your inputs before anything is generated. Catches contradictions (e.g., 5-minute test with 20 essay questions) and warns about impossible setups. You can override and generate anyway — the system will flag issues in its report." },
+  { emoji: "🗺️", name: "Architect", role: "Designs the blueprint: how many questions, which reasoning levels, section layout, and pacing. Nothing is written until the blueprint is finalized." },
   { emoji: "✍️", name: "Writer", role: "Writes each question in parallel, following the blueprint exactly. Produces the prompt, answer choices, and correct answer for every item." },
-  { emoji: "🚪", name: "Gatekeeper", role: "Reviews every question against the blueprint — checks format, Bloom level, forbidden phrases, and answer correctness. Violations trigger automatic rewrites." },
-  { emoji: "🔄", name: "Rewriter", role: "Fixes any question that failed Gatekeeper validation. Runs targeted rewrites in the same session so the final output is always clean." },
-  { emoji: "⚗", name: "Philosopher", role: "Audits the finished assessment for pedagogical quality: Bloom breadth, redundancy, pacing, and alignment with your stated intent. Violation counts appear in the Philosopher's Report on each assessment." },
+  { emoji: "🚪", name: "Gatekeeper", role: "Reviews every question against the blueprint — checks format, reasoning level, forbidden phrases, and answer correctness. Violations trigger automatic rewrites." },
+  { emoji: "🔄", name: "Rewriter", role: "Fixes any question that failed quality validation. Runs targeted rewrites in the same session so the final output is always clean." },
+  { emoji: "⚗", name: "Philosopher", role: "Audits the finished assessment for pedagogical quality: reasoning depth, redundancy, pacing, and alignment with your stated intent. Notes appear in the AI Generation Notes panel on each assessment." },
   { emoji: "📜", name: "SCRIBE", role: "Tracks patterns across every run. Builds subject-specific trust scores and learns your guardrail preferences over time — the trust level bar on each card reflects SCRIBE's confidence in that subject." },
 ];
 

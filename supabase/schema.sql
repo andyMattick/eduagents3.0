@@ -38,7 +38,7 @@ CREATE POLICY "teachers: own row update"
 --    by getDailyUsage() to count free-tier usage.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.teacher_assessment_history (
-  id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id                 uuid        PRIMARY KEY DEFAULT session.user.id(),
   teacher_id         uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   domain             text,
   grade              text,
@@ -100,7 +100,7 @@ CREATE POLICY "td: own row update"
 --    tables.
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.dossiers (
-  id                  uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id                  uuid        PRIMARY KEY DEFAULT session.user.id(),
   user_id             uuid        NOT NULL UNIQUE REFERENCES public.teachers(id) ON DELETE CASCADE,
 
   -- Agent governance dossiers (JSONB objects)
@@ -143,7 +143,7 @@ CREATE POLICY "dossiers: own row update"
 --    optimistic concurrency (version column).
 -- ────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.teacher_guardrails (
-  id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  id           uuid        PRIMARY KEY DEFAULT session.user.id(),
   teacher_id   uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   agent_type   text        NOT NULL,
   domain       text        NOT NULL DEFAULT 'General',
@@ -221,3 +221,97 @@ SELECT
   raw_user_meta_data->>'schoolName'
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+
+-- ────────────────────────────────────────────────────────────
+-- 8. ASSESSMENT_RESULTS  (Phase 4)
+--    One row per teacher-submitted result set, tied to a
+--    specific assessment version.  Stores the raw per-question
+--    performance data and the AI-generated analysis.
+--
+--    performance_json shape:
+--      [{ "questionNumber": 1, "percentCorrect": 85 }, ...]
+--
+--    analysis_json shape (filled after AI analysis):
+--      {
+--        "overallAssessmentHealth": "Strong" | "Needs Adjustment",
+--        "confusionHotspots": [...],
+--        "pacingIssues": string | null,
+--        "distractorIssues": [...],
+--        "cognitiveLoadObservations": [...],
+--        "recommendedAdjustments": [...]
+--      }
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.assessment_results (
+  id                    uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  assessment_version_id uuid        NOT NULL REFERENCES public.assessment_versions(id) ON DELETE CASCADE,
+  performance_json      jsonb       NOT NULL,
+  analysis_json         jsonb,
+  created_at            timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ar_version_created
+  ON public.assessment_results (assessment_version_id, created_at DESC);
+
+ALTER TABLE public.assessment_results ENABLE ROW LEVEL SECURITY;
+
+-- Teachers may only access results linked to versions they own.
+-- The join goes: assessment_results → assessment_versions → assessment_templates → user_id
+CREATE POLICY "ar: own rows select"
+  ON public.assessment_results FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.assessment_versions av
+      JOIN public.assessment_templates at ON at.id = av.template_id
+      WHERE av.id = assessment_results.assessment_version_id
+        AND at.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "ar: own rows insert"
+  ON public.assessment_results FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.assessment_versions av
+      JOIN public.assessment_templates at ON at.id = av.template_id
+      WHERE av.id = assessment_version_id
+        AND at.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "ar: own rows update"
+  ON public.assessment_results FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.assessment_versions av
+      JOIN public.assessment_templates at ON at.id = av.template_id
+      WHERE av.id = assessment_results.assessment_version_id
+        AND at.user_id = auth.uid()
+    )
+  );
+
+
+-- ────────────────────────────────────────────────────────────
+-- 9. MIGRATIONS  (run after initial schema is applied)
+-- ────────────────────────────────────────────────────────────
+
+-- Phase 5 prep: decouple "active" from "latest generated".
+--
+-- latest_version_id  = most recently generated version
+--                      (updated automatically by SCRIBE on every generation)
+-- active_version_id  = teacher-assigned active / distributed version
+--                      (updated only by explicit teacher action via UI)
+--
+-- This ensures that if a teacher generates V4 after distributing V3,
+-- V3 remains the active version and analytics stay anchored to it.
+ALTER TABLE public.assessment_templates
+  ADD COLUMN IF NOT EXISTS active_version_id uuid
+    REFERENCES public.assessment_versions(id) ON DELETE SET NULL;
+
+-- Phase 4 note: assessment_results allows multiple rows per version.
+-- The most recent row (ORDER BY created_at DESC LIMIT 1) is canonical.
+-- performance_json shape (enforced in application layer):
+--   { "itemStats": [ { "questionNumber": <int>, "percentCorrect": <0-100> }, ... ] }

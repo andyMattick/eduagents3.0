@@ -38,6 +38,10 @@ function violationToMode(type: string): RewriteMode {
     case "mcq_answer_mismatch":
     case "mcq_options_unexpected":
     case "question_type_mismatch":
+    case "arithmetic_format_invalid":
+    case "arithmetic_answer_incorrect":
+    case "arithmetic_eval_error":
+    case "arithmetic_operator_mismatch":
       return "formatFix";
     case "topic_mismatch":
     case "domain_mismatch":
@@ -77,13 +81,71 @@ export class Gatekeeper {
 
       //
       // 1. Question type match
+      // A slot may declare `questionTypes` (multi-select) — any entry is acceptable.
       //
-      if (item.questionType !== slot.questionType) {
+      const acceptedTypes: string[] = (slot.questionTypes && slot.questionTypes.length > 0)
+        ? slot.questionTypes
+        : [slot.questionType];
+
+      if (!acceptedTypes.includes(item.questionType)) {
         violations.push({
           slotId: slot.id,
           type: "question_type_mismatch",
-          message: `Expected ${slot.questionType}, got ${item.questionType}.`
+          message: `Expected one of [${acceptedTypes.join(", ")}], got ${item.questionType}.`
         });
+      }
+
+      //
+      // 1b. Arithmetic fluency — structural validation; skip all LLM-oriented checks.
+      //
+      if (item.questionType === "arithmeticFluency") {
+        const arithPattern = /^\d+\s*[+\-×÷*/]\s*\d+$/;
+        if (!arithPattern.test(item.prompt.trim())) {
+          violations.push({
+            slotId: slot.id,
+            type: "arithmetic_format_invalid",
+            message: `Arithmetic fluency prompt must be a bare expression (e.g. "7 + 4"). Got: "${item.prompt}".`,
+          });
+        } else {
+          // Verify the answer is numerically correct
+          const expr = item.prompt.replace(/×/g, "*").replace(/÷/g, "/");
+          try {
+            // eslint-disable-next-line no-new-func
+            const computed: number = Function(`"use strict"; return (${expr})`)();
+            const given = parseFloat(item.answer ?? "");
+            if (isNaN(given) || Math.abs(computed - given) > 0.001) {
+              violations.push({
+                slotId: slot.id,
+                type: "arithmetic_answer_incorrect",
+                message: `Answer "${item.answer}" is incorrect. Expected ${computed} for "${item.prompt}".`,
+              });
+            }
+          } catch {
+            violations.push({
+              slotId: slot.id,
+              type: "arithmetic_eval_error",
+              message: `Could not evaluate arithmetic expression "${item.prompt}".`,
+            });
+          }
+          // Operator check when slot specifies a required operation
+          if (slot.operation && slot.operation !== "any") {
+            const opMap: Record<string, RegExp> = {
+              add:      /\+/,
+              subtract: /-/,
+              multiply: /[×*]/,
+              divide:   /[÷/]/,
+            };
+            if (!opMap[slot.operation]?.test(item.prompt)) {
+              violations.push({
+                slotId: slot.id,
+                type: "arithmetic_operator_mismatch",
+                message: `Slot requires "${slot.operation}" but expression "${item.prompt}" uses a different operator.`,
+              });
+            }
+          }
+        }
+        // Arithmetic items have no LLM-authored content to validate — skip remaining checks.
+        continue;
       }
 
       //

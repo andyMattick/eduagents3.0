@@ -24,7 +24,7 @@ export default function WhatWeInfer() {
               </div>
               <ul className="inference-card-text">
                 <li>• Infers subject, grade band, standards, and representations.</li>
-                <li>• Determines typical Bloom’s distribution.</li>
+                <li>• Determines typical reasoning level distribution.</li>
                 <li>• AP courses → shapes questions to resemble AP exam FRQs.</li>
               </ul>
             </div>
@@ -37,7 +37,7 @@ export default function WhatWeInfer() {
               <ul className="inference-card-text">
                 <li>• Infers key concepts, vocabulary, skills, and misconceptions.</li>
                 <li>• Determines typical question types and DOK.</li>
-                <li>• Infers Bloom’s level appropriate for the topic.</li>
+                <li>• Infers appropriate reasoning demand for the topic.</li>
               </ul>
             </div>
 
@@ -48,8 +48,8 @@ export default function WhatWeInfer() {
               </div>
               <ul className="inference-card-text">
                 <li>• Calibrates difficulty, scaffolding, and reading level.</li>
-                <li>• Sets Bloom’s floor/ceiling.</li>
-                <li>• AP → adjusts Bloom’s to AP expectations.</li>
+                <li>• Sets reasoning depth range for the student level.</li>
+                <li>• AP → adjusts question complexity to AP expectations.</li>
               </ul>
             </div>
 
@@ -61,7 +61,7 @@ export default function WhatWeInfer() {
               <ul className="inference-card-text">
                 <li>• Infers number of questions, pacing, and structure.</li>
                 <li>• Determines formative vs summative.</li>
-                <li>• Infers Bloom’s distribution for the assessment type.</li>
+                <li>• Infers reasoning depth distribution for the assessment type.</li>
               </ul>
             </div>
 
@@ -73,7 +73,7 @@ export default function WhatWeInfer() {
               <ul className="inference-card-text">
                 <li>• Infers total question count and time per question.</li>
                 <li>• Determines feasibility of multi‑part items.</li>
-                <li>• Infers Bloom’s level feasible within time constraints.</li>
+                <li>• Infers reasoning demand achievable within time constraints.</li>
               </ul>
             </div>
 
@@ -85,7 +85,7 @@ export default function WhatWeInfer() {
               <ul className="inference-card-text">
                 <li>• Summarizes source docs to determine what was taught.</li>
                 <li>• Matches tone and format of example tests.</li>
-                <li>• Infers Bloom’s level from example test question types.</li>
+                <li>• Infers reasoning demand from example test question types.</li>
                 <li>• Ensures test items align with review content.</li>
               </ul>
             </div>
@@ -97,7 +97,7 @@ export default function WhatWeInfer() {
               </div>
               <ul className="inference-card-text">
                 <li>• Infers emphasis, constraints, and special instructions.</li>
-                <li>• Allows teachers to specify preferred Bloom’s level.</li>
+                <li>• Allows teachers to specify preferred reasoning depth.</li>
                 <li>• Overrides or fine‑tunes any automatic inference.</li>
               </ul>
             </div>
@@ -325,7 +325,7 @@ export default function WhatWeInfer() {
         <div className="inference-card-header"><strong>The Designer</strong></div>
         <ul className="inference-card-text">
           <li>• Builds the assessment blueprint.</li>
-          <li>• Chooses question types, Bloom’s levels, pacing, and structure.</li>
+          <li>• Chooses question types, reasoning depth, pacing, and structure.</li>
           <li>• Ensures alignment with standards, time, and student level.</li>
         </ul>
       </div>

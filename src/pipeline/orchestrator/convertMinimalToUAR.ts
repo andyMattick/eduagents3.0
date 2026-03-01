@@ -19,38 +19,54 @@ function sanitizeOptional(value: string | null | undefined): string | null {
 }
 
 /**
- * Maps the teacher's questionFormat chip answer to the pipeline's
- * questionTypes[] array.  Falls back to undefined to let the Architect
- * infer from assessment type.
+ * Maps a single questionFormat token to its pipeline questionTypes[] entries.
  */
-function mapQuestionFormat(
-  format: string | null | undefined,
+function mapSingleFormat(
+  format: string,
   assessmentType: string
 ): string[] | undefined {
   switch (format) {
-    case "mcqOnly":
-      return ["multipleChoice"];
-    case "saOnly":
-      return ["shortAnswer"];
-    case "essayOnly":
-      return ["essay"];
-    case "frqOnly":
-      // AP-style free response — richer rubric-able prompts
-      return ["freeResponse"];
-    case "fitbOnly":
-      return ["fillInTheBlank"];
-    case "trueFalseOnly":
-      return ["trueFalse"];
+    case "mcqOnly":           return ["multipleChoice"];
+    case "saOnly":            return ["shortAnswer"];
+    case "essayOnly":         return ["essay"];
+    case "frqOnly":           return ["freeResponse"];
+    case "fitbOnly":          return ["fillInTheBlank"];
+    case "trueFalseOnly":     return ["trueFalse"];
+    case "arithmeticFluency": return ["arithmeticFluency"];
     case "mixed":
-      // Vary the mix by assessment type
       if (assessmentType === "test")
         return ["multipleChoice", "shortAnswer", "freeResponse"];
       if (assessmentType === "quiz")
         return ["multipleChoice", "shortAnswer"];
       return ["multipleChoice", "shortAnswer"];
     default:
-      return undefined; // let the Architect decide
+      return undefined;
   }
+}
+
+/**
+ * Maps the teacher's questionFormat chip answer to the pipeline's
+ * questionTypes[] array.  Handles comma-separated multi-select values.
+ * Falls back to undefined to let the Architect infer from assessment type.
+ */
+function mapQuestionFormat(
+  format: string | null | undefined,
+  assessmentType: string
+): string[] | undefined {
+  if (!format) return undefined;
+
+  const parts = format.split(",").map(f => f.trim()).filter(Boolean);
+
+  // Single value — fast path
+  if (parts.length === 1) return mapSingleFormat(parts[0], assessmentType);
+
+  // Multi-select — flatten and deduplicate
+  const types = new Set<string>();
+  for (const part of parts) {
+    const mapped = mapSingleFormat(part, assessmentType);
+    if (mapped) mapped.forEach(t => types.add(t));
+  }
+  return types.size > 0 ? [...types] : undefined;
 }
 
 export function convertMinimalToUAR(

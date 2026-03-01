@@ -280,6 +280,10 @@ if (writerTelemetry) {
   console.log("[Pipeline] Writer telemetry:", JSON.stringify(writerTelemetry));
 }
 
+// token_usage column is integer — WriterTelemetry has no raw API token count yet.
+// Set to null until a token counter is wired into writerParallel.
+const actualTokenCount: number | null = null;
+
 // 3+4. ValidateAndScore — Gatekeeper + Philosopher write-mode merged (no full-object echoing)
 const { gatekeeperResult, philosopherWrite } = await validateAndScore(
   blueprint, writerDraft, trace, writerTelemetry
@@ -291,6 +295,19 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
+
+  await SCRIBE.saveAssessmentVersion({
+    userId: uar.userId,
+    uar: uarForScribe(uarWithDefaults),
+    domain: selected.domain,
+    finalAssessment,
+    blueprint: blueprintForScribe(blueprint),
+    qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
+    tokenUsage: actualTokenCount ?? null,
+
+    previousVersionId: uar.previousVersionId ?? null,
+    templateId: uar.templateId ?? null,
+  });
 
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
@@ -327,6 +344,19 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
+
+  await SCRIBE.saveAssessmentVersion({
+    userId: uar.userId,
+    uar: uarForScribe(uarWithDefaults),
+    domain: selected.domain,
+    finalAssessment,
+    blueprint: blueprintForScribe(blueprint),
+    qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
+    tokenUsage: actualTokenCount ?? null,
+
+    previousVersionId: uar.previousVersionId ?? null,
+    templateId: uar.templateId ?? null,
+  });
 
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
@@ -412,6 +442,19 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
+  await SCRIBE.saveAssessmentVersion({
+    userId: uar.userId,
+    uar: uarForScribe(uarWithDefaults),
+    domain: selected.domain,
+    finalAssessment,
+    blueprint: blueprintForScribe(blueprint),
+    qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
+    tokenUsage: actualTokenCount ?? null,
+
+    previousVersionId: uar.previousVersionId ?? null,
+    templateId: uar.templateId ?? null,
+  });
+
   const scribeResult = await runAgent(
     trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,
     {
@@ -445,6 +488,19 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 
 validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
 const finalAssessment = await runAgent(trace, "Builder", runBuilder,
   { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
+
+await SCRIBE.saveAssessmentVersion({
+  userId: uar.userId,
+  uar: uarForScribe(uarWithDefaults),
+  domain: selected.domain,
+  finalAssessment,
+  blueprint: blueprintForScribe(blueprint),
+  qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
+  tokenUsage: actualTokenCount ?? null,
+
+  previousVersionId: uar.previousVersionId ?? null,
+  templateId: uar.templateId ?? null,
+});
 
 const scribeResult = await runAgent(
   trace, "SCRIBE.updateAgentDossier", SCRIBE.updateAgentDossier,

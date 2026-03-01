@@ -266,6 +266,101 @@ export class SCRIBE {
     }
   }
 
+  /**
+   * Phase 1 — Versioned Storage.
+   *
+   * Persists a generated (or regenerated / branched) assessment to
+   * assessment_templates + assessment_versions without touching any
+   * other pipeline or UI logic.
+   *
+   * @returns { templateId, versionId, versionNumber }
+   */
+  static async saveAssessmentVersion({
+    userId,
+    uar,
+    domain,
+    finalAssessment,
+    blueprint,
+    qualityScore,
+    tokenUsage,
+    previousVersionId = null,
+    templateId = null,
+  }: {
+    userId: string;
+    uar: any;
+    domain: string;
+    finalAssessment: any;
+    blueprint: any;
+    qualityScore?: number;
+    tokenUsage?: any;
+    previousVersionId?: string | null;
+    templateId?: string | null;
+  }): Promise<{ templateId: string; versionId: string; versionNumber: number }> {
+
+    // STEP 1 — Ensure teacher row exists (throws on failure — never silenced).
+    await SCRIBE.ensureTeacherRow(userId);
+
+    // STEP 2 — Resolve template.
+    let resolvedTemplateId: string;
+
+    if (!templateId) {
+      // First generation — create a new template.
+      const { data: tmpl, error: tmplErr } = await supabase
+        .from("assessment_templates")
+        .insert({ user_id: userId, uar_json: uar, domain })
+        .select("id")
+        .single();
+
+      if (tmplErr || !tmpl) {
+        throw new Error(`[SCRIBE.saveAssessmentVersion] template insert failed: ${tmplErr?.message}`);
+      }
+      resolvedTemplateId = tmpl.id;
+    } else {
+      // Regenerate / branch — reuse the existing template.
+      resolvedTemplateId = templateId;
+    }
+
+    // STEP 3 — Determine next version number.
+    const versionNumber = await SCRIBE.getNextVersionNumber(resolvedTemplateId);
+
+    // STEP 4 — Insert version row.
+    const hash = await SCRIBE.computeHash(JSON.stringify(finalAssessment));
+
+    const { data: ver, error: verErr } = await supabase
+      .from("assessment_versions")
+      .insert({
+        template_id:       resolvedTemplateId,
+        version_number:    versionNumber,
+        parent_version_id: previousVersionId ?? null,
+        assessment_json:   finalAssessment,
+        blueprint_json:    blueprint,
+        quality_score:     qualityScore ?? null,
+        token_usage:       tokenUsage ?? null,
+
+        hash,
+      })
+      .select("id")
+      .single();
+
+    if (verErr || !ver) {
+      throw new Error(`[SCRIBE.saveAssessmentVersion] version insert failed: ${verErr?.message}`);
+    }
+    const versionId = ver.id;
+
+    // STEP 5 — Update template.latest_version_id.
+    const { error: updateErr } = await supabase
+      .from("assessment_templates")
+      .update({ latest_version_id: versionId })
+      .eq("id", resolvedTemplateId);
+
+    if (updateErr) {
+      // Non-fatal — the version row is already committed; just log.
+      console.warn("[SCRIBE.saveAssessmentVersion] latest_version_id update failed:", updateErr.message);
+    }
+
+    return { templateId: resolvedTemplateId, versionId, versionNumber };
+  }
+
   // =====================================================
   // CORE UPDATE PIPELINE
   // =====================================================
@@ -320,9 +415,15 @@ export class SCRIBE {
   // =====================================================
 
   private static async ensureTeacherRow(userId: string) {
-    await supabase
-      .from("teachers")
-      .upsert({ id: userId }, { onConflict: "id" });
+    
+    const { error } = await supabase
+  .from("teachers")
+  .upsert({ id: userId }, { onConflict: "id" });
+
+  if (error) {
+    console.error("Teacher upsert failed:", error);
+    throw error;
+}
   }
 
   private static async insertAssessmentHistory({
@@ -488,5 +589,48 @@ export class SCRIBE {
       triggerCount: 0,
       weight: 0.5
     }));
+  }
+
+  /**
+   * Returns the next sequential version_number for a given template.
+   * Queries the MAX existing version_number and adds 1 (starts at 1).
+   */
+  private static async getNextVersionNumber(templateId: string): Promise<number> {
+    const { data, error } = await supabase
+      .from("assessment_versions")
+      .select("version_number")
+      .eq("template_id", templateId)
+      .order("version_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`[SCRIBE.getNextVersionNumber] query failed: ${error.message}`);
+    }
+
+    return data ? (data.version_number as number) + 1 : 1;
+  }
+
+  /**
+   * Returns a hex SHA-256 digest of the given string using the Web Crypto API.
+   * Falls back to a lightweight FNV-1a hex string in non-HTTPS environments
+   * where crypto.subtle may be unavailable.
+   */
+  private static async computeHash(text: string): Promise<string> {
+    try {
+      const encoder = new TextEncoder();
+      const buffer = await crypto.subtle.digest("SHA-256", encoder.encode(text));
+      return Array.from(new Uint8Array(buffer))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+    } catch {
+      // Fallback: FNV-1a 32-bit (non-cryptographic, but unique enough for dedup)
+      let h = 0x811c9dc5;
+      for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = (Math.imul(h, 0x01000193) >>> 0);
+      }
+      return h.toString(16).padStart(8, "0");
+    }
   }
 }
