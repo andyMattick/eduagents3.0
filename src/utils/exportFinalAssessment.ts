@@ -299,14 +299,22 @@ assessment = filterAssessmentForVersion(assessment, version);
   let sectionIndex = 1;
   let questionNumber = 1;
 
+  // Build a flat ordered list with sequential numbers — used by both the
+  // question renderer and the answer key so numbering is always in sync.
+  const orderedItems: Array<{ item: typeof assessment.items[0]; printNumber: number }> = [];
   for (const type of orderedTypes) {
-    y = renderSectionHeader(doc, type, sectionIndex, y);
-
     for (const item of groups[type]) {
-      y = renderQuestion(doc, { ...item, questionNumber: questionNumber++ }, y);
+      orderedItems.push({ item, printNumber: questionNumber++ });
     }
+  }
 
-    sectionIndex++;
+  for (const { item, printNumber } of orderedItems) {
+    // Inject section header when the type changes
+    const isFirstOfType = orderedItems.find(o => o.item.questionType === item.questionType)?.item === item;
+    if (isFirstOfType) {
+      y = renderSectionHeader(doc, item.questionType, sectionIndex++, y);
+    }
+    y = renderQuestion(doc, { ...item, questionNumber: printNumber }, y);
   }
 
   // ── Answer key (separate page) ──────────────────────────────────────────────
@@ -330,7 +338,8 @@ assessment = filterAssessmentForVersion(assessment, version);
     const colW = CONTENT_W / 2;
     let col = 0;
 
-    for (const item of assessment.items) {
+    // Use the same ordered list so answer key numbers match printed numbers.
+    for (const { item, printNumber } of orderedItems) {
       const xPos = MARGIN + col * colW;
       // For MCQ, show only the letter (e.g. "B") — the full option text is too long for a key grid
       const isMC = item.questionType === "multipleChoice";
@@ -343,7 +352,7 @@ assessment = filterAssessmentForVersion(assessment, version);
 
       // Number
       doc.setFont("helvetica", "bold");
-      doc.text(`${item.questionNumber}.`, xPos, y);
+      doc.text(`${printNumber}.`, xPos, y);
       doc.setFont("helvetica", "normal");
 
       const answerLines = doc.splitTextToSize(answerText, colW - 8);

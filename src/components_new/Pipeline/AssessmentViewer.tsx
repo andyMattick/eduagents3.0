@@ -455,7 +455,6 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
   const [answerKeyLoading, setAnswerKeyLoading] = useState(false);
-  const [promptCopied, setPromptCopied] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const displayTitle = title ?? "Assessment";
@@ -490,53 +489,7 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
     }
   }
 
-  function handlePrint() {
-    setShowAnswerKey(true);
-    setTimeout(() => window.print(), 150);
-  }
-
-  function handleCopyAIPrompt() {
-    const u = uar ?? {};
-    const qCount = assessment.totalItems;
-    const type = u.assessmentType ?? "assessment";
-    const grades = Array.isArray(u.gradeLevels) && u.gradeLevels.length
-      ? `Grade ${(u.gradeLevels as string[]).join("/")}`
-      : "";
-    const course = u.course ?? "";
-    const level = u.studentLevel ?? "";
-    const topic = u.topic ?? u.unitName ?? title ?? "the assigned topic";
-    const timeStr = u.time ? `${u.time} minutes` : "";
-    const formatLabel: Record<string, string> = {
-      mcqOnly: "multiple choice", saOnly: "short answer", essayOnly: "essay",
-      frqOnly: "free response (FRQ)", fitbOnly: "fill-in-the-blank",
-      trueFalseOnly: "true/false", mixed: "mixed format",
-    };
-    const fmt = u.questionFormat ? (formatLabel[u.questionFormat] ?? u.questionFormat) : "";
-    const multiPart = u.multiPartQuestions === "yes";
-
-    const lines: string[] = [
-      `Generate a ${qCount}-question ${fmt ? fmt + " " : ""}${type} for ${[grades, course, level ? level + " level" : ""].filter(Boolean).join(" ")}.`,
-      `Topic: ${topic}`,
-    ];
-    if (timeStr) lines.push(`Time available: ${timeStr}`);
-    if (multiPart) lines.push("Include multi-part questions where parts build progressively (Part A → Part B → Part C).");
-    if (u.bloomPreference && u.bloomPreference !== "balanced") {
-      const bloomMap: Record<string, string> = {
-        lower: "Focus on recall-level (Remember / Understand) questions.",
-        apply: "Emphasize application-level questions.",
-        higher: "Prioritize higher-order thinking (Analyze / Evaluate / Create).",
-      };
-      lines.push(bloomMap[u.bloomPreference] ?? "");
-    }
-    if (u.additionalDetails) lines.push(u.additionalDetails);
-    lines.push("");
-    lines.push("Provide an answer key at the end.");
-
-    navigator.clipboard.writeText(lines.filter(Boolean).join("\n")).then(() => {
-      setPromptCopied(true);
-      setTimeout(() => setPromptCopied(false), 2500);
-    });
-  }
+  // handleCopyAIPrompt and handlePrint reserved for future use
 
   return (
     <div className="av-root" ref={printRef}>
@@ -572,7 +525,11 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             >
               {answerKeyLoading ? "Generating…" : hasMath ? "🔑 Key (use Print)" : "🔑 Answer Key"}
             </button>
-            <button className="av-btn av-btn-outline" onClick={handlePrint}>
+            <button
+              className="av-btn av-btn-outline"
+              disabled
+              title="Print temporarily disabled while answer key ordering is being fixed"
+            >
               🖨 Print
             </button>
             <button
@@ -582,34 +539,13 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             >
               🎮 Playtest
             </button>
-            <div style={{ position: "relative", display: "inline-flex", flexDirection: "column", alignItems: "flex-end" }}>
-              <button
+            <button
                 className="av-btn av-btn-outline"
-                onClick={handleCopyAIPrompt}
-                title="Copy a plain-language prompt you can paste into ChatGPT, Flint AI, or any other AI tool"
-                style={promptCopied ? { borderColor: "#16a34a", color: "#16a34a" } : undefined}
+                disabled
+                title="Use in AI is coming soon"
               >
-                {promptCopied ? "✓ Copied!" : "📋 Use in AI"}
+                📋 Use in AI
               </button>
-              {promptCopied && (
-                <span style={{
-                  position: "absolute",
-                  top: "calc(100% + 6px)",
-                  right: 0,
-                  background: "#16a34a",
-                  color: "#fff",
-                  fontSize: "0.7rem",
-                  fontWeight: 600,
-                  padding: "0.3rem 0.6rem",
-                  borderRadius: "6px",
-                  whiteSpace: "nowrap",
-                  zIndex: 10,
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                }}>
-                  → Paste in ChatGPT, Claude, or Gemini
-                </span>
-              )}
-            </div>
           </div>
         </div>
 
