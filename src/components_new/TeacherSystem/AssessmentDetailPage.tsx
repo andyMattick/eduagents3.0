@@ -13,6 +13,8 @@ import { generateAssessment } from "@/config/aiConfig";
 import { AssessmentViewer } from "../Pipeline/AssessmentViewer";
 import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
+import { DossierManager } from "@/system/dossier/DossierManager";
+import type { AgentDossierData } from "@/system/dossier/DossierManager";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -613,8 +615,31 @@ function AiInsightsPanel({
 // AI Generation Notes panel (teacher-language translation of quality data)
 // ─────────────────────────────────────────────────────────────────────────────
 
+function reliabilityColor(score: number) {
+  if (score >= 80) return { text: "#166534", bar: "#22c55e" };
+  if (score >= 55) return { text: "#854d0e", bar: "#f59e0b" };
+  return { text: "#991b1b", bar: "#ef4444" };
+}
+
+function MetricBar({ label, score, description }: { label: string; score: number; description: string }) {
+  const c = reliabilityColor(score);
+  return (
+    <div style={{ marginBottom: "0.65rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
+        <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>{label}</span>
+        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: c.text }}>{score}/100</span>
+      </div>
+      <div style={{ height: 5, background: "#e5e7eb", borderRadius: 999, overflow: "hidden", marginBottom: "0.2rem" }}>
+        <div style={{ height: "100%", width: `${score}%`, background: c.bar, borderRadius: 999, transition: "width 0.4s" }} />
+      </div>
+      <div style={{ fontSize: "0.74rem", color: "#6b7280", lineHeight: 1.4 }}>{description}</div>
+    </div>
+  );
+}
+
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
+  const [dossier, setDossier] = useState<AgentDossierData | null>(null);
 
   const blueprint  = version.blueprint_json ?? {};
   const plan       = blueprint.plan ?? {};
@@ -622,16 +647,28 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
   const score      = version.quality_score;
   const uar        = template.uar_json ?? {};
 
-  // ── qualityLevel ────────────────────────────────────────────────────────
-  let qualityLevel: string | null = null;
+  // Load dossier the first time the panel is opened
+  useEffect(() => {
+    if (!open || dossier !== null) return;
+    const domain = blueprint.domain ?? template.domain ?? "General";
+    DossierManager.loadAgentDossier(template.user_id, `writer:${domain}`)
+      .then(d => setDossier(d))
+      .catch(() => {/* non-fatal */});
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Quality badge ───────────────────────────────────────────────────────
+  let qualityLabel = "";
+  let qualityDesc  = "";
+  const badgeBg    = score != null ? (score >= 8 ? "#dcfce7" : score >= 5 ? "#fef9c3" : "#fee2e2") : undefined;
+  const badgeColor = score != null ? (score >= 8 ? "#166534" : score >= 5 ? "#854d0e" : "#991b1b") : undefined;
   if (score != null) {
-    if (score >= 9)      qualityLevel = "Strong Alignment";
-    else if (score >= 7) qualityLevel = "Well Aligned";
-    else if (score >= 5) qualityLevel = "Minor Adjustments Made";
-    else                 qualityLevel = "Substantial Adjustments Required";
+    if (score >= 9)      { qualityLabel = "Strong";     qualityDesc = "This assessment passed all quality checks with minimal adjustments."; }
+    else if (score >= 7) { qualityLabel = "Good";       qualityDesc = "Questions were well-formed. Minor edits were applied automatically."; }
+    else if (score >= 5) { qualityLabel = "Fair";       qualityDesc = "Some questions needed adjustment. The system corrected them before delivery."; }
+    else                 { qualityLabel = "Needs Work"; qualityDesc = "Significant corrections were made. You may want to review the questions."; }
   }
 
-  // ── pacingAlignment ─────────────────────────────────────────────────────
+  // ── Pacing ──────────────────────────────────────────────────────────────
   const requestedMins: number | null = uar.time != null ? Number(uar.time) : null;
   const totalItems = version.assessment_json?.totalItems ?? 0;
   const realisticMins: number | null =
@@ -641,25 +678,25 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
         ? Math.round((plan.pacingSecondsPerItem * totalItems) / 60)
         : null;
 
-  let pacingAlignment: string | null = null;
+  let pacingLine = "";
   if (requestedMins != null && realisticMins != null) {
     const diff = realisticMins - requestedMins;
-    if (Math.abs(diff) <= 1)  pacingAlignment = "Pacing aligns with requested time.";
-    else if (diff < 0)        pacingAlignment = "Question types were adjusted to fit the time limit.";
-    else                      pacingAlignment = "Time constraints required simplification of some questions.";
+    if (Math.abs(diff) <= 1)  pacingLine = `Pacing matched your ${requestedMins}-minute target.`;
+    else if (diff < 0)        pacingLine = `Questions were adjusted to fit within your ${requestedMins} minutes.`;
+    else                      pacingLine = `The assessment may run about ${diff} minute${Math.abs(diff) !== 1 ? "s" : ""} over your target.`;
   } else if (realisticMins != null) {
-    pacingAlignment = `Estimated completion time: ~${realisticMins} minute${realisticMins !== 1 ? "s" : ""}.`;
+    pacingLine = `Estimated completion time: ~${realisticMins} minute${realisticMins !== 1 ? "s" : ""}.`;
   }
 
-  // ── revisionSummary ─────────────────────────────────────────────────────
+  // ── Revisions ───────────────────────────────────────────────────────────
   const rewriteCount: number = blueprint.rewriteCount ?? tokenUsage.rewriteCount ?? 0;
-  let revisionSummary: string;
-  if      (rewriteCount === 0)  revisionSummary = "Generated without revisions.";
-  else if (rewriteCount <= 2)   revisionSummary = "Minor refinements applied.";
-  else if (rewriteCount <= 5)   revisionSummary = "Several refinements applied for clarity and alignment.";
-  else                          revisionSummary = "Significant adjustments were required.";
+  let revisionLine = "";
+  if      (rewriteCount === 0) revisionLine = "Questions were generated cleanly with no corrections needed.";
+  else if (rewriteCount <= 2) revisionLine = `${rewriteCount} question${rewriteCount > 1 ? "s" : ""} were lightly revised for clarity.`;
+  else if (rewriteCount <= 5) revisionLine = `${rewriteCount} questions were revised. The system caught and fixed issues before you saw them.`;
+  else                        revisionLine = `${rewriteCount} corrections were applied — more than usual. The system is still calibrating for this topic.`;
 
-  // ── notes[] — teacher-facing only, no internal labels ───────────────────
+  // ── Teacher-readable notes ───────────────────────────────────────────────
   const forbidden = /bloom|gatekeeper|severity|trust|drift|agent/i;
   const notes: string[] = [
     ...(blueprint.constraintWarnings ?? []),
@@ -668,12 +705,43 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
   ].filter((s: string) => !forbidden.test(s));
 
   if (version.parent_version_id) {
-    notes.push("This is a revised version — generated based on a prior attempt.");
+    notes.push("This is a revised version, built on a previous attempt.");
   }
 
-  // ── badge colours ────────────────────────────────────────────────────────
-  const badgeBg    = score != null ? (score >= 8 ? "#dcfce7" : score >= 5 ? "#fef9c3" : "#fee2e2") : undefined;
-  const badgeColor = score != null ? (score >= 8 ? "#166534" : score >= 5 ? "#854d0e" : "#991b1b") : undefined;
+  // ── Dossier-derived metrics ─────────────────────────────────────────────
+  const trust100     = dossier?.trustScore100     ?? (dossier?.trustScore     != null ? dossier.trustScore     * 10 : null);
+  const stability100 = dossier?.stabilityScore100 ?? (dossier?.stabilityScore != null ? dossier.stabilityScore * 10 : null);
+  const alignment100 = dossier?.alignmentScore ?? null;
+  const totalRuns    = dossier?.domainMastery?.runs ?? 0;
+  const cleanRuns    = dossier?.domainMastery?.cleanRuns ?? 0;
+  const weakCats     = dossier?.weaknessCategories;
+  const topWeakness  = weakCats
+    ? (Object.entries(weakCats) as [string, number][])
+        .sort(([, a], [, b]) => b - a)
+        .filter(([, v]) => v > 0)
+        .map(([k]) =>
+          k === "spacing"            ? "number/letter spacing"
+          : k === "notation"         ? "math notation"
+          : k === "drift"            ? "staying on topic"
+          : k === "hallucination"    ? "invented content"
+          : k === "difficultyMismatch" ? "difficulty calibration"
+          : k === "structureViolations" ? "question structure"
+          : k)
+        .slice(0, 2)
+    : [];
+
+  const passFailEntries = dossier?.passFailByDomain
+    ? (Object.entries(dossier.passFailByDomain) as [string, { passes: number; fails: number }][])
+    : [];
+  const overallPassRate =
+    passFailEntries.length > 0
+      ? Math.round(
+          (passFailEntries.reduce((s, [, v]) => s + v.passes, 0) /
+            Math.max(1, passFailEntries.reduce((s, [, v]) => s + v.passes + v.fails, 0))) * 100
+        )
+      : null;
+
+  const hasDossier = trust100 != null || stability100 != null || alignment100 != null;
 
   return (
     <div
@@ -717,39 +785,95 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             color: "var(--text-primary, #374151)",
             display: "flex",
             flexDirection: "column",
-            gap: "0.6rem",
+            gap: "0.8rem",
           }}
         >
-          {qualityLevel && score != null && (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                padding: "0.35rem 0.85rem",
-                borderRadius: "999px",
-                fontSize: "0.8rem",
-                fontWeight: 700,
-                background: badgeBg,
-                color: badgeColor,
-              }}
-            >
-              {qualityLevel}
+          {/* Quality badge + description */}
+          {qualityLabel && score != null && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+              <div style={{
+                display: "inline-flex", alignItems: "center",
+                padding: "0.3rem 0.8rem", borderRadius: "999px",
+                fontSize: "0.8rem", fontWeight: 700,
+                background: badgeBg, color: badgeColor,
+              }}>
+                {qualityLabel}
+              </div>
+              <span style={{ fontSize: "0.84rem", color: "var(--text-secondary, #6b7280)" }}>
+                {qualityDesc}
+              </span>
             </div>
           )}
 
-          {pacingAlignment && (
-            <p style={{ margin: 0 }}>
-              <strong>Pacing: </strong>{pacingAlignment}
-            </p>
+          {/* Pacing */}
+          {pacingLine && (
+            <p style={{ margin: 0 }}>⏱️ <strong>Time: </strong>{pacingLine}</p>
           )}
 
-          <p style={{ margin: 0 }}>
-            <strong>Revisions: </strong>{revisionSummary}
-          </p>
+          {/* Revisions */}
+          <p style={{ margin: 0 }}>✏️ <strong>Revisions: </strong>{revisionLine}</p>
 
+          {/* Reliability from dossier */}
+          {hasDossier && (
+            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "0.75rem" }}>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: "0.65rem" }}>
+                Writer performance in this subject
+              </div>
+
+              {trust100 != null && (
+                <MetricBar
+                  label="Reliability"
+                  score={trust100}
+                  description={
+                    trust100 >= 80 ? "Questions consistently matched your subject and grade level."
+                    : trust100 >= 55 ? "Most questions were clean. A few needed automatic fixes."
+                    : "This subject is still calibrating — more runs will improve reliability."
+                  }
+                />
+              )}
+              {alignment100 != null && (
+                <MetricBar
+                  label="Topic Fit"
+                  score={alignment100}
+                  description={
+                    alignment100 >= 80 ? "Questions stayed tightly aligned to your chosen topic."
+                    : alignment100 >= 55 ? "Minor topic drift was detected and corrected."
+                    : "Questions drifted from topic and needed correction."
+                  }
+                />
+              )}
+              {stability100 != null && (
+                <MetricBar
+                  label="Run-to-Run Consistency"
+                  score={stability100}
+                  description={
+                    stability100 >= 80 ? "Output quality is consistent across multiple runs."
+                    : stability100 >= 55 ? "Quality varies slightly run to run but is improving."
+                    : "This subject is still calibrating. Quality will improve with more runs."
+                  }
+                />
+              )}
+
+              {totalRuns > 0 && (
+                <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
+                  📊 Based on <strong>{totalRuns}</strong> run{totalRuns !== 1 ? "s" : ""} in this subject
+                  {overallPassRate != null && ` — passed quality checks ${overallPassRate}% of the time`}.
+                  {cleanRuns > 0 && totalRuns > 0 && ` ${Math.round((cleanRuns / totalRuns) * 100)}% of runs needed zero corrections.`}
+                </p>
+              )}
+
+              {topWeakness.length > 0 && (
+                <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
+                  🔧 <strong>Currently improving: </strong>
+                  {topWeakness.join(" and ")}. These are automatically corrected before you see the output.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Misc notes */}
           {notes.length > 0 && (
-            <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+            <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.84rem" }}>
               {notes.map((note, i) => (
                 <li key={i} style={{ marginBottom: "0.3rem" }}>{note}</li>
               ))}

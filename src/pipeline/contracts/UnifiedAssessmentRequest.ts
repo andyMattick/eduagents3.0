@@ -44,6 +44,8 @@ export interface UnifiedAssessmentRequest {
   bloomPreference?: string | null;
   sectionStructure?: string | null;
   standards?: string | null;
+  /** State abbreviation when standards === "state", e.g. "GA" */
+  stateCode?: string | null;
   /** "yes" | "no" — include multi-part questions where parts chain: A → B → C */
   multiPartQuestions?: string | null;
 
@@ -104,7 +106,9 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
   if (uar.standards && uar.standards !== "none") {
     const stdLabels: Record<string, string> = {
       commonCore: "Align items to Common Core standards where applicable.",
-      state: "Align items to state standards where applicable.",
+      state: uar.stateCode
+        ? `Align items to ${uar.stateCode.toUpperCase()} state standards.`
+        : "Align items to state standards where applicable.",
       ap: "Align items to the AP framework.",
     };
     detailParts.push(stdLabels[uar.standards] ?? `Standards: ${uar.standards}`);

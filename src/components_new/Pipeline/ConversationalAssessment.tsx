@@ -30,19 +30,6 @@ const QUESTION_FORMAT_CHIPS = [
   { label: "Mixed Format",       value: "mixed"             },
 ];
 
-const BLOOM_PREFERENCE_CHIPS = [
-  { label: "Recall & Understanding", value: "lower"  },
-  { label: "Application Focus",      value: "apply"  },
-  { label: "Higher-Order Analysis",  value: "higher" },
-  { label: "Balanced Mix",           value: "balanced" },
-];
-
-const SECTION_STRUCTURE_CHIPS = [
-  { label: "Single Section",    value: "single"   },
-  { label: "Multiple Sections", value: "multiple" },
-  { label: "Let AI Decide",     value: "auto"     },
-];
-
 const STANDARDS_CHIPS = [
   { label: "Common Core",     value: "commonCore"  },
   { label: "State Standards", value: "state"       },
@@ -62,6 +49,7 @@ type StepId =
   | "multiPartQuestions"
   | "sectionStructure"
   | "standards"
+  | "stateCode"
   | "studentLevel"
   | "time"
   | "additionalDetails";
@@ -125,7 +113,7 @@ const BASE_STEPS_AFTER: Step[] = [
 /** Types that are "structured" — tests, quizzes, worksheets get extra questions */
 const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview", "bellRinger", "exitTicket"]);
 
-function getAdaptiveSteps(assessmentType: string): Step[] {
+function getAdaptiveSteps(assessmentType: string, standards?: string): Step[] {
   if (!STRUCTURED_TYPES.has(assessmentType)) return [];
 
   const steps: Step[] = [
@@ -136,7 +124,7 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
       multiSelect: true,
     },
   ];
-//test change
+
   // Multi-part questions for longer structured assessments
   if (["test", "quiz", "worksheet", "testReview"].includes(assessmentType)) {
     steps.push({
@@ -149,27 +137,22 @@ function getAdaptiveSteps(assessmentType: string): Step[] {
     });
   }
 
-  // Tests get standards alignment and section structure
-  if (assessmentType === "test") {
+  // Tests and quizzes get standards alignment
+  if (assessmentType === "test" || assessmentType === "quiz") {
     steps.push({
       id: "standards",
       question: "Any standards alignment preference?",
       chips: STANDARDS_CHIPS,
     });
-    steps.push({
-      id: "sectionStructure",
-      question: "Should this test have sections (e.g., MCQ section, then short answer)?",
-      chips: SECTION_STRUCTURE_CHIPS,
-    });
-  }
 
-  // Quizzes also benefit from standards awareness
-  if (assessmentType === "quiz") {
-    steps.push({
-      id: "standards",
-      question: "Any standards alignment preference?",
-      chips: STANDARDS_CHIPS,
-    });
+    // If teacher chose state standards, ask which state
+    if (standards === "state") {
+      steps.push({
+        id: "stateCode",
+        question: "Which state's standards? (e.g. GA, TX, CA)",
+        placeholder: "e.g. GA",
+      });
+    }
   }
 
   return steps;
@@ -201,6 +184,8 @@ export type ConversationalIntent = {
   sectionStructure?: string;
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string;
+  /** State abbreviation when standards === "state", e.g. "GA" */
+  stateCode?: string;
 };
 
 const DEFAULT_ANSWERS: Record<StepId, string> = {
@@ -213,6 +198,7 @@ const DEFAULT_ANSWERS: Record<StepId, string> = {
   multiPartQuestions:  "",
   sectionStructure:    "",
   standards:           "",
+  stateCode:           "",
   studentLevel:        "",
   time:                "",
   additionalDetails:   "",
@@ -251,7 +237,7 @@ export function ConversationalAssessment({
   const [stepIndex, setStepIndex] = useState(() => {
     if (!initialAnswers) return 0;
     const aType = initialAnswers.assessmentType ?? "";
-    const adaptive = aType ? getAdaptiveSteps(aType) : [];
+    const adaptive = aType ? getAdaptiveSteps(aType, initialAnswers.standards) : [];
     const allSteps = [...BASE_STEPS_BEFORE, ...adaptive, ...BASE_STEPS_AFTER];
     return Math.max(0, allSteps.length - 1);
   });
@@ -268,10 +254,10 @@ export function ConversationalAssessment({
   // ── Compute the dynamic step list based on assessmentType answer ────────
   const steps: Step[] = useMemo(() => {
     const adaptiveSteps = answers.assessmentType
-      ? getAdaptiveSteps(answers.assessmentType)
+      ? getAdaptiveSteps(answers.assessmentType, answers.standards)
       : [];
     return [...BASE_STEPS_BEFORE, ...adaptiveSteps, ...BASE_STEPS_AFTER];
-  }, [answers.assessmentType]);
+  }, [answers.assessmentType, answers.standards]);
 
   const currentStep = steps[stepIndex];
   const isChipStep  = Boolean(currentStep?.chips?.length);
@@ -298,7 +284,7 @@ export function ConversationalAssessment({
     // After assessmentType is answered, the steps list will recompute.
     // We need to compute the new step list to know the correct next index.
     const newAdaptive = next.assessmentType
-      ? getAdaptiveSteps(next.assessmentType)
+      ? getAdaptiveSteps(next.assessmentType, next.standards)
       : [];
     const newSteps = [...BASE_STEPS_BEFORE, ...newAdaptive, ...BASE_STEPS_AFTER];
 
@@ -328,6 +314,7 @@ export function ConversationalAssessment({
       multiPartQuestions:   next.multiPartQuestions || undefined,
       sectionStructure:     next.sectionStructure || undefined,
       standards:            next.standards || undefined,
+      stateCode:            next.stateCode || undefined,
     };
     onComplete(intent);
   }

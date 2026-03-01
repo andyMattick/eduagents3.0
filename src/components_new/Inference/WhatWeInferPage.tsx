@@ -5,7 +5,6 @@ export default function WhatWeInfer() {
 
   return (
     <div className="inference-page">
-     
 
       <h1 style={{ marginBottom: "24px" }}>How Your Inputs Drive the Process</h1>
 
@@ -14,7 +13,7 @@ export default function WhatWeInfer() {
       ------------------------------ */}
             <span className="arrow">▶</span>
             When Writing Assessments
-      
+
 
           <div className="inference-grid">
             {/* Course */}
@@ -23,9 +22,9 @@ export default function WhatWeInfer() {
                 <strong>Course Name</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Infers subject, grade band, standards, and representations.</li>
-                <li>• Determines typical reasoning level distribution.</li>
-                <li>• AP courses → shapes questions to resemble AP exam FRQs.</li>
+                <li>• Tells the system what subject you teach and helps it pick the right kind of questions.</li>
+                <li>• Shapes how challenging and complex the questions will be.</li>
+                <li>• AP courses get questions that look and feel like AP exam free-response questions.</li>
               </ul>
             </div>
 
@@ -35,9 +34,9 @@ export default function WhatWeInfer() {
                 <strong>Unit / Topic</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Infers key concepts, vocabulary, skills, and misconceptions.</li>
-                <li>• Determines typical question types and DOK.</li>
-                <li>• Infers appropriate reasoning demand for the topic.</li>
+                <li>• Tells the system what concepts, skills, and vocabulary students should know.</li>
+                <li>• Guides what types of questions to write and how deeply students need to think.</li>
+                <li>• Helps surface common misconceptions tied to this topic.</li>
               </ul>
             </div>
 
@@ -47,9 +46,9 @@ export default function WhatWeInfer() {
                 <strong>Student Level</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Calibrates difficulty, scaffolding, and reading level.</li>
-                <li>• Sets reasoning depth range for the student level.</li>
-                <li>• AP → adjusts question complexity to AP expectations.</li>
+                <li>• Adjusts how hard the questions are and how much support is built into the wording.</li>
+                <li>• Sets how much independent thinking is expected versus step-by-step guidance.</li>
+                <li>• AP levels get questions written to match AP exam expectations.</li>
               </ul>
             </div>
 
@@ -59,9 +58,9 @@ export default function WhatWeInfer() {
                 <strong>Assignment Type</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Infers number of questions, pacing, and structure.</li>
-                <li>• Determines formative vs summative.</li>
-                <li>• Infers reasoning depth distribution for the assessment type.</li>
+                <li>• Shapes how many questions to write, what format they take, and how long each one should be.</li>
+                <li>• Determines whether this is a quick check-in or a full summative assessment.</li>
+                <li>• Adjusts how much thinking is expected based on the type.</li>
               </ul>
             </div>
 
@@ -71,9 +70,9 @@ export default function WhatWeInfer() {
                 <strong>Time</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Infers total question count and time per question.</li>
-                <li>• Determines feasibility of multi‑part items.</li>
-                <li>• Infers reasoning demand achievable within time constraints.</li>
+                <li>• Helps the system figure out how many questions will fit in the time you have.</li>
+                <li>• Decides whether there&#39;s room for multi-part or extended questions.</li>
+                <li>• Keeps the assessment realistic — questions are scoped to what students can actually finish.</li>
               </ul>
             </div>
 
@@ -83,10 +82,10 @@ export default function WhatWeInfer() {
                 <strong>Uploads</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Summarizes source docs to determine what was taught.</li>
-                <li>• Matches tone and format of example tests.</li>
-                <li>• Infers reasoning demand from example test question types.</li>
-                <li>• Ensures test items align with review content.</li>
+                <li>• Reads your materials to understand what you&#39;ve already taught.</li>
+                <li>• Matches the tone and format of any example tests you share.</li>
+                <li>• Makes sure questions only cover what was actually in your content.</li>
+                <li>• Keeps questions grounded in what students have seen.</li>
               </ul>
             </div>
 
@@ -96,19 +95,19 @@ export default function WhatWeInfer() {
                 <strong>Additional Comments</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Infers emphasis, constraints, and special instructions.</li>
-                <li>• Allows teachers to specify preferred reasoning depth.</li>
-                <li>• Overrides or fine‑tunes any automatic inference.</li>
+                <li>• Lets you add specific instructions, focus areas, or things to avoid.</li>
+                <li>• Gives you direct control over how deep the questions go.</li>
+                <li>• Overrides any automatic decisions the system would have made.</li>
               </ul>
             </div>
           </div>
-      
+
       {/* ------------------------------
           COLLAPSIBLE: GENERATING STUDENTS
       ------------------------------ */}
             <span className="arrow">▶</span>
             When Generating Students
-      
+
           <div className="inference-grid">
             {/* Grade Band */}
             <div className="inference-card">
@@ -116,8 +115,8 @@ export default function WhatWeInfer() {
                 <strong>Grade Band</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Sets baseline reading, math, reasoning, stamina.</li>
-                <li>• Determines confusion tolerance and cognitive ranges.</li>
+                <li>• Sets the starting point for how well students in this grade can read, reason, and stay focused.</li>
+                <li>• Determines how much difficulty or confusion a typical student can handle.</li>
               </ul>
             </div>
 
@@ -127,8 +126,8 @@ export default function WhatWeInfer() {
                 <strong>Class Level</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Scales all cognitive stats.</li>
-                <li>• Standard = ×1.0, Honors = ×1.10, AP = ×1.20.</li>
+                <li>• Adjusts how capable the simulated students are overall.</li>
+                <li>• Honors and AP students are modeled as stronger readers and more independent thinkers.</li>
               </ul>
             </div>
 
@@ -138,8 +137,8 @@ export default function WhatWeInfer() {
                 <strong>Subject</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Boosts subject‑specific skills.</li>
-                <li>• Shapes which traits matter most in simulation.</li>
+                <li>• Boosts the skills that matter most for your subject — like math fluency or reading comprehension.</li>
+                <li>• Shapes which student traits have the biggest impact during simulation.</li>
               </ul>
             </div>
 
@@ -149,8 +148,8 @@ export default function WhatWeInfer() {
                 <strong>Overlays</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Applies accessibility modifiers (ADHD, dyslexia, ESL, anxiety).</li>
-                <li>• Adjusts stamina, reading, reasoning, confidence.</li>
+                <li>• Adds learning needs to the simulated students (ADHD, dyslexia, English learners, test anxiety).</li>
+                <li>• Adjusts how those students handle focus, reading, complex directions, and confidence.</li>
               </ul>
             </div>
 
@@ -160,8 +159,8 @@ export default function WhatWeInfer() {
                 <strong>Base Stats</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Generates readingLevel, reasoningLevel, mathFluency.</li>
-                <li>• Derived from baselines + multipliers + overlays.</li>
+                <li>• Builds each student&#39;s reading level, reasoning ability, and math fluency.</li>
+                <li>• Combines the grade band, class level, and any learning need overlays you selected.</li>
               </ul>
             </div>
 
@@ -171,8 +170,8 @@ export default function WhatWeInfer() {
                 <strong>Simulation Behavior</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Predicts success, time, confusion, engagement.</li>
-                <li>• Flags students at risk of not finishing.</li>
+                <li>• Predicts how well each student will do, how long they&#39;ll take, and where they&#39;ll get stuck.</li>
+                <li>• Flags students who are at risk of running out of time or disengaging.</li>
               </ul>
             </div>
 
@@ -182,14 +181,13 @@ export default function WhatWeInfer() {
                 <strong>Scoring Rules</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Controls how all stats are calculated.</li>
-                <li>• Produces realistic student personas.</li>
+                <li>• Controls how all the student stats are calculated.</li>
+                <li>• Ensures the simulated students behave like real students, not averages.</li>
               </ul>
             </div>
           </div>
-      
-     
-     
+
+
       {/* ============================================================
           3. WHAT EACH INPUT DOES
       ============================================================ */}
@@ -202,8 +200,8 @@ export default function WhatWeInfer() {
                 <strong>Grade Levels</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Sets reading load, vocabulary, and age‑appropriate contexts.</li>
-                <li>• Helps calibrate typical misconceptions.</li>
+                <li>• Adjusts vocabulary, reading load, and the kinds of real-world examples used.</li>
+                <li>• Helps the system avoid questions that are too advanced or too easy for your students.</li>
               </ul>
             </div>
 
@@ -213,8 +211,8 @@ export default function WhatWeInfer() {
                 <strong>Course</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Establishes subject domain and standards.</li>
-                <li>• Guides terminology and representations.</li>
+                <li>• Establishes the subject area and the standards that apply.</li>
+                <li>• Guides the terminology and types of representations used in questions.</li>
               </ul>
             </div>
 
@@ -224,8 +222,8 @@ export default function WhatWeInfer() {
                 <strong>Unit / Topic</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Defines concepts, skills, and vocabulary.</li>
-                <li>• Anchors question content and misconceptions.</li>
+                <li>• Defines exactly what concepts, skills, and vocabulary the questions should cover.</li>
+                <li>• Keeps questions focused on what was taught — not tangentially related material.</li>
               </ul>
             </div>
 
@@ -235,8 +233,8 @@ export default function WhatWeInfer() {
                 <strong>Student Level</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Adjusts scaffolding, abstraction, and reasoning load.</li>
-                <li>• Controls independence vs guided steps.</li>
+                <li>• Adjusts how much support is built into each question and how abstract the thinking needs to be.</li>
+                <li>• Determines whether students are guided step-by-step or expected to figure things out independently.</li>
               </ul>
             </div>
 
@@ -246,8 +244,8 @@ export default function WhatWeInfer() {
                 <strong>Assessment Type</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Determines structure, pacing, and question types.</li>
-                <li>• Shapes cognitive load and expectations.</li>
+                <li>• Determines the structure, pacing, and mix of question types.</li>
+                <li>• Sets the overall expectations — quick check-in, unit test, or cumulative review.</li>
               </ul>
             </div>
 
@@ -257,8 +255,8 @@ export default function WhatWeInfer() {
                 <strong>Time</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Sets question count and depth.</li>
-                <li>• Limits multi‑part or extended reasoning items.</li>
+                <li>• Sets how many questions to include and how much depth each one can have.</li>
+                <li>• Prevents the assessment from being longer than students can actually finish.</li>
               </ul>
             </div>
 
@@ -268,10 +266,10 @@ export default function WhatWeInfer() {
                 <strong>Source Documents</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Summarized to determine what was taught.</li>
-                <li>• Extracts vocabulary, concepts, and representations.</li>
-                <li>• Prevents hallucinations by grounding content.</li>
-                <li>• Supports multiple uploads.</li>
+                <li>• Read to understand what you've actually taught, so questions don't go off-script.</li>
+                <li>• Pulls out key vocabulary, concepts, and examples directly from your materials.</li>
+                <li>• Prevents the system from making up content that wasn't in your lessons.</li>
+                <li>• You can upload multiple files.</li>
               </ul>
             </div>
 
@@ -281,9 +279,9 @@ export default function WhatWeInfer() {
                 <strong>Example Tests</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Matches tone, structure, and difficulty.</li>
-                <li>• Learns formatting and question style.</li>
-                <li>• Supports multiple uploads + pasted text.</li>
+                <li>• Teaches the system your preferred question style, tone, and format.</li>
+                <li>• Helps it match the difficulty and structure of tests you've written before.</li>
+                <li>• You can upload files or paste text directly.</li>
               </ul>
             </div>
 
@@ -293,9 +291,9 @@ export default function WhatWeInfer() {
                 <strong>Additional Details</strong>
               </div>
               <ul className="inference-card-text">
-                <li>• Overrides inference with teacher intent.</li>
+                <li>• Lets your specific instructions take priority over automatic decisions.</li>
                 <li>• Adds constraints, misconceptions, or “avoid this” rules.</li>
-                <li>• Helps personalize the assessment.</li>
+                <li>• Makes the assessment feel like yours, not a generic template.</li>
               </ul>
             </div>
           </div>
@@ -314,9 +312,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Interpreter</strong></div>
         <ul className="inference-card-text">
-          <li>• Reads your selections, notes, uploads, and examples.</li>
+          <li>• Reads everything you filled in — your topic, uploads, notes, and examples.</li>
           <li>• Summarizes what you’re teaching and what matters most.</li>
-          <li>• Flags constraints, emphasis, and non‑negotiables.</li>
+          <li>• Flags anything you said should be required, avoided, or emphasized.</li>
         </ul>
       </div>
 
@@ -324,9 +322,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Designer</strong></div>
         <ul className="inference-card-text">
-          <li>• Builds the assessment blueprint.</li>
-          <li>• Chooses question types, reasoning depth, pacing, and structure.</li>
-          <li>• Ensures alignment with standards, time, and student level.</li>
+          <li>• Builds the overall plan for the assessment — before any questions are written.</li>
+          <li>• Decides what types of questions to include, how hard they should be, and how to pace them.</li>
+          <li>• Makes sure the plan fits your time, student level, and standards.</li>
         </ul>
       </div>
 
@@ -334,9 +332,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Test Builder</strong></div>
         <ul className="inference-card-text">
-          <li>• Converts the blueprint into a structured assessment plan.</li>
-          <li>• Lays out question shells, scaffolds, and sequencing.</li>
-          <li>• Ensures the Writer has a clear, teacher‑aligned framework.</li>
+          <li>• Turns the Designer's plan into a clear structure the Writer can follow.</li>
+          <li>• Lays out each question slot with its format, focus, and difficulty level.</li>
+          <li>• Makes sure the Writer stays on track and doesn't go off-script.</li>
         </ul>
       </div>
 
@@ -344,9 +342,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Writer</strong></div>
         <ul className="inference-card-text">
-          <li>• Writes questions that match your course, unit, and examples.</li>
+          <li>• Writes the actual questions, using your course, unit, and examples as a guide.</li>
           <li>• Follows the Test Builder’s structure for consistency.</li>
-          <li>• Ensures clarity, fairness, and age‑appropriate language.</li>
+          <li>• Focuses on clarity, fairness, and language that's right for your students.</li>
         </ul>
       </div>
 
@@ -354,9 +352,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Student Generator</strong></div>
         <ul className="inference-card-text">
-          <li>• Creates realistic student profiles.</li>
-          <li>• Applies overlays (ADHD, ESL, anxiety, dyslexia).</li>
-          <li>• Predicts stamina, confusion, timing, and engagement.</li>
+          <li>• Creates a realistic mix of student profiles based on your class settings.</li>
+          <li>• Applies learning needs like ADHD, English learner status, or test anxiety.</li>
+          <li>• Models how each student type would actually experience your assessment.</li>
         </ul>
       </div>
 
@@ -364,9 +362,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Analyst</strong></div>
         <ul className="inference-card-text">
-          <li>• Simulates students taking the assessment.</li>
-          <li>• Predicts success, confusion, timing, and misconceptions.</li>
-          <li>• Produces heatmaps, risk flags, and summaries.</li>
+          <li>• Runs a simulation of your students taking the assessment.</li>
+          <li>• Predicts where students will succeed, struggle, or run out of time.</li>
+          <li>• Produces easy-to-read summaries and flags students who may be at risk.</li>
         </ul>
       </div>
 
@@ -374,9 +372,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Philosopher</strong></div>
         <ul className="inference-card-text">
-          <li>• Explains why the system made certain choices.</li>
-          <li>• Interprets analytics into teacher‑friendly insights.</li>
-          <li>• Surfaces risks, alignment issues, and reasoning.</li>
+          <li>• Explains the reasoning behind the choices that were made.</li>
+          <li>• Translates the simulation data into plain language insights for teachers.</li>
+          <li>• Points out anything worth reconsidering — without jargon.</li>
         </ul>
       </div>
 
@@ -384,9 +382,9 @@ export default function WhatWeInfer() {
       <div className="inference-card">
         <div className="inference-card-header"><strong>The Refiner</strong></div>
         <ul className="inference-card-text">
-          <li>• Revises questions based on simulation results.</li>
-          <li>• Fixes pacing issues, ambiguity, or misalignment.</li>
-          <li>• Ensures the final version is fair and instructionally sound.</li>
+          <li>• Revises questions that the simulation flagged as too confusing, too easy, or off-topic.</li>
+          <li>• Fixes pacing issues and unclear wording automatically.</li>
+          <li>• Makes sure the final version is something you'd actually feel good handing out.</li>
         </ul>
       </div>
 

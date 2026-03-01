@@ -139,6 +139,7 @@ export function ConversationalAssessmentWrapper({
           bloomPreference: pendingIntent.bloomPreference ?? null,
           sectionStructure: pendingIntent.sectionStructure ?? null,
           standards: pendingIntent.standards ?? null,
+          stateCode: pendingIntent.stateCode ?? null,
           multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
         };
 

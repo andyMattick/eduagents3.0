@@ -638,6 +638,25 @@ export async function downloadFinalAssessmentWord(
   let wordQNum = 1;
 
   for (const type of orderedTypes) {
+    // Section heading + instruction line (mirrors the PDF renderSectionHeader)
+    children.push(
+      new Paragraph({
+        text: formatTypeLabel(type).toUpperCase(),
+        heading: HeadingLevel.HEADING_2,
+      })
+    );
+    const sectionInstruction = QUESTION_TYPE_INSTRUCTIONS[type];
+    if (sectionInstruction) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: sectionInstruction, italics: true, color: "555555" }),
+          ],
+        })
+      );
+    }
+    children.push(new Paragraph(""));
+
     for (const item of groups[type]) {
       // Build the question prompt with math-aware runs
       children.push(

@@ -96,6 +96,7 @@ export function convertMinimalToUAR(
     bloomPreference: intent.bloomPreference ?? null,
     sectionStructure: intent.sectionStructure ?? null,
     standards: intent.standards ?? null,
+    stateCode: intent.stateCode ?? null,
     multiPartQuestions: intent.multiPartQuestions ?? null,
 
     // ── Question types mapped from questionFormat ─────────────────────
