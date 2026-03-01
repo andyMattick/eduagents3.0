@@ -382,6 +382,7 @@ export function ConversationalAssessmentWrapper({
                 philosopherNotes={result.philosopherWrite?.philosopherNotes}
                 philosopherAnalysis={result.philosopherWrite?.analysis}
                 teacherFeedback={result.philosopherWrite?.teacherFeedback}
+                reliability={result.scribe?.reliability}
               />
 
               {/* Post-Builder Teacher Feedback Panel */}

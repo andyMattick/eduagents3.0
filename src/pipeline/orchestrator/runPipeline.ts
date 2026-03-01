@@ -316,6 +316,7 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
       gatekeeperReport: gatekeeperResult,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
+      writerTelemetry,
     }
   );
 
@@ -365,6 +366,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
       gatekeeperReport: gatekeeperFinal,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
+      writerTelemetry,
     }
   );
 
@@ -462,6 +464,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
       gatekeeperReport: gatekeeperFinal,
       finalAssessment: finalAssessmentForScribe(finalAssessment),
       blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
+      writerTelemetry,
     }
   );
 
@@ -509,6 +512,7 @@ const scribeResult = await runAgent(
     gatekeeperReport: gatekeeperResult,
     finalAssessment: finalAssessmentForScribe(finalAssessment),
     blueprint: blueprintForScribe(blueprint), uar: uarForScribe(uarWithDefaults),
+    writerTelemetry,
   }
 );
 

@@ -448,9 +448,11 @@ interface AssessmentViewerProps {
   philosopherAnalysis?: any;
   /** Teacher feedback with summary, positives, suggestions */
   teacherFeedback?: any;
+  /** Writer reliability scores (0–100) from the most recent dossier update */
+  reliability?: { trust: number; alignment: number; stability: number };
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, reliability }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -554,6 +556,32 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
           <span className="av-meta-item">⏱ {totalTime}</span>
           <span className="av-meta-item">📅 {formatDate(assessment.generatedAt)}</span>
         </div>
+
+        {reliability && (
+          <div className="av-reliability">
+            <span className="av-reliability-label">Generation quality</span>
+            <div className="av-reliability-scores">
+              <span
+                className="av-reliability-score"
+                title="How consistently this subject generates clean assessments"
+              >
+                🎯 Trust <strong>{reliability.trust}/100</strong>
+              </span>
+              <span
+                className="av-reliability-score"
+                title="How well this run aligned to your topic and level"
+              >
+                📏 Alignment <strong>{reliability.alignment}/100</strong>
+              </span>
+              <span
+                className="av-reliability-score"
+                title="How stable output quality has been across recent runs"
+              >
+                📊 Stability <strong>{reliability.stability}/100</strong>
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Cognitive distribution pills — hidden from on-screen view, kept in PDF only */}
       </div>

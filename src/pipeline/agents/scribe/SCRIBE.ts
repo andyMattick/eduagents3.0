@@ -2,6 +2,8 @@
 
 import { supabase } from "@/supabase/client";
 import { DossierManager } from "@/system/dossier/DossierManager";
+import { updateWriterAgentDossier } from "@/system/dossier/updateWriterAgentDossier";
+import type { WriterRunSummary } from "@/system/dossier/types/WriterRunSummary";
 import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import {
@@ -82,12 +84,12 @@ export class SCRIBE {
   }
 
   /**
-   * Compute a baseline Writer trust score (used by hint budget algorithm).
-   * Base: 7/10. Could be enhanced to read from dossier if needed.
+   * Compute a baseline Writer trust score (0–10 scale) used by the hint
+   * budget algorithm.  Updated in-memory after every updateAgentDossier call.
    */
   static getWriterTrustScore(): number {
-    // TODO: read from teacher dossier if available; for now return baseline
-    return 7;
+    // Convert cached 0–100 score to 0–10 for hint-budget compatibility.
+    return Math.round(SCRIBE._cachedTrustScore100 / 10);
   }
 
   // =====================================================
@@ -102,6 +104,10 @@ export class SCRIBE {
   } = { weaknesses: [], requiredBehaviors: [], forbiddenBehaviors: [] };
 
   private static _currentDomain: string = "General";
+
+  /** Cached 0–100 trust score from the most recent updateAgentDossier call.
+   *  Initialised to 70 (= 7/10) so runs before any history see a neutral baseline. */
+  private static _cachedTrustScore100: number = 70;
 
   // =====================================================
   // PIPELINE-FACING METHODS (called by runPipeline.ts)
@@ -216,7 +222,8 @@ export class SCRIBE {
 
   /**
    * Public wrapper called by runPipeline after Builder completes.
-   * Persists per-(user, agentType, domain) governance metrics to Supabase.
+   * Builds a WriterRunSummary from the pipeline data, calls updateWriterAgentDossier,
+   * and returns the three reliability scores for the UI.
    * Non-fatal — a DB error never crashes the pipeline.
    */
   static async updateAgentDossier({
@@ -226,6 +233,7 @@ export class SCRIBE {
     finalAssessment,
     blueprint,
     uar,
+    writerTelemetry,
   }: {
     userId: string;
     agentType: string;
@@ -233,11 +241,64 @@ export class SCRIBE {
     finalAssessment: { questionCount: number; questionTypes: string[] };
     blueprint: any;
     uar: any;
-  }): Promise<{ status: string }> {
+    writerTelemetry?: any;
+  }): Promise<{ status: string; reliability?: { trust: number; alignment: number; stability: number } }> {
     try {
       const domain = agentType.includes(":") ? agentType.split(":")[1] : "General";
+
+      // ── 1. Existing DossierManager update (core 0–10 trust/stability) ────
       await SCRIBE.updateAgent({ userId, agentType, gatekeeperReport, finalAssessment, blueprint, uar, domain });
-      return { status: "ok" };
+
+      // ── 2. Build WriterRunSummary from available pipeline data ────────────
+      const violations: any[] = gatekeeperReport?.violations ?? [];
+      const violationTypes = new Set(violations.map((v: any) => v.type as string));
+
+      const rawQuality = (uar as any)?._philosopherQualityScore ?? null;
+      const qualityScore100 = rawQuality != null
+        ? Math.round(rawQuality * 10)   // Philosopher uses 0–10 → normalise to 0–100
+        : 60;                            // neutral default when philosopher didn't run
+
+      const run: WriterRunSummary = {
+        agentId: agentType,
+        domain,
+        topic: uar?.topic ?? uar?.unitName ?? uar?.lessonName ?? domain,
+        qualityScore: qualityScore100,
+        gatekeeperViolations: violations.length,
+        rewriteCount: writerTelemetry?.rewriteCount ?? 0,
+        questionCount: finalAssessment.questionCount,
+        questionTypes: finalAssessment.questionTypes ?? [],
+        cognitiveDistribution: blueprint?.plan?.cognitiveDistribution ?? {
+          remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0,
+        },
+        difficultyProfile: blueprint?.plan?.difficultyProfile ?? "onLevel",
+        alignedToTopic:
+          !violationTypes.has("topic_mismatch") &&
+          !violationTypes.has("domain_mismatch"),
+        structuralOk:
+          !violationTypes.has("format") &&
+          !violationTypes.has("missing_item") &&
+          !violationTypes.has("question_type_mismatch"),
+        errorFlags: {
+          spacingMerge:        violationTypes.has("spacing_merge"),
+          notationBreak:       violationTypes.has("notation_break") || violationTypes.has("arithmetic_format_invalid"),
+          drift:               (writerTelemetry?.rewriteCount ?? 0) > 3 || violationTypes.has("bloom_mismatch"),
+          hallucination:       violationTypes.has("hallucination"),
+          difficultyMismatch:  violationTypes.has("difficulty_mismatch"),
+          structureViolation:  violationTypes.has("format") || violationTypes.has("missing_item"),
+        },
+      };
+
+      // ── 3. Update extended dossier and get reliability scores ─────────────
+      const reliability = await updateWriterAgentDossier(userId, run);
+
+      // Cache trust score for hint-budget algo on the next run
+      SCRIBE._cachedTrustScore100 = reliability.trust;
+
+      console.log(
+        `[SCRIBE] Dossier updated — trust: ${reliability.trust}, alignment: ${reliability.alignment}, stability: ${reliability.stability}`
+      );
+
+      return { status: "ok", reliability };
     } catch (err: any) {
       console.error("[SCRIBE.updateAgentDossier]", err);
       return { status: "error" };

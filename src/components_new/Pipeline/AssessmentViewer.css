@@ -111,6 +111,43 @@
   gap: 0.3rem;
 }
 
+/* ── Generation quality / reliability row ───────────────────────────────────── */
+
+.av-reliability {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--gray-500);
+}
+
+.av-reliability-label {
+  font-weight: 600;
+  color: var(--gray-600);
+  white-space: nowrap;
+}
+
+.av-reliability-scores {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.av-reliability-score {
+  background: var(--surface-2, #f3f4f6);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.av-reliability-score strong {
+  color: var(--gray-800, #1f2937);
+}
+
 /* ── Student header fields ──────────────────────────────────────────────────── */
 
 .av-student-fields {
