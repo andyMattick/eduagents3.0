@@ -51,8 +51,8 @@ function computeReport(
   // Cognitive Architecture
   let cogText =
     levels.length === 0
-      ? "No cognitive-demand tags were recorded for this assessment."
-      : `This assessment spans ${levels.length} of Bloom's cognitive level${levels.length === 1 ? "" : "s"}. `;
+      ? "No cognitive-demand data was recorded for this assessment."
+      : `This assessment spans ${levels.length} reasoning level${levels.length === 1 ? "" : "s"}. `;
   if (dominantLevel)
     cogText += `The dominant demand is **${dominantLevel}** (${cogDist[dominantLevel]} of ${total} item${total === 1 ? "" : "s"}). `;
   if (higherPct >= 40)
@@ -60,7 +60,7 @@ function computeReport(
   else if (higherPct >= 20)
     cogText += `${higherPct}% of items reach the higher-order tiers, striking a moderate balance between mastery of foundational knowledge and applied reasoning.`;
   else
-    cogText += `The majority of items operate at the foundational tiers (Remember / Understand / Apply). Appropriate for knowledge checks; consider adding an Analyze or Evaluate item to challenge advanced learners.`;
+    cogText += `The majority of items operate at the foundational tiers (recall, comprehension, and application). Appropriate for knowledge checks; consider adding a higher-order item to challenge advanced learners.`;
   sections.push({ heading: "Cognitive Architecture", body: cogText });
 
   // Item Format
@@ -99,28 +99,28 @@ function computeReport(
       ? `Teacher specified ${uarBits.join(", ")}. `
       : "No specific teacher instructions were recorded. ";
   if (diffProfile) alignText += `The Builder assigned a **${diffProfile}** difficulty profile to the final item set. `;
-  alignText += "Each item passed Gatekeeper validation against the source blueprint (Bloom level, format, and answer contract verified).";
+  alignText += "Each item passed quality validation for format, structure, and answer accuracy.";
   sections.push({ heading: "Alignment with Teacher Intent", body: alignText });
 
   // Strengths & Flags
   const strengths: string[] = [];
   const flags: string[] = [];
 
-  if (levels.length >= 3) strengths.push(`Spans ${levels.length} Bloom levels — strong taxonomic breadth`);
+  if (levels.length >= 3) strengths.push(`Spans ${levels.length} reasoning levels — broad cognitive range`);
   if (mcqCount > 0 && saCount > 0) strengths.push("Mixed format supports differentiated evidence of learning");
   if (total >= 10) strengths.push("Sufficient item count for reliable score inference");
   if (higherPct >= 30) strengths.push(`${higherPct}% higher-order items — challenges critical thinking`);
 
   if (higherPct === 0 && total > 5)
-    flags.push("No higher-order items (Analyze / Evaluate / Create) — consider adding at least one");
+    flags.push("No higher-order items (analysis, evaluation, synthesis) — consider adding at least one");
   if (levels.length === 1 && total > 3)
-    flags.push("All items share one Bloom level — limited cognitive range");
+    flags.push("All items at the same reasoning level — limited cognitive variation");
   if (mcqCount === total && total > 8)
     flags.push("All MCQ — no opportunity to assess written or constructed reasoning");
   if (secPerQ !== null && secPerQ < 30)
     flags.push("Estimated pacing may be too tight — verify item length against time budget");
 
-  const tagline = `${total}-question assessment${dominantLevel ? ` (dominant Bloom: ${dominantLevel})` : ""}${title ? ` on "${title}"` : ""} — ${higherPct}% higher-order`;
+  const tagline = `${total}-question assessment${dominantLevel ? ` (primary demand: ${dominantLevel})` : ""}${title ? ` on "${title}"` : ""} — ${higherPct}% higher-order`;
 
   return { tagline, sections, strengths, flags };
 }
