@@ -2,6 +2,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/supabase/client";
 
+interface TemplateRecord {
+  id: string;
+  domain: string | null;
+  uar_json: Record<string, any> | null;
+  created_at: string;
+  latest_version_id: string | null;
+}
+
 interface AssessmentRecord {
   id: string;
   teacher_id: string;
@@ -18,6 +26,8 @@ interface AssessmentRecord {
 interface MyAssessmentsPageProps {
   teacherId: string;
   onNewAssessment: () => void;
+  /** Called when teacher selects a versioned template to inspect */
+  onViewTemplate?: (templateId: string) => void;
 }
 
 function guardrailSummary(g: Record<string, unknown> | null): string {
@@ -28,8 +38,9 @@ function guardrailSummary(g: Record<string, unknown> | null): string {
   return active.length > 0 ? active.join(", ") : "none";
 }
 
-export function MyAssessmentsPage({ teacherId, onNewAssessment }: MyAssessmentsPageProps) {
+export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }: MyAssessmentsPageProps) {
   const [rows, setRows] = useState<AssessmentRecord[]>([]);
+  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subjectFilter, setSubjectFilter] = useState<string>("All");
@@ -40,14 +51,24 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment }: MyAssessmentsP
       setLoading(true);
       setError(null);
       try {
-        const { data, error: dbError } = await supabase
-          .from("teacher_assessment_history")
-          .select("*")
-          .eq("teacher_id", teacherId)
-          .order("created_at", { ascending: false });
+        const [{ data: histData, error: histErr }, { data: tmplData, error: tmplErr }] =
+          await Promise.all([
+            supabase
+              .from("teacher_assessment_history")
+              .select("*")
+              .eq("teacher_id", teacherId)
+              .order("created_at", { ascending: false }),
+            supabase
+              .from("assessment_templates")
+              .select("id, domain, uar_json, created_at, latest_version_id")
+              .eq("user_id", teacherId)
+              .order("created_at", { ascending: false }),
+          ]);
 
-        if (dbError) throw dbError;
-        setRows(data ?? []);
+        if (histErr) throw histErr;
+        // template query is best-effort — table may not exist yet
+        setRows(histData ?? []);
+        setTemplates((tmplErr ? [] : tmplData) ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load assessments");
       } finally {
@@ -209,6 +230,107 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment }: MyAssessmentsP
             ))}
           </div>
         </>
+      )}
+
+      {/* ── Versioned Assessments (from assessment_templates) ─────────────── */}
+      {!loading && templates.length > 0 && onViewTemplate && (
+        <div style={{ marginTop: "2.5rem" }}>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "1rem" }}>
+            Versioned Assessments
+          </h2>
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                minWidth: "600px",
+                borderCollapse: "collapse",
+                fontSize: "0.9rem",
+              }}
+            >
+              <thead>
+                <tr
+                  style={{
+                    borderBottom: "2px solid var(--border-color, #e5e7eb)",
+                    textAlign: "left",
+                  }}
+                >
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Domain</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Type</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Grade</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}>Created</th>
+                  <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map((tmpl, i) => {
+                  const uar = tmpl.uar_json ?? {};
+                  return (
+                    <tr
+                      key={tmpl.id}
+                      style={{
+                        borderBottom: "1px solid var(--border-color, #e5e7eb)",
+                        background:
+                          i % 2 === 0 ? "transparent" : "var(--bg-tertiary, #f9fafb)",
+                      }}
+                    >
+                      <td style={{ padding: "0.6rem 0.75rem", fontWeight: 500 }}>
+                        {tmpl.domain ?? "—"}
+                      </td>
+                      <td style={{ padding: "0.6rem 0.75rem" }}>
+                        {uar.assessmentType ? (
+                          <span
+                            style={{
+                              background: "var(--color-accent-muted, #ede9fe)",
+                              color: "var(--color-accent, #4f46e5)",
+                              padding: "0.2rem 0.6rem",
+                              borderRadius: "999px",
+                              fontSize: "0.78rem",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {uar.assessmentType}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td style={{ padding: "0.6rem 0.75rem" }}>
+                        {Array.isArray(uar.gradeLevels)
+                          ? uar.gradeLevels.join(", ")
+                          : (uar.grade ?? "—")}
+                      </td>
+                      <td
+                        style={{
+                          padding: "0.6rem 0.75rem",
+                          color: "var(--text-secondary, #6b7280)",
+                        }}
+                      >
+                        {fmt(tmpl.created_at)}
+                      </td>
+                      <td style={{ padding: "0.6rem 0.75rem" }}>
+                        <button
+                          onClick={() => onViewTemplate(tmpl.id)}
+                          style={{
+                            padding: "0.3rem 0.9rem",
+                            borderRadius: "8px",
+                            border: "1.5px solid var(--color-accent, #4f46e5)",
+                            background: "transparent",
+                            color: "var(--color-accent, #4f46e5)",
+                            cursor: "pointer",
+                            fontSize: "0.82rem",
+                            fontWeight: 600,
+                          }}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

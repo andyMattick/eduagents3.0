@@ -177,7 +177,7 @@ function MiniTimeline({ dates }: { dates: string[] }) {
 // ─── AgentLegend ──────────────────────────────────────────────────────────────
 
 const AGENT_DESCRIPTIONS = [
-  { emoji: "🔍", name: "Prompt Engineer", role: "Validates your inputs before anything is generated. Catches contradictions (e.g., 5-minute test with 20 essay questions) and warns about impossible setups. You can override and generate anyway — the Philosopher will flag issues in its report." },
+  { emoji: "🔍", name: "Input Review", role: "Validates your inputs before anything is generated. Catches contradictions (e.g., 5-minute test with 20 essay questions) and warns about impossible setups. You can override and generate anyway — the system will flag issues in its report." },
   { emoji: "🗺️", name: "Architect", role: "Designs the blueprint: how many questions, which Bloom levels, section layout, and pacing. Nothing is written until the blueprint is finalized." },
   { emoji: "✍️", name: "Writer", role: "Writes each question in parallel, following the blueprint exactly. Produces the prompt, answer choices, and correct answer for every item." },
   { emoji: "🚪", name: "Gatekeeper", role: "Reviews every question against the blueprint — checks format, Bloom level, forbidden phrases, and answer correctness. Violations trigger automatic rewrites." },

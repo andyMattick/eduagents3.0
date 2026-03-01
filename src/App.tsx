@@ -12,12 +12,13 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
+import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 
 console.log("ENV CHECK", import.meta.env);
 
-type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents';
+type AppTab = 'dashboard' | 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents' | 'assessment-detail';
 
 type AuthPage = 'signin' | 'signup';
 
@@ -39,6 +40,7 @@ export interface AssignmentContext {
 function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('pipeline');
   const [_assignmentContext, setAssignmentContext] = useState<AssignmentContext | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { logout, user } = useAuth();
   
   const handleLogout = async () => await logout();
@@ -115,6 +117,11 @@ function TeacherAppContent() {
                 setActiveTab('my-assessments');
               }
 
+              else if (page === 'viewTemplate' && data?.templateId) {
+                setSelectedTemplateId(data.templateId);
+                setActiveTab('assessment-detail');
+              }
+
               else if (page === 'viewAgentsBySubject') {
                 setActiveTab('my-agents');
               }
@@ -175,6 +182,10 @@ function TeacherAppContent() {
           <MyAssessmentsPage
             teacherId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
+            onViewTemplate={(templateId) => {
+              setSelectedTemplateId(templateId);
+              setActiveTab('assessment-detail');
+            }}
           />
         )}
 
@@ -188,6 +199,13 @@ function TeacherAppContent() {
         <div style={{ display: activeTab === 'what-we-infer' ? 'block' : 'none' }}>
           <WhatWeInferPage />
         </div>
+
+        {activeTab === 'assessment-detail' && selectedTemplateId && (
+          <AssessmentDetailPage
+            templateId={selectedTemplateId}
+            onBack={() => setActiveTab('my-assessments')}
+          />
+        )}
 
 
         

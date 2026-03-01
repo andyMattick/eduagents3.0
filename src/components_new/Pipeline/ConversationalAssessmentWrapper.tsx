@@ -318,7 +318,7 @@ export function ConversationalAssessmentWrapper({
           initialAnswers={formInitialAnswers ?? undefined}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
-        /* Prompt Engineer validation panel — shown before pipeline fires */
+        /* Input Review validation panel — shown before pipeline fires */
         <PromptEngineerPanel
           result={peResult}
           onProceed={handleProceed}
