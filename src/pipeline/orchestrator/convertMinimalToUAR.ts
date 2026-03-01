@@ -98,6 +98,7 @@ export function convertMinimalToUAR(
     standards: intent.standards ?? null,
     stateCode: intent.stateCode ?? null,
     multiPartQuestions: intent.multiPartQuestions ?? null,
+    mathFormat: (intent.mathFormat ?? "unicode") as "unicode" | "plain" | "latex",
 
     // ── Question types mapped from questionFormat ─────────────────────
     questionTypes: mapQuestionFormat(intent.questionFormat, intent.assessmentType),

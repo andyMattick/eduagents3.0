@@ -32,6 +32,9 @@ export interface MinimalTeacherIntent {
   /** "yes" | "no" — whether to include multi-part questions (A → B → C) */
   multiPartQuestions?: string | null;
 
+  /** Math notation display format. Defaults to "unicode" (√(x+7), x², fractions as (a)/(b)). */
+  mathFormat?: "unicode" | "plain" | "latex" | null;
+
   sourceDocuments?: Array<{
     id: string;
     name: string;

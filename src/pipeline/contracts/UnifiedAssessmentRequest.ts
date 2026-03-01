@@ -49,6 +49,14 @@ export interface UnifiedAssessmentRequest {
   /** "yes" | "no" — include multi-part questions where parts chain: A → B → C */
   multiPartQuestions?: string | null;
 
+  /**
+   * Display format for mathematical notation in generated questions.
+   * "unicode" (default) — √(x + 7), x², (4x − 5)/(x + 2)
+   * "plain"             — sqrt(x + 7), x^2, (4x - 5)/(x + 2)
+   * "latex"             — \\sqrt{x + 7}, x^{2}, \\frac{4x-5}{x+2}
+   */
+  mathFormat?: "unicode" | "plain" | "latex";
+
   // Optional teacher-provided materials
   sourceDocuments: Array<{
     id: string;

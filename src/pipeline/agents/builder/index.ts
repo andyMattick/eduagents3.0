@@ -1,6 +1,8 @@
 import type { GeneratedItem } from "@/pipeline/agents/writer/types";
 import type { FinalAssessment, FinalAssessmentItem } from "./FinalAssessment";
 import { normalizeMath } from "../../../utils/normalizeMath";
+import { applyMathFormat } from "../../../utils/mathFormatters";
+import type { MathFormat } from "../../../utils/mathFormatters";
 import { applyLexicalCalibration } from "@/utils/lexical/Calibration";
 type BuilderInput =
   | GeneratedItem[]
@@ -42,12 +44,15 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
   blueprint?.uar?.grade ?? blueprint?.uar?.gradeLevels?.[0] ?? "9",
   10
 );
+  const mathFmt: MathFormat = (blueprint?.uar?.mathFormat ?? "unicode") as MathFormat;
+
 function transformText(text?: string): string | undefined {
   if (typeof text !== "string") return undefined;
 
   const cleaned = cleanText(text) ?? "";
   const normalized = normalizeMath(cleaned) ?? cleaned;
-  return applyLexicalCalibration(normalized, grade);
+  const formatted  = applyMathFormat(normalized, mathFmt);
+  return applyLexicalCalibration(formatted, grade);
 }
   const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
   const slot = plan?.slots?.find((s: any) => s.id === item.slotId);

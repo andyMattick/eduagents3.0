@@ -53,11 +53,17 @@ export function normalizeMath(text: string | undefined): string | undefined {
 
   // -------------------------
   // 5️⃣ Square roots
-  // √x → \sqrt{x}
-  // √(x+3) → \sqrt{x+3}
+  // √(x + 3) → \sqrt{x + 3}  (parenthesised — any content including spaces)
+  // √x       → \sqrt{x}       (bare single token)
+  // sqrt(x)  → \sqrt{x}
   // -------------------------
   result = result.replace(
-    /√\s*\(?([^()\s]+)\)?/g,
+    /√\s*\(([^)]+)\)/g,
+    (_, inner) => `\\sqrt{${inner.trim()}}`
+  );
+  // bare √x (single token without parens)
+  result = result.replace(
+    /√\s*([a-zA-Z0-9]+)/g,
     (_, inner) => `\\sqrt{${inner}}`
   );
 
