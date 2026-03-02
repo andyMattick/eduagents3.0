@@ -6,7 +6,7 @@ import type { StepId } from './components_new/Pipeline/ConversationalAssessment'
 import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
-import { TeacherDashboard } from './components_new/TeacherSystem/TeacherDashboard';
+import { MyAssessmentsPage } from './components_new/TeacherSystem/MyAssessmentsPage';
 import { MyAgentsPage } from './components_new/TeacherSystem/MyAgentsPage';
 import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
@@ -158,20 +158,12 @@ function TeacherAppContent() {
 
         {/* My Assessments — uses TeacherDashboard which renders rich cards and handles navigation */}
         {activeTab === 'my-assessments' && (
-          <TeacherDashboard
+          <MyAssessmentsPage
             teacherId={user?.id ?? ''}
-            teacherName={user?.name || user?.email || ''}
-            onNavigate={(page, data) => {
-              if (page === 'pipeline' || page === 'create-assignment' || page === 'createAssessment') {
-                setActiveTab('pipeline');
-              } else if (page === 'viewAssessments') {
-                setActiveTab('my-assessments');
-              } else if (page === 'viewTemplate' && data?.templateId) {
-                setSelectedTemplateId(data.templateId);
-                setActiveTab('assessment-detail');
-              } else if (page === 'viewAgentsBySubject') {
-                setActiveTab('my-agents');
-              }
+            onNewAssessment={() => setActiveTab('pipeline')}
+            onViewTemplate={(templateId) => {
+              setSelectedTemplateId(templateId);
+              setActiveTab('assessment-detail');
             }}
           />
         )}
