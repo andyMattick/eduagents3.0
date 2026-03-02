@@ -11,6 +11,7 @@ import type { FinalAssessment } from "@/pipeline/agents/builder/FinalAssessment"
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { generateAssessment } from "@/config/aiConfig";
 import { AssessmentViewer } from "../Pipeline/AssessmentViewer";
+import { ReportResultsPage } from "./ReportResultsPage";
 import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
@@ -905,6 +906,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
   const [branchFields, setBranchFields] = useState<BranchFields | null>(null);
   const [isBranching, setIsBranching] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [showReportResults, setShowReportResults] = useState(false);
 
   // ── Phase 3 — Assign active version state ───────────────────────────────
   const [isAssigning, setIsAssigning] = useState(false);
@@ -1109,6 +1111,20 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
         previousVersionId: selectedVersionId,
       });
       await generateAssessment(uar);
+      // ── Log regeneration as a mild teacher dissatisfaction signal ──────
+      const _domain = template.domain ?? "General";
+      DossierManager.logTeacherOverride(template.user_id, `writer:${_domain}`, {
+        field: "regenerate",
+        oldValue: selectedVersionId,
+        newValue: "new_version",
+        reason: "Teacher requested regeneration with same settings — mild dissatisfaction signal",
+      }).catch(() => {});
+      // One incorrect "vote" nudges scaffold level; no misconceptions needed here
+      DossierManager.processStudentPerformance(template.user_id, `writer:${_domain}`, {
+        correct: 0,
+        incorrect: 1,
+        misconceptions: ["teacher-regenerated"],
+      }).catch(() => {});
       await reloadVersions();
     } catch (e: any) {
       setRegenerateError(e?.message ?? "Regeneration failed. Please try again.");
@@ -1146,6 +1162,28 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
         previousVersionId: selectedVersionId,
       });
       await generateAssessment(uar);
+      // ── Log each changed field as a teacher override (stronger dissatisfaction signal) ──
+      const _domain2 = template.domain ?? "General";
+      const _prevUar = template.uar_json ?? {};
+      const _changedFields: Array<{ field: string; oldValue: any; newValue: any }> = [];
+      if (branchFields!.topic !== (_prevUar.topic ?? "")) _changedFields.push({ field: "topic", oldValue: _prevUar.topic, newValue: branchFields!.topic });
+      if (branchFields!.time !== Number(_prevUar.time ?? 20)) _changedFields.push({ field: "time", oldValue: _prevUar.time, newValue: branchFields!.time });
+      if (branchFields!.assessmentType !== (_prevUar.assessmentType ?? "")) _changedFields.push({ field: "assessmentType", oldValue: _prevUar.assessmentType, newValue: branchFields!.assessmentType });
+      if (branchFields!.additionalDetails !== (_prevUar.additionalDetails ?? "")) _changedFields.push({ field: "additionalDetails", oldValue: _prevUar.additionalDetails, newValue: branchFields!.additionalDetails });
+      for (const change of _changedFields) {
+        DossierManager.logTeacherOverride(template.user_id, `writer:${_domain2}`, {
+          field: change.field,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+          reason: "Teacher modified assessment settings — branched to new version",
+        }).catch(() => {});
+      }
+      // Branch = stronger dissatisfaction: teacher changed the inputs themselves
+      DossierManager.processStudentPerformance(template.user_id, `writer:${_domain2}`, {
+        correct: 0,
+        incorrect: Math.max(1, _changedFields.length),
+        misconceptions: ["teacher-branched", ..._changedFields.map(c => `changed-${c.field}`)],
+      }).catch(() => {});
       setShowBranchForm(false);
       await reloadVersions();
     } catch (e: any) {
@@ -1377,6 +1415,25 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 {/* ── Spacer ── */}
                 <div style={{ flex: 1 }} />
 
+                {/* Report Results button */}
+                <button
+                  onClick={() => setShowReportResults((v) => !v)}
+                  disabled={!selectedVersionId}
+                  title="Record how students actually performed — adjusts future difficulty"
+                  style={{
+                    padding: "0.4rem 1rem",
+                    borderRadius: "8px",
+                    border: showReportResults ? "1.5px solid #10b981" : "1.5px solid #d1fae5",
+                    background: showReportResults ? "#10b981" : "#f0fdf4",
+                    color: showReportResults ? "#fff" : "#065f46",
+                    cursor: "pointer",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {showReportResults ? "✕ Close Report" : "📊 Report Results"}
+                </button>
+
                 {/* Regenerate button */}
                 <button
                   onClick={handleRegenerate}
@@ -1405,9 +1462,9 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   style={{
                     padding: "0.4rem 1rem",
                     borderRadius: "8px",
-                    border: "1.5px solid var(--color-accent, #4f46e5)",
-                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : "transparent",
-                    color: showBranchForm ? "#fff" : "var(--color-accent, #4f46e5)",
+                    border: showBranchForm ? "1.5px solid var(--color-accent, #4f46e5)" : "1px solid #ccc",
+                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : "#f5f5f5",
+                    color: showBranchForm ? "#fff" : "#333",
                     cursor: "pointer",
                     fontSize: "0.85rem",
                     fontWeight: 600,
@@ -1428,6 +1485,26 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 <p style={{ color: "var(--color-error, #ef4444)", fontSize: "0.85rem", margin: "0.25rem 0" }}>
                   {assignError}
                 </p>
+              )}
+
+              {/* ── Report Results inline panel ─────────────────────── */}
+              {showReportResults && selectedVersionId && template && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    border: "1.5px solid #10b981",
+                    borderRadius: "10px",
+                    background: "#f0fdf4",
+                    overflow: "hidden",
+                  }}
+                >
+                  <ReportResultsPage
+                    assignmentId={selectedVersionId}
+                    userId={template.user_id}
+                    domain={template.domain ?? "General"}
+                    onClose={() => setShowReportResults(false)}
+                  />
+                </div>
               )}
 
               {/* ── Branch form ───────────────────────────────────────── */}

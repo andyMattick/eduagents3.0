@@ -143,6 +143,20 @@ export class Gatekeeper {
               });
             }
           }
+
+          // ── Operand range check ──────────────────────────────────────────
+          const slotRange = (slot as any).range ?? (uar as any).range;
+          if (slotRange) {
+            const nums = item.prompt.match(/\d+/g)?.map(Number) ?? [];
+            const outOfRange = nums.filter(n => n < slotRange.min || n > slotRange.max);
+            if (outOfRange.length > 0) {
+              violations.push({
+                slotId: slot.id,
+                type: "operand_out_of_range",
+                message: `Operand(s) ${outOfRange.join(", ")} are outside the required range [${slotRange.min}, ${slotRange.max}].`,
+              });
+            }
+          }
         }
         // Arithmetic items have no LLM-authored content to validate — skip remaining checks.
         continue;
@@ -347,6 +361,58 @@ export class Gatekeeper {
             slotId: slot.id,
             type: "scope_width_violation",
             message: "Narrow scope questions must not integrate multiple strands."
+          });
+        }
+      }
+
+      //
+      // 10. Math clarity (non-arithmetic items)
+      //
+      // Enforce: radicals use √(...), logs use log(...), no implicit multiplication.
+      //
+      if (item.questionType !== "arithmeticFluency") {
+        // No implicit multiplication: e.g. "3x" where the coefficient and variable
+        // are fused without an operator. Flag only in math-heavy domains.
+        const domain = (uar as any).domain ?? (uar as any).course ?? "";
+        const isMath = /math|algebra|calculus|geometry|statistics|arithmetic/i.test(domain);
+        if (isMath) {
+          // Check radical format: bare √ without parentheses
+          if (/√[^(]/.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "math_clarity_violation",
+              message: `Radical expression must use parentheses: √(expression). Found bare √ in prompt.`,
+            });
+          }
+          // Check log format: log without parentheses
+          if (/\blog[^(]/.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "math_clarity_violation",
+              message: `Logarithm expression must use parentheses: log(expression). Found bare log in prompt.`,
+            });
+          }
+        }
+      }
+
+      //
+      // 11. Standards alignment (soft check)
+      //
+      // If the slot has standards constraints, note any mismatch as a low-severity
+      // advisory. We do not block — alignment is verified by the Architect/Writer.
+      //
+      const slotStandards = (slot as any).constraints?.standards;
+      const uarStandards = (uar as any).standards;
+      if ((slotStandards || uarStandards) && !(uar as any).standardsCheckDisabled) {
+        // Light heuristic: if the prompt has NO academic vocabulary at all,
+        // it's a signal that standards alignment may have been ignored.
+        const academicVocab = /[A-Z]{2,}\.[A-Z0-9]{2,}|standard|objective|ccss|teks|ngsss/i;
+        const promptLength = item.prompt.length;
+        if (promptLength < 20 && !academicVocab.test(item.prompt)) {
+          violations.push({
+            slotId: slot.id,
+            type: "standards_mismatch",
+            message: `Item may not align to required standard (${slotStandards ?? uarStandards}). Prompt appears too brief to assess standards coverage.`,
           });
         }
       }

@@ -29,7 +29,6 @@ export interface AssignmentContext {
     | 'edit'
     | 'report-results'
     | 'generate-new-version'
-    | 'view answer-key'
     | 'view rubric';
 }
 

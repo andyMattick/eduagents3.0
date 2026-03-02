@@ -386,8 +386,21 @@ function MathText({ text }: { text: string }) {
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-function QuestionItem({ item, showAnswer }: { item: FinalAssessmentItem; showAnswer: boolean }) {
+function QuestionItem({ item, showAnswer, compact }: { item: FinalAssessmentItem; showAnswer: boolean; compact?: boolean }) {
   const isMC = item.questionType === "multipleChoice";
+
+  // ── Compact rendering for arithmetic fluency in column layout ──────────
+  if (compact) {
+    return (
+      <div className="av-question-compact">
+        <div className="av-q-compact-number">{item.questionNumber}.</div>
+        <div className="av-q-compact-expr"><MathText text={item.prompt} /></div>
+        {showAnswer
+          ? <div className="av-q-compact-answer"><MathText text={item.answer ?? ""} /></div>
+          : <div className="av-q-compact-blank" />}
+      </div>
+    );
+  }
 
   return (
     <div className="av-question">
@@ -456,7 +469,6 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
-  const [answerKeyLoading, setAnswerKeyLoading] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   const displayTitle = title ?? "Assessment";
@@ -480,16 +492,6 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       await downloadFinalAssessmentWord(assessment, { title: displayTitle, subtitle, includeAnswerKey: true });
     } finally {
       setWordLoading(false);
-    }
-  }
-
-  async function handleDownloadAnswerKey() {
-    setAnswerKeyLoading(true);
-    try {
-      // version:"teacher" is required — the default "student" strips answer fields.
-      await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true, version: "teacher" });
-    } finally {
-      setAnswerKeyLoading(false);
     }
   }
 
@@ -520,14 +522,6 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
               title="Download as Word document (.docx)"
             >
               {wordLoading ? "Exporting…" : "📄 Word"}
-            </button>
-            <button
-              className="av-btn av-btn-outline"
-              onClick={handleDownloadAnswerKey}
-              disabled={answerKeyLoading || hasMath}
-              title={hasMath ? "PDF answer key unavailable for math assessments — use \"🖨 Print\" with \"Show answer key\" toggled on" : "Download PDF with answer key appended"}
-            >
-              {answerKeyLoading ? "Generating…" : hasMath ? "🔑 Key (use Print)" : "🔑 Answer Key"}
             </button>
             <button
               className="av-btn av-btn-outline"
@@ -656,11 +650,22 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       </div>
 
       {/* ── Questions ──────────────────────────────────────────── */}
-      <div className="av-questions">
-        {assessment.items.map((item) => (
-          <QuestionItem key={item.slotId} item={item} showAnswer={showAnswerKey} />
-        ))}
-      </div>
+      {(() => {
+        const layout = assessment.metadata?.layout ?? "singleColumn";
+        const isColumns = layout === "columns";
+        return (
+          <div className={isColumns ? "av-questions-columns" : "av-questions"}>
+            {assessment.items.map((item) => (
+              <QuestionItem
+                key={item.slotId}
+                item={item}
+                showAnswer={showAnswerKey}
+                compact={isColumns && item.questionType === "arithmeticFluency"}
+              />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* ── Answer key toggle ───────────────────────────────────── */}
       <div className="av-toggle-row">

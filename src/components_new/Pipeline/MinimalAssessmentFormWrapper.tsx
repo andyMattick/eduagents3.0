@@ -11,11 +11,14 @@ import { generateAssessment } from "@/config/aiConfig";
 interface MinimalAssessmentFormWrapperProps {
   userId: string | null;                     // ⭐ REQUIRED
   onResult: (result: any) => void;
+  /** Called as each parallel Writer group completes — enables live preview. */
+  onItemsProgress?: (partialItems: any[]) => void;
 }
 
 export const MinimalAssessmentFormWrapper = React.memo(function MinimalAssessmentFormWrapper({
   userId,
-  onResult
+  onResult,
+  onItemsProgress,
 }: MinimalAssessmentFormWrapperProps) {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -34,12 +37,12 @@ export const MinimalAssessmentFormWrapper = React.memo(function MinimalAssessmen
         userId: safeUserId,
       };
 
-      const data = await generateAssessment(uar);
+      const data = await generateAssessment(uar, onItemsProgress);
       onResult(data);
     } finally {
       setIsLoading(false);
     }
-  }, [userId, onResult]);
+  }, [userId, onResult, onItemsProgress]);
 
   return (
     <MinimalAssessmentForm onSubmit={handleFormSubmit} isLoading={isLoading} />

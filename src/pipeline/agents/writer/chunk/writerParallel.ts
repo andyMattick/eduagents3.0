@@ -206,7 +206,8 @@ interface GroupResult {
 export async function writerParallel(
   blueprint: BlueprintPlanV3_2,
   uar: UnifiedAssessmentRequest,
-  scribePrescriptions: ScribePrescriptions
+  scribePrescriptions: ScribePrescriptions,
+  onItemsProgress?: (partialItems: GeneratedItem[]) => void
 ): Promise<WriterParallelResult> {
   const telemetry = createTelemetry();
 
@@ -222,6 +223,9 @@ export async function writerParallel(
     avoidList: (uar as any).avoidList ?? null,
     scopeWidth: blueprint.scopeWidth,
     previousSlotsSummary: [], // not used in parallel mode (no sequential dependency)
+    mathFormat: (uar as any).mathFormat ?? "unicode",
+    operation: (uar as any).operation ?? "multiply",
+    range: (uar as any).range ?? { min: 1, max: 10 },
   };
 
   const allSlots = [...blueprint.slots];
@@ -251,6 +255,7 @@ export async function writerParallel(
       grade,
       topic,
       operation: (slot as any).operation,
+      range: (slot as any).range ?? (uar as any).range,
     });
     preGenMap.set(slot.id, generated);
     preGeneratedIds.add(slot.id);
@@ -309,7 +314,8 @@ export async function writerParallel(
     context,
     scribePrescriptions,
     telemetry,
-    hintMode
+    hintMode,
+    onItemsProgress
   );
 
   // ── Step 2: Merge into a single map ─────────────────────────────────────
@@ -549,13 +555,22 @@ async function dispatchGroupsParallel(
   context: WriterContext,
   scribe: ScribePrescriptions,
   telemetry: WriterTelemetry,
-  hintMode: HintMode = "FULL"
+  hintMode: HintMode = "FULL",
+  onItemsProgress?: (partialItems: GeneratedItem[]) => void
 ): Promise<GroupResult[]> {
+  // Shared accumulator: updated as each group settles so the callback
+  // always delivers a monotonically growing snapshot.
+  const accumulated = new Map<string, GeneratedItem>();
+
   const promises = groups.map((group, idx) =>
-    callGroupLLM(group, context, scribe, telemetry, hintMode).then((result) => ({
-      ...result,
-      groupIndex: idx,
-    }))
+    callGroupLLM(group, context, scribe, telemetry, hintMode).then((result) => {
+      const r = { ...result, groupIndex: idx };
+      if (onItemsProgress) {
+        for (const [slotId, item] of r.items) accumulated.set(slotId, item);
+        onItemsProgress([...accumulated.values()]);
+      }
+      return r;
+    })
   );
 
   const settled = await Promise.allSettled(promises);

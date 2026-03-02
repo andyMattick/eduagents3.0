@@ -18,6 +18,12 @@ export interface WriterContext {
     difficulty: string;
     topicAngle?: string;
   }[];
+  /** Display format for math notation — controls MATH FORMATTING CONTRACT in chunk prompt. */
+  mathFormat?: "unicode" | "plain" | "latex";
+  /** Arithmetic fluency: required operation (add|subtract|multiply|divide). */
+  operation?: "add" | "subtract" | "multiply" | "divide";
+  /** Arithmetic fluency: operand range for arithmetic slots. */
+  range?: { min: number; max: number };
 }
 
 export interface ScribePrescriptions {

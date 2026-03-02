@@ -57,6 +57,22 @@ export interface UnifiedAssessmentRequest {
    */
   mathFormat?: "unicode" | "plain" | "latex";
 
+  // ── Arithmetic fluency controls ────────────────────────────────────
+  /** Required arithmetic operation for fluency items. Defaults to "multiply". */
+  operation?: "add" | "subtract" | "multiply" | "divide";
+  /** Operand range for arithmetic fluency items. Defaults to { min: 1, max: 10 }. */
+  range?: { min: number; max: number };
+
+  // ── Student performance (adaptive difficulty) ───────────────────────
+  studentPerformance?: {
+    correct: number;
+    incorrect: number;
+    misconceptions?: string[];
+  };
+
+  /** Explicit state code for standards alignment (e.g. "GA", "TX"). Alias for stateCode. */
+  standardsState?: string;
+
   // Optional teacher-provided materials
   sourceDocuments: Array<{
     id: string;
@@ -94,9 +110,27 @@ export interface ArchitectUAR {
 
   // Additional teacher notes
   additionalDetails: string | null;
+
+  // ── Arithmetic controls ────────────────────────────────────────────
+  operation: "add" | "subtract" | "multiply" | "divide";
+  range: { min: number; max: number };
+
+  // ── Math format ────────────────────────────────────────────────────
+  mathFormat: "unicode" | "plain" | "latex";
+
+  // ── Standards ─────────────────────────────────────────────────────
+  standards?: string | null;
+  stateCode?: string | null;
 }
 
 export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
+  // ── Apply UAR defaults before any planning ─────────────────────────────
+  if (uar.operation == null)   (uar as any).operation  = "multiply";
+  if (uar.range == null)       (uar as any).range       = { min: 1, max: 10 };
+  if (uar.mathFormat == null)  (uar as any).mathFormat  = "unicode";
+  // standardsState is an alias for stateCode
+  if (uar.standardsState && !uar.stateCode) (uar as any).stateCode = uar.standardsState;
+
   // Enrich additionalDetails with adaptive fields so the Architect prompt sees them
   const detailParts: string[] = [];
   if (uar.additionalDetails) detailParts.push(uar.additionalDetails);
@@ -166,6 +200,17 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
 
     // Additional notes (enriched with adaptive fields)
     additionalDetails: enrichedDetails,
+
+    // ── Arithmetic controls (with defaults already applied above) ─────
+    operation: (uar.operation ?? "multiply") as "add" | "subtract" | "multiply" | "divide",
+    range: uar.range ?? { min: 1, max: 10 },
+
+    // ── Math format ────────────────────────────────────────────────────
+    mathFormat: (uar.mathFormat ?? "unicode") as "unicode" | "plain" | "latex",
+
+    // ── Standards ─────────────────────────────────────────────────────
+    standards: uar.standards ?? null,
+    stateCode: uar.stateCode ?? null,
   };
 }
 
@@ -178,6 +223,8 @@ const PACING_MINUTES: Record<string, number> = {
   constructedResponse:  6.0,
   essay:                10.0,
   fillInTheBlank:       1.5,
+  arithmeticFluency:    0.4,   // 20–30 s per item
+  passageBased:         3.0,   // reading + answering
 };
 const DEFAULT_PACING = 2.0; // fallback for unknown types
 

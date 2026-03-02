@@ -103,6 +103,10 @@ export function convertMinimalToUAR(
     // ── Question types mapped from questionFormat ─────────────────────
     questionTypes: mapQuestionFormat(intent.questionFormat, intent.assessmentType),
 
+    // ── Arithmetic fluency teacher-specified fields ───────────────────
+    ...(intent.arithmeticOperation ? { operation: intent.arithmeticOperation } : {}),
+    ...(intent.arithmeticRange    ? { range:     intent.arithmeticRange     } : {}),
+
     sourceDocuments: intent.sourceDocuments ?? [],
     exampleAssessment: intent.exampleAssessment,
   };

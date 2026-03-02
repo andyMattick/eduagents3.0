@@ -34,5 +34,9 @@ export interface FinalAssessment {
     orderingStrategy?: string;
     totalEstimatedTimeSeconds?: number;
     pacingSecondsPerItem?: number;
+    /** "columns" for arithmetic fluency, "singleColumn" for all other types. */
+    layout?: "columns" | "singleColumn";
+    /** Per section-type label → instruction line for builders/exporters to print. */
+    sectionInstructions?: Record<string, string>;
   };
 }

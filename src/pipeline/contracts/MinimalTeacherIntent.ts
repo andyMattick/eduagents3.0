@@ -35,6 +35,18 @@ export interface MinimalTeacherIntent {
   /** Math notation display format. Defaults to "unicode" (√(x+7), x², fractions as (a)/(b)). */
   mathFormat?: "unicode" | "plain" | "latex" | null;
 
+  /**
+   * Arithmetic fluency: which operation to drill.
+   * Defaults to "multiply" in the pipeline when not specified.
+   */
+  arithmeticOperation?: "add" | "subtract" | "multiply" | "divide" | null;
+
+  /**
+   * Arithmetic fluency: inclusive operand range.
+   * Defaults to { min: 1, max: 10 } in the pipeline when not specified.
+   */
+  arithmeticRange?: { min: number; max: number } | null;
+
   sourceDocuments?: Array<{
     id: string;
     name: string;

@@ -19,7 +19,8 @@ export async function runWriter({
   uar,
   scribePrescriptions,
   agentId: _agentId,
-  compensation: _compensation
+  compensation: _compensation,
+  onItemsProgress,
 }: {
   blueprint: BlueprintPlanV3_2;
   uar: UnifiedAssessmentRequest;
@@ -30,8 +31,14 @@ export async function runWriter({
   };
   agentId: string;
   compensation: any;
+  onItemsProgress?: (partialItems: GeneratedItem[]) => void;
 }): Promise<GeneratedItem[]> {
-  const { items, telemetry } = await writerParallel(blueprint, uar, scribePrescriptions);
+  const { items, telemetry } = await writerParallel(
+    blueprint,
+    uar,
+    scribePrescriptions,
+    onItemsProgress
+  );
 
   _lastWriterTelemetry = telemetry;
 

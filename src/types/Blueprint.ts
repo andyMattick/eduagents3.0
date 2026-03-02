@@ -34,6 +34,18 @@ export interface BlueprintSlot {
    */
   operation?: "add" | "subtract" | "multiply" | "divide" | "any";
 
+  /**
+   * Arithmetic fluency + general: operand range constraint.
+   * Gatekeeper enforces that all numeric operands stay within [min, max].
+   */
+  range?: { min: number; max: number };
+
+  /**
+   * Passage-based question support.
+   * When true, the Writer must generate a reading passage alongside questions.
+   */
+  requiresPassage?: boolean;
+
   // Optional: cognitive demand
   cognitiveDemand?: 
     | "remember"

@@ -9,7 +9,10 @@ export enum ViolationType {
   WrongOrdering = "wrong_ordering",
   TopicMismatch = "topic_mismatch",
   ScopeMismatch = "scope_mismatch",
-  FormatViolation = "format_violation"
+  FormatViolation = "format_violation",
+  OperandOutOfRange = "operand_out_of_range",
+  MathClarityViolation = "math_clarity_violation",
+  StandardsMismatch = "standards_mismatch",
 }
 
 export interface Violation {

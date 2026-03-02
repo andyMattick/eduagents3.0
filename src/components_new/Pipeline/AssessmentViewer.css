@@ -299,6 +299,47 @@
   color: var(--gray-500);
 }
 
+/* ── Column layout (arithmetic fluency) ────────────────────────────────────── */
+
+.av-questions-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 1.75rem 1.5rem;
+}
+
+.av-question-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.av-q-compact-number {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.av-q-compact-expr {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+.av-q-compact-blank {
+  width: 100%;
+  height: 1.75rem;
+  border-bottom: 1.5px solid var(--fg);
+  margin-top: 0.2rem;
+}
+
+.av-q-compact-answer {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
 /* ── Answer key ─────────────────────────────────────────────────────────────── */
 
 .av-answer-key {

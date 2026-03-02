@@ -45,6 +45,8 @@ type StepId =
   | "topic"
   | "assessmentType"
   | "questionFormat"
+  | "arithmeticOperation"
+  | "arithmeticRange"
   | "bloomPreference"
   | "multiPartQuestions"
   | "sectionStructure"
@@ -113,7 +115,7 @@ const BASE_STEPS_AFTER: Step[] = [
 /** Types that are "structured" — tests, quizzes, worksheets get extra questions */
 const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview", "bellRinger", "exitTicket"]);
 
-function getAdaptiveSteps(assessmentType: string, standards?: string): Step[] {
+function getAdaptiveSteps(assessmentType: string, standards?: string, questionFormat?: string): Step[] {
   if (!STRUCTURED_TYPES.has(assessmentType)) return [];
 
   const steps: Step[] = [
@@ -124,6 +126,27 @@ function getAdaptiveSteps(assessmentType: string, standards?: string): Step[] {
       multiSelect: true,
     },
   ];
+
+  // ── Arithmetic fluency sub-steps ──────────────────────────────────────
+  // Only shown when teacher picks "Arithmetic Fluency" in the format step.
+  if (questionFormat && questionFormat.split(",").map(s => s.trim()).includes("arithmeticFluency")) {
+    steps.push({
+      id: "arithmeticOperation",
+      question: "Which operation should the drill focus on?",
+      chips: [
+        { label: "Addition (+)",       value: "add"      },
+        { label: "Subtraction (−)",    value: "subtract" },
+        { label: "Multiplication (×)", value: "multiply" },
+        { label: "Division (÷)",       value: "divide"   },
+      ],
+    });
+    steps.push({
+      id: "arithmeticRange",
+      question: "What number range should operands stay within? (default: 1–10)",
+      placeholder: "e.g. 1–10  or  2–12  or  1–20",
+      optional: true,
+    });
+  }
 
   // Multi-part questions for longer structured assessments
   if (["test", "quiz", "worksheet", "testReview"].includes(assessmentType)) {
@@ -185,23 +208,27 @@ export type ConversationalIntent = {
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string;
   /** State abbreviation when standards === "state", e.g. "GA" */
-  stateCode?: string;
-};
+  stateCode?: string;  /** "add" | "subtract" | "multiply" | "divide" — injected when arithmetic fluency chosen */
+  arithmeticOperation?: string;
+  /** Free-text range parsed to { min, max }, e.g. "1-10" — injected when arithmetic fluency chosen */
+  arithmeticRange?: string;};
 
 const DEFAULT_ANSWERS: Record<StepId, string> = {
-  gradeLevels:         "",
-  course:              "",
-  topic:               "",
-  assessmentType:      "",
-  questionFormat:      "",
-  bloomPreference:     "",
-  multiPartQuestions:  "",
-  sectionStructure:    "",
-  standards:           "",
-  stateCode:           "",
-  studentLevel:        "",
-  time:                "",
-  additionalDetails:   "",
+  gradeLevels:          "",
+  course:               "",
+  topic:                "",
+  assessmentType:       "",
+  questionFormat:       "",
+  arithmeticOperation:  "",
+  arithmeticRange:      "",
+  bloomPreference:      "",
+  multiPartQuestions:   "",
+  sectionStructure:     "",
+  standards:            "",
+  stateCode:            "",
+  studentLevel:         "",
+  time:                 "",
+  additionalDetails:    "",
 };
 
 interface ConversationalAssessmentProps {
@@ -237,7 +264,7 @@ export function ConversationalAssessment({
   const [stepIndex, setStepIndex] = useState(() => {
     if (!initialAnswers) return 0;
     const aType = initialAnswers.assessmentType ?? "";
-    const adaptive = aType ? getAdaptiveSteps(aType, initialAnswers.standards) : [];
+    const adaptive = aType ? getAdaptiveSteps(aType, initialAnswers.standards, initialAnswers.questionFormat) : [];
     const allSteps = [...BASE_STEPS_BEFORE, ...adaptive, ...BASE_STEPS_AFTER];
     return Math.max(0, allSteps.length - 1);
   });
@@ -254,10 +281,10 @@ export function ConversationalAssessment({
   // ── Compute the dynamic step list based on assessmentType answer ────────
   const steps: Step[] = useMemo(() => {
     const adaptiveSteps = answers.assessmentType
-      ? getAdaptiveSteps(answers.assessmentType, answers.standards)
+      ? getAdaptiveSteps(answers.assessmentType, answers.standards, answers.questionFormat)
       : [];
     return [...BASE_STEPS_BEFORE, ...adaptiveSteps, ...BASE_STEPS_AFTER];
-  }, [answers.assessmentType, answers.standards]);
+  }, [answers.assessmentType, answers.standards, answers.questionFormat]);
 
   const currentStep = steps[stepIndex];
   const isChipStep  = Boolean(currentStep?.chips?.length);
@@ -284,7 +311,7 @@ export function ConversationalAssessment({
     // After assessmentType is answered, the steps list will recompute.
     // We need to compute the new step list to know the correct next index.
     const newAdaptive = next.assessmentType
-      ? getAdaptiveSteps(next.assessmentType, next.standards)
+      ? getAdaptiveSteps(next.assessmentType, next.standards, next.questionFormat)
       : [];
     const newSteps = [...BASE_STEPS_BEFORE, ...newAdaptive, ...BASE_STEPS_AFTER];
 
@@ -315,6 +342,10 @@ export function ConversationalAssessment({
       sectionStructure:     next.sectionStructure || undefined,
       standards:            next.standards || undefined,
       stateCode:            next.stateCode || undefined,
+
+      // Arithmetic fluency teacher-specified fields
+      arithmeticOperation:  (next.arithmeticOperation || undefined) as ConversationalIntent["arithmeticOperation"],
+      arithmeticRange:      next.arithmeticRange || undefined,
     };
     onComplete(intent);
   }

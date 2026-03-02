@@ -4,6 +4,7 @@ import { normalizeMath } from "../../../utils/normalizeMath";
 import { applyMathFormat } from "../../../utils/mathFormatters";
 import type { MathFormat } from "../../../utils/mathFormatters";
 import { applyLexicalCalibration } from "@/utils/lexical/Calibration";
+import { formatTrueFalseItem } from "./trueFalseFormatter";
 type BuilderInput =
   | GeneratedItem[]
   | { items: GeneratedItem[]; blueprint?: any };
@@ -22,6 +23,31 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
   const { items, blueprint } = normalise(input);
  
   const plan = blueprint?.plan ?? blueprint ?? null;
+
+  // ── Column layout decision ───────────────────────────────────────────
+  // If all (or majority) items are arithmeticFluency, use column layout.
+  const arithmeticCount = items.filter(i => i.questionType === "arithmeticFluency").length;
+  const layout: "columns" | "singleColumn" = arithmeticCount > items.length / 2 ? "columns" : "singleColumn";
+
+  // ── Section instructions per question type ───────────────────────────
+  const SECTION_INSTRUCTIONS: Record<string, string> = {
+    multipleChoice:     "Choose the best answer.",
+    shortAnswer:        "Show your work when appropriate.",
+    constructedResponse: "Explain your reasoning clearly.",
+    trueFalse:          "Circle True or False for each statement.",
+    passageBased:       "Read the passage and answer the questions.",
+    arithmeticFluency:  "Solve each problem. Show your work.",
+    graphInterpretation: "Use the graph to answer each question.",
+    fillInTheBlank:     "Fill in each blank with the correct answer.",
+    matching:           "Match each item on the left to its correct answer on the right.",
+  };
+
+  // Collect the section instructions for types actually present in this assessment
+  const presentTypes = [...new Set(items.map(i => i.questionType))];
+  const sectionInstructions: Record<string, string> = {};
+  for (const qt of presentTypes) {
+    if (SECTION_INSTRUCTIONS[qt]) sectionInstructions[qt] = SECTION_INSTRUCTIONS[qt];
+  }
 
   /** Strip residual JSON escape artifacts and normalise typography from user-facing text strings. */
   function cleanText(s: string | undefined): string | undefined {
@@ -55,21 +81,24 @@ function transformText(text?: string): string | undefined {
   return applyLexicalCalibration(formatted, grade);
 }
   const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
-  const slot = plan?.slots?.find((s: any) => s.id === item.slotId);
+  // Inject "Circle T or F." for trueFalse items that lack an instruction line.
+  // Applied before transformText so the injected text passes through the
+  // same typography / math normalisation pipeline as the rest of the prompt.
+  const formattedItem = formatTrueFalseItem(item);
 
   return {
     questionNumber: i + 1,
-    slotId: item.slotId,
-    questionType: item.questionType,
+    slotId: formattedItem.slotId,
+    questionType: formattedItem.questionType,
 
-    prompt: transformText(item.prompt) ?? "",
+    prompt: transformText(formattedItem.prompt) ?? "",
 
-    options: item.options?.map(opt => transformText(opt) ?? ""),
+    options: formattedItem.options?.map(opt => transformText(opt) ?? ""),
 
-    answer: transformText(item.answer),
+    answer: transformText(formattedItem.answer),
 
     
-    metadata: item.metadata,
+    metadata: formattedItem.metadata,
   };
 });// answerKey removed from pipeline payload — item.answer is already on each item.
   // Cognitive distribution tally
@@ -84,6 +113,8 @@ function transformText(text?: string): string | undefined {
       orderingStrategy: plan?.orderingStrategy,
       totalEstimatedTimeSeconds: plan?.totalEstimatedTimeSeconds,
       pacingSecondsPerItem: plan?.pacingSecondsPerItem,
+      layout,
+      sectionInstructions,
     },
   };
 }

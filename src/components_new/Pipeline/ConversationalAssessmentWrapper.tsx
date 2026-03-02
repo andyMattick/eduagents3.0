@@ -94,13 +94,15 @@ export function ConversationalAssessmentWrapper({
         course:             pendingIntent.course,
         topic:              pendingIntent.topic || pendingIntent.unitName || "",
         assessmentType:     pendingIntent.assessmentType,
-        questionFormat:     pendingIntent.questionFormat ?? "",
-        bloomPreference:    pendingIntent.bloomPreference ?? "",
-        multiPartQuestions: pendingIntent.multiPartQuestions ?? "",
-        sectionStructure:   pendingIntent.sectionStructure ?? "",
-        standards:          pendingIntent.standards ?? "",
-        studentLevel:       pendingIntent.studentLevel,
-        time:               pendingIntent.time?.toString() ?? "",
+        questionFormat:      pendingIntent.questionFormat ?? "",
+        bloomPreference:     pendingIntent.bloomPreference ?? "",
+        multiPartQuestions:  pendingIntent.multiPartQuestions ?? "",
+        sectionStructure:    pendingIntent.sectionStructure ?? "",
+        standards:           pendingIntent.standards ?? "",
+        arithmeticOperation: pendingIntent.arithmeticOperation ?? "",
+        arithmeticRange:     pendingIntent.arithmeticRange ?? "",
+        studentLevel:        pendingIntent.studentLevel,
+        time:                pendingIntent.time?.toString() ?? "",
         additionalDetails:  pendingIntent.additionalDetails ?? "",
       };
       setFormInitialAnswers(restored);
@@ -141,6 +143,15 @@ export function ConversationalAssessmentWrapper({
           standards: pendingIntent.standards ?? null,
           stateCode: pendingIntent.stateCode ?? null,
           multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
+          arithmeticOperation: (pendingIntent.arithmeticOperation ?? null) as MinimalTeacherIntent["arithmeticOperation"],
+          arithmeticRange: (() => {
+            const raw = pendingIntent.arithmeticRange;
+            if (!raw) return null;
+            const m = raw.trim().match(/(\d+)\s*[-–,to ]+\s*(\d+)/);
+            if (!m) return null;
+            const a = Number(m[1]), b = Number(m[2]);
+            return { min: Math.min(a, b), max: Math.max(a, b) };
+          })(),
         };
 
         const uar = {

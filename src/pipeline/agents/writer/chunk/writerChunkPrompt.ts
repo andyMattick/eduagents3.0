@@ -23,17 +23,56 @@ export function buildChunkPrompt(
   const bloomDirectives = buildBloomHintDirectives(slots, hintMode);
   const hintMap = new Map(bloomDirectives.map(d => [d.slotId, d.directive]));
 
+  const mathFmt = context.mathFormat ?? "unicode";
+
+  // Build the MATH FORMATTING CONTRACT based on the requested format
+  const mathContract = mathFmt === "unicode"
+    ? `MATH FORMATTING CONTRACT — UNICODE MODE (mandatory for every question prompt and answer)
+- Fractions: write as (numerator)/(denominator)              e.g. "(4x − 5)/(x + 2)"
+- Radicals:  write as √(expression) with parentheses         e.g. "√(x + 7)", "√(2x − 1)"
+- Logarithms: write as log(expression)                       e.g. "log(x + 3)"
+- Exponents: use Unicode superscripts: x², x³, (x+3)²       do NOT write x^2
+- Multiplication: use dot notation: 4·3                      do NOT write 4*3 or 4x separately
+- Unicode fractions: use ½, ⅓, ⅔ where appropriate
+- Negatives: attach minus directly to its value              write "−5x" not "− 5x"
+- Always use parentheses for grouping compound expressions`
+    : mathFmt === "latex"
+    ? `MATH FORMATTING CONTRACT — LATEX MODE (mandatory for every question prompt and answer)
+- Fractions: \\frac{numerator}{denominator}
+- Radicals:  \\sqrt{expression}
+- Exponents: x^{2}, (x+3)^{2}
+- Negatives: -5x (no space after minus)
+- Always wrap LaTeX in \\( ... \\) for inline, \\[ ... \\] for display`
+    : `MATH FORMATTING CONTRACT — PLAIN MODE (mandatory for every question prompt and answer)
+- Fractions: write as (numerator)/(denominator)              e.g. "(4x - 5)/(x + 2)"
+- Radicals:  write as sqrt(expression)                       e.g. "sqrt(x + 7)"
+- Exponents: write as x^2, x^(-1), (x+3)^2
+- Negatives: attach minus directly to its value              write "-5x" not "- 5x"
+- Coefficients: write as 3x, not "3*x" or "3 x"`;
+
   const slotDescriptions = slots
     .map(
       (slot, i) => {
         const hint = hintMap.get(slot.id) ?? "";
+        const slotOp    = (slot as any).operation;
+        const slotRange = (slot as any).range;
+        const slotPassage = (slot as any).requiresPassage;
+
+        let extra = "";
+        if (slot.questionType === "arithmeticFluency" && slotOp && slotRange) {
+          extra += `\n  ARITHMETIC CONSTRAINT: Operation MUST be "${slotOp}". Both operands MUST be between ${slotRange.min} and ${slotRange.max}. Write as a bare expression only (e.g. "7 × 4").`;
+        }
+        if (slotPassage) {
+          extra += `\n  PASSAGE REQUIREMENT: Generate a short reading passage (150–250 words) relevant to the topic, then write 2–4 questions that reference it directly. Include the passage in the "prompt" field before the questions.`;
+        }
+
         return `
 SLOT ${i + 1}
   slotId: ${slot.id}
   questionType: ${slot.questionType}
   cognitiveDemand: ${slot.cognitiveDemand}
   difficulty: ${slot.difficulty}
-  bloomIntent: ${hint}`;
+  bloomIntent: ${hint}${extra}`;
       }
     )
     .join("\n");
@@ -115,12 +154,7 @@ STEM NATURALISM (hard rule — zero exceptions unless teacher notes explicitly r
     evaluate   → "Which approach is more efficient and why?", "Justify...", "Critique..."
     create     → "Design...", "Construct...", "Develop a model that..."
 
-MATH FORMATTING CONTRACT (mandatory for every question prompt and answer)
-- Fractions: write as (numerator)/(denominator)        e.g. "(4x - 5)/(x + 2)"
-- Radicals:  write as √(expression) with parentheses   e.g. "√(x + 7)", "√(2x - 1)"
-- Exponents: write as x^2, x^(-1), (x+3)^2            do NOT use Unicode superscripts
-- Negatives: attach minus directly to its value        write "-5x" not "- 5x"
-- Coefficients: write as 3x, not "3·x", "3 x", or "3*x"
+${mathContract}
 
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
