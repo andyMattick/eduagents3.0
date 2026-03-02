@@ -14,8 +14,7 @@ interface TemplateRecord {
   // joined from assessment_versions via latest_version_id
   latest_version?: {
     version_number: number | null;
-    question_count: number | null;
-    question_types: string | null;
+    assessment_json: { totalItems?: number; items?: Array<{ questionType?: string }> } | null;
   } | null;
 }
 
@@ -86,12 +85,15 @@ function getGradeLabel(t: TemplateRecord): string {
 
 function getProblemTypes(t: TemplateRecord): string[] {
   const uar = (t.uar_json ?? {}) as any;
-  // prefer questionTypes from uar (set by teacher); fall back to version question_types
+  // prefer questionTypes from uar (set by teacher)
   if (Array.isArray(uar.questionTypes) && uar.questionTypes.length) {
     return uar.questionTypes as string[];
   }
-  const vt = t.latest_version?.question_types;
-  if (vt) return vt.split(",").map((s: string) => s.trim()).filter(Boolean);
+  // derive from saved assessment_json items
+  const items = t.latest_version?.assessment_json?.items;
+  if (Array.isArray(items) && items.length) {
+    return [...new Set(items.map((i: any) => i.questionType).filter(Boolean))] as string[];
+  }
   return [];
 }
 
@@ -197,9 +199,10 @@ function AssignmentCard({
   const assessmentType = uar.assessmentType ?? "—";
   const grade = getGradeLabel(tmpl);
   const problemTypes = getProblemTypes(tmpl);
-  const questionCount =
-    tmpl.latest_version?.question_count ??
-    uar.questionCount ??
+  const questionCount: number | null =
+    tmpl.latest_version?.assessment_json?.totalItems ??
+    tmpl.latest_version?.assessment_json?.items?.length ??
+    (uar.questionCount != null ? Number(uar.questionCount) : null) ??
     null;
   const versionNum = tmpl.latest_version?.version_number ?? null;
   const date = new Date(tmpl.created_at).toLocaleDateString(undefined, {
@@ -280,33 +283,42 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }
       setLoading(true);
       setError(null);
       try {
-        const { data, error: tmplErr } = await supabase
+        // Step 1 — load templates
+        const { data: tmplData, error: tmplErr } = await supabase
           .from("assessment_templates")
-          .select(`
-            id,
-            domain,
-            uar_json,
-            created_at,
-            latest_version_id,
-            latest_version:assessment_versions!assessment_templates_latest_version_id_fkey(
-              version_number,
-              question_count,
-              question_types
-            )
-          `)
+          .select("id, domain, uar_json, created_at, latest_version_id")
           .eq("user_id", teacherId)
           .order("created_at", { ascending: false });
 
         if (tmplErr) throw tmplErr;
-        // Supabase may return latest_version as an array or object depending on FK direction.
-        // Normalise to object | null.
-        const normalised = ((data ?? []) as any[]).map(row => ({
-          ...row,
-          latest_version: Array.isArray(row.latest_version)
-            ? (row.latest_version[0] ?? null)
-            : (row.latest_version ?? null),
-        }));
-        setTemplates(normalised as TemplateRecord[]);
+
+        const rows = (tmplData ?? []) as Omit<TemplateRecord, "latest_version">[];
+
+        // Step 2 — batch-fetch latest versions for all templates that have one
+        const latestIds = rows
+          .map(r => r.latest_version_id)
+          .filter(Boolean) as string[];
+
+        let versMap: Record<string, TemplateRecord["latest_version"]> = {};
+        if (latestIds.length > 0) {
+          const { data: versData } = await supabase
+            .from("assessment_versions")
+            .select("id, version_number, assessment_json")
+            .in("id", latestIds);
+          for (const v of (versData ?? [])) {
+            versMap[v.id] = {
+              version_number: v.version_number ?? null,
+              assessment_json: v.assessment_json ?? null,
+            };
+          }
+        }
+
+        setTemplates(
+          rows.map(r => ({
+            ...r,
+            latest_version: r.latest_version_id ? (versMap[r.latest_version_id] ?? null) : null,
+          }))
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load assessments");
       } finally {
