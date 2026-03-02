@@ -67,6 +67,65 @@ export interface AgentDossierData {
     wordiness: number;
     arithmeticParaphrasing: number;
   };
+
+  // ── March 2026 governance extensions ──────────────────────────────────────
+
+  /** Log of individual teacher override events. */
+  teacherOverrides?: Array<{
+    timestamp: string;
+    field: string;
+    oldValue: any;
+    newValue: any;
+    reason: string;
+  }>;
+
+  /** Aggregated student performance influence across sessions. */
+  studentPerformanceInfluence?: {
+    totalCorrect: number;
+    totalIncorrect: number;
+    scaffoldLevel: number;
+    reduceDifficulty: boolean;
+    increaseDifficulty: boolean;
+    lastUpdated: string;
+  };
+
+  /** History of per-run student performance snapshots. */
+  performanceHistory?: Array<{
+    timestamp: string;
+    correct: number;
+    incorrect: number;
+    misconceptions?: string[];
+  }>;
+
+  /** Log of pacing adjustment decisions. */
+  pacingAdjustments?: Array<{
+    timestamp: string;
+    questionType: string;
+    originalPacing: number;
+    adjustedPacing: number;
+    reason: string;
+  }>;
+
+  /** Log of operand range enforcement decisions. */
+  operandRangeEnforcement?: Array<{
+    timestamp: string;
+    operation: string;
+    min: number;
+    max: number;
+  }>;
+
+  /** Last section ordering decision. */
+  sectionOrdering?: {
+    timestamp: string;
+    sections: string[];
+  };
+
+  /** Last column layout decision. */
+  columnLayoutDecision?: {
+    timestamp: string;
+    layout: "columns" | "singleColumn";
+    reason: string;
+  };
 }
 
 /**
@@ -353,5 +412,181 @@ export class DossierManager {
       finalAssessment,
     };
     return await this.appendHistory(userId, "writer", entry);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // LOG TEACHER OVERRIDE — record a teacher-initiated field change
+  // ─────────────────────────────────────────────────────
+  static async logTeacherOverride(
+    userId: string,
+    agentType: string,
+    override: { field: string; oldValue: any; newValue: any; reason?: string }
+  ) {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
+
+    const map: AgentDossierMap =
+      (row[col] && typeof row[col] === "object") ? { ...row[col] } : {};
+    const dossier: AgentDossierData =
+      (map[domain] && typeof map[domain] === "object" && map[domain].trustScore !== undefined)
+        ? { ...map[domain] }
+        : baselineDossier();
+
+    dossier.teacherOverrides ??= [];
+    dossier.teacherOverrides.push({
+      timestamp: new Date().toISOString(),
+      field: override.field,
+      oldValue: override.oldValue,
+      newValue: override.newValue,
+      reason: override.reason ?? "teacher override",
+    });
+
+    dossier.updatedAt = new Date().toISOString();
+    map[domain] = dossier;
+
+    try {
+      await supabase
+        .from(this.table)
+        .update({ [col]: map, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+    } catch (e: any) {
+      console.warn("[DossierManager] logTeacherOverride non-fatal:", e?.message ?? e);
+    }
+
+    return dossier;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // PROCESS STUDENT PERFORMANCE — update compensation profile
+  // based on student correct/incorrect counts; stored in dossier.
+  // ─────────────────────────────────────────────────────
+  static async processStudentPerformance(
+    userId: string,
+    agentType: string,
+    performance: { correct: number; incorrect: number; misconceptions?: string[] }
+  ) {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
+
+    const map: AgentDossierMap =
+      (row[col] && typeof row[col] === "object") ? { ...row[col] } : {};
+    const dossier: AgentDossierData =
+      (map[domain] && typeof map[domain] === "object" && map[domain].trustScore !== undefined)
+        ? { ...map[domain] }
+        : baselineDossier();
+
+    // Append to performanceHistory
+    dossier.performanceHistory ??= [];
+    dossier.performanceHistory.push({
+      timestamp: new Date().toISOString(),
+      correct: performance.correct,
+      incorrect: performance.incorrect,
+      misconceptions: performance.misconceptions,
+    });
+
+    // Update studentPerformanceInfluence
+    const influence = dossier.studentPerformanceInfluence ?? {
+      totalCorrect: 0,
+      totalIncorrect: 0,
+      scaffoldLevel: 0,
+      reduceDifficulty: false,
+      increaseDifficulty: false,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    influence.totalCorrect  += performance.correct;
+    influence.totalIncorrect += performance.incorrect;
+    influence.lastUpdated = new Date().toISOString();
+
+    const total = performance.correct + performance.incorrect;
+    const successRate = total > 0 ? performance.correct / total : 0.5;
+
+    if (successRate < 0.5) {
+      // Students struggled — increase scaffolding, reduce difficulty
+      influence.scaffoldLevel = Math.min(5, (influence.scaffoldLevel ?? 0) + 1);
+      influence.reduceDifficulty = true;
+      influence.increaseDifficulty = false;
+    } else if (successRate >= 0.8) {
+      // Students excelled — increase difficulty
+      influence.increaseDifficulty = true;
+      influence.reduceDifficulty = false;
+    }
+
+    dossier.studentPerformanceInfluence = influence;
+    dossier.updatedAt = new Date().toISOString();
+    map[domain] = dossier;
+
+    try {
+      await supabase
+        .from(this.table)
+        .update({ [col]: map, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+    } catch (e: any) {
+      console.warn("[DossierManager] processStudentPerformance non-fatal:", e?.message ?? e);
+    }
+
+    return dossier;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // LOG PIPELINE DECISIONS — record layout / operand range /
+  // section ordering / pacing choices made during a run.
+  // ─────────────────────────────────────────────────────
+  static async logPipelineDecisions(
+    userId: string,
+    agentType: string,
+    decisions: {
+      layout?: { layout: "columns" | "singleColumn"; reason: string };
+      operandRange?: { operation: string; min: number; max: number };
+      sectionOrdering?: { sections: string[] };
+      pacingAdjustment?: { questionType: string; originalPacing: number; adjustedPacing: number; reason: string };
+    }
+  ) {
+    const row = await this.ensureRow(userId);
+    const key = agentKey(agentType);
+    const domain = agentDomain(agentType);
+    const col = `${key}_dossier`;
+
+    const map: AgentDossierMap =
+      (row[col] && typeof row[col] === "object") ? { ...row[col] } : {};
+    const dossier: AgentDossierData =
+      (map[domain] && typeof map[domain] === "object" && map[domain].trustScore !== undefined)
+        ? { ...map[domain] }
+        : baselineDossier();
+
+    const now = new Date().toISOString();
+
+    if (decisions.layout) {
+      dossier.columnLayoutDecision = { timestamp: now, ...decisions.layout };
+    }
+    if (decisions.operandRange) {
+      dossier.operandRangeEnforcement ??= [];
+      dossier.operandRangeEnforcement.push({ timestamp: now, ...decisions.operandRange });
+    }
+    if (decisions.sectionOrdering) {
+      dossier.sectionOrdering = { timestamp: now, sections: decisions.sectionOrdering.sections };
+    }
+    if (decisions.pacingAdjustment) {
+      dossier.pacingAdjustments ??= [];
+      dossier.pacingAdjustments.push({ timestamp: now, ...decisions.pacingAdjustment });
+    }
+
+    dossier.updatedAt = now;
+    map[domain] = dossier;
+
+    try {
+      await supabase
+        .from(this.table)
+        .update({ [col]: map, updated_at: now })
+        .eq("user_id", userId);
+    } catch (e: any) {
+      console.warn("[DossierManager] logPipelineDecisions non-fatal:", e?.message ?? e);
+    }
+
+    return dossier;
   }
 }

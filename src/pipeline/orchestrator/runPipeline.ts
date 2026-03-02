@@ -1,5 +1,6 @@
 
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import { DossierManager } from "@/system/dossier/DossierManager";
 
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
@@ -196,7 +197,21 @@ async function validateAndScore(
   return { gatekeeperResult: gk, philosopherWrite: phil };
 }
 
-export async function runPipeline(uar: UnifiedAssessmentRequest, _depth = 0) {
+// ── Blueprint snapshot (for live preview) ─────────────────────────────────────
+// Set immediately after Architect runs so the UI can retrieve slot info while
+// items are still streaming in from the Writer.
+let _lastPipelineBlueprint: any = null;
+
+/** Return the most recently built blueprint (set after Architect step). */
+export function getLastPipelineBlueprint(): any {
+  return _lastPipelineBlueprint;
+}
+
+export async function runPipeline(
+  uar: UnifiedAssessmentRequest,
+  _depth = 0,
+  onItemsProgress?: (partialItems: import("@/pipeline/agents/writer/types").GeneratedItem[]) => void
+) {
   // ── Recursion guard ────────────────────────────────────────────────────────
   if (_depth >= 2) {
     throw new Error(
@@ -216,6 +231,13 @@ export async function runPipeline(uar: UnifiedAssessmentRequest, _depth = 0) {
     mode: uar.mode ?? "write",
     subscriptionTier: uar.subscriptionTier ?? "free",
   };
+
+  // ── Admin override: admins always get pro-level access ──────────────────
+  // Read from supabase user role or treat subscriptionTier === "admin" as override.
+  if (safeUar.subscriptionTier === "admin") {
+    (safeUar as any).subscriptionTier = "admin";
+    (safeUar as any)._isAdminOverride = true;
+  }
 
   // ── Tier gate (before any DB/LLM calls) ───────────────────────────────────
   if (safeUar.mode === "playtest" && safeUar.subscriptionTier !== "tier2" && safeUar.subscriptionTier !== "admin") {
@@ -254,6 +276,9 @@ export async function runPipeline(uar: UnifiedAssessmentRequest, _depth = 0) {
     compensation: selected.compensationProfile
   });
 
+  // Snapshot for live preview — readable by getLastPipelineBlueprint()
+  _lastPipelineBlueprint = blueprint;
+
   // ── Step 3: Writer — generate the initial draft ───────────────────────────
   const writerPrescriptions = SCRIBE.getWriterPrescriptions();
 
@@ -261,7 +286,8 @@ const writerDraft = await runAgent(trace, "Writer", runWriter, {
   blueprint: blueprint.plan,
   uar: uarForWriter(blueprint.uar), // slim: only the 10 fields writerParallel.ts reads
   scribePrescriptions: writerPrescriptions,
-  compensation: selected.compensationProfile
+  compensation: selected.compensationProfile,
+  onItemsProgress,
 });
 
 // 2b. Count invariant — warn if Writer dropped any slots, but continue
@@ -323,6 +349,23 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Persist the full assessment + trace to writer_history
   await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
+  // ── Log pipeline decisions + process student performance (non-fatal) ──────────
+  const _perfData = (uarWithDefaults as any).studentPerformance;
+  if (_perfData) {
+    DossierManager.processStudentPerformance(uar.userId, `writer:${selected.domain}`, _perfData).catch(() => {});
+  }
+  DossierManager.logPipelineDecisions(uar.userId, `writer:${selected.domain}`, {
+    layout: finalAssessment.metadata?.layout
+      ? { layout: finalAssessment.metadata.layout, reason: "Builder auto-determined" }
+      : undefined,
+    sectionOrdering: finalAssessment.metadata?.sectionInstructions
+      ? { sections: Object.keys(finalAssessment.metadata.sectionInstructions) }
+      : undefined,
+    operandRange: (uarWithDefaults as any).range
+      ? { operation: (uarWithDefaults as any).operation ?? "multiply", ...(uarWithDefaults as any).range }
+      : undefined,
+  }).catch(() => {});
+
   trace.finishedAt = Date.now();
   return {
     selected, blueprint, writerDraft, gatekeeperResult,
@@ -335,6 +378,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   const rewritten = await runAgent(trace, "Rewriter", runRewriter, {
     writerDraft,
     rewriteInstructions: philosopherWrite.rewriteInstructions,
+    mathFormat: (uarWithDefaults as any).mathFormat,
   });
 
   const gatekeeperFinal = Gatekeeper.validate(blueprint.plan, rewritten);
@@ -373,6 +417,15 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   // Persist the full assessment + trace to writer_history
   await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
+  // ── Log pipeline decisions + process student performance (non-fatal) ──────────
+  { const _p = (uarWithDefaults as any).studentPerformance;
+    if (_p) DossierManager.processStudentPerformance(uar.userId, `writer:${selected.domain}`, _p).catch(() => {});
+    DossierManager.logPipelineDecisions(uar.userId, `writer:${selected.domain}`, {
+      layout: finalAssessment.metadata?.layout ? { layout: finalAssessment.metadata.layout, reason: "Builder auto-determined" } : undefined,
+      sectionOrdering: finalAssessment.metadata?.sectionInstructions ? { sections: Object.keys(finalAssessment.metadata.sectionInstructions) } : undefined,
+      operandRange: (uarWithDefaults as any).range ? { operation: (uarWithDefaults as any).operation ?? "multiply", ...(uarWithDefaults as any).range } : undefined,
+    }).catch(() => {}); }
+
   trace.finishedAt = Date.now();
   return {
     selected, blueprint, writerDraft, gatekeeperResult,
@@ -383,7 +436,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
 
 if (philosopherWrite.status === "rewrite" && philosopherWrite.severity >= 7) {
   // Structural failure → restart pipeline with depth counter
-  return await runPipeline(uar, _depth + 1);
+  return await runPipeline(uar, _depth + 1, onItemsProgress);
 }
 
 // ===============================
@@ -433,6 +486,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   const rewritten = await runAgent(trace, "Rewriter", runRewriter, {
     writerDraft,
     rewriteInstructions: philosopherPlaytest.rewriteInstructions,
+    mathFormat: (uarWithDefaults as any).mathFormat,
   });
 
   const gatekeeperFinal = Gatekeeper.validate(blueprint.plan, rewritten);
@@ -471,6 +525,15 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   // Persist the full assessment + trace to writer_history
   await SCRIBE.updateUserDossier({ userId: uar.userId, trace, finalAssessment });
 
+  // ── Log pipeline decisions + process student performance (non-fatal) ──────
+  { const _p = (uarWithDefaults as any).studentPerformance;
+    if (_p) DossierManager.processStudentPerformance(uar.userId, `writer:${selected.domain}`, _p).catch(() => {});
+    DossierManager.logPipelineDecisions(uar.userId, `writer:${selected.domain}`, {
+      layout: finalAssessment.metadata?.layout ? { layout: finalAssessment.metadata.layout, reason: "Builder auto-determined" } : undefined,
+      sectionOrdering: finalAssessment.metadata?.sectionInstructions ? { sections: Object.keys(finalAssessment.metadata.sectionInstructions) } : undefined,
+      operandRange: (uarWithDefaults as any).range ? { operation: (uarWithDefaults as any).operation ?? "multiply", ...(uarWithDefaults as any).range } : undefined,
+    }).catch(() => {}); }
+
   trace.finishedAt = Date.now();
   return {
     selected, blueprint, writerDraft, gatekeeperResult,
@@ -481,7 +544,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
 }
 
 if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 7) {
-  return await runPipeline(uar, _depth + 1);
+  return await runPipeline(uar, _depth + 1, onItemsProgress);
 }
 
 // ===============================
@@ -526,4 +589,5 @@ return {
   astro1, spaceCampResult, astro2,
   philosopherWrite, philosopherPlaytest,
   finalAssessment, scribe: scribeResult, trace,
-}};
+};
+}

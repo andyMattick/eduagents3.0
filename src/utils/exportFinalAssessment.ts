@@ -340,6 +340,25 @@ assessment = filterAssessmentForVersion(assessment, version);
 
     // Use the same ordered list so answer key numbers match printed numbers.
     for (const { item, printNumber } of orderedItems) {
+      // Passage-based: emit one answer-key entry per sub-question (1a, 1b, ...)
+      if (item.questionType === "passageBased") {
+        const subQs = item.questions ?? [];
+        for (let qi = 0; qi < subQs.length; qi++) {
+          const xPos = MARGIN + col * colW;
+          const label = `${printNumber}${String.fromCharCode(97 + qi)}.`;
+          const answerLines = doc.splitTextToSize(subQs[qi].answer ?? "—", colW - 8);
+          y = guardSpace(doc, y, answerLines.length * 5.5 + 1);
+          doc.setFont("helvetica", "bold");
+          doc.text(label, xPos, y);
+          doc.setFont("helvetica", "normal");
+          doc.text(answerLines, xPos + 9, y);
+          y += answerLines.length * 5.5 + 0.5;
+          col = (col + 1) % 2;
+          if (col === 0) y = guardSpace(doc, y, 10);
+        }
+        continue;
+      }
+
       const xPos = MARGIN + col * colW;
       // For MCQ, show only the letter (e.g. "B") — the full option text is too long for a key grid
       const isMC = item.questionType === "multipleChoice";
@@ -421,9 +440,82 @@ function renderQuestion(
   y: number
 ): number {
   const isMC = item.questionType === "multipleChoice";
+  const isPassage = item.questionType === "passageBased";
   const numW = 8; // mm reserved for "1."
   const bodyX = MARGIN + numW;
   const bodyW = CONTENT_W - numW;
+
+  // ── Passage-based: render passage block + numbered sub-questions ──────
+  if (isPassage) {
+    const passageText = item.passage ?? "";
+    const subQs = item.questions ?? [];
+
+    // Estimate total space (rough)
+    const passageLines = doc.splitTextToSize(passageText, bodyW - 6);
+    const neededEst = 20 + passageLines.length * LINE_H + subQs.length * 30;
+    y = guardSpace(doc, y, Math.min(neededEst, 60));
+
+    // Question number
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(FONT_BODY);
+    doc.text(`${item.questionNumber}.`, MARGIN, y);
+
+    // "Read the following passage:" label
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(FONT_SMALL);
+    doc.setTextColor(80);
+    y = drawWrapped(doc, "Read the following passage:", bodyX, y, bodyW, LINE_H);
+    y += 1;
+    doc.setTextColor(0);
+
+    // Passage text in a light-grey inset box
+    if (passageText) {
+      const pLines = doc.splitTextToSize(passageText, bodyW - 10);
+      const boxH = pLines.length * LINE_H + 6;
+      y = guardSpace(doc, y, boxH + 4);
+      doc.setFillColor(248, 248, 248);
+      doc.setDrawColor(200);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(bodyX, y - 3, bodyW, boxH, 1.5, 1.5, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(FONT_SMALL);
+      doc.text(pLines, bodyX + 4, y);
+      y += boxH;
+      doc.setDrawColor(0);
+    }
+
+    y += 3;
+
+    // Sub-questions
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(FONT_BODY);
+    for (let qi = 0; qi < subQs.length; qi++) {
+      const label = `${item.questionNumber}${String.fromCharCode(97 + qi)})`;
+      const qPrompt = subQs[qi].prompt ?? "";
+      const qLines = doc.splitTextToSize(qPrompt, bodyW - 8);
+      y = guardSpace(doc, y, qLines.length * LINE_H + 22);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(FONT_BODY);
+      doc.text(label, bodyX, y);
+
+      doc.setFont("helvetica", "normal");
+      y = drawWrapped(doc, qPrompt, bodyX + 8, y, bodyW - 8, LINE_H);
+      y += 2;
+
+      // Blank answer lines
+      doc.setDrawColor(180);
+      doc.setLineWidth(0.3);
+      for (let l = 0; l < 3; l++) {
+        doc.line(bodyX + 8, y + 5, bodyX + bodyW, y + 5);
+        y += 7;
+      }
+      doc.setDrawColor(0);
+      y += 2;
+    }
+
+    return y + 3;
+  }
 
   // Estimate space needed for this question
   const promptLines = doc.splitTextToSize(item.prompt, bodyW);
@@ -458,8 +550,8 @@ function renderQuestion(
       y += optLines.length * 5 + 0.5;
     }
     y += 3;
-  } else {
-    // Blank answer lines
+  } else if (item.questionType !== "trueFalse") {
+    // Blank answer lines (skip for True/False — no lines needed)
     doc.setDrawColor(180);
     doc.setLineWidth(0.3);
     for (let l = 0; l < 3; l++) {
@@ -468,6 +560,8 @@ function renderQuestion(
     }
     doc.setDrawColor(0);
     y += 2;
+  } else {
+    y += 3;
   }
 
   return y;
@@ -658,24 +752,73 @@ export async function downloadFinalAssessmentWord(
     children.push(new Paragraph(""));
 
     for (const item of groups[type]) {
-      // Build the question prompt with math-aware runs
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: `${wordQNum}. `, bold: true }),
-            ...parseMathRuns(item.prompt ?? ""),
-          ],
-        })
-      );
+      const isPassageItem = item.questionType === "passageBased";
 
-      if (item.questionType === "multipleChoice") {
-        item.options?.forEach(opt => {
-          children.push(new Paragraph({ children: parseMathRuns(opt) }));
+      if (isPassageItem) {
+        // Question number line
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: `${wordQNum}.`, bold: true })],
+          })
+        );
+
+        // "Read the following passage:" label
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Read the following passage:", italics: true, color: "555555" })],
+          })
+        );
+
+        // Passage text (indented)
+        if (item.passage) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: item.passage })],
+              indent: { left: 360 },
+            })
+          );
+        }
+
+        children.push(new Paragraph(""));
+
+        // Sub-questions
+        const subQs = item.questions ?? [];
+        subQs.forEach((q, qi) => {
+          const label = `${wordQNum}${String.fromCharCode(97 + qi)})  `;
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: label, bold: true }),
+                ...parseMathRuns(q.prompt ?? ""),
+              ],
+              indent: { left: 360 },
+            })
+          );
+          // Three blank lines for the answer
+          children.push(new Paragraph({ children: [new TextRun({ text: "" })], indent: { left: 360 } }));
+          children.push(new Paragraph({ children: [new TextRun({ text: "" })], indent: { left: 360 } }));
+          children.push(new Paragraph(""));
         });
       } else {
-        children.push(new Paragraph(" "));
-        children.push(new Paragraph(" "));
-        children.push(new Paragraph(" "));
+        // Build the question prompt with math-aware runs
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${wordQNum}. `, bold: true }),
+              ...parseMathRuns(item.prompt ?? ""),
+            ],
+          })
+        );
+
+        if (item.questionType === "multipleChoice") {
+          item.options?.forEach(opt => {
+            children.push(new Paragraph({ children: parseMathRuns(opt) }));
+          });
+        } else {
+          children.push(new Paragraph(" "));
+          children.push(new Paragraph(" "));
+          children.push(new Paragraph(" "));
+        }
       }
 
       children.push(new Paragraph(""));
@@ -692,13 +835,26 @@ export async function downloadFinalAssessmentWord(
     let akNum = 1;
     for (const type of orderedTypes) {
       for (const item of groups[type]) {
-        const answerText = item.answer ?? "—";
-        children.push(new Paragraph({
-          children: [
-            new TextRun({ text: `${akNum}. `, bold: true }),
-            ...parseMathRuns(answerText),
-          ],
-        }));
+        if (item.questionType === "passageBased") {
+          const subQs = item.questions ?? [];
+          subQs.forEach((q, qi) => {
+            const label = `${akNum}${String.fromCharCode(97 + qi)}. `;
+            children.push(new Paragraph({
+              children: [
+                new TextRun({ text: label, bold: true }),
+                ...parseMathRuns(q.answer ?? "—"),
+              ],
+            }));
+          });
+        } else {
+          const answerText = item.answer ?? "—";
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `${akNum}. `, bold: true }),
+              ...parseMathRuns(answerText),
+            ],
+          }));
+        }
         akNum++;
       }
     }

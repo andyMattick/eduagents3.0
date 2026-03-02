@@ -20,14 +20,15 @@ const LEVEL_CHIPS = [
 ];
 
 const QUESTION_FORMAT_CHIPS = [
-  { label: "Multiple Choice",    value: "mcqOnly"           },
-  { label: "Short Answer",       value: "saOnly"            },
-  { label: "Essay",              value: "essayOnly"         },
-  { label: "Free Response",      value: "frqOnly"           },
-  { label: "Fill in the Blank",  value: "fitbOnly"          },
-  { label: "True / False",       value: "trueFalseOnly"     },
-  { label: "Arithmetic Fluency", value: "arithmeticFluency" },
-  { label: "Mixed Format",       value: "mixed"             },
+  { label: "Multiple Choice",        value: "mcqOnly"           },
+  { label: "Short Answer",           value: "saOnly"            },
+  { label: "Essay",                  value: "essayOnly"         },
+  { label: "Free Response",          value: "frqOnly"           },
+  { label: "Fill in the Blank",      value: "fitbOnly"          },
+  { label: "True / False",           value: "trueFalseOnly"     },
+  { label: "Arithmetic Fluency",     value: "arithmeticFluency" },
+  { label: "Passage-Based Reading",  value: "passageBased"      },
+  { label: "Mixed Format",           value: "mixed"             },
 ];
 
 const STANDARDS_CHIPS = [
@@ -45,6 +46,10 @@ type StepId =
   | "topic"
   | "assessmentType"
   | "questionFormat"
+  | "arithmeticOperation"
+  | "arithmeticRange"
+  | "passageSource"
+  | "passageText"
   | "bloomPreference"
   | "multiPartQuestions"
   | "sectionStructure"
@@ -113,7 +118,7 @@ const BASE_STEPS_AFTER: Step[] = [
 /** Types that are "structured" — tests, quizzes, worksheets get extra questions */
 const STRUCTURED_TYPES = new Set(["test", "quiz", "worksheet", "testReview", "bellRinger", "exitTicket"]);
 
-function getAdaptiveSteps(assessmentType: string, standards?: string): Step[] {
+function getAdaptiveSteps(assessmentType: string, standards?: string, questionFormat?: string, passageSource?: string): Step[] {
   if (!STRUCTURED_TYPES.has(assessmentType)) return [];
 
   const steps: Step[] = [
@@ -125,6 +130,46 @@ function getAdaptiveSteps(assessmentType: string, standards?: string): Step[] {
     },
   ];
 
+  // ── Arithmetic fluency sub-steps ──────────────────────────────────────
+  // Only shown when teacher picks "Arithmetic Fluency" in the format step.
+  if (questionFormat && questionFormat.split(",").map(s => s.trim()).includes("arithmeticFluency")) {
+    steps.push({
+      id: "arithmeticOperation",
+      question: "Which operation should the drill focus on?",
+      chips: [
+        { label: "Addition (+)",       value: "add"      },
+        { label: "Subtraction (−)",    value: "subtract" },
+        { label: "Multiplication (×)", value: "multiply" },
+        { label: "Division (÷)",       value: "divide"   },
+      ],
+    });
+    steps.push({
+      id: "arithmeticRange",
+      question: "What number range should operands stay within? (default: 1–10)",
+      placeholder: "e.g. 1–10  or  2–12  or  1–20",
+      optional: true,
+    });
+  }
+  // ── Passage-based sub-steps ──────────────────────────────────
+  // Only shown when teacher picks "Passage-Based Reading" in the format step.
+  if (questionFormat && questionFormat.split(",").map(s => s.trim()).includes("passageBased")) {
+    steps.push({
+      id: "passageSource",
+      question: "For the reading passage — should AI write one, or will you provide your own?",
+      chips: [
+        { label: "AI writes the passage",    value: "ai"      },
+        { label: "I’ll provide the passage", value: "teacher" },
+      ],
+    });
+    // Only ask for the text if the teacher said they’ll provide it.
+    if (passageSource === "teacher") {
+      steps.push({
+        id: "passageText",
+        question: "Paste or type your passage text below. Questions will be written around it.",
+        placeholder: "Paste passage here…",
+      });
+    }
+  }
   // Multi-part questions for longer structured assessments
   if (["test", "quiz", "worksheet", "testReview"].includes(assessmentType)) {
     steps.push({
@@ -185,23 +230,33 @@ export type ConversationalIntent = {
   /** "commonCore" | "state" | "ap" | "none" */
   standards?: string;
   /** State abbreviation when standards === "state", e.g. "GA" */
-  stateCode?: string;
-};
+  stateCode?: string;  /** "add" | "subtract" | "multiply" | "divide" — injected when arithmetic fluency chosen */
+  arithmeticOperation?: string;
+  /** Free-text range parsed to { min, max }, e.g. "1-10" — injected when arithmetic fluency chosen */
+  arithmeticRange?: string;
+  /** "ai" | "teacher" — who provides the reading passage */
+  passageSource?: string;
+  /** Passage text when passageSource === "teacher" */
+  passageText?: string;};
 
 const DEFAULT_ANSWERS: Record<StepId, string> = {
-  gradeLevels:         "",
-  course:              "",
-  topic:               "",
-  assessmentType:      "",
-  questionFormat:      "",
-  bloomPreference:     "",
-  multiPartQuestions:  "",
-  sectionStructure:    "",
-  standards:           "",
-  stateCode:           "",
-  studentLevel:        "",
-  time:                "",
-  additionalDetails:   "",
+  gradeLevels:          "",
+  course:               "",
+  topic:                "",
+  assessmentType:       "",
+  questionFormat:       "",
+  arithmeticOperation:  "",
+  arithmeticRange:      "",
+  passageSource:        "",
+  passageText:          "",
+  bloomPreference:      "",
+  multiPartQuestions:   "",
+  sectionStructure:     "",
+  standards:            "",
+  stateCode:            "",
+  studentLevel:         "",
+  time:                 "",
+  additionalDetails:    "",
 };
 
 interface ConversationalAssessmentProps {
@@ -215,6 +270,11 @@ interface ConversationalAssessmentProps {
    * navigate back to any specific field using the ← Back button.
    */
   initialAnswers?: Partial<Record<StepId, string>>;
+  /**
+   * Soft defaults (e.g. most-used course / grade) pre-filled on a fresh form.
+   * Unlike initialAnswers, the teacher starts at step 0 and can override them naturally.
+   */
+  defaultAnswers?: Partial<Record<StepId, string>>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -224,11 +284,14 @@ export function ConversationalAssessment({
   isLoading,
   disabled = false,
   initialAnswers,
+  defaultAnswers,
 }: ConversationalAssessmentProps) {
   const isBlocked = isLoading || disabled;
 
   const [answers, setAnswers] = useState<Record<StepId, string>>(() => ({
     ...DEFAULT_ANSWERS,
+    // defaultAnswers (soft) merged first — overridden by initialAnswers if restoring a session
+    ...(defaultAnswers ?? {}),
     ...(initialAnswers ?? {}),
   }));
 
@@ -237,7 +300,7 @@ export function ConversationalAssessment({
   const [stepIndex, setStepIndex] = useState(() => {
     if (!initialAnswers) return 0;
     const aType = initialAnswers.assessmentType ?? "";
-    const adaptive = aType ? getAdaptiveSteps(aType, initialAnswers.standards) : [];
+    const adaptive = aType ? getAdaptiveSteps(aType, initialAnswers.standards, initialAnswers.questionFormat, initialAnswers.passageSource) : [];
     const allSteps = [...BASE_STEPS_BEFORE, ...adaptive, ...BASE_STEPS_AFTER];
     return Math.max(0, allSteps.length - 1);
   });
@@ -254,10 +317,10 @@ export function ConversationalAssessment({
   // ── Compute the dynamic step list based on assessmentType answer ────────
   const steps: Step[] = useMemo(() => {
     const adaptiveSteps = answers.assessmentType
-      ? getAdaptiveSteps(answers.assessmentType, answers.standards)
+      ? getAdaptiveSteps(answers.assessmentType, answers.standards, answers.questionFormat, answers.passageSource)
       : [];
     return [...BASE_STEPS_BEFORE, ...adaptiveSteps, ...BASE_STEPS_AFTER];
-  }, [answers.assessmentType, answers.standards]);
+  }, [answers.assessmentType, answers.standards, answers.questionFormat, answers.passageSource]);
 
   const currentStep = steps[stepIndex];
   const isChipStep  = Boolean(currentStep?.chips?.length);
@@ -284,7 +347,7 @@ export function ConversationalAssessment({
     // After assessmentType is answered, the steps list will recompute.
     // We need to compute the new step list to know the correct next index.
     const newAdaptive = next.assessmentType
-      ? getAdaptiveSteps(next.assessmentType, next.standards)
+      ? getAdaptiveSteps(next.assessmentType, next.standards, next.questionFormat, next.passageSource)
       : [];
     const newSteps = [...BASE_STEPS_BEFORE, ...newAdaptive, ...BASE_STEPS_AFTER];
 
@@ -315,6 +378,14 @@ export function ConversationalAssessment({
       sectionStructure:     next.sectionStructure || undefined,
       standards:            next.standards || undefined,
       stateCode:            next.stateCode || undefined,
+
+      // Arithmetic fluency teacher-specified fields
+      arithmeticOperation:  (next.arithmeticOperation || undefined) as ConversationalIntent["arithmeticOperation"],
+      arithmeticRange:      next.arithmeticRange || undefined,
+
+      // Passage-based fields
+      passageSource:        next.passageSource || undefined,
+      passageText:          next.passageText || undefined,
     };
     onComplete(intent);
   }

@@ -178,6 +178,122 @@
   line-height: 1.4;
 }
 
+/* ── Matched-to-inputs rows ─────────────────────────────────────────────────── */
+
+.av-match-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.av-match-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.av-match-label {
+  font-weight: 600;
+  color: var(--gray-700, #374151);
+  min-width: 7.5rem;
+  flex-shrink: 0;
+}
+
+.av-match-value {
+  color: var(--gray-600, #4b5563);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.av-match-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.av-match-badge--yes {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.av-match-badge--partial {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.av-match-badge--no {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ── Improve-your-next-prompt panel ─────────────────────────────────────────── */
+
+.av-prompt-status {
+  font-size: 0.84rem;
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  margin-bottom: 0.85rem;
+  line-height: 1.45;
+}
+
+.av-prompt-status--clean {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.av-prompt-status--corrected {
+  background: #fff7ed;
+  color: #92400e;
+  border: 1px solid #fed7aa;
+}
+
+.av-prompt-tips-heading {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gray-500, #6b7280);
+  margin: 0 0 0.6rem;
+}
+
+.av-prompt-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.av-prompt-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.av-prompt-tip-reason {
+  font-size: 0.8rem;
+  color: var(--gray-500, #6b7280);
+  margin: 0;
+}
+
+.av-prompt-tip-snippet {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  background: var(--surface-2, #f3f4f6);
+  border-left: 3px solid #6366f1;
+  border-radius: 0 5px 5px 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--gray-700, #374151);
+  line-height: 1.5;
+}
+
 /* ── Student header fields ──────────────────────────────────────────────────── */
 
 .av-student-fields {
@@ -208,6 +324,19 @@
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
+}
+
+/* Section divider shown when the assessment has multiple question types */
+.av-section-header {
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-secondary, #6b7280);
+  border-bottom: 1.5px solid var(--border, #e5e7eb);
+  padding-bottom: 0.4rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .av-question {
@@ -297,6 +426,47 @@
   padding: 0.1rem 0.5rem;
   margin-bottom: 0.4rem;
   color: var(--gray-500);
+}
+
+/* ── Column layout (arithmetic fluency) ────────────────────────────────────── */
+
+.av-questions-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 1.75rem 1.5rem;
+}
+
+.av-question-compact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}
+
+.av-q-compact-number {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--gray-500);
+}
+
+.av-q-compact-expr {
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+.av-q-compact-blank {
+  width: 100%;
+  height: 1.75rem;
+  border-bottom: 1.5px solid var(--fg);
+  margin-top: 0.2rem;
+}
+
+.av-q-compact-answer {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--primary);
 }
 
 /* ── Answer key ─────────────────────────────────────────────────────────────── */
@@ -518,4 +688,51 @@
   font-size: 0.84rem;
   line-height: 1.45;
   color: var(--fg);
+}
+
+/* ── Passage-based question styles ───────────────────────────── */
+.av-question--passage .av-q-body {
+  width: 100%;
+}
+
+.av-passage-block {
+  background: #f6f8fa;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.av-passage-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-style: italic;
+  color: #57606a;
+  margin-bottom: 0.4rem;
+  text-transform: none;
+}
+
+.av-passage-text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: var(--fg);
+}
+
+.av-passage-questions {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.av-passage-question {
+  margin-bottom: 0.75rem;
+}
+
+@media print {
+  .av-passage-block {
+    background: #f6f8fa !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

@@ -18,6 +18,12 @@ export interface WriterContext {
     difficulty: string;
     topicAngle?: string;
   }[];
+  /** Display format for math notation — controls MATH FORMATTING CONTRACT in chunk prompt. */
+  mathFormat?: "unicode" | "plain" | "latex";
+  /** Arithmetic fluency: required operation (add|subtract|multiply|divide). */
+  operation?: "add" | "subtract" | "multiply" | "divide";
+  /** Arithmetic fluency: operand range for arithmetic slots. */
+  range?: { min: number; max: number };
 }
 
 export interface ScribePrescriptions {
@@ -52,6 +58,13 @@ SLOT REQUIREMENTS (MANDATORY)
 - questionType: ${slot.questionType}
 - cognitiveDemand: ${slot.cognitiveDemand}
 - difficulty: ${slot.difficulty}
+
+MATH FORMATTING CONTRACT (mandatory for every question prompt and answer)
+- Fractions: write as (numerator)/(denominator)        e.g. "(4x - 5)/(x + 2)"
+- Radicals:  write as √(expression) with parentheses   e.g. "√(x + 7)", "√(2x - 1)"
+- Exponents: write as x^2, x^(-1), (x+3)^2            do NOT use Unicode superscripts
+- Negatives: attach minus directly to its value        write "-5x" not "- 5x"
+- Coefficients: write as 3x, not "3·x", "3 x", or "3*x"
 
 COGNITIVE DEMAND DEFINITIONS
 For cognitiveDemand:

@@ -6,6 +6,8 @@ import { ASSESSMENT_TYPES, AssessmentTypeKey } from "@/pipeline/contracts/assess
 import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
 import { PipelineDebugPanel } from "@/components_new/PipelineDebugPanel";
 import { runArchitectWriterDebug } from "@/pipeline/devTools/runArchitectWriterDebug";
+import { MathFormatSelector } from "@/components_new/Pipeline/MathFormatSelector";
+import type { MathFormat } from "@/utils/mathFormatters";
 
 
 
@@ -33,6 +35,7 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
     additionalDetails: "",
     sourceDocuments: [],
     exampleAssessment: undefined,
+    mathFormat: "unicode",
   });
 
   function update<K extends keyof MinimalTeacherIntent>(
@@ -161,6 +164,14 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
           value={form.additionalDetails ?? ""}
           placeholder="Any constraints, goals, or notes — leave blank if none"
           onChange={(e) => update("additionalDetails", e.target.value)}
+        />
+      </div>
+
+      {/* Math Format */}
+      <div>
+        <MathFormatSelector
+          value={(form.mathFormat ?? "unicode") as MathFormat}
+          onChange={(v) => update("mathFormat", v)}
         />
       </div>
 

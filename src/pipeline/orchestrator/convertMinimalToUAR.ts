@@ -33,6 +33,7 @@ function mapSingleFormat(
     case "fitbOnly":          return ["fillInTheBlank"];
     case "trueFalseOnly":     return ["trueFalse"];
     case "arithmeticFluency": return ["arithmeticFluency"];
+    case "passageBased":       return ["passageBased"];
     case "mixed":
       if (assessmentType === "test")
         return ["multipleChoice", "shortAnswer", "freeResponse"];
@@ -98,11 +99,35 @@ export function convertMinimalToUAR(
     standards: intent.standards ?? null,
     stateCode: intent.stateCode ?? null,
     multiPartQuestions: intent.multiPartQuestions ?? null,
+    mathFormat: (intent.mathFormat ?? "unicode") as "unicode" | "plain" | "latex",
 
     // ── Question types mapped from questionFormat ─────────────────────
-    questionTypes: mapQuestionFormat(intent.questionFormat, intent.assessmentType),
+    questionTypes: (() => {
+      let types = mapQuestionFormat(intent.questionFormat, intent.assessmentType);
+      // When teacher requests multi-part questions but picked a single-format
+      // that maps to only ["multipleChoice"], upgrade to include shortAnswer
+      // so the writer can actually build the progressive A→B→C structure.
+      if (
+        intent.multiPartQuestions === "yes" &&
+        types?.length === 1 &&
+        types[0] === "multipleChoice"
+      ) {
+        types = ["multipleChoice", "shortAnswer"];
+      }
+      return types;
+    })(),
 
-    sourceDocuments: intent.sourceDocuments ?? [],
+    // ── Arithmetic fluency teacher-specified fields ───────────────────
+    ...(intent.arithmeticOperation ? { operation: intent.arithmeticOperation } : {}),
+    ...(intent.arithmeticRange    ? { range:     intent.arithmeticRange     } : {}),
+
+    // If teacher provided a passage text, inject it as a source document
+    sourceDocuments: [
+      ...(intent.sourceDocuments ?? []),
+      ...((intent as any).passageText
+        ? [{ id: "teacher-passage", name: "Teacher-provided passage", content: (intent as any).passageText as string }]
+        : []),
+    ],
     exampleAssessment: intent.exampleAssessment,
   };
 }

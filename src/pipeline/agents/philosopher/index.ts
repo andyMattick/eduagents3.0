@@ -116,6 +116,44 @@ function analyzeWriteMode(input: {
 
   notes.push(`Quality score: ${qualityScore}/10`);
 
+  // Build a useful narrative for teachers about what the gatekeeper corrected
+  const notesForTeacher: string[] = [];
+  if (violations.length === 0) {
+    notesForTeacher.push( `✓ Clean run — all ${writerDraft.length} questions passed quality checks with no corrections needed.`);
+  } else {
+    const types = [...new Set<string>(
+      violations
+        .map((v: any) => {
+          const t: string = v.type ?? v ?? "";
+          if (t.includes("cognitive") || t.includes("bloom")) return "Bloom level mismatch";
+          if (t.includes("answer") || t.includes("distractor")) return "answer accuracy";
+          if (t.includes("stem") || t.includes("clarity")) return "stem clarity";
+          if (t.includes("structure") || t.includes("format")) return "format/structure";
+          if (t.includes("type") && t.includes("mismatch")) return "question type mismatch";
+          return t.replace(/_/g, " ");
+        })
+    )];
+    notesForTeacher.push(
+      `⚡ ${violations.length} question${violations.length > 1 ? "s" : ""} were automatically corrected ` +
+      `before delivery (${types.slice(0, 3).join(", ")}${types.length > 3 ? ", …" : ""}). ` +
+      `These fixes were applied by the Gatekeeper — students saw the cleaned version.`
+    );
+  }
+  if (redundantPairs.length > 0) {
+    notesForTeacher.push(
+      `⚠ ${redundantPairs.length} question pair${redundantPairs.length > 1 ? "s" : ""} have highly overlapping content ` +
+      `(${redundantPairs.join(", ")}). Adding specific sub-topics to your next prompt will reduce this.`
+    );
+  }
+  const guardrailSummary: string = blueprint?.guardrailSummary ?? "";
+  if (guardrailSummary) {
+    notesForTeacher.push(`🔧 Guardrail active for this subject: ${guardrailSummary}`);
+  }
+  // Encode teacher notes as 💡 tips so AssessmentViewer surfaces them
+  for (const n of notesForTeacher) {
+    notes.push(`💡 Tip — ${n}`);
+  }
+
   return {
     status: "complete",
     severity: 1,

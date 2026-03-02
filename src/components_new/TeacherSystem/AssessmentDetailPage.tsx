@@ -11,6 +11,7 @@ import type { FinalAssessment } from "@/pipeline/agents/builder/FinalAssessment"
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { generateAssessment } from "@/config/aiConfig";
 import { AssessmentViewer } from "../Pipeline/AssessmentViewer";
+import { ReportResultsPage } from "./ReportResultsPage";
 import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
@@ -615,28 +616,6 @@ function AiInsightsPanel({
 // AI Generation Notes panel (teacher-language translation of quality data)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function reliabilityColor(score: number) {
-  if (score >= 80) return { text: "#166534", bar: "#22c55e" };
-  if (score >= 55) return { text: "#854d0e", bar: "#f59e0b" };
-  return { text: "#991b1b", bar: "#ef4444" };
-}
-
-function MetricBar({ label, score, description }: { label: string; score: number; description: string }) {
-  const c = reliabilityColor(score);
-  return (
-    <div style={{ marginBottom: "0.65rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
-        <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: c.text }}>{score}/100</span>
-      </div>
-      <div style={{ height: 5, background: "#e5e7eb", borderRadius: 999, overflow: "hidden", marginBottom: "0.2rem" }}>
-        <div style={{ height: "100%", width: `${score}%`, background: c.bar, borderRadius: 999, transition: "width 0.4s" }} />
-      </div>
-      <div style={{ fontSize: "0.74rem", color: "#6b7280", lineHeight: 1.4 }}>{description}</div>
-    </div>
-  );
-}
-
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
   const [dossier, setDossier] = useState<AgentDossierData | null>(null);
@@ -709,39 +688,8 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
   }
 
   // ── Dossier-derived metrics ─────────────────────────────────────────────
-  const trust100     = dossier?.trustScore100     ?? (dossier?.trustScore     != null ? dossier.trustScore     * 10 : null);
-  const stability100 = dossier?.stabilityScore100 ?? (dossier?.stabilityScore != null ? dossier.stabilityScore * 10 : null);
-  const alignment100 = dossier?.alignmentScore ?? null;
-  const totalRuns    = dossier?.domainMastery?.runs ?? 0;
-  const cleanRuns    = dossier?.domainMastery?.cleanRuns ?? 0;
-  const weakCats     = dossier?.weaknessCategories;
-  const topWeakness  = weakCats
-    ? (Object.entries(weakCats) as [string, number][])
-        .sort(([, a], [, b]) => b - a)
-        .filter(([, v]) => v > 0)
-        .map(([k]) =>
-          k === "spacing"            ? "number/letter spacing"
-          : k === "notation"         ? "math notation"
-          : k === "drift"            ? "staying on topic"
-          : k === "hallucination"    ? "invented content"
-          : k === "difficultyMismatch" ? "difficulty calibration"
-          : k === "structureViolations" ? "question structure"
-          : k)
-        .slice(0, 2)
-    : [];
-
-  const passFailEntries = dossier?.passFailByDomain
-    ? (Object.entries(dossier.passFailByDomain) as [string, { passes: number; fails: number }][])
-    : [];
-  const overallPassRate =
-    passFailEntries.length > 0
-      ? Math.round(
-          (passFailEntries.reduce((s, [, v]) => s + v.passes, 0) /
-            Math.max(1, passFailEntries.reduce((s, [, v]) => s + v.passes + v.fails, 0))) * 100
-        )
-      : null;
-
-  const hasDossier = trust100 != null || stability100 != null || alignment100 != null;
+  // (reserved for future use — currently only quality badge is shown)
+  void dossier; // suppress unused warning
 
   return (
     <div
@@ -797,7 +745,7 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                 fontSize: "0.8rem", fontWeight: 700,
                 background: badgeBg, color: badgeColor,
               }}>
-                {qualityLabel}
+                {qualityLabel} ({score}/10)
               </div>
               <span style={{ fontSize: "0.84rem", color: "var(--text-secondary, #6b7280)" }}>
                 {qualityDesc}
@@ -810,68 +758,10 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             <p style={{ margin: 0 }}>⏱️ <strong>Time: </strong>{pacingLine}</p>
           )}
 
-          {/* Revisions */}
+          {/* Revisions — the primary thing teachers care about */}
           <p style={{ margin: 0 }}>✏️ <strong>Revisions: </strong>{revisionLine}</p>
 
-          {/* Reliability from dossier */}
-          {hasDossier && (
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "0.75rem" }}>
-              <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: "0.65rem" }}>
-                Writer performance in this subject
-              </div>
-
-              {trust100 != null && (
-                <MetricBar
-                  label="Reliability"
-                  score={trust100}
-                  description={
-                    trust100 >= 80 ? "Questions consistently matched your subject and grade level."
-                    : trust100 >= 55 ? "Most questions were clean. A few needed automatic fixes."
-                    : "This subject is still calibrating — more runs will improve reliability."
-                  }
-                />
-              )}
-              {alignment100 != null && (
-                <MetricBar
-                  label="Topic Fit"
-                  score={alignment100}
-                  description={
-                    alignment100 >= 80 ? "Questions stayed tightly aligned to your chosen topic."
-                    : alignment100 >= 55 ? "Minor topic drift was detected and corrected."
-                    : "Questions drifted from topic and needed correction."
-                  }
-                />
-              )}
-              {stability100 != null && (
-                <MetricBar
-                  label="Run-to-Run Consistency"
-                  score={stability100}
-                  description={
-                    stability100 >= 80 ? "Output quality is consistent across multiple runs."
-                    : stability100 >= 55 ? "Quality varies slightly run to run but is improving."
-                    : "This subject is still calibrating. Quality will improve with more runs."
-                  }
-                />
-              )}
-
-              {totalRuns > 0 && (
-                <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  📊 Based on <strong>{totalRuns}</strong> run{totalRuns !== 1 ? "s" : ""} in this subject
-                  {overallPassRate != null && ` — passed quality checks ${overallPassRate}% of the time`}.
-                  {cleanRuns > 0 && totalRuns > 0 && ` ${Math.round((cleanRuns / totalRuns) * 100)}% of runs needed zero corrections.`}
-                </p>
-              )}
-
-              {topWeakness.length > 0 && (
-                <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  🔧 <strong>Currently improving: </strong>
-                  {topWeakness.join(" and ")}. These are automatically corrected before you see the output.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Misc notes */}
+          {/* Misc notes — constraint warnings, truncation events, etc. */}
           {notes.length > 0 && (
             <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.84rem" }}>
               {notes.map((note, i) => (
@@ -905,6 +795,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
   const [branchFields, setBranchFields] = useState<BranchFields | null>(null);
   const [isBranching, setIsBranching] = useState(false);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [showReportResults, setShowReportResults] = useState(false);
 
   // ── Phase 3 — Assign active version state ───────────────────────────────
   const [isAssigning, setIsAssigning] = useState(false);
@@ -1109,6 +1000,20 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
         previousVersionId: selectedVersionId,
       });
       await generateAssessment(uar);
+      // ── Log regeneration as a mild teacher dissatisfaction signal ──────
+      const _domain = template.domain ?? "General";
+      DossierManager.logTeacherOverride(template.user_id, `writer:${_domain}`, {
+        field: "regenerate",
+        oldValue: selectedVersionId,
+        newValue: "new_version",
+        reason: "Teacher requested regeneration with same settings — mild dissatisfaction signal",
+      }).catch(() => {});
+      // One incorrect "vote" nudges scaffold level; no misconceptions needed here
+      DossierManager.processStudentPerformance(template.user_id, `writer:${_domain}`, {
+        correct: 0,
+        incorrect: 1,
+        misconceptions: ["teacher-regenerated"],
+      }).catch(() => {});
       await reloadVersions();
     } catch (e: any) {
       setRegenerateError(e?.message ?? "Regeneration failed. Please try again.");
@@ -1146,6 +1051,28 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
         previousVersionId: selectedVersionId,
       });
       await generateAssessment(uar);
+      // ── Log each changed field as a teacher override (stronger dissatisfaction signal) ──
+      const _domain2 = template.domain ?? "General";
+      const _prevUar = template.uar_json ?? {};
+      const _changedFields: Array<{ field: string; oldValue: any; newValue: any }> = [];
+      if (branchFields!.topic !== (_prevUar.topic ?? "")) _changedFields.push({ field: "topic", oldValue: _prevUar.topic, newValue: branchFields!.topic });
+      if (branchFields!.time !== Number(_prevUar.time ?? 20)) _changedFields.push({ field: "time", oldValue: _prevUar.time, newValue: branchFields!.time });
+      if (branchFields!.assessmentType !== (_prevUar.assessmentType ?? "")) _changedFields.push({ field: "assessmentType", oldValue: _prevUar.assessmentType, newValue: branchFields!.assessmentType });
+      if (branchFields!.additionalDetails !== (_prevUar.additionalDetails ?? "")) _changedFields.push({ field: "additionalDetails", oldValue: _prevUar.additionalDetails, newValue: branchFields!.additionalDetails });
+      for (const change of _changedFields) {
+        DossierManager.logTeacherOverride(template.user_id, `writer:${_domain2}`, {
+          field: change.field,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+          reason: "Teacher modified assessment settings — branched to new version",
+        }).catch(() => {});
+      }
+      // Branch = stronger dissatisfaction: teacher changed the inputs themselves
+      DossierManager.processStudentPerformance(template.user_id, `writer:${_domain2}`, {
+        correct: 0,
+        incorrect: Math.max(1, _changedFields.length),
+        misconceptions: ["teacher-branched", ..._changedFields.map(c => `changed-${c.field}`)],
+      }).catch(() => {});
       setShowBranchForm(false);
       await reloadVersions();
     } catch (e: any) {
@@ -1318,7 +1245,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                         {v.id === template.active_version_id ? " (active)" : ""}
                         {v.parent_version_id ? " · revised" : ""}
                         {` · ${vDate}`}
-                        {v.quality_score != null ? ` · score ${v.quality_score}` : ""}
+                        {v.quality_score != null ? ` · Quality ${v.quality_score}/10${v.quality_score >= 8 ? " ✓" : v.quality_score >= 5 ? "" : " ⚠"}` : ""}
                       </option>
                     );
                   })}
@@ -1377,6 +1304,25 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 {/* ── Spacer ── */}
                 <div style={{ flex: 1 }} />
 
+                {/* Report Results button */}
+                <button
+                  onClick={() => setShowReportResults((v) => !v)}
+                  disabled={!selectedVersionId}
+                  title="Record how students actually performed — adjusts future difficulty"
+                  style={{
+                    padding: "0.4rem 1rem",
+                    borderRadius: "8px",
+                    border: showReportResults ? "1.5px solid #10b981" : "1.5px solid #d1fae5",
+                    background: showReportResults ? "#10b981" : "#f0fdf4",
+                    color: showReportResults ? "#fff" : "#065f46",
+                    cursor: "pointer",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  {showReportResults ? "✕ Close Report" : "📊 Report Results"}
+                </button>
+
                 {/* Regenerate button */}
                 <button
                   onClick={handleRegenerate}
@@ -1405,9 +1351,9 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   style={{
                     padding: "0.4rem 1rem",
                     borderRadius: "8px",
-                    border: "1.5px solid var(--color-accent, #4f46e5)",
-                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : "transparent",
-                    color: showBranchForm ? "#fff" : "var(--color-accent, #4f46e5)",
+                    border: showBranchForm ? "1.5px solid var(--color-accent, #4f46e5)" : "1px solid #ccc",
+                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : "#f5f5f5",
+                    color: showBranchForm ? "#fff" : "#333",
                     cursor: "pointer",
                     fontSize: "0.85rem",
                     fontWeight: 600,
@@ -1428,6 +1374,26 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 <p style={{ color: "var(--color-error, #ef4444)", fontSize: "0.85rem", margin: "0.25rem 0" }}>
                   {assignError}
                 </p>
+              )}
+
+              {/* ── Report Results inline panel ─────────────────────── */}
+              {showReportResults && selectedVersionId && template && (
+                <div
+                  style={{
+                    marginTop: "0.75rem",
+                    border: "1.5px solid #10b981",
+                    borderRadius: "10px",
+                    background: "#f0fdf4",
+                    overflow: "hidden",
+                  }}
+                >
+                  <ReportResultsPage
+                    assignmentId={selectedVersionId}
+                    userId={template.user_id}
+                    domain={template.domain ?? "General"}
+                    onClose={() => setShowReportResults(false)}
+                  />
+                </div>
               )}
 
               {/* ── Branch form ───────────────────────────────────────── */}

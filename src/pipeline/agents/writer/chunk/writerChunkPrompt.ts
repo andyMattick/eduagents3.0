@@ -23,17 +23,71 @@ export function buildChunkPrompt(
   const bloomDirectives = buildBloomHintDirectives(slots, hintMode);
   const hintMap = new Map(bloomDirectives.map(d => [d.slotId, d.directive]));
 
+  const mathFmt = context.mathFormat ?? "unicode";
+
+  // Build the MATH FORMATTING CONTRACT based on the requested format
+  const mathContract = mathFmt === "unicode"
+    ? `MATH FORMATTING CONTRACT — UNICODE MODE (mandatory for every question prompt and answer)
+- Fractions: write as (numerator)/(denominator)              e.g. "(4x − 5)/(x + 2)"
+- Radicals:  write as √(expression) with parentheses         e.g. "√(x + 7)", "√(2x − 1)"
+- Logarithms: write as log(expression)                       e.g. "log(x + 3)"
+- Exponents: use Unicode superscripts: x², x³, (x+3)²       do NOT write x^2
+- Multiplication: use dot notation: 4·3                      do NOT write 4*3 or 4x separately
+- Unicode fractions: use ½, ⅓, ⅔ where appropriate
+- Negatives: attach minus directly to its value              write "−5x" not "− 5x"
+- Always use parentheses for grouping compound expressions`
+    : mathFmt === "latex"
+    ? `MATH FORMATTING CONTRACT — LATEX MODE (mandatory for every question prompt and answer)
+- Fractions: \\frac{numerator}{denominator}
+- Radicals:  \\sqrt{expression}
+- Exponents: x^{2}, (x+3)^{2}
+- Negatives: -5x (no space after minus)
+- Always wrap LaTeX in \\( ... \\) for inline, \\[ ... \\] for display`
+    : `MATH FORMATTING CONTRACT — PLAIN MODE (mandatory for every question prompt and answer)
+- Fractions: write as (numerator)/(denominator)              e.g. "(4x - 5)/(x + 2)"
+- Radicals:  write as sqrt(expression)                       e.g. "sqrt(x + 7)"
+- Exponents: write as x^2, x^(-1), (x+3)^2
+- Negatives: attach minus directly to its value              write "-5x" not "- 5x"
+- Coefficients: write as 3x, not "3*x" or "3 x"`;
+
   const slotDescriptions = slots
     .map(
       (slot, i) => {
         const hint = hintMap.get(slot.id) ?? "";
+        const slotOp    = (slot as any).operation;
+        const slotRange = (slot as any).range;
+
+        let extra = "";
+        if (slot.questionType === "arithmeticFluency" && slotOp && slotRange) {
+          extra += `\n  ARITHMETIC CONSTRAINT: Operation MUST be "${slotOp}". Both operands MUST be between ${slotRange.min} and ${slotRange.max}. Write as a bare expression only (e.g. "7 × 4").`;
+        }
+        if (slot.questionType === "passageBased") {
+          // Prefer structured constraints.passageBased; fall back to flat constraints.passageLength (legacy)
+          const pbCfg = (slot.constraints as any)?.passageBased as { passageLength?: string; questionCount?: number } | undefined;
+          const passageLength = pbCfg?.passageLength ?? (slot.constraints as any)?.passageLength ?? "medium";
+          const questionCount = pbCfg?.questionCount ?? 3;
+          const wordRange =
+            passageLength === "short"  ? "100–150"  :
+            passageLength === "long"   ? "250–350"  : "150–250";
+          extra += `\n  PASSAGE-BASED CONTRACT (hard — zero exceptions):
+  - Output MUST use the passage-based JSON shape (see OUTPUT FORMAT below).
+  - "passage": a self-contained reading passage of ${wordRange} words relevant to the topic.
+  - "questions": an array of exactly ${questionCount} objects, each with "prompt" and "answer".
+  - Every question MUST reference the passage directly — no fact outside the passage.
+  - "prompt" field on the item: set to "" (empty string) — the passage replaces it.
+  - Do NOT embed the passage inside "prompt". Use the top-level "passage" key.`;
+        }
+        if (slot.questionType === "graphInterpretation") {
+          extra += `\n  GRAPH REQUIREMENT: No actual image can be shown. Embed a concrete data set or table directly in the prompt text (e.g. a small x/y value table, a described trend, or a specific set of plotted points). Write the question so it is fully self-contained and answerable from the embedded data — do NOT write placeholder text like "[See graph]" or "Refer to the graph below"`;
+        }
+
         return `
 SLOT ${i + 1}
   slotId: ${slot.id}
   questionType: ${slot.questionType}
   cognitiveDemand: ${slot.cognitiveDemand}
   difficulty: ${slot.difficulty}
-  bloomIntent: ${hint}`;
+  bloomIntent: ${hint}${extra}`;
       }
     )
     .join("\n");
@@ -41,8 +95,17 @@ SLOT ${i + 1}
   const outputExamples = slots
     .map((slot) => {
       const isMC = slot.questionType === "multipleChoice";
+      const isPassage = slot.questionType === "passageBased";
       if (isMC) {
         return `{ "slotId": "${slot.id}", "questionType": "multipleChoice", "prompt": "<stem>", "options": ["A. <option A>", "B. <option B>", "C. <option C>", "D. <option D>"], "answer": "B. <option B>" }\n${END_SENTINEL}`;
+      }
+      if (isPassage) {
+        const pbCfg = (slot.constraints as any)?.passageBased as { questionCount?: number } | undefined;
+        const qCount = pbCfg?.questionCount ?? 3;
+        const qArray = Array.from({ length: qCount }, (_, i) =>
+          `{ "prompt": "<question ${i + 1}>", "answer": "<model answer ${i + 1}>" }`
+        ).join(", ");
+        return `{ "slotId": "${slot.id}", "questionType": "passageBased", "prompt": "", "passage": "<reading passage text>", "questions": [${qArray}] }\n${END_SENTINEL}`;
       }
       // Non-MC: omit "options" entirely — do NOT output undefined
       return `{ "slotId": "${slot.id}", "questionType": "${slot.questionType}", "prompt": "<stem>", "answer": "<answer text>" }\n${END_SENTINEL}`;
@@ -115,6 +178,23 @@ STEM NATURALISM (hard rule — zero exceptions unless teacher notes explicitly r
     evaluate   → "Which approach is more efficient and why?", "Justify...", "Critique..."
     create     → "Design...", "Construct...", "Develop a model that..."
 
+DIAGRAM / IMAGE RULE (hard rule — zero exceptions)
+- NEVER include placeholder text such as "[Graph here]", "[See diagram]", "[Image]", "[Refer to figure]", "Use the graph below", or any similar text that implies a visual the student cannot see.
+- If a question conceptually involves a graph or diagram and no actual image is present, embed the necessary data directly in the question text (e.g. a small table of values, a described function, or explicit coordinate pairs).
+- graphInterpretation slots must be fully self-contained using embedded data only.
+
+SINGLE-TYPE CONTRACT (hard rule — zero exceptions)
+- Each slot has ONE questionType. Produce EXACTLY that type — nothing else.
+- NEVER merge two question formats into a single prompt stem. Forbidden hybrid patterns:
+    ✗ Analytical/short-answer preamble followed by "True or False: ..."
+    ✗ "Answer the following, then choose: ..."
+    ✗ Any stem requiring BOTH a written response AND a T/F, MCQ, or fill-in answer
+- A trueFalse slot = ONE declarative T/F statement only. No multi-sentence preamble that itself asks for analysis.
+- A shortAnswer slot = ONE open-ended question only. No appended T/F or MCQ at the end.
+- If a topic demands multiple question types, the blueprint already has separate slots for each. Your job is to honour each slot in isolation.
+
+${mathContract}
+
 SCRIBE BEHAVIORAL GUIDANCE
 Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
 Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
@@ -130,6 +210,7 @@ OUTPUT FORMAT (STRICT)
 - Each object must be terminated immediately by: ${END_SENTINEL}
 - No arrays. No outer wrappers. No commentary. No markdown fences.
 - For multipleChoice: include "options" array with exactly 4 strings.
+- For passageBased: include "passage" (string) and "questions" (array of {prompt, answer}). Set "prompt" to "".
 - For other types: omit "options".
 
 ${mcqRule}EXAMPLE OUTPUT SHAPE

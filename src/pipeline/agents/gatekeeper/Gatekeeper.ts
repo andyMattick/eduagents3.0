@@ -42,6 +42,11 @@ function violationToMode(type: string): RewriteMode {
     case "arithmetic_answer_incorrect":
     case "arithmetic_eval_error":
     case "arithmetic_operator_mismatch":
+    case "passage_missing":
+    case "passage_contains_raw_newlines":
+    case "passage_length_out_of_range":
+    case "passage_question_count_mismatch":
+    case "passage_subquestion_incomplete":
       return "formatFix";
     case "topic_mismatch":
     case "domain_mismatch":
@@ -96,10 +101,73 @@ export class Gatekeeper {
       }
 
       //
-      // 1b. Arithmetic fluency — structural validation; skip all LLM-oriented checks.
+      // 1b. Passage-based structural validation — validate passage + sub-questions; skip LLM checks.
       //
-      if (item.questionType === "arithmeticFluency") {
-        const arithPattern = /^\d+\s*[+\-×÷*/]\s*\d+$/;
+      if (item.questionType === "passageBased") {
+        const passageItem = item as any;
+        const passageText: string = passageItem.passage ?? "";
+        const subQs: Array<{ prompt?: string; answer?: string }> = passageItem.questions ?? [];
+
+        if (!passageText || typeof passageText !== "string") {
+          violations.push({
+            slotId: slot.id,
+            type: "passage_missing",
+            message: "passageBased item must include a non-empty 'passage' string.",
+          });
+        } else {
+          // Raw-newline check (unescaped newlines break JSON and export)
+          if (/\n/.test(passageText)) {
+            violations.push({
+              slotId: slot.id,
+              type: "passage_contains_raw_newlines",
+              message: "passage field contains raw newline characters — must be a single-line string.",
+            });
+          }
+          // Word-count check against passageLength constraint
+          const pbCfg = (slot.constraints as any)?.passageBased as
+            { passageLength?: string; questionCount?: number } | undefined;
+          // Also support legacy flat constraints.passageLength
+          const passageLength = pbCfg?.passageLength ?? (slot.constraints as any)?.passageLength;
+          const wordCount = passageText.split(/\s+/).filter(Boolean).length;
+          if (passageLength === "short"  && (wordCount < 80  || wordCount > 180)) {
+            violations.push({ slotId: slot.id, type: "passage_length_out_of_range", message: `Short passage must be 80–180 words; got ${wordCount}.` });
+          } else if (passageLength === "medium" && (wordCount < 130 || wordCount > 280)) {
+            violations.push({ slotId: slot.id, type: "passage_length_out_of_range", message: `Medium passage must be 130–280 words; got ${wordCount}.` });
+          } else if (passageLength === "long"   && (wordCount < 200 || wordCount > 380)) {
+            violations.push({ slotId: slot.id, type: "passage_length_out_of_range", message: `Long passage must be 200–380 words; got ${wordCount}.` });
+          }
+        }
+
+        // Sub-question count
+        const expectedQCount = (slot.constraints as any)?.passageBased?.questionCount ??
+          (slot.constraints as any)?.questionCount ?? 3;
+        if (subQs.length !== expectedQCount) {
+          violations.push({
+            slotId: slot.id,
+            type: "passage_question_count_mismatch",
+            message: `Expected ${expectedQCount} sub-questions; got ${subQs.length}.`,
+          });
+        }
+
+        // Per-question validation
+        for (let qi = 0; qi < subQs.length; qi++) {
+          if (!subQs[qi].prompt?.trim() || !subQs[qi].answer?.trim()) {
+            violations.push({
+              slotId: slot.id,
+              type: "passage_subquestion_incomplete",
+              message: `Sub-question ${qi + 1} is missing a prompt or answer.`,
+            });
+          }
+        }
+
+        // Passage-based items have their own format — skip the generic item checks.
+        continue;
+      }
+
+      //
+      // 1c. Arithmetic fluency — structural validation; skip all LLM-oriented checks.
+      //
+      if (item.questionType === "arithmeticFluency") {        const arithPattern = /^\d+\s*[+\-×÷*/]\s*\d+$/;
         if (!arithPattern.test(item.prompt.trim())) {
           violations.push({
             slotId: slot.id,
@@ -140,6 +208,20 @@ export class Gatekeeper {
                 slotId: slot.id,
                 type: "arithmetic_operator_mismatch",
                 message: `Slot requires "${slot.operation}" but expression "${item.prompt}" uses a different operator.`,
+              });
+            }
+          }
+
+          // ── Operand range check ──────────────────────────────────────────
+          const slotRange = (slot as any).range ?? (uar as any).range;
+          if (slotRange) {
+            const nums = item.prompt.match(/\d+/g)?.map(Number) ?? [];
+            const outOfRange = nums.filter(n => n < slotRange.min || n > slotRange.max);
+            if (outOfRange.length > 0) {
+              violations.push({
+                slotId: slot.id,
+                type: "operand_out_of_range",
+                message: `Operand(s) ${outOfRange.join(", ")} are outside the required range [${slotRange.min}, ${slotRange.max}].`,
               });
             }
           }
@@ -347,6 +429,58 @@ export class Gatekeeper {
             slotId: slot.id,
             type: "scope_width_violation",
             message: "Narrow scope questions must not integrate multiple strands."
+          });
+        }
+      }
+
+      //
+      // 10. Math clarity (non-arithmetic items)
+      //
+      // Enforce: radicals use √(...), logs use log(...), no implicit multiplication.
+      //
+      if (item.questionType !== "arithmeticFluency") {
+        // No implicit multiplication: e.g. "3x" where the coefficient and variable
+        // are fused without an operator. Flag only in math-heavy domains.
+        const domain = (uar as any).domain ?? (uar as any).course ?? "";
+        const isMath = /math|algebra|calculus|geometry|statistics|arithmetic/i.test(domain);
+        if (isMath) {
+          // Check radical format: bare √ without parentheses
+          if (/√[^(]/.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "math_clarity_violation",
+              message: `Radical expression must use parentheses: √(expression). Found bare √ in prompt.`,
+            });
+          }
+          // Check log format: log without parentheses
+          if (/\blog[^(]/.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "math_clarity_violation",
+              message: `Logarithm expression must use parentheses: log(expression). Found bare log in prompt.`,
+            });
+          }
+        }
+      }
+
+      //
+      // 11. Standards alignment (soft check)
+      //
+      // If the slot has standards constraints, note any mismatch as a low-severity
+      // advisory. We do not block — alignment is verified by the Architect/Writer.
+      //
+      const slotStandards = (slot as any).constraints?.standards;
+      const uarStandards = (uar as any).standards;
+      if ((slotStandards || uarStandards) && !(uar as any).standardsCheckDisabled) {
+        // Light heuristic: if the prompt has NO academic vocabulary at all,
+        // it's a signal that standards alignment may have been ignored.
+        const academicVocab = /[A-Z]{2,}\.[A-Z0-9]{2,}|standard|objective|ccss|teks|ngsss/i;
+        const promptLength = item.prompt.length;
+        if (promptLength < 20 && !academicVocab.test(item.prompt)) {
+          violations.push({
+            slotId: slot.id,
+            type: "standards_mismatch",
+            message: `Item may not align to required standard (${slotStandards ?? uarStandards}). Prompt appears too brief to assess standards coverage.`,
           });
         }
       }

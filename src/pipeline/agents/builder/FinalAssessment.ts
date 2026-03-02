@@ -14,6 +14,14 @@ export interface FinalAssessmentItem {
   /** MCQ only */
   options?: string[];
   answer?: string;
+  /**
+   * Passage-based only: the reading passage displayed above all sub-questions.
+   */
+  passage?: string;
+  /**
+   * Passage-based only: the sub-questions with prompts + model answers.
+   */
+  questions?: Array<{ prompt: string; answer?: string }>;
   metadata?: Record<string, any>;
 }
 
@@ -34,5 +42,9 @@ export interface FinalAssessment {
     orderingStrategy?: string;
     totalEstimatedTimeSeconds?: number;
     pacingSecondsPerItem?: number;
+    /** "columns" for arithmetic fluency, "singleColumn" for all other types. */
+    layout?: "columns" | "singleColumn";
+    /** Per section-type label → instruction line for builders/exporters to print. */
+    sectionInstructions?: Record<string, string>;
   };
 }

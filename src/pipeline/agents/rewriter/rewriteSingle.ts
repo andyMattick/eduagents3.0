@@ -80,6 +80,8 @@ export interface ArithmeticContext {
   topic?: string;
   /** Slot-level operator constraint ("add"|"subtract"|"multiply"|"divide"|"any") */
   operation?: string;
+  /** Operand range from UAR. When present, BOTH operands are constrained to [min, max]. Overrides grade-scaled defaults. */
+  range?: { min: number; max: number };
 }
 
 /** Pick a random int in [min, max] inclusive. */
@@ -131,13 +133,22 @@ export function generateArithmeticItem(
     }
   }
 
-  // ── Grade-scaled number ranges ─────────────────────────────────────────
+  // ── Number ranges ───────────────────────────────────────────────────────
+  // When ctx.range is provided (from UAR), BOTH operands must stay within
+  // [range.min, range.max].  This is the authoritative override — grade-scaled
+  // defaults only apply as a fallback when no explicit range is given.
   let a: number;
   let b: number;
   let answer: number;
 
+  const rMin = ctx.range?.min ?? null;
+  const rMax = ctx.range?.max ?? null;
+  const hasRange = rMin !== null && rMax !== null;
+
   if (op === "+" || op === "-") {
-    if (grade <= 2) {
+    if (hasRange) {
+      a = randRange(rMin!, rMax!); b = randRange(rMin!, rMax!);
+    } else if (grade <= 2) {
       a = randRange(1, 10); b = randRange(1, 10);
     } else if (grade <= 4) {
       a = randRange(10, 99); b = randRange(1, 49);
@@ -155,38 +166,40 @@ export function generateArithmeticItem(
       answer = a + b;
     }
   } else if (op === "×") {
-    if (grade <= 3) {
+    if (hasRange) {
+      a = randRange(rMin!, rMax!); b = randRange(rMin!, rMax!);
+    } else if (grade <= 3) {
       a = randRange(1, 9); b = randRange(1, 9);
     } else if (grade <= 4) {
       a = randRange(1, 12); b = randRange(1, 12);
     } else if (grade <= 5) {
       a = randRange(10, 29); b = randRange(2, 9);
     } else if (grade <= 6) {
-      // 2-digit × 2-digit or 3-digit × 1-digit
       if (Math.random() < 0.5) {
         a = randRange(11, 59); b = randRange(11, 19);
       } else {
         a = randRange(100, 399); b = randRange(2, 9);
       }
     } else {
-      // Grade 7+: 3-digit × 2-digit
       a = randRange(100, 499); b = randRange(12, 49);
     }
     answer = a * b;
   } else {
     // Division (÷) — always whole-number quotient, no remainders
-    if (grade <= 3) {
+    if (hasRange) {
+      // Pick quotient and divisor within range; compute dividend
+      answer = randRange(rMin!, rMax!); b = randRange(Math.max(rMin!, 2), rMax!);
+    } else if (grade <= 3) {
       answer = randRange(1, 9); b = randRange(1, 9);
     } else if (grade <= 4) {
       answer = randRange(1, 12); b = randRange(1, 12);
     } else if (grade <= 5) {
       answer = randRange(2, 19); b = randRange(2, 9);
     } else if (grade <= 6) {
-      // 3-digit ÷ 1-digit  or  4-digit ÷ 2-digit
       if (Math.random() < 0.5) {
-        answer = randRange(10, 99); b = randRange(2, 9);       // → 3-digit ÷ 1-digit
+        answer = randRange(10, 99); b = randRange(2, 9);
       } else {
-        answer = randRange(10, 99); b = randRange(10, 49);     // → 4-digit ÷ 2-digit
+        answer = randRange(10, 99); b = randRange(10, 49);
       }
     } else {
       answer = randRange(10, 199); b = randRange(10, 99);

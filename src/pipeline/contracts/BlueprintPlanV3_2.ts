@@ -11,7 +11,12 @@ export type QuestionType =
   | "multipleChoice"
   | "shortAnswer"
   | "constructedResponse"
-  | "arithmeticFluency";
+  | "arithmeticFluency"
+  | "trueFalse"
+  | "passageBased"
+  | "graphInterpretation"
+  | "fillInTheBlank"
+  | "matching";
 
 export type DifficultyProfile = "easy" | "onLevel" | "challenge";
 

@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { MinimalAssessmentFormWrapper } from "./MinimalAssessmentFormWrapper";
 import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
 import { TraceViewer } from "@/components_new/TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
+import { GenerationPreview } from "./GenerationPreview";
+import { getLastPipelineBlueprint } from "@/config/aiConfig";
 
 import { AssignmentContext } from "../../App"; // this path IS correct
 
@@ -20,12 +22,20 @@ export function PipelineRouter({
 
   const [assessment, setAssessment] = useState<UnifiedAssessmentResponse | null>(null);
   const [showForm, setShowForm] = useState(true);
+  const [partialItems, setPartialItems] = useState<any[]>([]);
+  const [previewBlueprint, setPreviewBlueprint] = useState<any>(null);
 
-  const handlePipelineResult = (result: UnifiedAssessmentResponse) => {
+  const handlePipelineResult = useCallback((result: UnifiedAssessmentResponse) => {
     console.log("Pipeline result:", result);
     setAssessment(result);
-    setShowForm(false); // hide form so the viewer is front-and-centre
-  };
+    setShowForm(false);
+  }, []);
+
+  const handleItemsProgress = useCallback((items: any[]) => {
+    setPartialItems(items);
+    // Grab the blueprint once it becomes available (set by Architect before Writer fires)
+    setPreviewBlueprint((prev: any) => prev ?? getLastPipelineBlueprint());
+  }, []);
 
   /** Derive a human-readable title from the blueprint UAR */
   function getTitle(result: any): string {
@@ -46,22 +56,54 @@ export function PipelineRouter({
     return parts.length ? parts.join(" · ") : undefined;
   }
 
+  const previewTitle =
+    previewBlueprint?.uar?.lessonName ||
+    previewBlueprint?.uar?.topic ||
+    previewBlueprint?.uar?.unitName ||
+    "Assessment";
+
+  // Is the Writer actively running?
+  const isGenerating = partialItems.length > 0 && !assessment;
+
   return (
     <div style={{ padding: "1rem" }}>
-      {showForm ? (
+      {/* ── Form panel ───────────────────────────────────────────────────── */}
+      {showForm && (
         <MinimalAssessmentFormWrapper
           userId={userId}
           onResult={handlePipelineResult}
+          onItemsProgress={handleItemsProgress}
         />
-      ) : (
+      )}
+
+      {/* ── "← New Assessment" button ──────────────────────────────────── */}
+      {!showForm && (
         <button
-          onClick={() => { setShowForm(true); setAssessment(null); }}
+          onClick={() => {
+            setShowForm(true);
+            setAssessment(null);
+            setPartialItems([]);
+            setPreviewBlueprint(null);
+          }}
           style={{ marginBottom: "1rem", cursor: "pointer" }}
         >
           ← New Assessment
         </button>
       )}
 
+      {/* ── Live generation preview ────────────────────────────────────── */}
+      {isGenerating && (
+        <div style={{ marginTop: "1.5rem" }}>
+          <GenerationPreview
+            items={partialItems}
+            blueprint={previewBlueprint}
+            isComplete={false}
+            title={previewTitle}
+          />
+        </div>
+      )}
+
+      {/* ── Final assessment result ───────────────────────────────────── */}
       {assessment && (
         <div style={{ marginTop: "1rem" }}>
           {(assessment as any).finalAssessment ? (

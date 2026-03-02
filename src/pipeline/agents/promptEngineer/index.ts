@@ -245,6 +245,21 @@ export function runPromptEngineer(
     );
   }
 
+  // 2f. High question count + thin additional details → redundancy risk
+  {
+    const impliedQ = timeBudget > 0
+      ? Math.round(timeBudget / pacing.avgMinPerQ)
+      : Math.round((pacing.minQCount + pacing.maxQCount) / 2);
+    const detailsLen = intent.additionalDetails?.trim().length ?? 0;
+    if (impliedQ > 10 && detailsLen < 40) {
+      missingInfo.push(
+        `With ~${impliedQ} questions and no specific instructions, the AI may generate ` +
+        `repetitive or overlapping content. Add specific sub-topics, key vocabulary, events, ` +
+        `or concepts you want each question to cover in the Additional Details field.`
+      );
+    }
+  }
+
   // ── 4. Estimate creation time ──────────────────────────────────────────
 
   const impliedQuestions = timeBudget > 0
