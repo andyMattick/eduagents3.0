@@ -31,6 +31,12 @@ function normalizeItem(item: GeneratedItem): GeneratedItem {
     prompt: fixNumberSpacing(item.prompt ?? ""),
     answer: item.answer ? fixNumberSpacing(item.answer) : item.answer,
     options: item.options?.map(fixNumberSpacing),
+    // Passage-based: apply spacing fix to the passage and sub-question prompts/answers
+    passage: item.passage ? fixNumberSpacing(item.passage) : item.passage,
+    questions: item.questions?.map(q => ({
+      prompt: fixNumberSpacing(q.prompt ?? ""),
+      answer: fixNumberSpacing(q.answer ?? ""),
+    })),
   };
 }
 

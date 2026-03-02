@@ -3,6 +3,16 @@
 import type { QuestionType } from "./UAR";
 
 /**
+ * Word-count bounds and sub-question count for passageBased slots.
+ */
+export interface PassageBasedConstraints {
+  /** Approximate passage length bucket */
+  passageLength: "short" | "medium" | "long"; // ~100–150 words, 150–250 words, 250–350 words
+  /** Number of sub-questions the Writer must generate (2–4 recommended) */
+  questionCount: number;
+}
+
+/**
  * A single slot in the blueprint.
  * Each slot describes exactly ONE question the Writer must generate.
  * 
@@ -74,7 +84,11 @@ export interface BlueprintSlot {
   };
 
   // Optional: any additional constraints or metadata
-  constraints?: Record<string, any>;
+  constraints?: {
+    /** Passage-based length + sub-question count */
+    passageBased?: PassageBasedConstraints;
+    [key: string]: any;
+  };
 
   // EXTENSION POINT:
   // This allows you to add new slot attributes without breaking anything.

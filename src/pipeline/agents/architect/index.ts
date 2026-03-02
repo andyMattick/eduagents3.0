@@ -346,22 +346,26 @@ export async function runArchitect({
     return slot;
   });
 
+
   // ── Graph interpretation slot injection ─────────────────────────────────
-  // If the topic involves graphing, transformations, or quadratics, replace
-  // the first analysis-level short-answer / free-response slot with a
-  // graphInterpretation slot (keeps total count unchanged).
-  const graphTopics = /graph|parabola|quadratic|transform|coordinat|scatter/i;
+  // Only inject graphInterpretation when the teacher explicitly requests it.
+  // Auto-injection based on topic keywords was removed: it produced diagram
+  // placeholders in assessments without a real graph to show.
+  const teacherWantsGraph = architectUAR.questionTypes.includes("graphInterpretation");
   const topicStr = (architectUAR.topic ?? architectUAR.unitName ?? "");
-  if (graphTopics.test(topicStr)) {
-    const targetIdx = slots.findIndex(
-      s =>
-        (s.cognitiveDemand === "analyze" || s.cognitiveDemand === "apply") &&
-        (s.questionType === "shortAnswer" || s.questionType === "freeResponse" ||
-         s.questionType === "constructedResponse")
-    );
-    if (targetIdx !== -1) {
-      slots[targetIdx] = { ...slots[targetIdx], questionType: "graphInterpretation" };
-      console.info(`[Architect] Injected graphInterpretation slot at index ${targetIdx} (topic: "${topicStr}")`);
+  if (teacherWantsGraph) {
+    const graphTopics = /graph|parabola|quadratic|transform|coordinat|scatter/i;
+    if (graphTopics.test(topicStr)) {
+      const targetIdx = slots.findIndex(
+        s =>
+          (s.cognitiveDemand === "analyze" || s.cognitiveDemand === "apply") &&
+          (s.questionType === "shortAnswer" || s.questionType === "freeResponse" ||
+           s.questionType === "constructedResponse")
+      );
+      if (targetIdx !== -1) {
+        slots[targetIdx] = { ...slots[targetIdx], questionType: "graphInterpretation" };
+        console.info(`[Architect] Injected graphInterpretation slot at index ${targetIdx} (topic: "${topicStr}")`);
+      }
     }
   }
   // ── Passage-based slot injection ───────────────────────────────────
@@ -380,7 +384,10 @@ export async function runArchitect({
         ...slots[passageIdx],
         questionType: "passageBased",
         requiresPassage: true,
-        constraints: { ...slots[passageIdx].constraints, passageLength: "short" },
+        constraints: {
+          ...slots[passageIdx].constraints,
+          passageBased: { passageLength: "medium", questionCount: 3 },
+        },
       };
       console.info(`[Architect] Injected passageBased slot at index ${passageIdx}`);
     }

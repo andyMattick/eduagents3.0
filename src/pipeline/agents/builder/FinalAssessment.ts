@@ -14,6 +14,14 @@ export interface FinalAssessmentItem {
   /** MCQ only */
   options?: string[];
   answer?: string;
+  /**
+   * Passage-based only: the reading passage displayed above all sub-questions.
+   */
+  passage?: string;
+  /**
+   * Passage-based only: the sub-questions with prompts + model answers.
+   */
+  questions?: Array<{ prompt: string; answer?: string }>;
   metadata?: Record<string, any>;
 }
 

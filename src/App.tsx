@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthProvider } from "./components_new/Auth/useAuth";
 import { useAuth } from "./components_new/Auth/useAuth";
+import { supabase } from './supabase/client';
+import type { StepId } from './components_new/Pipeline/ConversationalAssessment';
 import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
@@ -41,7 +43,42 @@ function TeacherAppContent() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { logout, user } = useAuth();
   const { devMode, toggleDevMode } = useDeveloperMode();
-  
+  const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});
+
+  /** Derive most-used course + grade from the teacher's last 20 assessments */
+  useEffect(() => {
+    if (!user?.id) return;
+    supabase
+      .from('assessment_templates')
+      .select('domain, uar_json')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        if (!data?.length) return;
+        // Most common domain → course default
+        const domainCounts: Record<string, number> = {};
+        for (const t of data) {
+          const d = (t.domain as string | null)?.trim();
+          if (d) domainCounts[d] = (domainCounts[d] ?? 0) + 1;
+        }
+        const topCourse = Object.entries(domainCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+        // Most common grade level
+        const gradeCounts: Record<string, number> = {};
+        for (const t of data) {
+          const uar = t.uar_json as Record<string, any> | null;
+          const g: string | undefined =
+            Array.isArray(uar?.gradeLevels) ? uar!.gradeLevels[0] : uar?.grade;
+          if (g) gradeCounts[String(g)] = (gradeCounts[String(g)] ?? 0) + 1;
+        }
+        const topGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+        const defaults: Partial<Record<StepId, string>> = {};
+        if (topCourse) defaults.course = topCourse;
+        if (topGrade) defaults.gradeLevels = topGrade;
+        if (Object.keys(defaults).length) setPipelineDefaults(defaults);
+      });
+  }, [user?.id]);
+
   const handleLogout = async () => await logout();
 
   return (
@@ -112,6 +149,7 @@ function TeacherAppContent() {
         <div style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
           <ConversationalAssessmentWrapper
             userId={user?.id ?? null}
+            defaultAnswers={pipelineDefaults}
             onResult={(data) => {
               console.log("Pipeline result:", data);
             }}

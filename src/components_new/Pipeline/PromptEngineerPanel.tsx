@@ -36,6 +36,7 @@ export function PromptEngineerPanel({
       marginBottom: "1rem",
       fontSize: "0.9rem",
       lineHeight: 1.55,
+      color: "#111827",
     }}>
       {/* Header */}
       <div style={{ fontWeight: 600, fontSize: "1rem", marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>

@@ -17,6 +17,8 @@ import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageSer
 interface ConversationalAssessmentWrapperProps {
   userId: string | null;
   onResult: (result: unknown) => void;
+  /** Soft defaults pre-filled on a fresh form (e.g. most-used course / grade). */
+  defaultAnswers?: Partial<Record<StepId, string>>;
 }
 
 function getTitle(result: any): string {
@@ -39,11 +41,13 @@ function getSubtitle(result: any): string | undefined {
 export function ConversationalAssessmentWrapper({
   userId,
   onResult,
+  defaultAnswers,
 }: ConversationalAssessmentWrapperProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [limitError, setLimitError] = useState<string | null>(null);
+  const [partialItems, setPartialItems] = useState<any[]>([]);
 
   // ── Prompt Engineer state ──────────────────────────────────────────────
   const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
@@ -101,6 +105,8 @@ export function ConversationalAssessmentWrapper({
         standards:           pendingIntent.standards ?? "",
         arithmeticOperation: pendingIntent.arithmeticOperation ?? "",
         arithmeticRange:     pendingIntent.arithmeticRange ?? "",
+        passageSource:       (pendingIntent as any).passageSource ?? "",
+        passageText:         (pendingIntent as any).passageText ?? "",
         studentLevel:        pendingIntent.studentLevel,
         time:                pendingIntent.time?.toString() ?? "",
         additionalDetails:  pendingIntent.additionalDetails ?? "",
@@ -123,6 +129,7 @@ export function ConversationalAssessmentWrapper({
       try {
         setIsLoading(true);
         setResult(null);
+        setPartialItems([]);
 
         // Gate: re-check usage right before calling the pipeline
         const currentUsage = await refreshUsage();
@@ -159,7 +166,7 @@ export function ConversationalAssessmentWrapper({
           userId: safeUserId,
         };
 
-        const data = await generateAssessment(uar);
+        const data = await generateAssessment(uar, (items) => setPartialItems([...items]));
         setResult(data);
         onResult(data);
         setPendingIntent(null);
@@ -345,6 +352,34 @@ export function ConversationalAssessmentWrapper({
             animation: "spin 0.9s linear infinite",
           }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          {partialItems.length > 0 && (
+            <div style={{
+              width: "100%",
+              maxWidth: "520px",
+              textAlign: "left",
+              borderTop: "1px solid var(--border, #e0e0e0)",
+              paddingTop: "0.75rem",
+            }}>
+              <p style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", color: "var(--text-secondary, #555)", fontWeight: 600 }}>
+                {partialItems.length} question{partialItems.length !== 1 ? "s" : ""} ready…
+              </p>
+              <ol style={{ margin: 0, paddingLeft: "1.25rem", listStyle: "decimal" }}>
+                {partialItems.slice(0, 5).map((item: any, i: number) => (
+                  <li key={item.slotId ?? i} style={{ fontSize: "0.8rem", color: "var(--fg, #333)", marginBottom: "0.25rem", lineHeight: 1.4 }}>
+                    <span style={{ opacity: 0.6, marginRight: "0.3rem", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      {item.questionType}
+                    </span>
+                    {(item.prompt ?? "").slice(0, 80)}{(item.prompt ?? "").length > 80 ? "…" : ""}
+                  </li>
+                ))}
+                {partialItems.length > 5 && (
+                  <li style={{ fontSize: "0.8rem", color: "var(--text-secondary, #666)", listStyle: "none", marginTop: "0.2rem" }}>
+                    +{partialItems.length - 5} more…
+                  </li>
+                )}
+              </ol>
+            </div>
+          )}
         </div>
       ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
@@ -353,6 +388,7 @@ export function ConversationalAssessmentWrapper({
           isLoading={isLoading}
           disabled={usage !== null && !usage.canGenerate}
           initialAnswers={formInitialAnswers ?? undefined}
+          defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
         /* Input Review validation panel — shown before pipeline fires */

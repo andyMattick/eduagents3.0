@@ -56,14 +56,29 @@ export function buildChunkPrompt(
         const hint = hintMap.get(slot.id) ?? "";
         const slotOp    = (slot as any).operation;
         const slotRange = (slot as any).range;
-        const slotPassage = (slot as any).requiresPassage;
 
         let extra = "";
         if (slot.questionType === "arithmeticFluency" && slotOp && slotRange) {
           extra += `\n  ARITHMETIC CONSTRAINT: Operation MUST be "${slotOp}". Both operands MUST be between ${slotRange.min} and ${slotRange.max}. Write as a bare expression only (e.g. "7 × 4").`;
         }
-        if (slotPassage) {
-          extra += `\n  PASSAGE REQUIREMENT: Generate a short reading passage (150–250 words) relevant to the topic, then write 2–4 questions that reference it directly. Include the passage in the "prompt" field before the questions.`;
+        if (slot.questionType === "passageBased") {
+          // Prefer structured constraints.passageBased; fall back to flat constraints.passageLength (legacy)
+          const pbCfg = (slot.constraints as any)?.passageBased as { passageLength?: string; questionCount?: number } | undefined;
+          const passageLength = pbCfg?.passageLength ?? (slot.constraints as any)?.passageLength ?? "medium";
+          const questionCount = pbCfg?.questionCount ?? 3;
+          const wordRange =
+            passageLength === "short"  ? "100–150"  :
+            passageLength === "long"   ? "250–350"  : "150–250";
+          extra += `\n  PASSAGE-BASED CONTRACT (hard — zero exceptions):
+  - Output MUST use the passage-based JSON shape (see OUTPUT FORMAT below).
+  - "passage": a self-contained reading passage of ${wordRange} words relevant to the topic.
+  - "questions": an array of exactly ${questionCount} objects, each with "prompt" and "answer".
+  - Every question MUST reference the passage directly — no fact outside the passage.
+  - "prompt" field on the item: set to "" (empty string) — the passage replaces it.
+  - Do NOT embed the passage inside "prompt". Use the top-level "passage" key.`;
+        }
+        if (slot.questionType === "graphInterpretation") {
+          extra += `\n  GRAPH REQUIREMENT: No actual image can be shown. Embed a concrete data set or table directly in the prompt text (e.g. a small x/y value table, a described trend, or a specific set of plotted points). Write the question so it is fully self-contained and answerable from the embedded data — do NOT write placeholder text like "[See graph]" or "Refer to the graph below"`;
         }
 
         return `
@@ -80,8 +95,17 @@ SLOT ${i + 1}
   const outputExamples = slots
     .map((slot) => {
       const isMC = slot.questionType === "multipleChoice";
+      const isPassage = slot.questionType === "passageBased";
       if (isMC) {
         return `{ "slotId": "${slot.id}", "questionType": "multipleChoice", "prompt": "<stem>", "options": ["A. <option A>", "B. <option B>", "C. <option C>", "D. <option D>"], "answer": "B. <option B>" }\n${END_SENTINEL}`;
+      }
+      if (isPassage) {
+        const pbCfg = (slot.constraints as any)?.passageBased as { questionCount?: number } | undefined;
+        const qCount = pbCfg?.questionCount ?? 3;
+        const qArray = Array.from({ length: qCount }, (_, i) =>
+          `{ "prompt": "<question ${i + 1}>", "answer": "<model answer ${i + 1}>" }`
+        ).join(", ");
+        return `{ "slotId": "${slot.id}", "questionType": "passageBased", "prompt": "", "passage": "<reading passage text>", "questions": [${qArray}] }\n${END_SENTINEL}`;
       }
       // Non-MC: omit "options" entirely — do NOT output undefined
       return `{ "slotId": "${slot.id}", "questionType": "${slot.questionType}", "prompt": "<stem>", "answer": "<answer text>" }\n${END_SENTINEL}`;
@@ -154,6 +178,21 @@ STEM NATURALISM (hard rule — zero exceptions unless teacher notes explicitly r
     evaluate   → "Which approach is more efficient and why?", "Justify...", "Critique..."
     create     → "Design...", "Construct...", "Develop a model that..."
 
+DIAGRAM / IMAGE RULE (hard rule — zero exceptions)
+- NEVER include placeholder text such as "[Graph here]", "[See diagram]", "[Image]", "[Refer to figure]", "Use the graph below", or any similar text that implies a visual the student cannot see.
+- If a question conceptually involves a graph or diagram and no actual image is present, embed the necessary data directly in the question text (e.g. a small table of values, a described function, or explicit coordinate pairs).
+- graphInterpretation slots must be fully self-contained using embedded data only.
+
+SINGLE-TYPE CONTRACT (hard rule — zero exceptions)
+- Each slot has ONE questionType. Produce EXACTLY that type — nothing else.
+- NEVER merge two question formats into a single prompt stem. Forbidden hybrid patterns:
+    ✗ Analytical/short-answer preamble followed by "True or False: ..."
+    ✗ "Answer the following, then choose: ..."
+    ✗ Any stem requiring BOTH a written response AND a T/F, MCQ, or fill-in answer
+- A trueFalse slot = ONE declarative T/F statement only. No multi-sentence preamble that itself asks for analysis.
+- A shortAnswer slot = ONE open-ended question only. No appended T/F or MCQ at the end.
+- If a topic demands multiple question types, the blueprint already has separate slots for each. Your job is to honour each slot in isolation.
+
 ${mathContract}
 
 SCRIBE BEHAVIORAL GUIDANCE
@@ -171,6 +210,7 @@ OUTPUT FORMAT (STRICT)
 - Each object must be terminated immediately by: ${END_SENTINEL}
 - No arrays. No outer wrappers. No commentary. No markdown fences.
 - For multipleChoice: include "options" array with exactly 4 strings.
+- For passageBased: include "passage" (string) and "questions" (array of {prompt, answer}). Set "prompt" to "".
 - For other types: omit "options".
 
 ${mcqRule}EXAMPLE OUTPUT SHAPE

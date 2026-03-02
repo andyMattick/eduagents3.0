@@ -616,28 +616,6 @@ function AiInsightsPanel({
 // AI Generation Notes panel (teacher-language translation of quality data)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function reliabilityColor(score: number) {
-  if (score >= 80) return { text: "#166534", bar: "#22c55e" };
-  if (score >= 55) return { text: "#854d0e", bar: "#f59e0b" };
-  return { text: "#991b1b", bar: "#ef4444" };
-}
-
-function MetricBar({ label, score, description }: { label: string; score: number; description: string }) {
-  const c = reliabilityColor(score);
-  return (
-    <div style={{ marginBottom: "0.65rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
-        <span style={{ fontSize: "0.82rem", fontWeight: 600 }}>{label}</span>
-        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: c.text }}>{score}/100</span>
-      </div>
-      <div style={{ height: 5, background: "#e5e7eb", borderRadius: 999, overflow: "hidden", marginBottom: "0.2rem" }}>
-        <div style={{ height: "100%", width: `${score}%`, background: c.bar, borderRadius: 999, transition: "width 0.4s" }} />
-      </div>
-      <div style={{ fontSize: "0.74rem", color: "#6b7280", lineHeight: 1.4 }}>{description}</div>
-    </div>
-  );
-}
-
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
   const [dossier, setDossier] = useState<AgentDossierData | null>(null);
@@ -710,39 +688,8 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
   }
 
   // ── Dossier-derived metrics ─────────────────────────────────────────────
-  const trust100     = dossier?.trustScore100     ?? (dossier?.trustScore     != null ? dossier.trustScore     * 10 : null);
-  const stability100 = dossier?.stabilityScore100 ?? (dossier?.stabilityScore != null ? dossier.stabilityScore * 10 : null);
-  const alignment100 = dossier?.alignmentScore ?? null;
-  const totalRuns    = dossier?.domainMastery?.runs ?? 0;
-  const cleanRuns    = dossier?.domainMastery?.cleanRuns ?? 0;
-  const weakCats     = dossier?.weaknessCategories;
-  const topWeakness  = weakCats
-    ? (Object.entries(weakCats) as [string, number][])
-        .sort(([, a], [, b]) => b - a)
-        .filter(([, v]) => v > 0)
-        .map(([k]) =>
-          k === "spacing"            ? "number/letter spacing"
-          : k === "notation"         ? "math notation"
-          : k === "drift"            ? "staying on topic"
-          : k === "hallucination"    ? "invented content"
-          : k === "difficultyMismatch" ? "difficulty calibration"
-          : k === "structureViolations" ? "question structure"
-          : k)
-        .slice(0, 2)
-    : [];
-
-  const passFailEntries = dossier?.passFailByDomain
-    ? (Object.entries(dossier.passFailByDomain) as [string, { passes: number; fails: number }][])
-    : [];
-  const overallPassRate =
-    passFailEntries.length > 0
-      ? Math.round(
-          (passFailEntries.reduce((s, [, v]) => s + v.passes, 0) /
-            Math.max(1, passFailEntries.reduce((s, [, v]) => s + v.passes + v.fails, 0))) * 100
-        )
-      : null;
-
-  const hasDossier = trust100 != null || stability100 != null || alignment100 != null;
+  // (reserved for future use — currently only quality badge is shown)
+  void dossier; // suppress unused warning
 
   return (
     <div
@@ -798,7 +745,7 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                 fontSize: "0.8rem", fontWeight: 700,
                 background: badgeBg, color: badgeColor,
               }}>
-                {qualityLabel}
+                {qualityLabel} ({score}/10)
               </div>
               <span style={{ fontSize: "0.84rem", color: "var(--text-secondary, #6b7280)" }}>
                 {qualityDesc}
@@ -811,68 +758,10 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             <p style={{ margin: 0 }}>⏱️ <strong>Time: </strong>{pacingLine}</p>
           )}
 
-          {/* Revisions */}
+          {/* Revisions — the primary thing teachers care about */}
           <p style={{ margin: 0 }}>✏️ <strong>Revisions: </strong>{revisionLine}</p>
 
-          {/* Reliability from dossier */}
-          {hasDossier && (
-            <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: "0.75rem" }}>
-              <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#9ca3af", marginBottom: "0.65rem" }}>
-                Writer performance in this subject
-              </div>
-
-              {trust100 != null && (
-                <MetricBar
-                  label="Reliability"
-                  score={trust100}
-                  description={
-                    trust100 >= 80 ? "Questions consistently matched your subject and grade level."
-                    : trust100 >= 55 ? "Most questions were clean. A few needed automatic fixes."
-                    : "This subject is still calibrating — more runs will improve reliability."
-                  }
-                />
-              )}
-              {alignment100 != null && (
-                <MetricBar
-                  label="Topic Fit"
-                  score={alignment100}
-                  description={
-                    alignment100 >= 80 ? "Questions stayed tightly aligned to your chosen topic."
-                    : alignment100 >= 55 ? "Minor topic drift was detected and corrected."
-                    : "Questions drifted from topic and needed correction."
-                  }
-                />
-              )}
-              {stability100 != null && (
-                <MetricBar
-                  label="Run-to-Run Consistency"
-                  score={stability100}
-                  description={
-                    stability100 >= 80 ? "Output quality is consistent across multiple runs."
-                    : stability100 >= 55 ? "Quality varies slightly run to run but is improving."
-                    : "This subject is still calibrating. Quality will improve with more runs."
-                  }
-                />
-              )}
-
-              {totalRuns > 0 && (
-                <p style={{ margin: "0.3rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  📊 Based on <strong>{totalRuns}</strong> run{totalRuns !== 1 ? "s" : ""} in this subject
-                  {overallPassRate != null && ` — passed quality checks ${overallPassRate}% of the time`}.
-                  {cleanRuns > 0 && totalRuns > 0 && ` ${Math.round((cleanRuns / totalRuns) * 100)}% of runs needed zero corrections.`}
-                </p>
-              )}
-
-              {topWeakness.length > 0 && (
-                <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  🔧 <strong>Currently improving: </strong>
-                  {topWeakness.join(" and ")}. These are automatically corrected before you see the output.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Misc notes */}
+          {/* Misc notes — constraint warnings, truncation events, etc. */}
           {notes.length > 0 && (
             <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.84rem" }}>
               {notes.map((note, i) => (
@@ -1356,7 +1245,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                         {v.id === template.active_version_id ? " (active)" : ""}
                         {v.parent_version_id ? " · revised" : ""}
                         {` · ${vDate}`}
-                        {v.quality_score != null ? ` · score ${v.quality_score}` : ""}
+                        {v.quality_score != null ? ` · Quality ${v.quality_score}/10${v.quality_score >= 8 ? " ✓" : v.quality_score >= 5 ? "" : " ⚠"}` : ""}
                       </option>
                     );
                   })}

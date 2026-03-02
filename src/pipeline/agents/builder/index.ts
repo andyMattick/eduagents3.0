@@ -97,7 +97,19 @@ function transformText(text?: string): string | undefined {
 
     answer: transformText(formattedItem.answer),
 
-    
+    // Passage-based: carry passage text and sub-questions through the same
+    // typography / math normalization pipeline as all other text fields.
+    passage:
+      formattedItem.passage != null
+        ? (transformText(formattedItem.passage) ?? "")
+        : undefined,
+
+    questions:
+      formattedItem.questions?.map(q => ({
+        prompt: transformText(q.prompt) ?? "",
+        answer: transformText(q.answer) ?? "",
+      })),
+
     metadata: formattedItem.metadata,
   };
 });// answerKey removed from pipeline payload — item.answer is already on each item.

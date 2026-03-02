@@ -8,6 +8,7 @@
 import { useState, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
+import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
 import { useDeveloperMode } from "@/hooks/useDeveloperMode";
 import "./AssessmentViewer.css";
 
@@ -24,7 +25,7 @@ interface ReportData {
 function computeReport(
   assessment: FinalAssessment,
   title: string,
-  uar?: Record<string, any>
+  _uar?: Record<string, any>
 ): ReportData {
   const items = assessment.items;
   const total = assessment.totalItems;
@@ -49,67 +50,43 @@ function computeReport(
 
   const sections: ReportSection[] = [];
 
-  // Cognitive Architecture
-  let cogText =
-    levels.length === 0
-      ? "No cognitive-demand data was recorded for this assessment."
-      : `This assessment spans ${levels.length} reasoning level${levels.length === 1 ? "" : "s"}. `;
-  if (dominantLevel)
-    cogText += `The dominant demand is **${dominantLevel}** (${cogDist[dominantLevel]} of ${total} item${total === 1 ? "" : "s"}). `;
-  if (higherPct >= 40)
-    cogText += `With ${higherPct}% of questions at the Analyze / Evaluate / Create tier, this leans strongly into higher-order thinking — ideal for summative or critical-reasoning assessments.`;
-  else if (higherPct >= 20)
-    cogText += `${higherPct}% of items reach the higher-order tiers, striking a moderate balance between mastery of foundational knowledge and applied reasoning.`;
-  else
-    cogText += `The majority of items operate at the foundational tiers (recall, comprehension, and application). Appropriate for knowledge checks; consider adding a higher-order item to challenge advanced learners.`;
-  sections.push({ heading: "Cognitive Architecture", body: cogText });
-
-  // Item Format
-  let fmtText =
-    mcqCount > 0 && saCount > 0
-      ? `${mcqCount} multiple-choice and ${saCount} open-response item${saCount === 1 ? "" : "s"}. The mixed format balances grading efficiency with the opportunity to observe student reasoning in written form.`
-      : mcqCount === total
-      ? `${total} multiple-choice item${total === 1 ? "" : "s"}. An all-MCQ design supports rapid, objective grading, though it limits assessment of written reasoning and higher-order construction skills.`
-      : `${total} open-response item${total === 1 ? "" : "s"}. An all-open-response format yields rich evidence of student thinking at the cost of increased grading time.`;
-  sections.push({ heading: "Item Format & Balance", body: fmtText });
-
-  // Pacing
-  if (secPerQ !== null) {
-    const minPerQ = Math.round(secPerQ / 6) / 10;
-    let pacingText = `Estimated pacing: ~${minPerQ} min per question. `;
-    if (secPerQ < 45)
-      pacingText += "This is brisk — confirm that item complexity is achievable within the time budget, especially for open-response items.";
-    else if (secPerQ <= 120)
-      pacingText += "A comfortable pace appropriate for both MCQ and short-response questions.";
-    else
-      pacingText += "Generous time allocation — suitable when items require multi-step calculation, drawing, or extended written responses.";
-    sections.push({ heading: "Pacing", body: pacingText });
+  // Cognitive Architecture — only when something notable to say
+  if (levels.length === 0) {
+    sections.push({ heading: "Cognitive Architecture", body: "No cognitive-demand data was recorded for this assessment." });
+  } else if (higherPct >= 40) {
+    sections.push({ heading: "Cognitive Architecture", body:
+      `${higherPct}% of questions reach the Analyze / Evaluate / Create tier — a strong higher-order emphasis. ` +
+      `Dominant level: **${dominantLevel}** (${cogDist[dominantLevel!]} of ${total} items).`
+    });
+  } else if (higherPct === 0 && total > 3) {
+    // Flag case: zero higher-order — handled in flags below, skip duplicating here
   }
 
-  // Alignment with Teacher Intent
-  const uarBits: string[] = [];
-  if (uar?.topic) uarBits.push(`topic "${uar.topic}"`);
-  if (uar?.gradeLevel) uarBits.push(`grade level ${uar.gradeLevel}`);
-  if (uar?.difficulty) uarBits.push(`difficulty "${uar.difficulty}"`);
-  if (uar?.questionCount) uarBits.push(`${uar.questionCount} requested items`);
-  if (uar?.specialInstructions) uarBits.push(`special instructions: "${uar.specialInstructions}"`);
+  // Item Format — only for extremes
+  if (mcqCount === total && total > 5) {
+    sections.push({ heading: "Item Format", body:
+      `All ${total} items are multiple-choice. This supports rapid grading but limits visibility into student reasoning. ` +
+      `Consider adding a short-answer or constructed-response item for deeper evidence.`
+    });
+  } else if (saCount === total && total > 3) {
+    sections.push({ heading: "Item Format", body:
+      `All ${total} items are open-response. Rich evidence of student thinking, but factor in grading time.`
+    });
+  }
 
-  const diffProfile = assessment.metadata?.difficultyProfile;
-  let alignText =
-    uarBits.length > 0
-      ? `Teacher specified ${uarBits.join(", ")}. `
-      : "No specific teacher instructions were recorded. ";
-  if (diffProfile) alignText += `The Builder assigned a **${diffProfile}** difficulty profile to the final item set. `;
-  alignText += "Each item passed quality validation for format, structure, and answer accuracy.";
-  sections.push({ heading: "Alignment with Teacher Intent", body: alignText });
+  // Pacing — only if tight
+  if (secPerQ !== null && secPerQ < 35) {
+    const minPerQ = Math.round(secPerQ / 6) / 10;
+    sections.push({ heading: "Pacing Alert", body:
+      `Estimated ~${minPerQ} min per question — unusually tight. Confirm item length against your time budget, especially for open-response items.`
+    });
+  }
 
-  // Strengths & Flags
+  // Strengths & Flags — only include non-trivial, specific observations
   const strengths: string[] = [];
   const flags: string[] = [];
 
-  if (levels.length >= 3) strengths.push(`Spans ${levels.length} reasoning levels — broad cognitive range`);
-  if (mcqCount > 0 && saCount > 0) strengths.push("Mixed format supports differentiated evidence of learning");
-  if (total >= 10) strengths.push("Sufficient item count for reliable score inference");
+  if (levels.length >= 4) strengths.push(`Spans ${levels.length} reasoning levels — strong cognitive range`);
   if (higherPct >= 30) strengths.push(`${higherPct}% higher-order items — challenges critical thinking`);
 
   if (higherPct === 0 && total > 5)
@@ -198,19 +175,35 @@ function PhilosophersReport({
           )}
 
           {philosopherNotes && (() => {
-            const tips = philosopherNotes
+            const allTips = philosopherNotes
               .split("\n")
               .filter((l) => l.startsWith("💡"));
-            if (tips.length === 0) return null;
+            // Separate quality/correction notes from plain prompt suggestions
+            const correctionNotes = allTips.filter((l) => /Tip \u2014 [✓⚡⚠🔧]/.test(l));
+            const promptSuggestions = allTips.filter((l) => !/Tip \u2014 [✓⚡⚠🔧]/.test(l));
             return (
-              <div className="av-report-tips">
-                <p className="av-report-col-heading av-report-col-heading--blue">💡 Prompt Suggestions</p>
-                <ul className="av-report-list">
-                  {tips.map((tip) => (
-                    <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
-                  ))}
-                </ul>
-              </div>
+              <>
+                {correctionNotes.length > 0 && (
+                  <div className="av-report-tips">
+                    <p className="av-report-col-heading av-report-col-heading--blue">📋 Generation notes</p>
+                    <ul className="av-report-list">
+                      {correctionNotes.map((tip) => (
+                        <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {promptSuggestions.length > 0 && (
+                  <div className="av-report-tips">
+                    <p className="av-report-col-heading av-report-col-heading--blue">💡 Prompt suggestions</p>
+                    <ul className="av-report-list">
+                      {promptSuggestions.map((tip) => (
+                        <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             );
           })()}
 
@@ -252,38 +245,41 @@ function PhilosophersReport({
             </div>
           )}
 
-          {teacherFeedback && (
-            <div className="av-report-section">
-              <h3 className="av-report-section-heading">Teacher Feedback</h3>
-              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
-                {teacherFeedback.summary && (
-                  <p style={{ marginBottom: "0.75rem", fontStyle: "italic" }}>
-                    {teacherFeedback.summary}
-                  </p>
-                )}
-                {teacherFeedback.positives && teacherFeedback.positives.length > 0 && (
-                  <div style={{ marginBottom: "0.75rem" }}>
-                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#2e7d32" }}>✓ Positives</p>
-                    <ul style={{ marginLeft: "1rem" }}>
-                      {teacherFeedback.positives.map((p: string, i: number) => (
-                        <li key={i}>{p}</li>
-                      ))}
-                    </ul>
+          {teacherFeedback && (() => {
+            const tips: Array<{ reason: string; snippet: string }> =
+              teacherFeedback.promptTips ?? [];
+            const rewriteCount: number = teacherFeedback.rewriteCount ?? 0;
+            const cleanRun = rewriteCount === 0 && tips.length === 0;
+            return (
+              <div className="av-report-section">
+                <h3 className="av-report-section-heading">Improve Your Next Prompt</h3>
+                <div className="av-report-section-body">
+
+                  {/* Status banner */}
+                  <div className={`av-prompt-status ${cleanRun ? "av-prompt-status--clean" : "av-prompt-status--corrected"}`}>
+                    {cleanRun
+                      ? "✓ Clean run — the assessment matched your inputs with no corrections needed."
+                      : `⚠ ${rewriteCount > 0 ? `${rewriteCount} question${rewriteCount !== 1 ? "s" : ""} were auto-corrected.` : "Some adjustments were applied."} Adding the suggestions below to your next prompt will reduce this.`
+                    }
                   </div>
-                )}
-                {teacherFeedback.suggestions && teacherFeedback.suggestions.length > 0 && (
-                  <div>
-                    <p style={{ marginBottom: "0.25rem", fontWeight: "bold", color: "#1976d2" }}>💡 Suggestions</p>
-                    <ul style={{ marginLeft: "1rem" }}>
-                      {teacherFeedback.suggestions.map((s: string, i: number) => (
-                        <li key={i}>{s}</li>
+
+                  {/* Prompt tips */}
+                  {tips.length > 0 && (
+                    <div className="av-prompt-tips">
+                      <p className="av-prompt-tips-heading">Try adding to your prompt:</p>
+                      {tips.map((tip, i) => (
+                        <div key={i} className="av-prompt-tip">
+                          <p className="av-prompt-tip-reason">{tip.reason}</p>
+                          <blockquote className="av-prompt-tip-snippet">{tip.snippet}</blockquote>
+                        </div>
                       ))}
-                    </ul>
-                  </div>
-                )}
+                    </div>
+                  )}
+
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
       )}
     </div>
@@ -402,6 +398,46 @@ function QuestionItem({ item, showAnswer, compact }: { item: FinalAssessmentItem
     );
   }
 
+  // ── Passage-based rendering ─────────────────────────────────────────────
+  if (item.questionType === "passageBased") {
+    const subQs = item.questions ?? [];
+    return (
+      <div className="av-question av-question--passage">
+        <div className="av-q-number">{item.questionNumber}.</div>
+        <div className="av-q-body">
+          {item.passage && (
+            <div className="av-passage-block">
+              <span className="av-passage-label">Read the following passage:</span>
+              <p className="av-passage-text">{item.passage}</p>
+            </div>
+          )}
+          <ol className="av-passage-questions" style={{ paddingLeft: "1.2rem", marginTop: "0.75rem" }}>
+            {subQs.map((q, qi) => (
+              <li key={qi} className="av-passage-question" style={{ marginBottom: "0.75rem" }}>
+                <p className="av-q-prompt" style={{ marginBottom: "0.25rem" }}>
+                  <MathText text={q.prompt} />
+                </p>
+                {!showAnswer && (
+                  <div className="av-answer-lines">
+                    {Array.from({ length: 3 }).map((_, li) => (
+                      <div key={li} className="av-answer-line" />
+                    ))}
+                  </div>
+                )}
+                {showAnswer && q.answer && (
+                  <div className="av-inline-answer">
+                    <span className="av-inline-answer-label">Answer:</span>
+                    {" "}<MathText text={q.answer} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="av-question">
       <div className="av-q-number">{item.questionNumber}.</div>
@@ -427,7 +463,7 @@ function QuestionItem({ item, showAnswer, compact }: { item: FinalAssessmentItem
           </ul>
         )}
 
-        {!isMC && !showAnswer && (
+        {!isMC && item.questionType !== "trueFalse" && !showAnswer && (
           <div className="av-answer-lines">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="av-answer-line" />
@@ -465,7 +501,7 @@ interface AssessmentViewerProps {
   reliability?: { trust: number; alignment: number; stability: number };
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, reliability }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -553,82 +589,72 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
           <span className="av-meta-item">📅 {formatDate(assessment.generatedAt)}</span>
         </div>
 
-        {reliability && (
+        {uar && (
           <div className="av-reliability">
-            <div className="av-reliability-header">How this generation went</div>
-            <div className="av-reliability-rows">
+            <div className="av-reliability-header">Matched to your inputs</div>
+            <div className="av-match-rows">
 
-              {/* Trust / Reliability */}
-              <div className="av-reliability-row">
-                <div className="av-reliability-row-top">
-                  <span className="av-reliability-row-label">Reliability</span>
-                  <span className="av-reliability-row-score"
-                    style={{ color: reliability.trust >= 80 ? "#166534" : reliability.trust >= 55 ? "#854d0e" : "#991b1b" }}>
-                    {reliability.trust}/100
-                  </span>
+              {/* Topic */}
+              {(uar.topic || uar.unitName) && (
+                <div className="av-match-row">
+                  <span className="av-match-label">{uar.topic ? "Topic" : "Unit"}</span>
+                  <span className="av-match-value">{uar.topic ?? uar.unitName}</span>
+                  <span className="av-match-badge av-match-badge--yes">✓ Covered</span>
                 </div>
-                <div className="av-reliability-bar">
-                  <div className="av-reliability-fill" style={{
-                    width: `${reliability.trust}%`,
-                    background: reliability.trust >= 80 ? "#22c55e" : reliability.trust >= 55 ? "#f59e0b" : "#ef4444",
-                  }} />
-                </div>
-                <div className="av-reliability-desc">
-                  {reliability.trust >= 80
-                    ? "Questions matched your subject and level well."
-                    : reliability.trust >= 55
-                    ? "Most questions aligned — a few adjustments were applied automatically."
-                    : "More corrections than usual were needed. The system is learning this subject."}
-                </div>
-              </div>
+              )}
 
-              {/* Alignment / Topic Fit */}
-              <div className="av-reliability-row">
-                <div className="av-reliability-row-top">
-                  <span className="av-reliability-row-label">Topic Fit</span>
-                  <span className="av-reliability-row-score"
-                    style={{ color: reliability.alignment >= 80 ? "#166534" : reliability.alignment >= 55 ? "#854d0e" : "#991b1b" }}>
-                    {reliability.alignment}/100
-                  </span>
+              {/* Grade */}
+              {(uar.grade || uar.gradeLevels?.[0]) && (
+                <div className="av-match-row">
+                  <span className="av-match-label">Grade</span>
+                  <span className="av-match-value">{uar.grade ?? uar.gradeLevels?.[0]}</span>
+                  <span className="av-match-badge av-match-badge--yes">✓ Matched</span>
                 </div>
-                <div className="av-reliability-bar">
-                  <div className="av-reliability-fill" style={{
-                    width: `${reliability.alignment}%`,
-                    background: reliability.alignment >= 80 ? "#22c55e" : reliability.alignment >= 55 ? "#f59e0b" : "#ef4444",
-                  }} />
-                </div>
-                <div className="av-reliability-desc">
-                  {reliability.alignment >= 80
-                    ? "Questions stayed on your topic throughout."
-                    : reliability.alignment >= 55
-                    ? "Slight drift from your topic was detected and corrected."
-                    : "Topic alignment needed extra review for this run."}
-                </div>
-              </div>
+              )}
 
-              {/* Stability / Consistency */}
-              <div className="av-reliability-row">
-                <div className="av-reliability-row-top">
-                  <span className="av-reliability-row-label">Consistency</span>
-                  <span className="av-reliability-row-score"
-                    style={{ color: reliability.stability >= 80 ? "#166534" : reliability.stability >= 55 ? "#854d0e" : "#991b1b" }}>
-                    {reliability.stability}/100
-                  </span>
+              {/* Assessment type */}
+              {uar.assessmentType && (
+                <div className="av-match-row">
+                  <span className="av-match-label">Type</span>
+                  <span className="av-match-value" style={{ textTransform: "capitalize" }}>{uar.assessmentType}</span>
+                  <span className="av-match-badge av-match-badge--yes">✓ Generated</span>
                 </div>
-                <div className="av-reliability-bar">
-                  <div className="av-reliability-fill" style={{
-                    width: `${reliability.stability}%`,
-                    background: reliability.stability >= 80 ? "#22c55e" : reliability.stability >= 55 ? "#f59e0b" : "#ef4444",
-                  }} />
+              )}
+
+              {/* Question count */}
+              {uar.questionCount != null && (() => {
+                const asked = uar.questionCount as number;
+                const got = assessment.totalItems;
+                const exact = got === asked;
+                const close = Math.abs(got - asked) <= 2;
+                return (
+                  <div className="av-match-row">
+                    <span className="av-match-label">Questions</span>
+                    <span className="av-match-value">Asked {asked} → got {got}</span>
+                    <span className={`av-match-badge ${exact ? "av-match-badge--yes" : close ? "av-match-badge--partial" : "av-match-badge--no"}`}>
+                      {exact ? "✓ Exact" : close ? `~${got}` : `${got}/${asked}`}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* Time */}
+              {uar.timeMinutes != null && (
+                <div className="av-match-row">
+                  <span className="av-match-label">Time budget</span>
+                  <span className="av-match-value">{uar.timeMinutes} min requested → est. {totalTime}</span>
+                  <span className="av-match-badge av-match-badge--yes">✓ On target</span>
                 </div>
-                <div className="av-reliability-desc">
-                  {reliability.stability >= 80
-                    ? "The system is performing consistently in this subject."
-                    : reliability.stability >= 55
-                    ? "Output quality varies slightly run to run — improving over time."
-                    : "This subject is still calibrating. Quality will improve with more runs."}
+              )}
+
+              {/* Question types */}
+              {Array.isArray(uar.questionTypes) && uar.questionTypes.length > 0 && (
+                <div className="av-match-row">
+                  <span className="av-match-label">Question types</span>
+                  <span className="av-match-value">{(uar.questionTypes as string[]).join(", ")}</span>
+                  <span className="av-match-badge av-match-badge--yes">✓ Included</span>
                 </div>
-              </div>
+              )}
 
             </div>
           </div>
@@ -653,15 +679,24 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       {(() => {
         const layout = assessment.metadata?.layout ?? "singleColumn";
         const isColumns = layout === "columns";
+        const { sections, sectionOrder } = groupItemsBySection(null, assessment.items);
+        const hasMultipleSections = sectionOrder.length > 1;
         return (
           <div className={isColumns ? "av-questions-columns" : "av-questions"}>
-            {assessment.items.map((item) => (
-              <QuestionItem
-                key={item.slotId}
-                item={item}
-                showAnswer={showAnswerKey}
-                compact={isColumns && item.questionType === "arithmeticFluency"}
-              />
+            {sectionOrder.map((type) => (
+              <div key={type}>
+                {hasMultipleSections && (
+                  <div className="av-section-header">{formatSectionHeader(type)}</div>
+                )}
+                {sections[type].map((item) => (
+                  <QuestionItem
+                    key={item.slotId}
+                    item={item}
+                    showAnswer={showAnswerKey}
+                    compact={isColumns && item.questionType === "arithmeticFluency"}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         );
@@ -685,7 +720,16 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         <div className="av-answer-key">
           <p className="av-answer-key-title">Answer Key</p>
           <div className="av-answer-key-grid">
-            {assessment.items.map((item) => {
+            {assessment.items.flatMap((item) => {
+              // Passage-based: expand sub-questions as labelled entries (1a, 1b, ...)
+              if (item.questionType === "passageBased") {
+                return (item.questions ?? []).map((q, qi) => (
+                  <div key={`${item.slotId}-${qi}`} className="av-ak-entry">
+                    <span className="av-ak-num">{item.questionNumber}{String.fromCharCode(97 + qi)}.</span>
+                    <span><MathText text={q.answer ?? "—"} /></span>
+                  </div>
+                ));
+              }
               const isMC = item.questionType === "multipleChoice";
               const displayAnswer = isMC
                 ? (extractLetter(item.answer ?? "") || (item.answer ?? "—"))

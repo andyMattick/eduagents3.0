@@ -1,5 +1,5 @@
 // src/components_new/TeacherSystem/MyAssessmentsPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/supabase/client";
 
 interface TemplateRecord {
@@ -23,6 +23,24 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
+
+  const toggleDomain = (domain: string) =>
+    setCollapsedDomains(prev => {
+      const next = new Set(prev);
+      if (next.has(domain)) next.delete(domain); else next.add(domain);
+      return next;
+    });
+
+  /** templates grouped by domain, sorted alphabetically */
+  const grouped = useMemo(() => {
+    const map: Record<string, TemplateRecord[]> = {};
+    for (const t of templates) {
+      const key = t.domain?.trim() || "Uncategorized";
+      (map[key] ??= []).push(t);
+    }
+    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+  }, [templates]);
 
   useEffect(() => {
     async function load() {
@@ -84,99 +102,140 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }
       )}
 
       {!loading && templates.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              minWidth: "600px",
-              borderCollapse: "collapse",
-              fontSize: "0.9rem",
-            }}
-          >
-            <thead>
-              <tr
-                style={{
-                  borderBottom: "2px solid var(--border-color, #e5e7eb)",
-                  textAlign: "left",
-                }}
-              >
-                <th style={{ padding: "0.5rem 0.75rem" }}>Domain</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Type</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Grade</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}>Created</th>
-                <th style={{ padding: "0.5rem 0.75rem" }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((tmpl, i) => {
-                const uar = tmpl.uar_json ?? {};
-                return (
-                  <tr
-                    key={tmpl.id}
+        <div>
+          {grouped.map(([domain, rows]) => {
+            const isOpen = !collapsedDomains.has(domain);
+            return (
+              <div key={domain} style={{ marginBottom: "1.5rem" }}>
+                {/* Domain section header */}
+                <button
+                  onClick={() => toggleDomain(domain)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    width: "100%",
+                    background: "var(--bg-secondary, #f3f4f6)",
+                    border: "1px solid var(--border-color, #e5e7eb)",
+                    borderRadius: "8px",
+                    padding: "0.55rem 0.9rem",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    color: "var(--text-primary, #111)",
+                    marginBottom: isOpen ? "0" : undefined,
+                  }}
+                >
+                  <span style={{ fontSize: "0.8rem", opacity: 0.6 }}>{isOpen ? "▾" : "▸"}</span>
+                  <span>{domain}</span>
+                  <span
                     style={{
-                      borderBottom: "1px solid var(--border-color, #e5e7eb)",
-                      background:
-                        i % 2 === 0 ? "transparent" : "var(--bg-tertiary, #f9fafb)",
+                      marginLeft: "auto",
+                      fontSize: "0.75rem",
+                      fontWeight: 400,
+                      color: "var(--text-secondary, #6b7280)",
                     }}
                   >
-                    <td style={{ padding: "0.6rem 0.75rem", fontWeight: 500 }}>
-                      {tmpl.domain ?? "—"}
-                    </td>
-                    <td style={{ padding: "0.6rem 0.75rem" }}>
-                      {uar.assessmentType ? (
-                        <span
-                          style={{
-                            background: "var(--color-accent-muted, #ede9fe)",
-                            color: "var(--color-accent, #4f46e5)",
-                            padding: "0.2rem 0.6rem",
-                            borderRadius: "999px",
-                            fontSize: "0.78rem",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {uar.assessmentType}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td style={{ padding: "0.6rem 0.75rem" }}>
-                      {Array.isArray(uar.gradeLevels)
-                        ? uar.gradeLevels.join(", ")
-                        : (uar.grade ?? "—")}
-                    </td>
-                    <td
+                    {rows.length} assessment{rows.length !== 1 ? "s" : ""}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div style={{ overflowX: "auto", borderRadius: "0 0 8px 8px", border: "1px solid var(--border-color, #e5e7eb)", borderTop: "none" }}>
+                    <table
                       style={{
-                        padding: "0.6rem 0.75rem",
-                        color: "var(--text-secondary, #6b7280)",
+                        width: "100%",
+                        minWidth: "500px",
+                        borderCollapse: "collapse",
+                        fontSize: "0.9rem",
                       }}
                     >
-                      {fmt(tmpl.created_at)}
-                    </td>
-                    <td style={{ padding: "0.6rem 0.75rem" }}>
-                      {onViewTemplate && (
-                        <button
-                          onClick={() => onViewTemplate(tmpl.id)}
+                      <thead>
+                        <tr
                           style={{
-                            padding: "0.3rem 0.9rem",
-                            borderRadius: "8px",
-                            border: "1.5px solid var(--color-accent, #4f46e5)",
-                            background: "transparent",
-                            color: "var(--color-accent, #4f46e5)",
-                            cursor: "pointer",
-                            fontSize: "0.82rem",
-                            fontWeight: 600,
+                            borderBottom: "1px solid var(--border-color, #e5e7eb)",
+                            textAlign: "left",
+                            background: "var(--bg-tertiary, #f9fafb)",
                           }}
                         >
-                          View
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                          <th style={{ padding: "0.5rem 0.75rem" }}>Type</th>
+                          <th style={{ padding: "0.5rem 0.75rem" }}>Grade</th>
+                          <th style={{ padding: "0.5rem 0.75rem" }}>Created</th>
+                          <th style={{ padding: "0.5rem 0.75rem" }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((tmpl, i) => {
+                          const uar = tmpl.uar_json ?? {};
+                          return (
+                            <tr
+                              key={tmpl.id}
+                              style={{
+                                borderBottom: "1px solid var(--border-color, #e5e7eb)",
+                                background: i % 2 === 0 ? "transparent" : "var(--bg-tertiary, #f9fafb)",
+                              }}
+                            >
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                {uar.assessmentType ? (
+                                  <span
+                                    style={{
+                                      background: "var(--color-accent-muted, #ede9fe)",
+                                      color: "var(--color-accent, #4f46e5)",
+                                      padding: "0.2rem 0.6rem",
+                                      borderRadius: "999px",
+                                      fontSize: "0.78rem",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {uar.assessmentType}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                {Array.isArray(uar.gradeLevels)
+                                  ? uar.gradeLevels.join(", ")
+                                  : (uar.grade ?? "—")}
+                              </td>
+                              <td
+                                style={{
+                                  padding: "0.6rem 0.75rem",
+                                  color: "var(--text-secondary, #6b7280)",
+                                }}
+                              >
+                                {fmt(tmpl.created_at)}
+                              </td>
+                              <td style={{ padding: "0.6rem 0.75rem" }}>
+                                {onViewTemplate && (
+                                  <button
+                                    onClick={() => onViewTemplate(tmpl.id)}
+                                    style={{
+                                      padding: "0.3rem 0.9rem",
+                                      borderRadius: "8px",
+                                      border: "1.5px solid var(--color-accent, #4f46e5)",
+                                      background: "transparent",
+                                      color: "var(--color-accent, #4f46e5)",
+                                      cursor: "pointer",
+                                      fontSize: "0.82rem",
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    View
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
