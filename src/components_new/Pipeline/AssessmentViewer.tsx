@@ -639,10 +639,13 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
               })()}
 
               {/* Time */}
-              {uar.timeMinutes != null && (
+              {(totalTime !== "—" || uar.timeMinutes != null) && (
                 <div className="av-match-row">
-                  <span className="av-match-label">Time budget</span>
-                  <span className="av-match-value">{uar.timeMinutes} min requested → est. {totalTime}</span>
+                  <span className="av-match-label">Est. time</span>
+                  <span className="av-match-value">
+                    {totalTime !== "—" ? `~${totalTime}` : `~${uar.timeMinutes} min`}
+                    {uar.timeMinutes != null && totalTime !== "—" && ` (${uar.timeMinutes} min requested)`}
+                  </span>
                   <span className="av-match-badge av-match-badge--yes">✓ On target</span>
                 </div>
               )}

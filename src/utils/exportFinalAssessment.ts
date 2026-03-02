@@ -752,24 +752,73 @@ export async function downloadFinalAssessmentWord(
     children.push(new Paragraph(""));
 
     for (const item of groups[type]) {
-      // Build the question prompt with math-aware runs
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: `${wordQNum}. `, bold: true }),
-            ...parseMathRuns(item.prompt ?? ""),
-          ],
-        })
-      );
+      const isPassageItem = item.questionType === "passageBased";
 
-      if (item.questionType === "multipleChoice") {
-        item.options?.forEach(opt => {
-          children.push(new Paragraph({ children: parseMathRuns(opt) }));
+      if (isPassageItem) {
+        // Question number line
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: `${wordQNum}.`, bold: true })],
+          })
+        );
+
+        // "Read the following passage:" label
+        children.push(
+          new Paragraph({
+            children: [new TextRun({ text: "Read the following passage:", italics: true, color: "555555" })],
+          })
+        );
+
+        // Passage text (indented)
+        if (item.passage) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: item.passage })],
+              indent: { left: 360 },
+            })
+          );
+        }
+
+        children.push(new Paragraph(""));
+
+        // Sub-questions
+        const subQs = item.questions ?? [];
+        subQs.forEach((q, qi) => {
+          const label = `${wordQNum}${String.fromCharCode(97 + qi)})  `;
+          children.push(
+            new Paragraph({
+              children: [
+                new TextRun({ text: label, bold: true }),
+                ...parseMathRuns(q.prompt ?? ""),
+              ],
+              indent: { left: 360 },
+            })
+          );
+          // Three blank lines for the answer
+          children.push(new Paragraph({ children: [new TextRun({ text: "" })], indent: { left: 360 } }));
+          children.push(new Paragraph({ children: [new TextRun({ text: "" })], indent: { left: 360 } }));
+          children.push(new Paragraph(""));
         });
       } else {
-        children.push(new Paragraph(" "));
-        children.push(new Paragraph(" "));
-        children.push(new Paragraph(" "));
+        // Build the question prompt with math-aware runs
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${wordQNum}. `, bold: true }),
+              ...parseMathRuns(item.prompt ?? ""),
+            ],
+          })
+        );
+
+        if (item.questionType === "multipleChoice") {
+          item.options?.forEach(opt => {
+            children.push(new Paragraph({ children: parseMathRuns(opt) }));
+          });
+        } else {
+          children.push(new Paragraph(" "));
+          children.push(new Paragraph(" "));
+          children.push(new Paragraph(" "));
+        }
       }
 
       children.push(new Paragraph(""));
@@ -786,13 +835,26 @@ export async function downloadFinalAssessmentWord(
     let akNum = 1;
     for (const type of orderedTypes) {
       for (const item of groups[type]) {
-        const answerText = item.answer ?? "—";
-        children.push(new Paragraph({
-          children: [
-            new TextRun({ text: `${akNum}. `, bold: true }),
-            ...parseMathRuns(answerText),
-          ],
-        }));
+        if (item.questionType === "passageBased") {
+          const subQs = item.questions ?? [];
+          subQs.forEach((q, qi) => {
+            const label = `${akNum}${String.fromCharCode(97 + qi)}. `;
+            children.push(new Paragraph({
+              children: [
+                new TextRun({ text: label, bold: true }),
+                ...parseMathRuns(q.answer ?? "—"),
+              ],
+            }));
+          });
+        } else {
+          const answerText = item.answer ?? "—";
+          children.push(new Paragraph({
+            children: [
+              new TextRun({ text: `${akNum}. `, bold: true }),
+              ...parseMathRuns(answerText),
+            ],
+          }));
+        }
         akNum++;
       }
     }
