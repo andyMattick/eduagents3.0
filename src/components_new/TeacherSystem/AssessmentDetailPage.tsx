@@ -887,11 +887,6 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             </div>
           )}
 
-          {/* Pacing */}
-          {pacingLine && (
-            <p style={{ margin: 0 }}>⏱️ <strong>Time: </strong>{pacingLine}</p>
-          )}
-
           {/* Revisions — the primary thing teachers care about */}
           <p style={{ margin: 0 }}>✏️ <strong>Revisions: </strong>{revisionLine}</p>
 
@@ -1733,7 +1728,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     userId={template.user_id}
                     domain={template.domain ?? "General"}
                     problems={
-                      ((selectedVersion.assessment_json as any)?.questions as any[] | undefined)
+                      ((selectedVersion.assessment_json as any)?.items as any[] | undefined)
                         ?.map((q: any) => q.prompt ?? q.text ?? "")
                         .filter(Boolean) ?? []
                     }

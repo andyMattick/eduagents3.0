@@ -237,23 +237,72 @@ function inferFromDocuments(
 
 // ── DefaultsCard ─────────────────────────────────────────────────────────────
 
+interface DefaultsInlineOverride {
+  assessmentType?: string;
+  questionFormat?: string;
+  multiPartQuestions?: string; // "yes" | "no"
+  gradeLevels?: string;
+  studentLevel?: string;
+  standards?: string;
+  stateCode?: string;
+}
+
 function DefaultsCard({
-  defaults, courseName, onUse, onChange, disabled,
+  defaults, courseName, topic, subtopics, onUse, disabled,
 }: {
   defaults: ResolvedCourseDefaults; courseName: string;
-  onUse: () => void; onChange: () => void; disabled: boolean;
+  topic?: string; subtopics?: string;
+  onUse: (overrides: DefaultsInlineOverride) => void;
+  disabled: boolean;
 }) {
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "Assessment type",  value: defaults.assessmentTypes[0] ?? "\u2014" },
-    { label: "Question formats", value: defaults.questionTypes.slice(0, 3).join(", ") || "\u2014" },
-    { label: "Multi-part",       value: defaults.multiPartAllowed ? "Allowed" : "Standalone only" },
-    { label: "Grade level",      value: defaults.gradeBand ?? "\u2014" },
-    ...(defaults.standards ? [{ label: "Standards", value: defaults.standards }] : []),
-    { label: "Difficulty",       value: defaults.typicalDifficulty },
-    ...(defaults.typicalBloomRange ? [{ label: "Typical rigor", value: defaults.typicalBloomRange }] : []),
-    { label: "Est. questions",   value: `${defaults.estimatedQuestionRange.min}\u2013${defaults.estimatedQuestionRange.max}` },
-    { label: "Est. time",        value: `~${defaults.estimatedMinutes} min` },
-  ];
+  // Best-effort: map defaults.questionTypes[0] to a known chip value
+  const guessFormat = (): string => {
+    const t = defaults.questionTypes;
+    if (t.length === 1) {
+      const found = QUESTION_FORMAT_CHIPS.find(c => c.value === t[0]);
+      if (found) return found.value;
+    }
+    return t.length > 1 ? "mixed" : (QUESTION_FORMAT_CHIPS[0]?.value ?? "mixed");
+  };
+
+  const origAssessmentType = defaults.assessmentTypes[0] ?? "quiz";
+  const origFormat         = guessFormat();
+  const origMultiPart      = defaults.multiPartAllowed;
+  const origGrade          = defaults.gradeBand ?? "";
+  const origDifficulty     = defaults.typicalDifficulty;
+  const origStandards      = defaults.standards ?? "";
+
+  const [assessmentType, setAssessmentType] = useState(origAssessmentType);
+  const [questionFormat,  setQuestionFormat]  = useState(origFormat);
+  const [multiPart,       setMultiPart]       = useState(origMultiPart);
+  const [grade,           setGrade]           = useState(origGrade);
+  const [difficulty,      setDifficulty]      = useState(origDifficulty);
+  const [standards,       setStandards]       = useState(origStandards);
+  const [stateCode,       setStateCode]       = useState("");
+
+  const ctrlStyle: React.CSSProperties = {
+    padding: "0.18rem 0.45rem",
+    borderRadius: 5,
+    border: "1px solid var(--color-border, #ddd)",
+    background: "var(--bg, #fff)",
+    color: "inherit",
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    maxWidth: "100%",
+  };
+
+  function handleUse() {
+    const overrides: DefaultsInlineOverride = {};
+    if (assessmentType !== origAssessmentType) overrides.assessmentType = assessmentType;
+    if (questionFormat  !== origFormat)         overrides.questionFormat = questionFormat;
+    if (multiPart       !== origMultiPart)      overrides.multiPartQuestions = multiPart ? "yes" : "no";
+    if (grade           !== origGrade)          overrides.gradeLevels = grade;
+    if (difficulty      !== origDifficulty)     overrides.studentLevel = difficulty;
+    if (standards       !== origStandards)      overrides.standards = standards;
+    if (standards === "state" && stateCode)     overrides.stateCode = stateCode;
+    onUse(overrides);
+  }
+
   return (
     <div className="ca-defaults-card">
       <div className="ca-defaults-card__header">
@@ -261,11 +310,95 @@ function DefaultsCard({
         {defaults.level === "global" && <span className="ca-defaults-card__badge">global defaults</span>}
       </div>
       <table className="ca-defaults-table"><tbody>
-        {rows.map((r) => <tr key={r.label}><th>{r.label}</th><td>{r.value}</td></tr>)}
+        {/* ── Read-only context rows ── */}
+        <tr><th>Course</th><td>{courseName || "\u2014"}</td></tr>
+        {topic    && <tr><th>Topic</th><td>{topic}</td></tr>}
+        {subtopics && <tr><th>Subtopics</th><td>{subtopics}</td></tr>}
+
+        {/* ── Inline-editable rows ── */}
+        <tr>
+          <th>Assessment type</th>
+          <td>
+            <select value={assessmentType} onChange={e => setAssessmentType(e.target.value)} style={ctrlStyle} disabled={disabled}>
+              {ASSESSMENT_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th>Question formats</th>
+          <td>
+            <select value={questionFormat} onChange={e => setQuestionFormat(e.target.value)} style={ctrlStyle} disabled={disabled}>
+              {QUESTION_FORMAT_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </td>
+        </tr>
+        <tr>
+          <th>Multi-part</th>
+          <td>
+            <button
+              type="button"
+              onClick={() => !disabled && setMultiPart(v => !v)}
+              style={{
+                ...ctrlStyle,
+                background: multiPart ? "var(--color-accent-light, #ede9fe)" : "var(--bg, #fff)",
+                fontWeight: 500,
+              }}
+            >
+              {multiPart ? "Allowed" : "Standalone only"}
+            </button>
+          </td>
+        </tr>
+        <tr>
+          <th>Grade level</th>
+          <td>
+            <input
+              type="text"
+              value={grade}
+              onChange={e => setGrade(e.target.value)}
+              placeholder="e.g. 8"
+              style={{ ...ctrlStyle, width: "5.5rem" }}
+              disabled={disabled}
+            />
+          </td>
+        </tr>
+        {(origStandards || defaults.standards != null) && (
+          <>
+            <tr>
+              <th>Standards</th>
+              <td style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                <select value={standards} onChange={e => setStandards(e.target.value)} style={ctrlStyle} disabled={disabled}>
+                  {STANDARDS_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+                {standards === "state" && (
+                  <input
+                    type="text"
+                    value={stateCode}
+                    onChange={e => setStateCode(e.target.value)}
+                    placeholder="State (e.g. GA)"
+                    style={{ ...ctrlStyle, width: "6.5rem" }}
+                    disabled={disabled}
+                  />
+                )}
+              </td>
+            </tr>
+          </>
+        )}
+        <tr>
+          <th>Difficulty</th>
+          <td>
+            <select value={difficulty} onChange={e => setDifficulty(e.target.value as typeof difficulty)} style={ctrlStyle} disabled={disabled}>
+              {LEVEL_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </td>
+        </tr>
+
+        {/* ── Read-only derived ── */}
+        {defaults.typicalBloomRange && <tr><th>Typical rigor</th><td>{defaults.typicalBloomRange}</td></tr>}
+        <tr><th>Est. questions</th><td>{defaults.estimatedQuestionRange.min}\u2013{defaults.estimatedQuestionRange.max}</td></tr>
+        <tr><th>Est. time</th><td>~{defaults.estimatedMinutes} min</td></tr>
       </tbody></table>
       <div className="ca-defaults-card__actions">
-        <button className="ca-btn-primary" onClick={onUse}    disabled={disabled}>Use these defaults &rarr;</button>
-        <button className="ca-btn-ghost"   onClick={onChange} disabled={disabled}>Change something</button>
+        <button className="ca-btn-primary" onClick={handleUse} disabled={disabled}>Use these defaults &rarr;</button>
       </div>
     </div>
   );
@@ -594,12 +727,12 @@ export function ConversationalAssessment({
 
   // ── Commit an answer and advance ──────────────────────────────────────────
 
-  function commitAnswer(value: string) {
+  function commitAnswer(value: string, extraOverrides?: Partial<Record<StepId, string>>) {
     const trimmed = value.trim();
     if (!currentStep) return;
     if (!trimmed && !currentStep.optional) return;
 
-    let next: Record<StepId, string> = { ...answers, [currentStep.id]: trimmed };
+    let next: Record<StepId, string> = { ...answers, [currentStep.id]: trimmed, ...(extraOverrides ?? {}) };
 
     // Document inference
     if (currentStep.id === "sourceDocuments" && uploadedDocs.length > 0) {
@@ -742,9 +875,18 @@ export function ConversationalAssessment({
               <DefaultsCard
                 defaults={courseDefaults}
                 courseName={answers.course}
+                topic={answers.topic || undefined}
+                subtopics={answers.subtopics || undefined}
                 disabled={isBlocked}
-                onUse={() => commitAnswer("use")}
-                onChange={() => commitAnswer("change")}
+                onUse={(overrides) => commitAnswer("use", {
+                  ...(overrides.assessmentType     ? { assessmentType:     overrides.assessmentType }     : {}),
+                  ...(overrides.questionFormat     ? { questionFormat:     overrides.questionFormat }     : {}),
+                  ...(overrides.multiPartQuestions ? { multiPartQuestions: overrides.multiPartQuestions } : {}),
+                  ...(overrides.gradeLevels        ? { gradeLevels:        overrides.gradeLevels }        : {}),
+                  ...(overrides.studentLevel       ? { studentLevel:       overrides.studentLevel }       : {}),
+                  ...(overrides.standards          ? { standards:          overrides.standards }          : {}),
+                  ...(overrides.stateCode          ? { stateCode:          overrides.stateCode }          : {}),
+                })}
               />
             )}
 
