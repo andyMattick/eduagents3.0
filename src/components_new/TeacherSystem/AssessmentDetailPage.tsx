@@ -246,7 +246,7 @@ function StudentResultsPanel({
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             display: "flex",
             flexDirection: "column",
@@ -332,7 +332,7 @@ function StudentResultsPanel({
                             padding: "0.3rem 0.5rem",
                             borderRadius: "6px",
                             border: "1.5px solid var(--color-border, #ddd)",
-                            background: "var(--bg-primary, #fff)",
+                            background: "var(--bg, #fff)",
                             color: "inherit",
                             fontSize: "0.85rem",
                           }}
@@ -501,10 +501,10 @@ function AiInsightsPanel({
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             lineHeight: 1.65,
-            color: "var(--text-primary, #374151)",
+            color: "var(--text, #374151)",
             display: "flex",
             flexDirection: "column",
             gap: "0.9rem",
@@ -728,10 +728,10 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             lineHeight: 1.65,
-            color: "var(--text-primary, #374151)",
+            color: "var(--text, #374151)",
             display: "flex",
             flexDirection: "column",
             gap: "0.8rem",
@@ -894,6 +894,12 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
 
     loadResults().catch((e) => console.warn("[loadResults]", e?.message));
     return () => { cancelled = true; };
+  }, [selectedVersionId]);
+
+  // ── Clear delete confirm when switching versions ──────────────────────────
+  useEffect(() => {
+    setConfirmDeleteVersionId(null);
+    setDeleteVersionError(null);
   }, [selectedVersionId]);
 
   // ── Phase 4 — Submit results + run analysis ───────────────────────────────
@@ -1205,7 +1211,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   margin: "0 0 0.4rem 0",
                   fontSize: "1.3rem",
                   fontWeight: 700,
-                  color: "var(--text-primary, #111827)",
+                  color: "var(--text, #111827)",
                 }}
               >
                 {titleFor(uar, template.domain)}
@@ -1281,7 +1287,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     padding: "0.4rem 0.8rem",
                     borderRadius: "8px",
                     border: "1.5px solid var(--color-border, #ddd)",
-                    background: "var(--bg-primary, #fff)",
+                    background: "var(--bg, #fff)",
                     color: "inherit",
                     fontSize: "0.9rem",
                     cursor: "pointer",
@@ -1345,33 +1351,16 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
 
                 {/* ── Delete version ── */}
                 {versions.length > 1 && selectedVersionId && (
-                  confirmDeleteVersionId === selectedVersionId ? (
-                    <div className="adp-delete-confirm">
-                      <span>Delete version {selectedVersion?.version_number}?</span>
-                      <button
-                        className="adp-delete-confirm-yes"
-                        disabled={isDeletingVersion}
-                        onClick={handleDeleteVersion}
-                      >
-                        {isDeletingVersion ? "Deleting…" : "Yes, delete"}
-                      </button>
-                      <button
-                        className="adp-delete-confirm-no"
-                        onClick={() => setConfirmDeleteVersionId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className="adp-btn-delete"
-                      title="Delete this version"
-                      onClick={() => setConfirmDeleteVersionId(selectedVersionId)}
-                      disabled={isRegenerating || isBranching || isDeletingVersion}
-                    >
-                      🗑 Delete
-                    </button>
-                  )
+                  <button
+                    className="adp-btn-delete"
+                    title={confirmDeleteVersionId === selectedVersionId ? "Cancel delete" : "Delete this version"}
+                    onClick={() => setConfirmDeleteVersionId(
+                      confirmDeleteVersionId === selectedVersionId ? null : selectedVersionId
+                    )}
+                    disabled={isRegenerating || isBranching || isDeletingVersion}
+                  >
+                    {confirmDeleteVersionId === selectedVersionId ? "✕ Cancel" : "🗑 Delete"}
+                  </button>
                 )}
 
                 {/* ── Spacer ── */}
@@ -1437,6 +1426,26 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   {showBranchForm ? "✕ Cancel" : "✎ Create Revised Version"}
                 </button>
               </div>
+
+              {/* ── Delete version confirm ──────────────────────────── */}
+              {confirmDeleteVersionId && confirmDeleteVersionId === selectedVersionId && (
+                <div className="adp-delete-confirm" style={{ marginTop: "0.5rem" }}>
+                  <span>Delete version {selectedVersion?.version_number}? This cannot be undone.</span>
+                  <button
+                    className="adp-delete-confirm-yes"
+                    disabled={isDeletingVersion}
+                    onClick={handleDeleteVersion}
+                  >
+                    {isDeletingVersion ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button
+                    className="adp-delete-confirm-no"
+                    onClick={() => setConfirmDeleteVersionId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {/* Regenerate / assign error */}
               {regenerateError && (
@@ -1508,7 +1517,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                         padding: "0.45rem 0.75rem",
                         borderRadius: "8px",
                         border: "1.5px solid var(--color-border, #ddd)",
-                        background: "var(--bg-primary, #fff)",
+                        background: "var(--bg, #fff)",
                         color: "inherit",
                         fontSize: "0.88rem",
                         fontWeight: 400,
@@ -1530,7 +1539,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                           padding: "0.45rem 0.75rem",
                           borderRadius: "8px",
                           border: "1.5px solid var(--color-border, #ddd)",
-                          background: "var(--bg-primary, #fff)",
+                          background: "var(--bg, #fff)",
                           color: "inherit",
                           fontSize: "0.88rem",
                           fontWeight: 400,
@@ -1547,7 +1556,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                           padding: "0.45rem 0.75rem",
                           borderRadius: "8px",
                           border: "1.5px solid var(--color-border, #ddd)",
-                          background: "var(--bg-primary, #fff)",
+                          background: "var(--bg, #fff)",
                           color: "inherit",
                           fontSize: "0.88rem",
                           cursor: "pointer",
