@@ -17,6 +17,7 @@ import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyze
 import { DossierManager } from "@/system/dossier/DossierManager";
 import type { AgentDossierData } from "@/system/dossier/DossierManager";
 import "./AssessmentDetailPage.css";
+import "./AssessmentDetailPage.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -1011,6 +1012,11 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
       if (remaining.length > 0) {
         setSelectedVersionId(newLatestId ?? remaining[remaining.length - 1].id);
       } else {
+        // Last version removed — delete the template entirely then go back
+        await supabase
+          .from("assessment_templates")
+          .delete()
+          .eq("id", template.id);
         onBack();
       }
     } catch (e: any) {
@@ -1350,7 +1356,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 ) : null}
 
                 {/* ── Delete version ── */}
-                {versions.length > 1 && selectedVersionId && (
+                {selectedVersionId && (
                   <button
                     className="adp-btn-delete"
                     title={confirmDeleteVersionId === selectedVersionId ? "Cancel delete" : "Delete this version"}
@@ -1430,7 +1436,13 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
               {/* ── Delete version confirm ──────────────────────────── */}
               {confirmDeleteVersionId && confirmDeleteVersionId === selectedVersionId && (
                 <div className="adp-delete-confirm" style={{ marginTop: "0.5rem" }}>
-                  <span>Delete version {selectedVersion?.version_number}? This cannot be undone.</span>
+                  {versions.length === 1 ? (
+                    <span>
+                      ⚠️ This is the <strong>only version</strong>. Deleting it will permanently remove the entire assessment. This cannot be undone.
+                    </span>
+                  ) : (
+                    <span>Delete version {selectedVersion?.version_number}? This cannot be undone.</span>
+                  )}
                   <button
                     className="adp-delete-confirm-yes"
                     disabled={isDeletingVersion}
