@@ -328,6 +328,9 @@
 
 /* Section divider shown when the assessment has multiple question types */
 .av-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
   font-weight: 700;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -337,6 +340,69 @@
   padding-bottom: 0.4rem;
   margin-top: 0.5rem;
   margin-bottom: 0.25rem;
+}
+
+.av-section-time {
+  font-weight: 400;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg-tertiary, #9ca3af);
+}
+
+/* ── Pacing breakdown table (on-screen only) ─────────────────────────────── */
+.av-pacing-breakdown {
+  margin: 0.75rem 0 1.25rem;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  background: var(--bg-subtle, #f9fafb);
+}
+
+.av-pacing-header {
+  font-weight: 600;
+  font-size: 0.82rem;
+  margin-bottom: 0.5rem;
+  color: var(--fg-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.av-pacing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}
+
+.av-pacing-table th {
+  font-weight: 600;
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  color: var(--fg-secondary, #6b7280);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.av-pacing-table td {
+  padding: 0.25rem 0.5rem;
+  color: var(--fg, #111827);
+}
+
+.av-pacing-table tbody tr:nth-child(even) {
+  background: var(--bg-row-alt, rgba(0, 0, 0, 0.02));
+}
+
+.av-pacing-table tfoot td {
+  border-top: 1.5px solid var(--border, #e5e7eb);
+  padding-top: 0.4rem;
+}
+
+/* Hide pacing breakdown in print so it doesn't appear on exported docs */
+@media print {
+  .av-pacing-breakdown { display: none; }
+  .av-section-time { display: none; }
 }
 
 .av-question {

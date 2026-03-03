@@ -475,6 +475,7 @@ export function ConversationalAssessmentWrapper({
                 teacherFeedback={result.philosopherWrite?.teacherFeedback}
                 reliability={result.scribe?.reliability}
                 blueprintWarnings={result.blueprint?.warnings}
+                pacingSeconds={teacherProfile?.pacingDefaults?.questionTypeSeconds}
               />
 
               {/* Post-Builder Teacher Feedback Panel */}

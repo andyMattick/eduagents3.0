@@ -10,6 +10,7 @@ import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/bui
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
 import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
 import { useDeveloperMode } from "@/hooks/useDeveloperMode";
+import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
 import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
 import type { WriterContract } from "@/pipeline/contracts/WriterContract";
 import { PlaytesterPayloadPanel } from "./PlaytesterPayloadPanel";
@@ -297,6 +298,13 @@ function totalMinutes(seconds?: number): string {
   return `${m} min`;
 }
 
+/** Human-readable pacing time: "30 sec", "1 min", "2.5 min", etc. */
+function formatPacingTime(seconds: number): string {
+  if (seconds < 60) return `${seconds} sec`;
+  const m = seconds / 60;
+  return m === Math.floor(m) ? `${m} min` : `${m.toFixed(1)} min`;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     year: "numeric",
@@ -506,9 +514,15 @@ interface AssessmentViewerProps {
   writerContract?: WriterContract;
   /** Blueprint-level warnings (feasibility, time adjustments, plausibility). */
   blueprintWarnings?: string[];
+  /**
+   * Per-question-type seconds from the teacher's pacing defaults.
+   * Falls back to DEFAULT_PACING_SECONDS when not provided.
+   * Used to show per-section time estimates (on-screen only, not in exports).
+   */
+  pacingSeconds?: Record<string, number>;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract, blueprintWarnings }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract, blueprintWarnings, pacingSeconds }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -517,6 +531,9 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   const displayTitle = title ?? "Assessment";
   const totalTime = totalMinutes(assessment.metadata?.totalEstimatedTimeSeconds);
   const hasMath = assessmentContainsMath(assessment);
+
+  // Per-question-type seconds — use teacher pacing or global fallback
+  const pacing = pacingSeconds ?? DEFAULT_PACING_SECONDS;
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
@@ -710,6 +727,52 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         </div>
       </div>
 
+      {/* ── Pacing breakdown (on-screen only) ──────────────────── */}
+      {(() => {
+        const { sections: secMap, sectionOrder: secOrd } = groupItemsBySection(null, assessment.items);
+        // Only show if there are questions and at least one type has pacing data
+        if (secOrd.length === 0) return null;
+        const rows = secOrd.map((type) => {
+          const count = (secMap[type] ?? []).length;
+          const secPerQ = pacing[type] ?? 60;
+          const totalSec = count * secPerQ;
+          return { type, count, secPerQ, totalSec };
+        });
+        const grandTotalSec = rows.reduce((s, r) => s + r.totalSec, 0);
+        const grandTotalMin = Math.ceil(grandTotalSec / 60);
+        return (
+          <div className="av-pacing-breakdown">
+            <div className="av-pacing-header">Estimated pacing</div>
+            <table className="av-pacing-table">
+              <thead>
+                <tr>
+                  <th>Section</th>
+                  <th style={{ textAlign: "right" }}>Qty</th>
+                  <th style={{ textAlign: "right" }}>Per Q</th>
+                  <th style={{ textAlign: "right" }}>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.type}>
+                    <td>{formatSectionHeader(r.type)}</td>
+                    <td style={{ textAlign: "right" }}>{r.count}</td>
+                    <td style={{ textAlign: "right" }}>{formatPacingTime(r.secPerQ)}</td>
+                    <td style={{ textAlign: "right" }}>{formatPacingTime(r.totalSec)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} style={{ textAlign: "right", fontWeight: 600 }}>Total</td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>~{grandTotalMin} min</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+      })()}
+
       {/* ── Questions ──────────────────────────────────────────── */}
       {(() => {
         const layout = assessment.metadata?.layout ?? "singleColumn";
@@ -718,21 +781,31 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         const hasMultipleSections = sectionOrder.length > 1;
         return (
           <div className={isColumns ? "av-questions-columns" : "av-questions"}>
-            {sectionOrder.map((type) => (
-              <div key={type}>
-                {hasMultipleSections && (
-                  <div className="av-section-header">{formatSectionHeader(type)}</div>
-                )}
-                {sections[type].map((item) => (
-                  <QuestionItem
-                    key={item.slotId}
-                    item={item}
-                    showAnswer={showAnswerKey}
-                    compact={isColumns && item.questionType === "arithmeticFluency"}
-                  />
-                ))}
-              </div>
-            ))}
+            {sectionOrder.map((type) => {
+              const count = (sections[type] ?? []).length;
+              const secPerQ = pacing[type] ?? 60;
+              const sectionSec = count * secPerQ;
+              return (
+                <div key={type}>
+                  {hasMultipleSections && (
+                    <div className="av-section-header">
+                      {formatSectionHeader(type)}
+                      <span className="av-section-time">
+                        {count} question{count !== 1 ? "s" : ""} &middot; ~{formatPacingTime(sectionSec)}
+                      </span>
+                    </div>
+                  )}
+                  {sections[type].map((item) => (
+                    <QuestionItem
+                      key={item.slotId}
+                      item={item}
+                      showAnswer={showAnswerKey}
+                      compact={isColumns && item.questionType === "arithmeticFluency"}
+                    />
+                  ))}
+                </div>
+              );
+            })}
           </div>
         );
       })()}
