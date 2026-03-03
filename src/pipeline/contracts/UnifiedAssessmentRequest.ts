@@ -80,6 +80,16 @@ export interface UnifiedAssessmentRequest {
     content: string;
   }>;
 
+  // ── Summarizer output (populated by runPipeline when sourceDocuments present) ──
+  /** Key concepts extracted from uploaded source documents. */
+  extractedConcepts?: string[];
+  /** Academic vocabulary extracted from uploaded source documents. */
+  extractedVocabulary?: string[];
+  /** Estimated difficulty derived from uploaded source documents. */
+  extractedDifficulty?: "easy" | "medium" | "hard";
+  /** Question-worthy angles extracted from uploaded source documents. */
+  extractedAngles?: string[];
+
   exampleAssessment?: {
     id: string;
     content: string;

@@ -9,6 +9,8 @@ import { TeacherFeedbackPanel } from "./TeacherFeedbackPanel";
 import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
 import { generateAssessment } from "@/config/aiConfig";
 import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
+import { runFeasibilityPrecheck } from "@/pipeline/agents/architect/feasibilityPrecheck";
+import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
 import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
 import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
@@ -53,6 +55,7 @@ export function ConversationalAssessmentWrapper({
   const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
   const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
   const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
+  const [preflightFeasibility, setPreflightFeasibility] = useState<FeasibilityReport | null>(null);
 
   // ── Post-Builder teacher feedback state ────────────────────────────────
   const [isRewriting, setIsRewriting] = useState(false);
@@ -82,8 +85,19 @@ export function ConversationalAssessmentWrapper({
       setPipelineError(null);
       setFormInitialAnswers(null); // clear restore state when teacher completes a fresh form
       const validation = runPromptEngineer(intent);
+      const preflight = runFeasibilityPrecheck({
+        topic: intent.topic || intent.unitName || "",
+        additionalDetails: intent.additionalDetails,
+        assessmentType: intent.assessmentType,
+        studentLevel: intent.studentLevel,
+        timeMinutes: intent.time ?? 10,
+        questionFormat: intent.questionFormat,
+        bloomPreference: intent.bloomPreference,
+        gradeLevels: intent.gradeLevels,
+      });
       setPendingIntent(intent);
       setPeResult(validation);
+      setPreflightFeasibility(preflight);
     },
     []
   );
@@ -115,6 +129,7 @@ export function ConversationalAssessmentWrapper({
     }
     setPendingIntent(null);
     setPeResult(null);
+    setPreflightFeasibility(null);
   }, [pendingIntent]);
 
   // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
@@ -394,6 +409,7 @@ export function ConversationalAssessmentWrapper({
         /* Input Review validation panel — shown before pipeline fires */
         <PromptEngineerPanel
           result={peResult}
+          feasibility={preflightFeasibility ?? undefined}
           onProceed={handleProceed}
           onEdit={handleEditInputs}
           onOverride={handleProceed}
@@ -431,6 +447,7 @@ export function ConversationalAssessmentWrapper({
                 philosopherAnalysis={result.philosopherWrite?.analysis}
                 teacherFeedback={result.philosopherWrite?.teacherFeedback}
                 reliability={result.scribe?.reliability}
+                blueprintWarnings={result.blueprint?.warnings}
               />
 
               {/* Post-Builder Teacher Feedback Panel */}

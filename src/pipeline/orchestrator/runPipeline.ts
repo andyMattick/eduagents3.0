@@ -1,7 +1,7 @@
 
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
-
+import { runSummarizer } from "../agents/document/summarizer";
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
 import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
@@ -111,6 +111,11 @@ function uarForWriter(uar: any): Record<string, any> {
     timeMinutes: uar.timeMinutes ?? uar.time ?? null,
     assessmentType: uar.assessmentType,
     studentLevel: uar.studentLevel ?? null,
+    // ── Summarizer-extracted fields (populated when sourceDocuments were present) ──
+    extractedConcepts:   uar.extractedConcepts   ?? null,
+    extractedVocabulary: uar.extractedVocabulary  ?? null,
+    extractedDifficulty: uar.extractedDifficulty  ?? null,
+    extractedAngles:     uar.extractedAngles      ?? null,
   };
 }
 
@@ -262,13 +267,40 @@ export async function runPipeline(
   const defaults = defaultsRows?.[0] ?? null;
 
   // ── Step 0b: merge predictive defaults into the UAR ───────────────────────
-  const uarWithDefaults: UnifiedAssessmentRequest = {
+  let uarWithDefaults: UnifiedAssessmentRequest = {
     ...safeUar,
     questionTypes:        safeUar.questionTypes,
     questionCount:        defaults?.avg_question_count ?? safeUar.questionCount,
     difficultyPreference: defaults?.preferred_difficulty ?? safeUar.difficultyPreference,
     assessmentType:       safeUar.assessmentType ?? defaults?.preferred_assessment_type,
   };
+
+  // ── Step 0c: Document enrichment via Summarizer ───────────────────────────
+  // If the teacher uploaded source documents, run the Summarizer to extract
+  // concepts, vocabulary, difficulty, and question angles. These are merged
+  // into the UAR so the Architect and Writer can use them without re-parsing.
+  if (uarWithDefaults.sourceDocuments?.length) {
+    try {
+      const docSummary = await runSummarizer(
+        uarWithDefaults.sourceDocuments.map((d) => d.content)
+      );
+      uarWithDefaults = {
+        ...uarWithDefaults,
+        extractedConcepts:    docSummary.keyConcepts,
+        extractedVocabulary:  docSummary.vocabulary,
+        extractedDifficulty:  docSummary.difficulty,
+        extractedAngles:      docSummary.questionAngles,
+      };
+      console.log(
+        `[Pipeline] Summarizer: ${docSummary.keyConcepts.length} concepts, ` +
+        `${docSummary.vocabulary.length} vocab terms, difficulty=${docSummary.difficulty}, ` +
+        `${docSummary.questionAngles.length} question angles extracted.`
+      );
+    } catch (err) {
+      // Non-fatal — pipeline continues without enrichment rather than failing
+      console.warn("[Pipeline] Summarizer failed — proceeding without document enrichment:", err);
+    }
+  }
 
   console.log(`[Pipeline] Version 2.2.0 — mode: ${uarWithDefaults.mode}, depth: ${_depth}`);
 
@@ -281,12 +313,35 @@ export async function runPipeline(
 
   // ── Step 2: Architect — build the blueprint ───────────────────────────────
   const blueprint = await runAgent(trace, "Architect", runArchitect, {
+    
     uar: uarWithDefaults,
     compensation: selected.compensationProfile
   });
 
   // Snapshot for live preview — readable by getLastPipelineBlueprint()
   _lastPipelineBlueprint = blueprint;
+
+  // ── Log feasibility analysis into the trace ────────────────────────────────
+  if (blueprint.feasibilityReport) {
+    const fr = blueprint.feasibilityReport;
+    logAgentStep(
+      trace,
+      "Architect.feasibility",
+      { requestedSlots: fr.loadRatio > 0 ? Math.round(fr.conceptualSurfaceScore * fr.loadRatio) : 0 },
+      {
+        feasibilityScore: fr.feasibilityScore,
+        riskLevel: fr.riskLevel,
+        loadRatio: fr.loadRatio,
+        conceptualSurface: fr.conceptualSurfaceScore,
+        recommendedRange: fr.recommendedSlotRange,
+        bloomRisk: fr.bloomRisk,
+        adjustedTo: fr.adjustedQuestionCount,
+        uniqueTerms: fr.conceptProfile.uniqueTerms.length,
+        bigramCount: fr.conceptProfile.bigramConcepts.length,
+        docTokens: fr.conceptProfile.documentTokenCount,
+      }
+    );
+  }
 
   // ── Create Writer Contract ─────────────────────────────────────────────────
   // Captures teacher intent + system constraints derived by the Architect.
@@ -326,7 +381,10 @@ export async function runPipeline(
         preferMultipleChoiceActivated:
           !!(blueprint as any).derivedStructuralConstraints?.preferMultipleChoice,
         topicAngles,
-      },
+        // Feasibility context — Writer can see if slots were constrained
+        feasibilityRiskLevel: blueprint.feasibilityReport?.riskLevel ?? "safe",
+        feasibilitySurface: blueprint.feasibilityReport?.conceptualSurfaceScore ?? null,
+      } as any,
       gatekeeperPrescriptions: { violations: [], addedConstraints: [] },
       revisionHistory: [],
       studentPerformanceAdjustments: [],
@@ -343,7 +401,15 @@ export async function runPipeline(
 
 const writerDraft = await runAgent(trace, "Writer", runWriter, {
   blueprint: blueprint.plan,
-  uar: uarForWriter(blueprint.uar), // slim: only the 10 fields writerParallel.ts reads
+  // Merge blueprint.uar (Architect-derived) with extracted doc fields from the
+  // enriched UAR — blueprint.uar is ArchitectUAR and doesn't carry these.
+  uar: uarForWriter({
+    ...blueprint.uar,
+    extractedConcepts:   uarWithDefaults.extractedConcepts,
+    extractedVocabulary: uarWithDefaults.extractedVocabulary,
+    extractedDifficulty: uarWithDefaults.extractedDifficulty,
+    extractedAngles:     uarWithDefaults.extractedAngles,
+  }),
   scribePrescriptions: writerPrescriptions,
   compensation: selected.compensationProfile,
   onItemsProgress,

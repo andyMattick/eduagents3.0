@@ -7,6 +7,7 @@ import { runConstraintEngine } from "./constraintEngine";
 import { resolveRigorProfile } from "./rigorProfile";
 import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
 import { allocateBloomCounts } from "./allocateBloomCounts";
+import { evaluateFeasibility, type FeasibilityReport } from "./feasibility";
 
 import {
   BlueprintPlanV3_2,
@@ -167,12 +168,37 @@ export async function runArchitect({
 
   const totalEstimatedTimeSeconds = architectUAR.timeMinutes * 60;
 
-  const questionCount = Math.max(
+  let questionCount = Math.max(
     1,
     architectUAR.questionCount ?? Math.floor(totalEstimatedTimeSeconds / avgPacingSeconds)
   );
 
   const pacingToleranceSeconds = 10;
+
+  // ── 1b. Feasibility check — does the topic support this many slots? ─────
+  const feasibilityReport: FeasibilityReport = evaluateFeasibility({
+    topic: architectUAR.topic,
+    additionalDetails: architectUAR.additionalDetails,
+    sourceDocuments: uar.sourceDocuments,
+    requestedSlotCount: questionCount,
+    questionTypes: requestedTypes,
+    depthFloor: rigorProfile.depthFloor,
+    depthCeiling: rigorProfile.depthCeiling,
+  });
+
+  console.info(
+    `[Architect] Feasibility: score=${feasibilityReport.feasibilityScore}, ` +
+    `risk=${feasibilityReport.riskLevel}, surface=${feasibilityReport.conceptualSurfaceScore}, ` +
+    `load=${feasibilityReport.loadRatio}, requested=${questionCount}`
+  );
+
+  if (feasibilityReport.adjustedQuestionCount !== null) {
+    console.info(
+      `[Architect] Feasibility auto-adjust: ${questionCount} → ${feasibilityReport.adjustedQuestionCount} slots ` +
+      `(topic surface can support ~${feasibilityReport.conceptualSurfaceScore})`
+    );
+    questionCount = feasibilityReport.adjustedQuestionCount;
+  }
 
   //
   // 2. Cognitive distribution (unchanged)
@@ -521,7 +547,7 @@ export async function runArchitect({
     "the handmaid's tale", "things fall apart", "an inspector calls"
   ];
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...feasibilityReport.warnings];
 
   if (!isNaN(gradeNum) && gradeNum <= 6) {
     const searchText = [
@@ -532,11 +558,12 @@ export async function runArchitect({
 
     const matchedText = COMPLEX_TEXTS.find(t => searchText.includes(t));
     if (matchedText) {
-      warnings.push(
+      const gtWarning =
         `Grade–text plausibility: "${matchedText}" is typically studied at the secondary level. ` +
         `This assessment targets grade ${gradeNum}. The literary work may exceed typical reading ` +
-        `level and content appropriateness for this age group. Confirm intent?`
-      );
+        `level and content appropriateness for this age group. Confirm intent?`;
+      warnings.push(gtWarning);
+      feasibilityReport.gradeTextWarning = gtWarning;
     }
   }
 
@@ -694,5 +721,6 @@ export async function runArchitect({
     resolvedConstraints,
     derivedStructuralConstraints,
     warnings,
+    feasibilityReport,
   };
 }

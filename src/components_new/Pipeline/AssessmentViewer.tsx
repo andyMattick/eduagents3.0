@@ -504,9 +504,11 @@ interface AssessmentViewerProps {
   reliability?: { trust: number; alignment: number; stability: number };
   /** Writer Contract — records all guidelines, constraints, and Gatekeeper prescriptions. */
   writerContract?: WriterContract;
+  /** Blueprint-level warnings (feasibility, time adjustments, plausibility). */
+  blueprintWarnings?: string[];
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract, blueprintWarnings }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -787,6 +789,25 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         philosopherAnalysis={philosopherAnalysis}
         teacherFeedback={teacherFeedback}
       />
+
+      {/* ── Blueprint warnings (feasibility, time, plausibility) ──── */}
+      {blueprintWarnings && blueprintWarnings.length > 0 && (
+        <div className="av-report" style={{ marginTop: "1rem" }}>
+          <div className="av-report-body" style={{ paddingTop: "0.75rem" }}>
+            <p className="av-report-col-heading av-report-col-heading--amber" style={{ marginBottom: "0.5rem" }}>
+              ⚠ Assessment Notes
+            </p>
+            <ul className="av-report-list">
+              {blueprintWarnings
+                .filter(w => !w.startsWith("[Feasibility detail]"))
+                .map((w, i) => (
+                  <li key={i} style={{ fontSize: "0.9rem", marginBottom: "0.35rem" }}>{w}</li>
+                ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* ── Writer Contract (guidelines, constraints, Gatekeeper) ──── */}
       {writerContract && (
         <WriterGuidelinesPanel contract={writerContract} />

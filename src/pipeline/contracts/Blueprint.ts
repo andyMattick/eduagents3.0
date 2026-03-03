@@ -4,6 +4,7 @@ import type {
   ClassifiedConstraint,
   DerivedStructuralConstraints,
 } from "@/pipeline/agents/architect/constraintEngine";
+import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
 
 export interface Blueprint {
   uar: UnifiedAssessmentRequest;
@@ -35,4 +36,7 @@ export interface Blueprint {
 
   /** Informational warnings from plausibility checks (never blocks the run). */
   warnings?: string[];
+
+  /** Pre-Writer feasibility analysis (conceptual surface area vs requested slots). */
+  feasibilityReport?: FeasibilityReport;
 }
