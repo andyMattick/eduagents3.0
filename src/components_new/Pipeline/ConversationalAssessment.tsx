@@ -57,6 +57,7 @@ const OVERRIDE_FIELD_CHIPS = [
   { label: "Question formats", value: "questionFormat"     },
   { label: "Multi-part",       value: "multiPartQuestions" },
   { label: "Standards",        value: "standards"          },
+  { label: "Grade level",      value: "gradeLevels"        },
   { label: "Difficulty level", value: "studentLevel"       },
 ];
 
@@ -124,6 +125,7 @@ function buildSteps(
         if (selected.includes("questionFormat"))      steps.push({ id: "questionFormat",      kind: "chips", question: "What question formats?", chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
         if (selected.includes("multiPartQuestions"))   steps.push({ id: "multiPartQuestions",   kind: "chips", question: "Include multi-part questions?", chips: MULTI_PART_CHIPS });
         if (selected.includes("standards"))            steps.push({ id: "standards",            kind: "chips", question: "Standards alignment?", chips: STANDARDS_CHIPS });
+        if (selected.includes("gradeLevels"))          steps.push({ id: "gradeLevels",          kind: "text",  question: "What grade level(s)?", placeholder: "e.g., 7  or  9, 10" });
         if (selected.includes("studentLevel"))         steps.push({ id: "studentLevel",         kind: "chips", question: "Difficulty level?", chips: LEVEL_CHIPS });
 
         // Conditional sub-steps
@@ -556,6 +558,7 @@ export function ConversationalAssessment({
     check("Question formats", d.questionTypes.join(","),             next.questionFormat);
     check("Multi-part",       d.multiPartAllowed ? "yes" : "no",     next.multiPartQuestions);
     check("Standards",        d.standards ?? "none",                 next.standards);
+    check("Grade level",      d.gradeBand ?? "",                     next.gradeLevels);
     check("Difficulty",       d.typicalDifficulty,                   next.studentLevel);
     return out;
   }, [courseDefaults]);
