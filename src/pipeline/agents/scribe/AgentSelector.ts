@@ -13,14 +13,10 @@ const tierMap: Record<SubscriptionTier, string[]> = {
   free: ["free"]
 };
 
-export async function selectAgents(supabase: SupabaseClient, userId: string) {
-  const { data: account } = await supabase
-    .from("teacher_account")
-    .select("subscription_tier")
-    .eq("user_id", userId)
-    .single();
-
-  const tier = (account?.subscription_tier ?? "free") as SubscriptionTier;
+export async function selectAgents(supabase: SupabaseClient, _userId: string) {
+  // teachers table has no subscription_tier — default all users to free tier.
+  // When a subscription system is added, query the appropriate column here.
+  const tier: SubscriptionTier = "free";
 
   const allowedTiers = tierMap[tier];
 

@@ -26,17 +26,6 @@ export async function getDailyUsage(userId: string): Promise<DailyUsage> {
   }
 
   try {
-    // ── Admin bypass: admins are never rate-limited ──────────────────────
-    const { data: account } = await supabase
-      .from("teacher_account")
-      .select("subscription_tier")
-      .eq("user_id", userId)
-      .single();
-
-    if (account?.subscription_tier === "admin") {
-      return { count: 0, limit: 9999, remaining: 9999, canGenerate: true };
-    }
-
     const todayMidnightUTC = new Date();
     todayMidnightUTC.setUTCHours(0, 0, 0, 0);
 
