@@ -689,9 +689,28 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
     notes.push("This is a revised version, built on a previous attempt.");
   }
 
-  // ── Dossier-derived metrics ─────────────────────────────────────────────
-  // (reserved for future use — currently only quality badge is shown)
-  void dossier; // suppress unused warning
+  // ── Dossier-derived calibration trend ──────────────────────────────────
+  const history = dossier?.performanceHistory ?? [];
+  const recentHistory = history.slice(-6); // last 6 sessions
+  const historyWithAvg = recentHistory.filter(h => h.classAverage != null);
+  const historyWithTime = recentHistory.filter(h => h.actualMinutes != null);
+
+  // Difficulty calibration status
+  const influence = dossier?.studentPerformanceInfluence;
+  let calibrationNote: string | null = null;
+  if (influence) {
+    const total = influence.totalCorrect + influence.totalIncorrect;
+    if (total > 0) {
+      const overallRate = Math.round((influence.totalCorrect / total) * 100);
+      if (influence.reduceDifficulty) {
+        calibrationNote = `Class average across ${history.length} session${history.length !== 1 ? "s" : ""} is ~${overallRate}% — next assessment will be easier and more scaffolded.`;
+      } else if (influence.increaseDifficulty) {
+        calibrationNote = `Class average across ${history.length} session${history.length !== 1 ? "s" : ""} is ~${overallRate}% — next assessment will be more challenging.`;
+      } else {
+        calibrationNote = `Class average across ${history.length} session${history.length !== 1 ? "s" : ""} is ~${overallRate}% — difficulty is well-calibrated.`;
+      }
+    }
+  }
 
   return (
     <div
@@ -770,6 +789,106 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                 <li key={i} style={{ marginBottom: "0.3rem" }}>{note}</li>
               ))}
             </ul>
+          )}
+
+          {/* ── AI Calibration Trend ──────────────────────────────────── */}
+          {history.length > 0 && (
+            <div
+              style={{
+                borderTop: "1px solid var(--color-border, #e5e7eb)",
+                paddingTop: "0.75rem",
+                marginTop: "0.25rem",
+              }}
+            >
+              <p style={{ margin: "0 0 0.5rem 0", fontWeight: 600, fontSize: "0.85rem" }}>
+                📈 AI Learning Progress
+              </p>
+
+              {/* Calibration summary */}
+              {calibrationNote && (
+                <p style={{ margin: "0 0 0.6rem 0", fontSize: "0.83rem", color: "var(--text-secondary, #6b7280)" }}>
+                  {calibrationNote}
+                </p>
+              )}
+
+              {/* Class average sparkline */}
+              {historyWithAvg.length >= 2 && (
+                <div style={{ marginBottom: "0.6rem" }}>
+                  <p style={{ margin: "0 0 0.3rem 0", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #6b7280)" }}>
+                    Class averages (last {historyWithAvg.length} sessions)
+                  </p>
+                  <div style={{ display: "flex", gap: "0.35rem", alignItems: "flex-end", height: "2.5rem" }}>
+                    {historyWithAvg.map((h, i) => {
+                      const pct = h.classAverage ?? 0;
+                      const heightPct = Math.max(8, pct);
+                      const color = pct >= 70 ? "var(--adp-success-fg, #16a34a)" : pct >= 50 ? "var(--adp-warn-fg, #d97706)" : "var(--color-error, #ef4444)";
+                      return (
+                        <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.15rem" }}>
+                          <span style={{ fontSize: "0.65rem", color, fontWeight: 700 }}>{pct}%</span>
+                          <div
+                            title={`Session ${i + 1}: ${pct}% avg`}
+                            style={{
+                              width: "1.75rem",
+                              height: `${(heightPct / 100) * 2}rem`,
+                              minHeight: "0.2rem",
+                              background: color,
+                              borderRadius: "3px 3px 0 0",
+                              opacity: 0.85,
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Timing accuracy */}
+              {historyWithTime.length >= 1 && (
+                <div>
+                  <p style={{ margin: "0 0 0.25rem 0", fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #6b7280)" }}>
+                    Recent actual times (min)
+                  </p>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {historyWithTime.map((h, i) => (
+                      <span
+                        key={i}
+                        style={{
+                          padding: "0.15rem 0.55rem",
+                          borderRadius: "999px",
+                          fontSize: "0.75rem",
+                          fontWeight: 600,
+                          background: "var(--bg-secondary, #f3f4f6)",
+                          color: "var(--text, #374151)",
+                          border: "1px solid var(--color-border, #e5e7eb)",
+                        }}
+                      >
+                        {h.actualMinutes} min
+                      </span>
+                    ))}
+                    {requestedMins != null && (
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)", alignSelf: "center" }}>
+                        (target: {requestedMins} min)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* First-session prompt */}
+              {history.length === 0 && (
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)", fontStyle: "italic" }}>
+                  Use "📊 Report Results" after students complete this to start tracking how well predictions match reality.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Prompt to use Report Results if no history yet */}
+          {history.length === 0 && (
+            <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)", fontStyle: "italic" }}>
+              ℹ️ After students complete this, use "📊 Report Results" to log actual performance. The system will use that data to calibrate difficulty and timing in future assessments.
+            </p>
           )}
         </div>
       )}
@@ -1477,7 +1596,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
               )}
 
               {/* ── Report Results inline panel ─────────────────────── */}
-              {showReportResults && selectedVersionId && template && (
+              {showReportResults && selectedVersionId && template && selectedVersion && (
                 <div
                   style={{
                     marginTop: "0.75rem",
@@ -1491,6 +1610,22 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     assignmentId={selectedVersionId}
                     userId={template.user_id}
                     domain={template.domain ?? "General"}
+                    problems={
+                      ((selectedVersion.assessment_json as any)?.questions as any[] | undefined)
+                        ?.map((q: any) => q.prompt ?? q.text ?? "")
+                        .filter(Boolean) ?? []
+                    }
+                    predictedMinutes={(() => {
+                      const bp = selectedVersion.blueprint_json ?? {};
+                      const plan = bp.plan ?? {};
+                      const totalItems = (selectedVersion.assessment_json as any)?.totalItems ?? 0;
+                      const uar = template.uar_json ?? {};
+                      if (bp.realisticTotalMinutes != null) return Number(bp.realisticTotalMinutes);
+                      if (plan.pacingSecondsPerItem != null && totalItems > 0)
+                        return Math.round((plan.pacingSecondsPerItem * totalItems) / 60);
+                      if (uar.time != null) return Number(uar.time);
+                      return null;
+                    })()}
                     onClose={() => setShowReportResults(false)}
                   />
                 </div>

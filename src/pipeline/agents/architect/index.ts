@@ -19,7 +19,7 @@ import {
 export async function runArchitect({
   uar,
   agentId: _agentId,
-  compensation: _compensation
+  compensation
 }: {
   uar: UnifiedAssessmentRequest;
   agentId: string;
@@ -99,7 +99,7 @@ export async function runArchitect({
   //   question type × cognitive demand × grade-level adjustment
   //
   // Base seconds by question type:
-  const PACING_BASE: Record<string, number> = {
+  const PACING_BASE_RAW: Record<string, number> = {
     multipleChoice: 60,
     trueFalse: 30,
     shortAnswer: 150,
@@ -112,6 +112,13 @@ export async function runArchitect({
     passageBased: 180,       // reading passage + 2–4 questions
     graphInterpretation: 90, // reading + interpreting a graph
   };
+
+  // Apply teacher-reported timing calibration if available (accumulated via Report Results).
+  // timingScaleFactor = actual / predicted, smoothed over sessions. Clamped 0.5–2.0.
+  const timingScaleFactor = parseFloat(String(compensation?.timingScaleFactor ?? "1.0")) || 1.0;
+  const PACING_BASE: Record<string, number> = Object.fromEntries(
+    Object.entries(PACING_BASE_RAW).map(([k, v]) => [k, Math.round(v * timingScaleFactor)])
+  );
 
   // Cognitive-demand multiplier (higher Bloom → more time)
   const BLOOM_MULTIPLIER: Record<string, number> = {

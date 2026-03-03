@@ -87,6 +87,10 @@ export interface AgentDossierData {
     reduceDifficulty: boolean;
     increaseDifficulty: boolean;
     lastUpdated: string;
+    /** Running average of (actualMinutes - predictedMinutes) across sessions for timing calibration. */
+    avgTimeDeltaMinutes?: number;
+    /** Number of timing observations used to compute avgTimeDeltaMinutes. */
+    timingObservations?: number;
   };
 
   /** History of per-run student performance snapshots. */
@@ -95,6 +99,14 @@ export interface AgentDossierData {
     correct: number;
     incorrect: number;
     misconceptions?: string[];
+    /** Actual class average (0-100) derived from per-problem results. */
+    classAverage?: number;
+    /** Number of students in the class. */
+    classSize?: number;
+    /** Actual time students took to complete the assessment (minutes). */
+    actualMinutes?: number;
+    /** Per-problem % correct rates logged for calibration. */
+    perProblem?: Array<{ questionNumber: number; percentCorrect: number }>;
   }>;
 
   /** Log of pacing adjustment decisions. */
@@ -465,7 +477,21 @@ export class DossierManager {
   static async processStudentPerformance(
     userId: string,
     agentType: string,
-    performance: { correct: number; incorrect: number; misconceptions?: string[] }
+    performance: {
+      correct: number;
+      incorrect: number;
+      misconceptions?: string[];
+      /** Actual class average percent (0-100). Auto-derived if perProblem is provided. */
+      classAverage?: number;
+      /** Number of students in the class. */
+      classSize?: number;
+      /** Actual time taken (minutes). */
+      actualMinutes?: number;
+      /** System-predicted time (minutes from blueprint). Used to compute timing calibration. */
+      predictedMinutes?: number;
+      /** Per-problem % correct for calibration. */
+      perProblem?: Array<{ questionNumber: number; percentCorrect: number }>;
+    }
   ) {
     const row = await this.ensureRow(userId);
     const key = agentKey(agentType);
@@ -479,6 +505,14 @@ export class DossierManager {
         ? { ...map[domain] }
         : baselineDossier();
 
+    // Derive class average from perProblem if not provided directly
+    const derivedAvg: number | undefined = performance.perProblem?.length
+      ? Math.round(
+          performance.perProblem.reduce((s, p) => s + p.percentCorrect, 0) /
+          performance.perProblem.length
+        )
+      : performance.classAverage;
+
     // Append to performanceHistory
     dossier.performanceHistory ??= [];
     dossier.performanceHistory.push({
@@ -486,6 +520,10 @@ export class DossierManager {
       correct: performance.correct,
       incorrect: performance.incorrect,
       misconceptions: performance.misconceptions,
+      classAverage: derivedAvg,
+      classSize: performance.classSize,
+      actualMinutes: performance.actualMinutes,
+      perProblem: performance.perProblem,
     });
 
     // Update studentPerformanceInfluence
@@ -514,6 +552,24 @@ export class DossierManager {
       // Students excelled — increase difficulty
       influence.increaseDifficulty = true;
       influence.reduceDifficulty = false;
+    }
+
+    // Update running average of time delta for timing calibration
+    if (performance.actualMinutes != null) {
+      influence.timingObservations = (influence.timingObservations ?? 0) + 1;
+
+      // Compute rolling timing scale factor from actual vs predicted
+      if (performance.predictedMinutes != null && performance.predictedMinutes > 0) {
+        const rawScale = performance.actualMinutes / performance.predictedMinutes;
+        // Clamp to prevent wild swings: 0.5× – 2.0×
+        const clampedScale = Math.max(0.5, Math.min(2.0, rawScale));
+        // Smooth into existing scale using exponential moving avg (alpha = 0.3)
+        const prevScale = parseFloat(String(dossier.compensationProfile?.timingScaleFactor ?? "1.0")) || 1.0;
+        const newScale = parseFloat((prevScale * 0.7 + clampedScale * 0.3).toFixed(3));
+        dossier.compensationProfile ??= {};
+        dossier.compensationProfile.timingScaleFactor = String(newScale);
+        influence.avgTimeDeltaMinutes = parseFloat((performance.actualMinutes - performance.predictedMinutes).toFixed(1));
+      }
     }
 
     dossier.studentPerformanceInfluence = influence;

@@ -1,0 +1,428 @@
+/* ── PlaytesterPayloadPanel ──────────────────────────────────────────────────── */
+
+.ptp-root {
+  margin-top: 1.5rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--bg, #fff);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  overflow: hidden;
+}
+
+/* ── Main toggle button ────────────────────────────────────────────────────── */
+
+.ptp-panel-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.95rem;
+  color: var(--fg, #111);
+  border-bottom: 1px solid transparent;
+  transition: background 0.15s;
+}
+
+.ptp-panel-toggle:hover {
+  background: var(--surface-hover, #f9fafb);
+}
+
+.ptp-panel-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.ptp-panel-label {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.ptp-panel-sub {
+  font-size: 0.82rem;
+  color: var(--gray-500, #6b7280);
+  flex: 1;
+}
+
+/* ── Panel body ───────────────────────────────────────────────────────────── */
+
+.ptp-panel-body {
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+/* ── Tab bar ───────────────────────────────────────────────────────────────── */
+
+.ptp-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.6rem 1rem 0;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  background: var(--surface, #fafafa);
+}
+
+.ptp-tab {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #6b7280);
+  transition: background 0.1s, color 0.1s;
+}
+
+.ptp-tab:hover {
+  background: var(--surface-hover, #f3f4f6);
+  color: var(--fg, #111);
+}
+
+.ptp-tab--active {
+  background: var(--bg, #fff);
+  color: var(--fg, #111);
+  border-color: var(--border-color, #e5e7eb);
+  font-weight: 600;
+  position: relative;
+  bottom: -1px;
+}
+
+.ptp-run-btn {
+  margin-left: auto;
+  padding: 0.4rem 1rem;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.ptp-run-btn:hover {
+  opacity: 0.88;
+}
+
+/* ── Tab content ──────────────────────────────────────────────────────────── */
+
+.ptp-tab-content {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ptp-tab-desc {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+/* ── Asteroid card ────────────────────────────────────────────────────────── */
+
+.ptp-asteroid-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ptp-asteroid-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  background: var(--surface, #fafafa);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--fg, #111);
+  transition: background 0.1s;
+}
+
+.ptp-asteroid-toggle:hover {
+  background: var(--surface-hover, #f3f4f6);
+}
+
+.ptp-asteroid-num {
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  flex-shrink: 0;
+  min-width: 2rem;
+  color: var(--gray-500, #6b7280);
+  font-size: 0.78rem;
+}
+
+.ptp-asteroid-bloom {
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--accent-light, #dbeafe);
+  color: var(--accent, #2563eb);
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.ptp-asteroid-preview {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.84rem;
+  color: var(--fg, #111);
+}
+
+.ptp-asteroid-chevron {
+  font-size: 0.7rem;
+  color: var(--gray-500, #6b7280);
+  flex-shrink: 0;
+}
+
+.ptp-asteroid-body {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg, #fff);
+}
+
+.ptp-asteroid-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.6rem;
+}
+
+.ptp-kv-key {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #6b7280);
+  margin-right: 0.4rem;
+}
+
+.ptp-kv-val {
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-mono, monospace);
+  color: var(--fg, #111);
+}
+
+/* ── Astronaut card ───────────────────────────────────────────────────────── */
+
+.ptp-astronaut-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
+  background: var(--bg, #fff);
+}
+
+.ptp-astronaut-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+/* ── Sliders ──────────────────────────────────────────────────────────────── */
+
+.ptp-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ptp-slider-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 42px;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ptp-slider-label {
+  font-size: 0.82rem;
+  color: var(--fg, #111);
+}
+
+.ptp-slider {
+  width: 100%;
+  accent-color: var(--accent, #2563eb);
+  cursor: pointer;
+}
+
+.ptp-slider-val {
+  font-size: 0.8rem;
+  font-family: var(--font-mono, monospace);
+  text-align: right;
+  color: var(--fg, #111);
+}
+
+/* ── Simulation result card ───────────────────────────────────────────────── */
+
+.ptp-sim-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ptp-sim-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--surface, #fafafa);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.85rem;
+  color: var(--fg, #111);
+  transition: background 0.1s;
+}
+
+.ptp-sim-toggle:hover {
+  background: var(--surface-hover, #f3f4f6);
+}
+
+.ptp-sim-name {
+  font-weight: 700;
+  margin-right: 0.25rem;
+}
+
+.ptp-sim-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  flex: 1;
+}
+
+.ptp-overlays {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.ptp-badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.ptp-sim-body {
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg, #fff);
+}
+
+/* ── Summary bars ────────────────────────────────────────────────────────── */
+
+.ptp-sim-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.ptp-sim-metric {
+  display: grid;
+  grid-template-columns: 180px 1fr 42px;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.ptp-bar-track {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-color, #e5e7eb);
+  overflow: hidden;
+}
+
+.ptp-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* ── Per-problem table ───────────────────────────────────────────────────── */
+
+.ptp-per-problem {
+  overflow-x: auto;
+  margin-bottom: 0.75rem;
+}
+
+.ptp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.ptp-table th,
+.ptp-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  white-space: nowrap;
+}
+
+.ptp-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #6b7280);
+  background: var(--surface, #fafafa);
+}
+
+.ptp-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── JSON toggle ─────────────────────────────────────────────────────────── */
+
+.ptp-json-toggle {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ptp-json-toggle summary {
+  cursor: pointer;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.78rem;
+  padding: 0.25rem 0;
+  user-select: none;
+}
+
+.ptp-json-toggle summary:hover {
+  color: var(--fg, #111);
+}
+
+.ptp-json {
+  background: var(--code-bg, #f8f9fa);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 4px;
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  font-family: var(--font-mono, monospace);
+  overflow-x: auto;
+  margin-top: 0.4rem;
+  color: var(--fg, #111);
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* ── No results state ─────────────────────────────────────────────────────── */
+
+.ptp-no-results {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.9rem;
+}

@@ -12,6 +12,7 @@ import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/buil
 import { useDeveloperMode } from "@/hooks/useDeveloperMode";
 import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
 import type { WriterContract } from "@/pipeline/contracts/WriterContract";
+import { PlaytesterPayloadPanel } from "./PlaytesterPayloadPanel";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -642,17 +643,42 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
                 );
               })()}
 
-              {/* Time */}
-              {(totalTime !== "—" || uar.timeMinutes != null) && (
-                <div className="av-match-row">
-                  <span className="av-match-label">Est. time</span>
-                  <span className="av-match-value">
-                    {totalTime !== "—" ? `~${totalTime}` : `~${uar.timeMinutes} min`}
-                    {uar.timeMinutes != null && totalTime !== "—" && ` (${uar.timeMinutes} min requested)`}
-                  </span>
-                  <span className="av-match-badge av-match-badge--yes">✓ On target</span>
-                </div>
-              )}
+              {/* Time — compare estimated vs requested */}
+              {(() => {
+                const requestedMins: number | null =
+                  uar.time != null ? Number(uar.time) :
+                  uar.timeMinutes != null ? Number(uar.timeMinutes) :
+                  null;
+                const estimatedSec = assessment.metadata?.totalEstimatedTimeSeconds;
+                const estimatedMins = estimatedSec ? Math.round(estimatedSec / 60) : null;
+                if (estimatedMins == null && requestedMins == null) return null;
+                const delta = (estimatedMins != null && requestedMins != null)
+                  ? estimatedMins - requestedMins : null;
+                const badgeClass =
+                  delta == null ? "av-match-badge av-match-badge--yes" :
+                  Math.abs(delta) <= 2 ? "av-match-badge av-match-badge--yes" :
+                  delta > 0 ? "av-match-badge av-match-badge--no" :
+                  "av-match-badge av-match-badge--partial";
+                const badgeLabel =
+                  delta == null ? "✓ Estimated" :
+                  Math.abs(delta) <= 2 ? "✓ On target" :
+                  delta > 0 ? `+${delta} min over` :
+                  `${Math.abs(delta)} min under`;
+                return (
+                  <div className="av-match-row">
+                    <span className="av-match-label">Time</span>
+                    <span className="av-match-value">
+                      {estimatedMins != null ? `~${estimatedMins} min estimated` : "—"}
+                      {requestedMins != null && (
+                        <span style={{ marginLeft: "0.4em", opacity: 0.65 }}>
+                          ({requestedMins} min requested)
+                        </span>
+                      )}
+                    </span>
+                    <span className={badgeClass}>{badgeLabel}</span>
+                  </div>
+                );
+              })()}
 
               {/* Question types */}
               {Array.isArray(uar.questionTypes) && uar.questionTypes.length > 0 && (
@@ -764,6 +790,10 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
       {/* ── Writer Contract (guidelines, constraints, Gatekeeper) ──── */}
       {writerContract && (
         <WriterGuidelinesPanel contract={writerContract} />
-      )}    </div>
+      )}
+
+      {/* ── Playtester Payload ──────────────────────────────────── */}
+      <PlaytesterPayloadPanel assessment={assessment} />
+    </div>
   );
 }
