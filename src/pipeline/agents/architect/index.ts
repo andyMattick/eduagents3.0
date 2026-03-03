@@ -600,6 +600,32 @@ export async function runArchitect({
     );
   }
 
+  // ── Topic angle diversification (Writer Contract: uniqueness) ──────────────
+  // Pre-assign a distinct scenario angle to every slot so parallel Writer
+  // groups don't converge on the same scenario — fixes repeated questions.
+  const TOPIC_ANGLE_BANK = [
+    "core definition or principle",
+    "real-world application or scenario",
+    "step-by-step procedure",
+    "comparison or contrast between two concepts",
+    "error identification or misconception",
+    "cause-and-effect relationship",
+    "interpretation of a result or outcome",
+    "prediction or estimation",
+    "mechanism or process explanation",
+    "decision-making and justification",
+    "historical or cultural context",
+    "symbolic or formal representation",
+    "edge case or exception",
+    "transfer to a new context",
+    "evaluation of an approach or solution",
+  ];
+  const topicBase = architectUAR.topic ?? architectUAR.unitName ?? "the topic";
+  for (let angleIdx = 0; angleIdx < adjustedSlots.length; angleIdx++) {
+    (adjustedSlots[angleIdx] as any).topicAngle =
+      `${topicBase} — ${TOPIC_ANGLE_BANK[angleIdx % TOPIC_ANGLE_BANK.length]}`;
+  }
+
   // Update the plan in-place with time-adjusted values
   (finalPlan as any).slots              = adjustedSlots;
   (finalPlan as any).questionCount      = adjustedQuestionCount;

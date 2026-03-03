@@ -107,12 +107,13 @@ export function PipelineRouter({
       {assessment && (
         <div style={{ marginTop: "1rem" }}>
           {(assessment as any).finalAssessment ? (
-            <AssessmentViewer
+          <AssessmentViewer
               assessment={(assessment as any).finalAssessment}
               title={getTitle(assessment)}
               subtitle={getSubtitle(assessment)}
               uar={(assessment as any).blueprint?.uar ?? (assessment as any).uar}
               philosopherNotes={(assessment as any).notes}
+              writerContract={(assessment as any).writerContract ?? undefined}
             />
           ) : (
             <pre className="json-preview" style={{ padding: "1rem" }}>

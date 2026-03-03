@@ -40,6 +40,10 @@ import {
   type HintMode,
 } from "../bloomHintBudget";
 import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
+import {
+  buildContractGuidelines,
+  setFinalWriterGuidelines,
+} from "@/pipeline/agents/scribe/WriterContractStore";
 
 // Module-level bloom alignment log — reset each run, read by SCRIBE post-run
 let _lastBloomAlignmentLog: BloomAlignmentLog = [];
@@ -211,6 +215,9 @@ export async function writerParallel(
 ): Promise<WriterParallelResult> {
   const telemetry = createTelemetry();
 
+  // Build contract guidelines from the active Writer Contract (if any)
+  const contractGuidelines = buildContractGuidelines();
+
   const context: WriterContext = {
     domain: uar.course ?? "unknown",
     topic: uar.topic ?? uar.lessonName ?? uar.unitName ?? "general",
@@ -226,7 +233,13 @@ export async function writerParallel(
     mathFormat: (uar as any).mathFormat ?? "unicode",
     operation: (uar as any).operation ?? "multiply",
     range: (uar as any).range ?? { min: 1, max: 10 },
+    contractGuidelines,
   };
+
+  // Record the guidelines in the contract so the UI can display them
+  if (contractGuidelines.length > 0) {
+    setFinalWriterGuidelines(contractGuidelines);
+  }
 
   const allSlots = [...blueprint.slots];
 
