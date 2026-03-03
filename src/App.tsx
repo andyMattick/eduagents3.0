@@ -8,6 +8,7 @@ import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
 import { MyAssessmentsPage } from './components_new/TeacherSystem/MyAssessmentsPage';
 import { MyAgentsPage } from './components_new/TeacherSystem/MyAgentsPage';
+import { TeacherProfilePage } from './components_new/TeacherSystem/TeacherProfilePage';
 import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
@@ -15,12 +16,13 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { useDeveloperMode } from './hooks/useDeveloperMode';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
+import { loadTeacherProfile } from './services_new/teacherProfileService';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 
 console.log("ENV CHECK", import.meta.env);
 
-type AppTab = 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents' | 'assessment-detail';
+type AppTab = 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents' | 'assessment-detail' | 'my-profile';
 
 type AuthPage = 'signin' | 'signup';
 
@@ -43,7 +45,15 @@ function TeacherAppContent() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { logout, user } = useAuth();
   const { devMode, toggleDevMode } = useDeveloperMode();
-  const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});
+  const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});  // Tracks whether this user has ever saved a teacher profile.
+  // null = still loading, false = no profile yet (show first-run banner), true = exists.
+  const [hasStoredProfile, setHasStoredProfile] = useState<boolean | null>(null);
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
+  // Check whether a stored profile row exists for this user (once on mount).
+  useEffect(() => {
+    if (!user?.id) return;
+    loadTeacherProfile(user.id).then((p) => setHasStoredProfile(p !== null)).catch(() => setHasStoredProfile(false));
+  }, [user?.id]);
 
   /** Derive most-used course + grade from the teacher's last 20 assessments */
   useEffect(() => {
@@ -110,6 +120,15 @@ function TeacherAppContent() {
               onClick={() => setActiveTab('what-we-infer')}
             >
               🔍 How Your Inputs Drive the Process
+            </button>
+
+            <button
+              className={`app-tab ${activeTab === 'my-profile' ? 'active' : ''}`}
+              onClick={() => setActiveTab('my-profile')}
+              title="Your teaching defaults — pre-fill every new assessment"
+            >
+              <span className="app-tab-icon">⚙️</span>
+              My Defaults
             </button>
 
             {/* Developer Mode toggle */}
@@ -186,8 +205,64 @@ function TeacherAppContent() {
           />
         )}
 
+        {activeTab === 'my-profile' && user?.id && (
+          <TeacherProfilePage userId={user.id} />
+        )}
 
-        
+        {/* ── First-run banner for users without a stored profile ──── */}
+        {activeTab === 'my-assessments' &&
+          hasStoredProfile === false &&
+          !profileBannerDismissed && (
+          <div style={{
+            margin: '1rem 1.5rem 0',
+            padding: '0.75rem 1rem',
+            background: 'var(--color-primary-subtle, #ede9fe)',
+            border: '1px solid var(--color-primary, #6366f1)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            fontSize: '0.875rem',
+            color: 'var(--color-text, #1a1a2e)',
+          }}>
+            <span>⚙️</span>
+            <span style={{ flex: 1 }}>
+              <strong>Using default settings.</strong>{' '}
+              Personalise question types, pacing, and writing style so the system asks you fewer questions each time.
+            </span>
+            <button
+              onClick={() => setActiveTab('my-profile')}
+              style={{
+                padding: '0.375rem 0.75rem',
+                background: 'var(--color-primary, #6366f1)',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '0.8rem',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Set My Defaults →
+            </button>
+            <button
+              onClick={() => setProfileBannerDismissed(true)}
+              title="Dismiss"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '1rem',
+                lineHeight: 1,
+                color: 'var(--color-text-muted, #6b7280)',
+                padding: '0.25rem',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

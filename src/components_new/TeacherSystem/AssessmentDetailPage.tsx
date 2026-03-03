@@ -16,6 +16,10 @@ import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import type { AgentDossierData } from "@/system/dossier/DossierManager";
+import {
+  adjustPacingFromFeedback,
+  type PacingFeedback,
+} from "@/services_new/teacherProfileService";
 import "./AssessmentDetailPage.css";
 import "./AssessmentDetailPage.css";
 
@@ -618,6 +622,115 @@ function AiInsightsPanel({
 // AI Generation Notes panel (teacher-language translation of quality data)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Pacing feedback bar — lets teacher say "too long / about right / too short"
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PacingFeedbackBar({
+  userId,
+  assessmentType,
+  currentDefault,
+}: {
+  userId: string;
+  assessmentType: string;
+  currentDefault?: number;
+}) {
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [given, setGiven] = useState<PacingFeedback | null>(null);
+  const [actualInput, setActualInput] = useState("");
+  const [newDefault, setNewDefault] = useState<number | null>(null);
+
+  async function submit(feedback: PacingFeedback) {
+    setGiven(feedback);
+    setStatus("saving");
+    try {
+      const actualMins =
+        actualInput !== "" && !isNaN(Number(actualInput))
+          ? Number(actualInput)
+          : undefined;
+      const updated = await adjustPacingFromFeedback(
+        userId,
+        assessmentType,
+        feedback,
+        actualMins
+      );
+      setNewDefault(
+        updated.pacingDefaults.assessmentDurationMinutes[assessmentType] ?? null
+      );
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  const btnBase: React.CSSProperties = {
+    padding: "0.3rem 0.75rem",
+    borderRadius: "6px",
+    border: "1px solid var(--color-border, #e5e7eb)",
+    background: "var(--bg, #fff)",
+    cursor: "pointer",
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    color: "var(--text, #374151)",
+    transition: "background 0.15s",
+  };
+
+  if (status === "saved") {
+    return (
+      <p style={{ margin: "0.5rem 0 0", fontSize: "0.78rem", color: "var(--adp-success-fg, #16a34a)" }}>
+        ✓ Default updated to{" "}
+        <strong>{newDefault} min</strong> for{" "}
+        <em>{assessmentType}</em>.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+      <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #6b7280)" }}>
+        How did the timing feel?
+        {currentDefault != null && (
+          <span style={{ fontWeight: 400, marginLeft: "0.4rem" }}>("{assessmentType}" default: {currentDefault} min)</span>
+        )}
+      </p>
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button style={{ ...btnBase, opacity: given === "too_long" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("too_long")}>⏱ Too long (−20%)</button>
+        <button style={{ ...btnBase, opacity: given === "about_right" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("about_right")}>✓ About right</button>
+        <button style={{ ...btnBase, opacity: given === "too_short" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("too_short")}>⚡ Too short (+20%)</button>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)" }}>or enter actual:</span>
+        <input
+          type="number"
+          min={1}
+          placeholder="min"
+          value={actualInput}
+          onChange={(e) => setActualInput(e.target.value)}
+          style={{
+            width: "4.5rem",
+            padding: "0.25rem 0.4rem",
+            border: "1px solid var(--color-border, #e5e7eb)",
+            borderRadius: "6px",
+            fontSize: "0.78rem",
+          }}
+        />
+        {actualInput !== "" && !isNaN(Number(actualInput)) && Number(actualInput) > 0 && (
+          <button
+            style={{ ...btnBase, background: "var(--color-primary, #6366f1)", color: "#fff", border: "none" }}
+            disabled={status === "saving"}
+            onClick={() => submit("about_right")}
+          >
+            Set as default
+          </button>
+        )}
+      </div>
+      {status === "error" && (
+        <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--adp-danger-fg, #dc2626)" }}>Failed to save — try again.</p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
   const [dossier, setDossier] = useState<AgentDossierData | null>(null);
@@ -873,6 +986,15 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* Pacing feedback — always visible when we know the assessment type */}
+              {uar.assessmentType && (
+                <PacingFeedbackBar
+                  userId={template.user_id}
+                  assessmentType={String(uar.assessmentType)}
+                  currentDefault={requestedMins ?? undefined}
+                />
               )}
 
               {/* First-session prompt */}

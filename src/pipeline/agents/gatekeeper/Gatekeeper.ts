@@ -59,6 +59,9 @@ function violationToMode(type: string): RewriteMode {
     case "scope_width_violation":
     case "missing_misconception_alignment":
     case "forbidden_content":
+    case "style_instruction_length":
+    case "style_tone_mismatch":
+    case "style_language_level":
     default:
       return "clarityFix";
   }
@@ -67,7 +70,14 @@ function violationToMode(type: string): RewriteMode {
 export class Gatekeeper {
   static validate(
     blueprint: BlueprintPlanV3_2,
-    items: GeneratedItem[]
+    items: GeneratedItem[],
+    /** Optional teacher profile style constraints. Pass from WriterContract.styleConstraints. */
+    styleConstraints?: {
+      tone?: string;
+      languageLevel?: string;
+      instructionLength?: string;
+      contextPreference?: string;
+    } | null
   ): GatekeeperValidationResult {
     const violations: GatekeeperViolation[] = [];
     const uar = blueprint.uar ?? {};
@@ -482,6 +492,48 @@ export class Gatekeeper {
             type: "standards_mismatch",
             message: `Item may not align to required standard (${slotStandards ?? uarStandards}). Prompt appears too brief to assess standards coverage.`,
           });
+        }
+      }
+      //
+      // 12. Teacher style enforcement (from TeacherProfile constraint injection)
+      //
+      // Checks that don't require LLM: instruction length, informal markers.
+      // Only applied when styleConstraints are present (from the WriterContract).
+      //
+      if (styleConstraints && item.prompt) {
+        const wordCount = item.prompt.trim().split(/\s+/).filter(Boolean).length;
+
+        // Instruction length: "short" = max 30 words per stem
+        if (styleConstraints.instructionLength === "short" && wordCount > 40) {
+          violations.push({
+            slotId: slot.id,
+            type: "style_instruction_length",
+            message: `Question stem has ${wordCount} words but teacher style prefers "short" (max ~30 words). Simplify and condense.`,
+          });
+        }
+
+        // Tone: "formal" should have no contractions
+        if (styleConstraints.tone === "formal") {
+          const contractionPattern = /\b(can't|won't|don't|isn't|aren't|wasn't|weren't|it's|i'm|you're|they're|we're|he's|she's|that's|there's)\b/i;
+          if (contractionPattern.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "style_tone_mismatch",
+              message: `Question stem contains contractions but teacher style requires "formal" tone. Use full forms (e.g. "do not" not "don't").`,
+            });
+          }
+        }
+
+        // Language level: "academic" should not use overly casual phrases
+        if (styleConstraints.languageLevel === "academic") {
+          const casualPhrases = /\b(kids|super easy|super hard|easy peasy|no big deal|totally|like (a|the))\b/i;
+          if (casualPhrases.test(item.prompt)) {
+            violations.push({
+              slotId: slot.id,
+              type: "style_language_level",
+              message: `Question contains casual language but teacher profile requires "academic" language level.`,
+            });
+          }
         }
       }
     }

@@ -15,6 +15,8 @@ import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
 import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
+import type { TeacherProfile } from "@/types/teacherProfile";
+import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
 
 interface ConversationalAssessmentWrapperProps {
   userId: string | null;
@@ -67,6 +69,23 @@ export function ConversationalAssessmentWrapper({
 
   const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
 
+  // ── Teacher profile (course defaults) ─────────────────────────────────────
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+
+  useEffect(() => {
+    if (safeUserId === "00000000-0000-0000-0000-000000000000") return;
+    loadOrDefaultTeacherProfile(safeUserId)
+      .then(setTeacherProfile)
+      .catch(() => {/* silently skip — profile is optional */});
+  }, [safeUserId]);
+
+  const handleUpdateDefaults = useCallback(async (updated: TeacherProfile) => {
+    setTeacherProfile(updated);
+    await saveTeacherProfile(updated).catch(e =>
+      console.warn("[Profile] save failed:", e)
+    );
+  }, []);
+
   // Load (or refresh) daily usage
   const refreshUsage = useCallback(async () => {
     const u = await getDailyUsage(safeUserId);
@@ -111,18 +130,17 @@ export function ConversationalAssessmentWrapper({
         gradeLevels:        pendingIntent.gradeLevels.join(", "),
         course:             pendingIntent.course,
         topic:              pendingIntent.topic || pendingIntent.unitName || "",
+        subtopics:          pendingIntent.subtopics ?? "",
         assessmentType:     pendingIntent.assessmentType,
         questionFormat:      pendingIntent.questionFormat ?? "",
-        bloomPreference:     pendingIntent.bloomPreference ?? "",
         multiPartQuestions:  pendingIntent.multiPartQuestions ?? "",
-        sectionStructure:    pendingIntent.sectionStructure ?? "",
         standards:           pendingIntent.standards ?? "",
+        stateCode:           pendingIntent.stateCode ?? "",
         arithmeticOperation: pendingIntent.arithmeticOperation ?? "",
         arithmeticRange:     pendingIntent.arithmeticRange ?? "",
-        passageSource:       (pendingIntent as any).passageSource ?? "",
-        passageText:         (pendingIntent as any).passageText ?? "",
+        passageSource:       pendingIntent.passageSource ?? "",
+        passageText:         pendingIntent.passageText ?? "",
         studentLevel:        pendingIntent.studentLevel,
-        time:                pendingIntent.time?.toString() ?? "",
         additionalDetails:  pendingIntent.additionalDetails ?? "",
       };
       setFormInitialAnswers(restored);
@@ -235,10 +253,17 @@ export function ConversationalAssessmentWrapper({
           console.error("[TeacherRewrite] SCRIBE save failed:", saveErr?.message);
         }
 
-        // Merge rewritten assessment + updated scribe ref back into result
+        // Merge rewritten assessment + updated scribe ref back into result.
+        // Assigning a new id triggers PlaytesterPayloadPanel to reset its
+        // simulation state so teachers don't see stale results from before
+        // the rewrite. The panel will prompt them to ▶ Run Simulation again.
+        const rewrittenWithNewId = {
+          ...rewritten,
+          id: `${rewritten.id}-r${Date.now()}`,
+        };
         setResult((prev: any) => ({
           ...prev,
-          finalAssessment: rewritten,
+          finalAssessment: rewrittenWithNewId,
           teacherRewriteApplied: true,
           scribe: updatedScribe,
         }));
@@ -404,6 +429,8 @@ export function ConversationalAssessmentWrapper({
           disabled={usage !== null && !usage.canGenerate}
           initialAnswers={formInitialAnswers ?? undefined}
           defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
+          teacherProfile={teacherProfile}
+          onUpdateDefaults={handleUpdateDefaults}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
         /* Input Review validation panel — shown before pipeline fires */

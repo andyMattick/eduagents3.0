@@ -39,4 +39,16 @@ export interface Blueprint {
 
   /** Pre-Writer feasibility analysis (conceptual surface area vs requested slots). */
   feasibilityReport?: FeasibilityReport;
+
+  /**
+   * Style constraints derived from the teacher's profile.
+   * Forwarded to the Writer Contract so every generated item respects
+   * the teacher's preferred tone, language level, and instruction length.
+   */
+  styleConstraints?: {
+    tone: string;
+    languageLevel: string;
+    instructionLength: string;
+    contextPreference: string;
+  } | null;
 }

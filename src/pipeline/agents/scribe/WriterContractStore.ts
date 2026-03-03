@@ -70,6 +70,18 @@ export function appendGatekeeperPrescription(
 }
 
 /**
+ * Record style constraints from the teacher's profile.
+ * Called right after initContract(), before the first Writer invocation.
+ */
+export function setStyleConstraints(
+  style: WriterContract["styleConstraints"]
+): void {
+  if (!_contract) return;
+  _contract.styleConstraints = style;
+  _contract.updatedAt = new Date().toISOString();
+}
+
+/**
  * Append a teacher or system override to the revision log.
  */
 export function appendRevision(
@@ -166,6 +178,32 @@ export function buildContractGuidelines(): string[] {
     lines.push(
       'JSON safety: escape every double-quote inside string values as \\". Never use raw newlines inside strings.'
     );
+  }
+
+  // ── Style constraints from teacher profile ─────────────────────────────
+  if (c.styleConstraints) {
+    const s = c.styleConstraints;
+    const toneMap: Record<string, string> = {
+      formal: "Use formal academic language — avoid contractions and colloquialisms.",
+      conversational: "Use a friendly, conversational tone — short sentences, accessible vocabulary.",
+    };
+    const levelMap: Record<string, string> = {
+      academic: "Vocabulary must be at an academic register appropriate for the grade.",
+      studentFriendly: "Use plain, student-friendly language — avoid jargon where possible.",
+    };
+    const lengthMap: Record<string, string> = {
+      short: "Question stems must be concise — 1-2 sentences maximum.",
+      detailed: "Provide sufficient context and detail in each question stem.",
+    };
+    const contextMap: Record<string, string> = {
+      realWorld: "Frame every question in a real-world, practical context.",
+      abstract: "Use abstract, theoretical framing — avoid real-world examples.",
+      mixed: "Mix real-world and abstract framing across questions.",
+    };
+    if (toneMap[s.tone])           lines.push(`[Style] ${toneMap[s.tone]}`);
+    if (levelMap[s.languageLevel]) lines.push(`[Style] ${levelMap[s.languageLevel]}`);
+    if (lengthMap[s.instructionLength]) lines.push(`[Style] ${lengthMap[s.instructionLength]}`);
+    if (contextMap[s.contextPreference]) lines.push(`[Style] ${contextMap[s.contextPreference]}`);
   }
 
   // Gatekeeper prescriptions (accumulated over runs)

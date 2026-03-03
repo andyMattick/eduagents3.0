@@ -231,6 +231,9 @@ const PACING_MINUTES: Record<string, number> = {
   matching:             0.75,
   shortAnswer:          2.5,
   constructedResponse:  6.0,
+  // Free response = AP-exam extended format (~10 min each). Without this entry
+  // it fell back to DEFAULT_PACING of 2 min → 8 FRQs allocated for 15 minutes.
+  freeResponse:         10.0,
   essay:                10.0,
   fillInTheBlank:       1.5,
   arithmeticFluency:    0.4,   // 20–30 s per item

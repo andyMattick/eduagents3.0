@@ -167,6 +167,42 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
         />
       </div>
 
+      {/* Source Documents */}
+      <div>
+        <label><strong>Upload Source Documents</strong> <span style={{ fontWeight: 400, color: "var(--gray-500, #888)" }}>(optional — PDF, Word, or text)</span></label>
+        <input
+          type="file"
+          accept=".pdf,.doc,.docx,.txt"
+          multiple
+          style={{ marginTop: "0.35rem" }}
+          onChange={async (e) => {
+            const files = Array.from(e.target.files ?? []);
+            const docs = await Promise.all(
+              files.map(async (file) => {
+                const content = await file.text().catch(() => "");
+                return { id: crypto.randomUUID(), name: file.name, content };
+              })
+            );
+            update("sourceDocuments", docs);
+          }}
+        />
+        {(form.sourceDocuments ?? []).length > 0 && (
+          <ul style={{ marginTop: "0.4rem", paddingLeft: "1rem", fontSize: "0.82rem", color: "var(--gray-500, #888)" }}>
+            {(form.sourceDocuments ?? []).map((d) => (
+              <li key={d.id}>
+                📄 {d.name}
+                <button
+                  type="button"
+                  onClick={() => update("sourceDocuments", (form.sourceDocuments ?? []).filter((x) => x.id !== d.id))}
+                  style={{ marginLeft: "0.5rem", background: "none", border: "none", cursor: "pointer", color: "#ef4444", fontWeight: 700 }}
+                  aria-label={`Remove ${d.name}`}
+                >✕</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Math Format */}
       <div>
         <MathFormatSelector

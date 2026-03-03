@@ -275,6 +275,8 @@ export function evaluateFeasibility({
   questionTypes,
   depthFloor: _depthFloor,
   depthCeiling,
+  pacingOverrides,
+  assessmentDurationMinutes,
 }: {
   topic: string | null;
   additionalDetails: string | null;
@@ -283,12 +285,40 @@ export function evaluateFeasibility({
   questionTypes: string[];
   depthFloor: string;
   depthCeiling: string;
+  /**
+   * Optional: real per-type pacing (seconds) from the teacher's profile.
+   * When provided, an additional time-based load ratio is computed and
+   * blended with the conceptual load ratio.
+   */
+  pacingOverrides?: Record<string, number> | null;
+  /**
+   * Optional: teacher's expected total duration for this assessment type.
+   * Used with pacingOverrides to determine time-based overload.
+   */
+  assessmentDurationMinutes?: number | null;
 }): FeasibilityReport {
 
   const profile      = extractConceptProfile(topic, additionalDetails, sourceDocuments);
   const uniqueTypeCount = new Set(questionTypes).size || 1;
   const surface      = estimateConceptualSurface(profile, uniqueTypeCount, depthCeiling);
-  const loadRatio    = requestedSlotCount / surface;
+  let   loadRatio    = requestedSlotCount / surface;
+
+  // ── Profile-aware time-based load ratio ──────────────────────────────────
+  // When pacing defaults are provided, compute a second load ratio based on
+  // whether the requested slots actually fit in the expected duration.
+  // The final loadRatio is the more pessimistic of the two.
+  if (pacingOverrides && assessmentDurationMinutes && assessmentDurationMinutes > 0) {
+    const types = questionTypes.length > 0 ? questionTypes : ["multipleChoice"];
+    const avgPacingSeconds =
+      types.reduce((sum, t) => sum + (pacingOverrides[t] ?? 60), 0) / types.length;
+    const requiredSeconds   = requestedSlotCount * avgPacingSeconds;
+    const availableSeconds  = assessmentDurationMinutes * 60;
+    const timeLoadRatio     = requiredSeconds / availableSeconds;
+    // Use whichever ratio is higher (more conservative)
+    if (timeLoadRatio > loadRatio) {
+      loadRatio = timeLoadRatio;
+    }
+  }
 
   // ── Risk level ────────────────────────────────────────────────────────
   let riskLevel: FeasibilityReport["riskLevel"];

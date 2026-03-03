@@ -8,6 +8,7 @@ import { resolveRigorProfile } from "./rigorProfile";
 import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
 import { allocateBloomCounts } from "./allocateBloomCounts";
 import { evaluateFeasibility, type FeasibilityReport } from "./feasibility";
+import type { TeacherProfile } from "@/types/teacherProfile";
 
 import {
   BlueprintPlanV3_2,
@@ -20,11 +21,14 @@ import {
 export async function runArchitect({
   uar,
   agentId: _agentId,
-  compensation
+  compensation,
+  teacherProfile,
 }: {
   uar: UnifiedAssessmentRequest;
   agentId: string;
   compensation: any;
+  /** Optional teacher profile — used to override pacing defaults and inject style constraints. */
+  teacherProfile?: TeacherProfile | null;
 }): Promise<Blueprint> {
 
   //
@@ -105,6 +109,11 @@ export async function runArchitect({
     trueFalse: 30,
     shortAnswer: 150,
     constructedResponse: 240,
+    // Free response = AP-exam style extended questions (~10 min each on AP exams).
+    // Treated as heavyweight: only 1–2 per 15-min window. Without this entry it
+    // fell back to 60 s (MCQ default), causing massive over-allocation.
+    freeResponse: 600,
+    essay: 600,
     fillInTheBlank: 75,
     matching: 75,
     ordering: 90,
@@ -112,6 +121,8 @@ export async function runArchitect({
     arithmeticFluency: 25,   // 20–30 s per item (arithmetic pacing override)
     passageBased: 180,       // reading passage + 2–4 questions
     graphInterpretation: 90, // reading + interpreting a graph
+    // ── Teacher profile overrides (applied below) ──
+    ...(teacherProfile?.pacingDefaults?.questionTypeSeconds ?? {}),
   };
 
   // Apply teacher-reported timing calibration if available (accumulated via Report Results).
@@ -139,12 +150,14 @@ export async function runArchitect({
     !isNaN(gradeNum) && gradeNum <= 8 ? 1.15 :
     1.0; // high school baseline
 
-  // Assessment-type speed factor (bellRingers/exitTickets are faster-paced)
+  // Assessment-type speed factor.
+  // Bell ringers / exit tickets are brief, focused tasks → students move faster.
+  // Quizzes and longer assessments use the full per-question pacing baseline; the
+  // old 0.8× quiz discount was causing consistent underestimates (playtesters ran
+  // 1.5–2× over predicted time), so quizzes now inherit the standard 1.0 factor.
   const assessmentSpeedFactor =
     architectUAR.assessmentType === "bellRinger" || architectUAR.assessmentType === "exitTicket"
       ? 0.6
-      : architectUAR.assessmentType === "quiz"
-      ? 0.8
       : 1.0;
 
   /** Estimate realistic seconds for a single slot */
@@ -184,6 +197,11 @@ export async function runArchitect({
     questionTypes: requestedTypes,
     depthFloor: rigorProfile.depthFloor,
     depthCeiling: rigorProfile.depthCeiling,
+    // ── Profile-aware pacing ─────────────────────────────────────────
+    pacingOverrides: teacherProfile?.pacingDefaults?.questionTypeSeconds ?? null,
+    assessmentDurationMinutes:
+      teacherProfile?.pacingDefaults?.assessmentDurationMinutes?.[architectUAR.assessmentType] ??
+      architectUAR.timeMinutes,
   });
 
   console.info(
@@ -425,6 +443,35 @@ export async function runArchitect({
       console.info(`[Architect] Injected passageBased slot at index ${passageIdx}`);
     }
   }
+
+  // ── Hard cap on freeResponse slots ────────────────────────────────────────
+  // Free response is a heavyweight AP-exam format (~10 min each).
+  // Max allowed = floor(timeMinutes / 10), further capped at 3 unless AP.
+  // Excess freeResponse slots are downgraded to shortAnswer.
+  const frqInTypes = architectUAR.questionTypes.includes("freeResponse");
+  if (frqInTypes) {
+    const isAP = (architectUAR.studentLevel ?? "").toLowerCase() === "ap";
+    const frqHardMax = Math.min(
+      Math.max(1, Math.floor(architectUAR.timeMinutes / 10)),
+      isAP ? 4 : 2,
+    );
+    let frqCount = 0;
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i].questionType === "freeResponse") {
+        if (frqCount < frqHardMax) {
+          frqCount++;
+        } else {
+          // Downgrade excess FRQ to shortAnswer — same cognitive demand, lighter format
+          slots[i] = { ...slots[i], questionType: "shortAnswer" };
+          console.info(
+            `[Architect] FRQ cap (max ${frqHardMax} for ${architectUAR.timeMinutes} min / ${architectUAR.studentLevel}): ` +
+            `slot_${i + 1} downgraded freeResponse → shortAnswer`,
+          );
+        }
+      }
+    }
+  }
+
   //
   // 4. Cognitive distribution (unchanged)
   //
@@ -722,5 +769,14 @@ export async function runArchitect({
     derivedStructuralConstraints,
     warnings,
     feasibilityReport,
+    // ── Teacher profile style constraints (passed through to Writer Contract) ──
+    styleConstraints: teacherProfile?.stylePreferences
+      ? {
+          tone: teacherProfile.stylePreferences.tone,
+          languageLevel: teacherProfile.stylePreferences.languageLevel,
+          instructionLength: teacherProfile.stylePreferences.instructionLength,
+          contextPreference: teacherProfile.stylePreferences.contextPreference,
+        }
+      : null,
   };
 }
