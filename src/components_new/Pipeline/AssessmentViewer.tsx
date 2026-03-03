@@ -10,6 +10,8 @@ import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/bui
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
 import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
 import { useDeveloperMode } from "@/hooks/useDeveloperMode";
+import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
+import type { WriterContract } from "@/pipeline/contracts/WriterContract";
 import "./AssessmentViewer.css";
 
 // ── Philosopher's Report ──────────────────────────────────────────────────────
@@ -499,9 +501,11 @@ interface AssessmentViewerProps {
   teacherFeedback?: any;
   /** Writer reliability scores (0–100) from the most recent dossier update */
   reliability?: { trust: number; alignment: number; stability: number };
+  /** Writer Contract — records all guidelines, constraints, and Gatekeeper prescriptions. */
+  writerContract?: WriterContract;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -757,6 +761,9 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         philosopherAnalysis={philosopherAnalysis}
         teacherFeedback={teacherFeedback}
       />
-    </div>
+      {/* ── Writer Contract (guidelines, constraints, Gatekeeper) ──── */}
+      {writerContract && (
+        <WriterGuidelinesPanel contract={writerContract} />
+      )}    </div>
   );
 }

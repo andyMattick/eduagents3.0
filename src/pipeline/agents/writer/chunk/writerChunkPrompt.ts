@@ -24,6 +24,12 @@ export function buildChunkPrompt(
   const hintMap = new Map(bloomDirectives.map(d => [d.slotId, d.directive]));
 
   const mathFmt = context.mathFormat ?? "unicode";
+  const topicBase = context.topic ?? "the topic";
+
+  // Writer Contract guidelines from the active run
+  const contractSection = context.contractGuidelines && context.contractGuidelines.length > 0
+    ? `\nWRITER CONTRACT (mandatory — overrides all other defaults)\n${context.contractGuidelines.map(g => `- ${g}`).join("\n")}\n`
+    : "";
 
   // Build the MATH FORMATTING CONTRACT based on the requested format
   const mathContract = mathFmt === "unicode"
@@ -87,6 +93,7 @@ SLOT ${i + 1}
   questionType: ${slot.questionType}
   cognitiveDemand: ${slot.cognitiveDemand}
   difficulty: ${slot.difficulty}
+  topicAngle: ${(slot as any).topicAngle ?? topicBase}
   bloomIntent: ${hint}${extra}`;
       }
     )
@@ -137,7 +144,7 @@ GROUNDING (MANDATORY FOR ALL SLOTS)
 - Misconceptions: ${JSON.stringify(context.misconceptions)}
 - Avoid: ${JSON.stringify(context.avoidList)}
 - Scope Width: ${context.scopeWidth}
-
+${contractSection}
 COGNITIVE DEMAND DEFINITIONS
 - remember   → recall only
 - understand → explanation or meaning
@@ -203,6 +210,8 @@ Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
 SLOTS TO GENERATE
 Each slot includes a "bloomIntent" line — this is MANDATORY guidance. Use the listed verbs and
 follow the stated structure note. The exampleStarter shows a template you can adapt to the topic.
+Each slot also includes a "topicAngle" — a UNIQUE scenario lens for that slot. Write the question
+around that specific angle so no two questions in the full assessment cover the same scenario.
 ${slotDescriptions}
 
 OUTPUT FORMAT (STRICT)

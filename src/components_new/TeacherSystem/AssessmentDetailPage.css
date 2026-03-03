@@ -1,0 +1,148 @@
+/* ── AssessmentDetailPage.css — dark-mode aware styles ──────────── */
+
+/* Semantic color tokens for status badges (light defaults) */
+:root {
+  --adp-success-bg: #dcfce7;
+  --adp-success-fg: #166534;
+  --adp-warn-bg:    #fef9c3;
+  --adp-warn-fg:    #854d0e;
+  --adp-danger-bg:  #fee2e2;
+  --adp-danger-fg:  #991b1b;
+
+  --adp-report-active-bg:    #10b981;
+  --adp-report-active-fg:    #fff;
+  --adp-report-active-bdr:   #10b981;
+  --adp-report-inactive-bg:  #f0fdf4;
+  --adp-report-inactive-fg:  #065f46;
+  --adp-report-inactive-bdr: #d1fae5;
+  --adp-report-container-bg: #f0fdf4;
+}
+
+[data-theme="dark"] {
+  --adp-success-bg: #14532d;
+  --adp-success-fg: #86efac;
+  --adp-warn-bg:    #713f12;
+  --adp-warn-fg:    #fde68a;
+  --adp-danger-bg:  #7f1d1d;
+  --adp-danger-fg:  #fca5a5;
+
+  --adp-report-active-bg:    #10b981;
+  --adp-report-active-fg:    #fff;
+  --adp-report-active-bdr:   #10b981;
+  --adp-report-inactive-bg:  #052e16;
+  --adp-report-inactive-fg:  #6ee7b7;
+  --adp-report-inactive-bdr: #065f46;
+  --adp-report-container-bg: #052e16;
+}
+
+/* Branch / "Create Revised Version" button in inactive state */
+.adp-btn-outline {
+  border: 1px solid var(--border, #ccc) !important;
+  background: var(--bg-muted, #f5f5f5) !important;
+  color: var(--text, #333) !important;
+}
+
+/* Assign This Version pill */
+.adp-btn-muted-pill {
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--text-secondary, #6b7280);
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: border-color 0.15s, color 0.15s;
+}
+.adp-btn-muted-pill:hover:not(:disabled) {
+  border-color: var(--text, #111);
+  color: var(--text, #111);
+}
+.adp-btn-muted-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Themed textarea for branch form */
+.adp-textarea {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--border, #ddd);
+  background: var(--bg, #fff);
+  color: var(--text, #111827);
+  font-size: 0.88rem;
+  font-weight: 400;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.adp-textarea:focus {
+  outline: none;
+  border-color: var(--primary, #4f46e5);
+}
+
+/* ── Delete version UI ────────────────────────────────────────────── */
+
+.adp-btn-delete {
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--adp-danger-fg, #ef4444);
+  background: transparent;
+  color: var(--adp-danger-fg, #ef4444);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.adp-btn-delete:hover:not(:disabled) {
+  background: var(--adp-danger-fg, #ef4444);
+  color: #fff;
+}
+.adp-btn-delete:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.adp-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.9rem;
+  border: 1.5px solid var(--adp-danger-fg, #ef4444);
+  border-radius: 8px;
+  background: var(--adp-danger-bg, #fee2e2);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.adp-delete-confirm span {
+  color: var(--adp-danger-fg, #991b1b);
+  font-weight: 600;
+}
+.adp-delete-confirm-yes {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  border: none;
+  background: var(--adp-danger-fg, #ef4444);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.adp-delete-confirm-yes:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.adp-delete-confirm-no {
+  padding: 0.25rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border, #ddd);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}

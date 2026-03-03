@@ -24,6 +24,11 @@ export interface WriterContext {
   operation?: "add" | "subtract" | "multiply" | "divide";
   /** Arithmetic fluency: operand range for arithmetic slots. */
   range?: { min: number; max: number };
+  /**
+   * Active Writer Contract guidelines (accumulated across runs).
+   * Injected verbatim at the top of every chunk prompt.
+   */
+  contractGuidelines?: string[];
 }
 
 export interface ScribePrescriptions {

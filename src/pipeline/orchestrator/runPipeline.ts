@@ -23,6 +23,12 @@ import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
 import { resetLLMGate } from "@/pipeline/llm/gemini";
+import {
+  initContract,
+  getContract,
+  clearContract,
+  appendGatekeeperPrescription,
+} from "@/pipeline/agents/scribe/WriterContractStore";
 
 console.log("[Pipeline] Loaded runPipeline.ts — Version 2.2.0");
 
@@ -224,6 +230,9 @@ export async function runPipeline(
   //    triggers the server-side daily-limit check.
   resetLLMGate();
 
+  // ── Clear any contract from a previous run ────────────────────────────
+  clearContract();
+
   // ── Ensure required UAR fields have safe defaults ─────────────────────────
   // mode and subscriptionTier may not be set by convertMinimalToUAR.
   const safeUar: UnifiedAssessmentRequest = {
@@ -279,6 +288,56 @@ export async function runPipeline(
   // Snapshot for live preview — readable by getLastPipelineBlueprint()
   _lastPipelineBlueprint = blueprint;
 
+  // ── Create Writer Contract ─────────────────────────────────────────────────
+  // Captures teacher intent + system constraints derived by the Architect.
+  // Gatekeeper violations will be appended below; guidelines are read by the Writer.
+  {
+    const slots = blueprint.plan?.slots ?? [];
+    const typeDist = slots.reduce((acc: Record<string, number>, s: any) => {
+      const t = s.questionType ?? "unknown";
+      acc[t] = (acc[t] ?? 0) + 1;
+      return acc;
+    }, {});
+    const topicAngles: string[] = slots.map((s: any) => s.topicAngle ?? "");
+
+    initContract({
+      id: `${uarWithDefaults.userId ?? "anon"}-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      teacherIntent: {
+        course: uarWithDefaults.course ?? "",
+        topic: uarWithDefaults.topic ?? uarWithDefaults.unitName ?? "",
+        grade: String(uarWithDefaults.gradeLevels?.[0] ?? (uarWithDefaults as any).grade ?? ""),
+        timeMinutes: (uarWithDefaults as any).timeMinutes ?? (uarWithDefaults as any).time ?? 0,
+        questionCount: slots.length,
+        questionTypes: uarWithDefaults.questionTypes ?? [],
+        assessmentType: uarWithDefaults.assessmentType ?? "",
+        additionalDetails: uarWithDefaults.additionalDetails ?? null,
+      },
+      systemConstraints: {
+        bloomFloor: blueprint.plan?.depthFloor ?? "",
+        bloomCeiling: blueprint.plan?.depthCeiling ?? "",
+        difficultyProfile: blueprint.plan?.difficultyProfile ?? "onLevel",
+        slotCount: slots.length,
+        pacingSecondsPerItem: blueprint.plan?.pacingSecondsPerItem ?? 60,
+        mathFormat: (uarWithDefaults as any).mathFormat ?? "unicode",
+        uniquenessRequired: true,
+        jsonSafety: true,
+        questionTypeDistribution: typeDist,
+        preferMultipleChoiceActivated:
+          !!(blueprint as any).derivedStructuralConstraints?.preferMultipleChoice,
+        topicAngles,
+      },
+      gatekeeperPrescriptions: { violations: [], addedConstraints: [] },
+      revisionHistory: [],
+      studentPerformanceAdjustments: [],
+      finalWriterGuidelines: [],
+    });
+
+    console.info(
+      `[WriterContract] Created for run. Types: ${JSON.stringify(typeDist)}. Slots: ${slots.length}.`
+    );
+  }
+
   // ── Step 3: Writer — generate the initial draft ───────────────────────────
   const writerPrescriptions = SCRIBE.getWriterPrescriptions();
 
@@ -315,7 +374,54 @@ const { gatekeeperResult, philosopherWrite } = await validateAndScore(
   blueprint, writerDraft, trace, writerTelemetry
 );
 
-// WRITE MODE BRANCHING
+// ── Update Writer Contract with Gatekeeper violations ─────────────────────
+// Maps each violation type to a concrete prescription that the Writer will
+// receive on the next generation call.
+{
+  const VIOLATION_PRESCRIPTIONS: Record<string, string> = {
+    question_type_mismatch:
+      "Each slot has a fixed questionType — generate exactly that type with no hybrid formatting.",
+    mcq_options_invalid:
+      "Multiple-choice options must be exactly 4 strings, each prefixed 'A. ', 'B. ', 'C. ', 'D. '.",
+    mcq_answer_mismatch:
+      "The 'answer' field must be the FULL option string, copied exactly from 'options' — not just the letter.",
+    mcq_options_unexpected:
+      "Non-multiple-choice slots must NOT include an 'options' array.",
+    arithmetic_format_invalid:
+      "Arithmetic items must be a bare expression only (e.g. '7 × 4') — no prose.",
+    passage_missing:
+      "passageBased items must include a non-empty top-level 'passage' string field.",
+    passage_contains_raw_newlines:
+      "Never use raw newlines inside JSON string fields — replace with a space.",
+    topic_mismatch:
+      "Every question must explicitly reference the lesson topic — do not write generic or off-topic prompts.",
+    domain_mismatch:
+      "Every question must belong to the specified subject domain.",
+    cognitive_demand_mismatch:
+      "Use verbs that match the slot's cognitiveDemand Bloom level (see Bloom definitions in the prompt).",
+    forbidden_phrase:
+      "Avoid generic filler phrases such as 'in general mathematics' — anchor every question to the lesson topic.",
+    duplicate_item:
+      "Do not reuse the same scenario, numbers, or stem wording across slots — use each slot's unique topicAngle.",
+    json_error:
+      'Escape every double-quote inside JSON string values as \\". Never use raw newlines in strings.',
+    forbidden_content:
+      "Avoid sensitive, violent, or politically contentious content — keep questions school-appropriate.",
+  };
+
+  for (const v of gatekeeperResult.violations ?? []) {
+    const prescription =
+      VIOLATION_PRESCRIPTIONS[v.type] ??
+      `Violation "${v.type}" detected: ${v.message}`;
+    appendGatekeeperPrescription(v.type, prescription);
+  }
+
+  if ((gatekeeperResult.violations ?? []).length > 0) {
+    console.info(
+      `[WriterContract] Appended ${gatekeeperResult.violations.length} gatekeeper prescription(s).`
+    );
+  }
+}
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Skip playtest, skip compare → go straight to Builder
   validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
@@ -371,6 +477,7 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
     selected, blueprint, writerDraft, gatekeeperResult,
     astro1: null, spaceCampResult: null, astro2: null,
     philosopherWrite, finalAssessment, scribe: scribeResult, trace,
+    writerContract: getContract(),
   };
 }
 
@@ -431,6 +538,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     selected, blueprint, writerDraft, gatekeeperResult,
     astro1: null, spaceCampResult: null, astro2: null,
     philosopherWrite, rewritten, gatekeeperFinal, finalAssessment, scribe: scribeResult, trace,
+    writerContract: getContract(),
   };
 }
 
@@ -540,6 +648,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     astro1, spaceCampResult, astro2,
     philosopherWrite, philosopherPlaytest, rewritten, gatekeeperFinal,
     finalAssessment, scribe: scribeResult, trace,
+    writerContract: getContract(),
   };
 }
 
@@ -589,5 +698,6 @@ return {
   astro1, spaceCampResult, astro2,
   philosopherWrite, philosopherPlaytest,
   finalAssessment, scribe: scribeResult, trace,
+  writerContract: getContract(),
 };
 }

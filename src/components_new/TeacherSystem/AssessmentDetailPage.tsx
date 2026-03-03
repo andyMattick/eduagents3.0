@@ -16,6 +16,7 @@ import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import type { AgentDossierData } from "@/system/dossier/DossierManager";
+import "./AssessmentDetailPage.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -227,8 +228,8 @@ function StudentResultsPanel({
                 padding: "0.1rem 0.5rem",
                 borderRadius: "999px",
                 fontSize: "0.72rem",
-                background: "#dcfce7",
-                color: "#166534",
+                background: "var(--adp-success-bg)",
+                color: "var(--adp-success-fg)",
                 fontWeight: 700,
               }}
             >
@@ -245,7 +246,7 @@ function StudentResultsPanel({
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             display: "flex",
             flexDirection: "column",
@@ -331,7 +332,7 @@ function StudentResultsPanel({
                             padding: "0.3rem 0.5rem",
                             borderRadius: "6px",
                             border: "1.5px solid var(--color-border, #ddd)",
-                            background: "var(--bg-primary, #fff)",
+                            background: "var(--bg, #fff)",
                             color: "inherit",
                             fontSize: "0.85rem",
                           }}
@@ -372,7 +373,7 @@ function StudentResultsPanel({
                 style={{ fontSize: "0.85rem" }}
               />
               {csvPreview && (
-                <p style={{ margin: 0, fontSize: "0.82rem", color: "#166534" }}>
+                <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--adp-success-fg)" }}>
                   ✓ {csvPreview.length} row{csvPreview.length !== 1 ? "s" : ""} detected
                 </p>
               )}
@@ -483,8 +484,8 @@ function AiInsightsPanel({
                 borderRadius: "999px",
                 fontSize: "0.72rem",
                 fontWeight: 700,
-                background: healthStrong ? "#dcfce7" : "#fef9c3",
-                color: healthStrong ? "#166534" : "#854d0e",
+                background: healthStrong ? "var(--adp-success-bg)" : "var(--adp-warn-bg)",
+                color: healthStrong ? "var(--adp-success-fg)" : "var(--adp-warn-fg)",
               }}
             >
               {analysis.overallAssessmentHealth}
@@ -500,10 +501,10 @@ function AiInsightsPanel({
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             lineHeight: 1.65,
-            color: "var(--text-primary, #374151)",
+            color: "var(--text, #374151)",
             display: "flex",
             flexDirection: "column",
             gap: "0.9rem",
@@ -552,8 +553,8 @@ function AiInsightsPanel({
                   borderRadius: "999px",
                   fontSize: "0.82rem",
                   fontWeight: 700,
-                  background: healthStrong ? "#dcfce7" : "#fef9c3",
-                  color: healthStrong ? "#166534" : "#854d0e",
+                  background: healthStrong ? "var(--adp-success-bg)" : "var(--adp-warn-bg)",
+                  color: healthStrong ? "var(--adp-success-fg)" : "var(--adp-warn-fg)",
                 }}
               >
                 Overall: {analysis.overallAssessmentHealth}
@@ -638,8 +639,8 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
   // ── Quality badge ───────────────────────────────────────────────────────
   let qualityLabel = "";
   let qualityDesc  = "";
-  const badgeBg    = score != null ? (score >= 8 ? "#dcfce7" : score >= 5 ? "#fef9c3" : "#fee2e2") : undefined;
-  const badgeColor = score != null ? (score >= 8 ? "#166534" : score >= 5 ? "#854d0e" : "#991b1b") : undefined;
+  const badgeBg    = score != null ? (score >= 8 ? "var(--adp-success-bg)" : score >= 5 ? "var(--adp-warn-bg)" : "var(--adp-danger-bg)") : undefined;
+  const badgeColor = score != null ? (score >= 8 ? "var(--adp-success-fg)" : score >= 5 ? "var(--adp-warn-fg)" : "var(--adp-danger-fg)") : undefined;
   if (score != null) {
     if (score >= 9)      { qualityLabel = "Strong";     qualityDesc = "This assessment passed all quality checks with minimal adjustments."; }
     else if (score >= 7) { qualityLabel = "Good";       qualityDesc = "Questions were well-formed. Minor edits were applied automatically."; }
@@ -727,10 +728,10 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
         <div
           style={{
             padding: "1rem 1.25rem",
-            background: "var(--bg-primary, #fff)",
+            background: "var(--bg, #fff)",
             fontSize: "0.88rem",
             lineHeight: 1.65,
-            color: "var(--text-primary, #374151)",
+            color: "var(--text, #374151)",
             display: "flex",
             flexDirection: "column",
             gap: "0.8rem",
@@ -800,6 +801,11 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
   // ── Phase 3 — Assign active version state ───────────────────────────────
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
+
+  // ── Delete version state ─────────────────────────────────────────────────
+  const [confirmDeleteVersionId, setConfirmDeleteVersionId] = useState<string | null>(null);
+  const [isDeletingVersion, setIsDeletingVersion] = useState(false);
+  const [deleteVersionError, setDeleteVersionError] = useState<string | null>(null);
 
   // ── Phase 4 — Student Results state ──────────────────────────────────────
   const [existingResult, setExistingResult] = useState<ResultRow | null>(null);
@@ -890,6 +896,12 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
     return () => { cancelled = true; };
   }, [selectedVersionId]);
 
+  // ── Clear delete confirm when switching versions ──────────────────────────
+  useEffect(() => {
+    setConfirmDeleteVersionId(null);
+    setDeleteVersionError(null);
+  }, [selectedVersionId]);
+
   // ── Phase 4 — Submit results + run analysis ───────────────────────────────
   const handleSubmitResults = useCallback(
     async (perf: PerformanceEntry[]) => {
@@ -962,6 +974,51 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
       setSelectedVersionId(updated[updated.length - 1].id);
     }
   }, [templateId]);
+
+  // ── Delete version ────────────────────────────────────────────────────────
+  const handleDeleteVersion = useCallback(async () => {
+    if (!template || !confirmDeleteVersionId) return;
+    setIsDeletingVersion(true);
+    setDeleteVersionError(null);
+    try {
+      const { error: delErr } = await supabase
+        .from("assessment_versions")
+        .delete()
+        .eq("id", confirmDeleteVersionId);
+      if (delErr) throw delErr;
+
+      const remaining = versions.filter(v => v.id !== confirmDeleteVersionId);
+      let newLatestId: string | null = template.latest_version_id;
+
+      if (template.latest_version_id === confirmDeleteVersionId) {
+        newLatestId = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+        await supabase
+          .from("assessment_templates")
+          .update({ latest_version_id: newLatestId })
+          .eq("id", template.id);
+        setTemplate(t => t ? { ...t, latest_version_id: newLatestId } : t);
+      }
+      if ((template as any).active_version_id === confirmDeleteVersionId) {
+        await supabase
+          .from("assessment_templates")
+          .update({ active_version_id: null })
+          .eq("id", template.id);
+        setTemplate(t => t ? { ...t, active_version_id: null } : t);
+      }
+
+      setVersions(remaining);
+      setConfirmDeleteVersionId(null);
+      if (remaining.length > 0) {
+        setSelectedVersionId(newLatestId ?? remaining[remaining.length - 1].id);
+      } else {
+        onBack();
+      }
+    } catch (e: any) {
+      setDeleteVersionError(e?.message ?? "Failed to delete version.");
+    } finally {
+      setIsDeletingVersion(false);
+    }
+  }, [template, confirmDeleteVersionId, versions, onBack]);
 
   // ── Build a minimal but complete UAR from the stored uar_json ────────────
   function buildUarFromStored(
@@ -1154,7 +1211,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   margin: "0 0 0.4rem 0",
                   fontSize: "1.3rem",
                   fontWeight: 700,
-                  color: "var(--text-primary, #111827)",
+                  color: "var(--text, #111827)",
                 }}
               >
                 {titleFor(uar, template.domain)}
@@ -1230,7 +1287,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     padding: "0.4rem 0.8rem",
                     borderRadius: "8px",
                     border: "1.5px solid var(--color-border, #ddd)",
-                    background: "var(--bg-primary, #fff)",
+                    background: "var(--bg, #fff)",
                     color: "inherit",
                     fontSize: "0.9rem",
                     cursor: "pointer",
@@ -1274,8 +1331,8 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                       borderRadius: "999px",
                       fontSize: "0.78rem",
                       fontWeight: 700,
-                      background: "#dcfce7",
-                      color: "#166534",
+                      background: "var(--adp-success-bg)",
+                      color: "var(--adp-success-fg)",
                     }}
                   >
                     ✓ Active Version
@@ -1285,21 +1342,26 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     onClick={handleAssignVersion}
                     disabled={isAssigning || isRegenerating || isBranching}
                     title="Mark this version as the active (assigned) version"
-                    style={{
-                      padding: "0.2rem 0.75rem",
-                      borderRadius: "999px",
-                      border: "1.5px solid #6b7280",
-                      background: "transparent",
-                      color: "#6b7280",
-                      cursor: isAssigning ? "wait" : "pointer",
-                      fontSize: "0.78rem",
-                      fontWeight: 600,
-                      opacity: isAssigning ? 0.6 : 1,
-                    }}
+                    className="adp-btn-muted-pill"
+                    style={{ cursor: isAssigning ? "wait" : "pointer", opacity: isAssigning ? 0.6 : 1 }}
                   >
                     {isAssigning ? "Assigning…" : "Assign This Version"}
                   </button>
                 ) : null}
+
+                {/* ── Delete version ── */}
+                {versions.length > 1 && selectedVersionId && (
+                  <button
+                    className="adp-btn-delete"
+                    title={confirmDeleteVersionId === selectedVersionId ? "Cancel delete" : "Delete this version"}
+                    onClick={() => setConfirmDeleteVersionId(
+                      confirmDeleteVersionId === selectedVersionId ? null : selectedVersionId
+                    )}
+                    disabled={isRegenerating || isBranching || isDeletingVersion}
+                  >
+                    {confirmDeleteVersionId === selectedVersionId ? "✕ Cancel" : "🗑 Delete"}
+                  </button>
+                )}
 
                 {/* ── Spacer ── */}
                 <div style={{ flex: 1 }} />
@@ -1312,9 +1374,9 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   style={{
                     padding: "0.4rem 1rem",
                     borderRadius: "8px",
-                    border: showReportResults ? "1.5px solid #10b981" : "1.5px solid #d1fae5",
-                    background: showReportResults ? "#10b981" : "#f0fdf4",
-                    color: showReportResults ? "#fff" : "#065f46",
+                    border: showReportResults ? "1.5px solid var(--adp-report-active-bdr)" : "1.5px solid var(--adp-report-inactive-bdr)",
+                    background: showReportResults ? "var(--adp-report-active-bg)" : "var(--adp-report-inactive-bg)",
+                    color: showReportResults ? "var(--adp-report-active-fg)" : "var(--adp-report-inactive-fg)",
                     cursor: "pointer",
                     fontSize: "0.85rem",
                     fontWeight: 600,
@@ -1348,12 +1410,13 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   onClick={showBranchForm ? () => setShowBranchForm(false) : openBranchForm}
                   disabled={isRegenerating || isBranching}
                   title="Create a new version with modified inputs"
+                  className={showBranchForm ? undefined : "adp-btn-outline"}
                   style={{
                     padding: "0.4rem 1rem",
                     borderRadius: "8px",
-                    border: showBranchForm ? "1.5px solid var(--color-accent, #4f46e5)" : "1px solid #ccc",
-                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : "#f5f5f5",
-                    color: showBranchForm ? "#fff" : "#333",
+                    border: showBranchForm ? "1.5px solid var(--color-accent, #4f46e5)" : undefined,
+                    background: showBranchForm ? "var(--color-accent, #4f46e5)" : undefined,
+                    color: showBranchForm ? "#fff" : undefined,
                     cursor: "pointer",
                     fontSize: "0.85rem",
                     fontWeight: 600,
@@ -1363,6 +1426,26 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   {showBranchForm ? "✕ Cancel" : "✎ Create Revised Version"}
                 </button>
               </div>
+
+              {/* ── Delete version confirm ──────────────────────────── */}
+              {confirmDeleteVersionId && confirmDeleteVersionId === selectedVersionId && (
+                <div className="adp-delete-confirm" style={{ marginTop: "0.5rem" }}>
+                  <span>Delete version {selectedVersion?.version_number}? This cannot be undone.</span>
+                  <button
+                    className="adp-delete-confirm-yes"
+                    disabled={isDeletingVersion}
+                    onClick={handleDeleteVersion}
+                  >
+                    {isDeletingVersion ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button
+                    className="adp-delete-confirm-no"
+                    onClick={() => setConfirmDeleteVersionId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
 
               {/* Regenerate / assign error */}
               {regenerateError && (
@@ -1375,15 +1458,20 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   {assignError}
                 </p>
               )}
+              {deleteVersionError && (
+                <p style={{ color: "var(--color-error, #ef4444)", fontSize: "0.85rem", margin: "0.25rem 0" }}>
+                  {deleteVersionError}
+                </p>
+              )}
 
               {/* ── Report Results inline panel ─────────────────────── */}
               {showReportResults && selectedVersionId && template && (
                 <div
                   style={{
                     marginTop: "0.75rem",
-                    border: "1.5px solid #10b981",
+                    border: "1.5px solid var(--adp-report-active-bdr)",
                     borderRadius: "10px",
-                    background: "#f0fdf4",
+                    background: "var(--adp-report-container-bg)",
                     overflow: "hidden",
                   }}
                 >
@@ -1429,7 +1517,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                         padding: "0.45rem 0.75rem",
                         borderRadius: "8px",
                         border: "1.5px solid var(--color-border, #ddd)",
-                        background: "var(--bg-primary, #fff)",
+                        background: "var(--bg, #fff)",
                         color: "inherit",
                         fontSize: "0.88rem",
                         fontWeight: 400,
@@ -1451,7 +1539,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                           padding: "0.45rem 0.75rem",
                           borderRadius: "8px",
                           border: "1.5px solid var(--color-border, #ddd)",
-                          background: "var(--bg-primary, #fff)",
+                          background: "var(--bg, #fff)",
                           color: "inherit",
                           fontSize: "0.88rem",
                           fontWeight: 400,
@@ -1468,7 +1556,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                           padding: "0.45rem 0.75rem",
                           borderRadius: "8px",
                           border: "1.5px solid var(--color-border, #ddd)",
-                          background: "var(--bg-primary, #fff)",
+                          background: "var(--bg, #fff)",
                           color: "inherit",
                           fontSize: "0.88rem",
                           cursor: "pointer",
@@ -1489,16 +1577,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                       onChange={(e) => setBranchFields(f => f ? { ...f, additionalDetails: e.target.value } : f)}
                       rows={3}
                       placeholder="Any specific focus, exclusions, or formatting notes…"
-                      style={{
-                        padding: "0.45rem 0.75rem",
-                        borderRadius: "8px",
-                        border: "1.5px solid var(--color-border, #ddd)",
-                        background: "#ffffff",
-                        color: "#111827",
-                        fontSize: "0.88rem",
-                        fontWeight: 400,
-                        resize: "vertical",
-                      }}
+                      className="adp-textarea"
                     />
                   </label>
 

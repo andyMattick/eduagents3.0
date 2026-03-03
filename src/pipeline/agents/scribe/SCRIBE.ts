@@ -365,17 +365,44 @@ export class SCRIBE {
     let resolvedTemplateId: string;
 
     if (!templateId) {
-      // First generation — create a new template.
-      const { data: tmpl, error: tmplErr } = await supabase
-        .from("assessment_templates")
-        .insert({ user_id: userId, uar_json: uar, domain })
-        .select("id")
-        .single();
+      // Dedup guard: if the same user generated the same domain+lessonName within 60 s,
+      // reuse that template instead of creating a second card (handles double-fires / race conditions).
+      const dedupSince = new Date(Date.now() - 60_000).toISOString();
+      const lessonName = (uar as any)?.lessonName?.trim() ?? (uar as any)?.topic?.trim() ?? null;
 
-      if (tmplErr || !tmpl) {
-        throw new Error(`[SCRIBE.saveAssessmentVersion] template insert failed: ${tmplErr?.message}`);
+      let dedupBuilder = supabase
+        .from("assessment_templates")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("domain", domain)
+        .gte("created_at", dedupSince)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (lessonName) {
+        // Narrow dedup to the exact lesson so two different topics generated in quick succession
+        // are NOT merged (e.g., teacher rapidly creates "Chapter 1" then "Chapter 2").
+        dedupBuilder = (dedupBuilder as any).filter("uar_json->>lessonName", "eq", lessonName) as typeof dedupBuilder;
       }
-      resolvedTemplateId = tmpl.id;
+
+      const { data: existingTmpl } = await dedupBuilder.maybeSingle();
+
+      if (existingTmpl?.id) {
+        console.info("[SCRIBE.saveAssessmentVersion] Dedup: reusing template", existingTmpl.id);
+        resolvedTemplateId = existingTmpl.id;
+      } else {
+        // True first generation — create a new template.
+        const { data: tmpl, error: tmplErr } = await supabase
+          .from("assessment_templates")
+          .insert({ user_id: userId, uar_json: uar, domain })
+          .select("id")
+          .single();
+
+        if (tmplErr || !tmpl) {
+          throw new Error(`[SCRIBE.saveAssessmentVersion] template insert failed: ${tmplErr?.message}`);
+        }
+        resolvedTemplateId = tmpl.id;
+      }
     } else {
       // Regenerate / branch — reuse the existing template.
       resolvedTemplateId = templateId;

@@ -71,7 +71,9 @@ function getCourseName(t: TemplateRecord): string {
     t.domain?.trim() ||
     resolveField(t, "course") ||
     "Uncategorized";
-  return titleCase(raw);
+  // Normalize to ALL CAPS so "us history", "Us History", "US History" all group together.
+  if (raw === "Uncategorized") return raw;
+  return raw.toUpperCase();
 }
 
 function getGradeLabel(t: TemplateRecord): string {
