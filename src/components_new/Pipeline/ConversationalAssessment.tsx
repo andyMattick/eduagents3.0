@@ -6,9 +6,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import type { TeacherProfile } from "@/types/teacherProfile";
-import type { ResolvedCourseDefaults } from "@/types/teacherProfile";
+import type { TeacherProfile, ResolvedCourseDefaults } from "@/types/teacherProfile";
+import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
 import { resolveCourseDefaults } from "@/services_new/teacherProfileService";
+import { evaluateFeasibility } from "@/pipeline/agents/architect/feasibility";
 
 // ── Chip option data ──────────────────────────────────────────────────────────
 
@@ -52,14 +53,24 @@ const MULTI_PART_CHIPS = [
   { label: "No \u2014 all standalone",       value: "no"  },
 ];
 
-const OVERRIDE_FIELD_CHIPS = [
-  { label: "Assessment type",  value: "assessmentType"     },
-  { label: "Question formats", value: "questionFormat"     },
-  { label: "Multi-part",       value: "multiPartQuestions" },
-  { label: "Standards",        value: "standards"          },
-  { label: "Grade level",      value: "gradeLevels"        },
-  { label: "Difficulty level", value: "studentLevel"       },
-];
+/** Maps a QUESTION_FORMAT_CHIPS value to the key in DEFAULT_PACING_SECONDS. */
+const FORMAT_PACING_KEY: Record<string, string> = {
+  mcqOnly:           "multipleChoice",
+  saOnly:            "shortAnswer",
+  essayOnly:         "essay",
+  frqOnly:           "freeResponse",
+  fitbOnly:          "fillInTheBlank",
+  trueFalseOnly:     "trueFalse",
+  arithmeticFluency: "arithmeticFluency",
+  passageBased:      "passageBased",
+  mixed:             "",
+};
+
+function fmtPacingTime(sec: number): string {
+  if (sec < 60) return `${sec} sec each`;
+  const m = sec / 60;
+  return `${Number.isInteger(m) ? m : m.toFixed(1)} min each`;
+}
 
 // ── Step definitions ──────────────────────────────────────────────────────────
 
@@ -115,24 +126,11 @@ function buildSteps(
     steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., goodness-of-fit, independence", optional: true });
 
     if (answers.course) {
-      steps.push({ id: "defaultsCard", kind: "defaultsCard", question: "Here are your saved defaults for this course." });
-
-      if (answers.defaultsCard === "change") {
-        steps.push({ id: "overrideField", kind: "chips", question: "Which settings would you like to change?", chips: OVERRIDE_FIELD_CHIPS, multiSelect: true });
-
-        const selected = answers.overrideField ? answers.overrideField.split(",").map(s => s.trim()) : [];
-        if (selected.includes("assessmentType"))     steps.push({ id: "assessmentType",     kind: "chips", question: "What type of assessment?", chips: ASSESSMENT_CHIPS });
-        if (selected.includes("questionFormat"))      steps.push({ id: "questionFormat",      kind: "chips", question: "What question formats?", chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
-        if (selected.includes("multiPartQuestions"))   steps.push({ id: "multiPartQuestions",   kind: "chips", question: "Include multi-part questions?", chips: MULTI_PART_CHIPS });
-        if (selected.includes("standards"))            steps.push({ id: "standards",            kind: "chips", question: "Standards alignment?", chips: STANDARDS_CHIPS });
-        if (selected.includes("gradeLevels"))          steps.push({ id: "gradeLevels",          kind: "text",  question: "What grade level(s)?", placeholder: "e.g., 7  or  9, 10" });
-        if (selected.includes("studentLevel"))         steps.push({ id: "studentLevel",         kind: "chips", question: "Difficulty level?", chips: LEVEL_CHIPS });
-
-        // Conditional sub-steps
-        if (answers.standards === "state") {
-          steps.push({ id: "stateCode", kind: "text", question: "Which state\u2019s standards? (e.g. GA, TX, CA)", placeholder: "e.g. GA" });
-        }
-      }
+      // Show each question with the default pre-selected — no separate card step needed
+      steps.push({ id: "assessmentType",    kind: "chips", question: "What type of assessment?",      chips: ASSESSMENT_CHIPS });
+      steps.push({ id: "questionFormat",    kind: "chips", question: "Which question formats?",       chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
+      steps.push({ id: "multiPartQuestions",kind: "chips", question: "Multi-part questions?",         chips: MULTI_PART_CHIPS });
+      steps.push({ id: "studentLevel",      kind: "chips", question: "Difficulty level for your class?", chips: LEVEL_CHIPS });
     }
   } else {
     // ── Manual flow (no profile) ─────────────────────────────────────────
@@ -273,28 +271,21 @@ function DefaultsCard({
   const origStandards      = defaults.standards ?? "";
 
   const [assessmentType, setAssessmentType] = useState(origAssessmentType);
-  const [questionFormat,  setQuestionFormat]  = useState(origFormat);
+  // questionFormat stored as comma-separated values (multi-select)
+  const [selectedFormats, setSelectedFormats] = useState<string[]>(
+    () => origFormat ? origFormat.split(",").map(s => s.trim()).filter(Boolean) : []
+  );
   const [multiPart,       setMultiPart]       = useState(origMultiPart);
   const [grade,           setGrade]           = useState(origGrade);
   const [difficulty,      setDifficulty]      = useState(origDifficulty);
   const [standards,       setStandards]       = useState(origStandards);
   const [stateCode,       setStateCode]       = useState("");
 
-  const ctrlStyle: React.CSSProperties = {
-    padding: "0.18rem 0.45rem",
-    borderRadius: 5,
-    border: "1px solid var(--color-border, #ddd)",
-    background: "var(--bg, #fff)",
-    color: "inherit",
-    fontSize: "0.85rem",
-    cursor: "pointer",
-    maxWidth: "100%",
-  };
-
   function handleUse() {
     const overrides: DefaultsInlineOverride = {};
-    if (assessmentType !== origAssessmentType) overrides.assessmentType = assessmentType;
-    if (questionFormat  !== origFormat)         overrides.questionFormat = questionFormat;
+    const questionFormat = selectedFormats.join(",");
+    if (assessmentType !== origAssessmentType)        overrides.assessmentType = assessmentType;
+    if (questionFormat  !== origFormat)               overrides.questionFormat = questionFormat;
     if (multiPart       !== origMultiPart)      overrides.multiPartQuestions = multiPart ? "yes" : "no";
     if (grade           !== origGrade)          overrides.gradeLevels = grade;
     if (difficulty      !== origDifficulty)     overrides.studentLevel = difficulty;
@@ -303,100 +294,128 @@ function DefaultsCard({
     onUse(overrides);
   }
 
+  function ChipRow<T extends string>({
+    value, options, onChange,
+  }: { value: T; options: Array<{ label: string; value: T }>; onChange: (v: T) => void }) {
+    return (
+      <div className="ca-inline-chips">
+        {options.map(o => (
+          <button
+            key={o.value}
+            type="button"
+            className={`ca-chip ca-chip--sm${value === o.value ? " ca-chip--selected" : ""}`}
+            onClick={() => !disabled && onChange(o.value)}
+            disabled={disabled}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="ca-defaults-card">
       <div className="ca-defaults-card__header">
         <span className="ca-defaults-card__title">Your defaults for <strong>{courseName || "this course"}</strong></span>
         {defaults.level === "global" && <span className="ca-defaults-card__badge">global defaults</span>}
       </div>
+
+      {/* Read-only context */}
       <table className="ca-defaults-table"><tbody>
-        {/* ── Read-only context rows ── */}
         <tr><th>Course</th><td>{courseName || "\u2014"}</td></tr>
-        {topic    && <tr><th>Topic</th><td>{topic}</td></tr>}
+        {topic     && <tr><th>Topic</th><td>{topic}</td></tr>}
         {subtopics && <tr><th>Subtopics</th><td>{subtopics}</td></tr>}
+      </tbody></table>
 
-        {/* ── Inline-editable rows ── */}
-        <tr>
-          <th>Assessment type</th>
-          <td>
-            <select value={assessmentType} onChange={e => setAssessmentType(e.target.value)} style={ctrlStyle} disabled={disabled}>
-              {ASSESSMENT_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <th>Question formats</th>
-          <td>
-            <select value={questionFormat} onChange={e => setQuestionFormat(e.target.value)} style={ctrlStyle} disabled={disabled}>
-              {QUESTION_FORMAT_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </td>
-        </tr>
-        <tr>
-          <th>Multi-part</th>
-          <td>
-            <button
-              type="button"
-              onClick={() => !disabled && setMultiPart(v => !v)}
-              style={{
-                ...ctrlStyle,
-                background: multiPart ? "var(--color-accent-light, #ede9fe)" : "var(--bg, #fff)",
-                fontWeight: 500,
-              }}
-            >
-              {multiPart ? "Allowed" : "Standalone only"}
-            </button>
-          </td>
-        </tr>
-        <tr>
-          <th>Grade level</th>
-          <td>
-            <input
-              type="text"
-              value={grade}
-              onChange={e => setGrade(e.target.value)}
-              placeholder="e.g. 8"
-              style={{ ...ctrlStyle, width: "5.5rem" }}
-              disabled={disabled}
-            />
-          </td>
-        </tr>
+      {/* Editable fields — full-width label+chips layout */}
+      <div className="ca-inline-fields">
+        <div className="ca-inline-field">
+          <span className="ca-inline-field__label">Assessment type</span>
+          <ChipRow value={assessmentType} options={ASSESSMENT_CHIPS} onChange={setAssessmentType} />
+        </div>
+
+        <div className="ca-inline-field">
+          <span className="ca-inline-field__label">Question formats <span style={{ fontWeight: 400, color: "var(--text-secondary, #9ca3af)" }}>(pick all that apply)</span></span>
+          <div className="ca-inline-chips">
+            {QUESTION_FORMAT_CHIPS.map(o => {
+              const pacingKey = FORMAT_PACING_KEY[o.value];
+              const sec = pacingKey ? DEFAULT_PACING_SECONDS[pacingKey] : null;
+              const isSelected = selectedFormats.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
+                  onClick={() => !disabled && setSelectedFormats(prev =>
+                    prev.includes(o.value) ? prev.filter(v => v !== o.value) : [...prev, o.value]
+                  )}
+                  disabled={disabled}
+                  title={sec ? fmtPacingTime(sec) : undefined}
+                >
+                  {o.label}{sec ? <span style={{ opacity: 0.7, fontSize: "0.7rem", marginLeft: "0.3rem" }}>({fmtPacingTime(sec)})</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="ca-inline-field">
+          <span className="ca-inline-field__label">Multi-part</span>
+          <ChipRow
+            value={multiPart ? "yes" : "no"}
+            options={MULTI_PART_CHIPS}
+            onChange={(v) => setMultiPart(v === "yes")}
+          />
+        </div>
+
+        <div className="ca-inline-field">
+          <span className="ca-inline-field__label">Grade level</span>
+          <input
+            type="text"
+            value={grade}
+            onChange={e => setGrade(e.target.value)}
+            placeholder="e.g. 8"
+            className="ca-input ca-input--sm"
+            disabled={disabled}
+          />
+        </div>
+
         {(origStandards || defaults.standards != null) && (
-          <>
-            <tr>
-              <th>Standards</th>
-              <td style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-                <select value={standards} onChange={e => setStandards(e.target.value)} style={ctrlStyle} disabled={disabled}>
-                  {STANDARDS_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-                {standards === "state" && (
-                  <input
-                    type="text"
-                    value={stateCode}
-                    onChange={e => setStateCode(e.target.value)}
-                    placeholder="State (e.g. GA)"
-                    style={{ ...ctrlStyle, width: "6.5rem" }}
-                    disabled={disabled}
-                  />
-                )}
-              </td>
-            </tr>
-          </>
+          <div className="ca-inline-field">
+            <span className="ca-inline-field__label">Standards</span>
+            <ChipRow value={standards} options={STANDARDS_CHIPS} onChange={setStandards} />
+            {standards === "state" && (
+              <input
+                type="text"
+                value={stateCode}
+                onChange={e => setStateCode(e.target.value)}
+                placeholder="State code (e.g. GA)"
+                className="ca-input ca-input--sm"
+                style={{ marginTop: "0.3rem", width: "9rem" }}
+                disabled={disabled}
+              />
+            )}
+          </div>
         )}
-        <tr>
-          <th>Difficulty</th>
-          <td>
-            <select value={difficulty} onChange={e => setDifficulty(e.target.value as typeof difficulty)} style={ctrlStyle} disabled={disabled}>
-              {LEVEL_CHIPS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </td>
-        </tr>
 
-        {/* ── Read-only derived ── */}
+        <div className="ca-inline-field">
+          <span className="ca-inline-field__label">Difficulty</span>
+          <ChipRow
+            value={difficulty}
+            options={LEVEL_CHIPS}
+            onChange={v => setDifficulty(v as typeof difficulty)}
+          />
+        </div>
+      </div>
+
+      {/* Read-only derived */}
+      <table className="ca-defaults-table" style={{ marginTop: "0.5rem" }}><tbody>
         {defaults.typicalBloomRange && <tr><th>Typical rigor</th><td>{defaults.typicalBloomRange}</td></tr>}
-        <tr><th>Est. questions</th><td>{defaults.estimatedQuestionRange.min}\u2013{defaults.estimatedQuestionRange.max}</td></tr>
+        <tr><th>Est. questions</th><td>{defaults.estimatedQuestionRange.min}–{defaults.estimatedQuestionRange.max}</td></tr>
         <tr><th>Est. time</th><td>~{defaults.estimatedMinutes} min</td></tr>
       </tbody></table>
+
       <div className="ca-defaults-card__actions">
         <button className="ca-btn-primary" onClick={handleUse} disabled={disabled}>Use these defaults &rarr;</button>
       </div>
@@ -491,6 +510,9 @@ function FinalConfirmCard({
           &check; Defaults updated for {answers.course}.
         </p>
       )}
+
+      <FeasibilityWarning answers={answers} courseDefaults={courseDefaults} />
+
       <div className="ca-final-card__actions">
         <button className="ca-btn-primary" onClick={onGenerate} disabled={disabled}>&#x1F680; Generate assessment</button>
         <button className="ca-btn-ghost"   onClick={onBack}     disabled={disabled}>&larr; Go back</button>
@@ -584,18 +606,29 @@ export function ConversationalAssessment({
   const [docSummaryMessage, setDocSummaryMessage] = useState<string | null>(null);
   const commitRef = useRef<(value: string) => void>(() => {});
 
+  // Pre-fill course with the most recently added course profile (last in array)
+  const lastCourse =
+    teacherProfile?.courseProfiles?.length
+      ? teacherProfile.courseProfiles[teacherProfile.courseProfiles.length - 1].courseName
+      : "";
+
   const [answers, setAnswers] = useState<Record<StepId, string>>(() => ({
     ...DEFAULT_ANSWERS,
+    ...(lastCourse ? { course: lastCourse } : {}),
     ...(defaultAnswers ?? {}),
     ...(initialAnswers ?? {}),
   }));
 
   const [stepIndex, setStepIndex] = useState(() => {
-    if (!initialAnswers) return 0;
-    const merged = { ...DEFAULT_ANSWERS, ...(initialAnswers ?? {}) };
-    const hasP = Boolean(teacherProfile);
-    const allSteps = buildSteps(hasP, merged, false);
-    return Math.max(0, allSteps.length - 1);
+    if (initialAnswers) {
+      const merged = { ...DEFAULT_ANSWERS, ...(initialAnswers ?? {}) };
+      const hasP = Boolean(teacherProfile);
+      const allSteps = buildSteps(hasP, merged, false);
+      return Math.max(0, allSteps.length - 1);
+    }
+    // If a course is pre-filled from the profile, start at the topic step
+    if (teacherProfile?.courseProfiles?.length && lastCourse) return 1;
+    return 0;
   });
 
   const [inputValue, setInputValue] = useState(() => initialAnswers?.additionalDetails ?? "");
@@ -609,6 +642,22 @@ export function ConversationalAssessment({
     if (!teacherProfile || !answers.course) return null;
     return resolveCourseDefaults(teacherProfile, answers.course, answers.assessmentType || undefined);
   }, [teacherProfile, answers.course, answers.assessmentType]);
+
+  // When the resolved course defaults change (course was updated), pre-populate
+  // the chip answers so each step shows the correct default pre-selected.
+  const prevDefaultsCourseRef = useRef<string>("");
+  useEffect(() => {
+    if (!courseDefaults || answers.course === prevDefaultsCourseRef.current) return;
+    prevDefaultsCourseRef.current = answers.course;
+    setAnswers(prev => ({
+      ...prev,
+      assessmentType:     courseDefaults.assessmentTypes[0]        ?? prev.assessmentType,
+      questionFormat:     courseDefaults.questionTypes.join(","),
+      multiPartQuestions: courseDefaults.multiPartAllowed ? "yes" : "no",
+      studentLevel:       courseDefaults.typicalDifficulty          ?? prev.studentLevel,
+      gradeLevels:        courseDefaults.gradeBand                  ?? prev.gradeLevels,
+    }));
+  }, [answers.course, courseDefaults]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Dynamic step list ─────────────────────────────────────────────────────
   const steps: Step[] = useMemo(
@@ -631,7 +680,17 @@ export function ConversationalAssessment({
     if (!isChipStep && !isFileStep && !isSpecialStep) setTimeout(() => inputRef.current?.focus(), 50);
   }, [stepIndex, isChipStep, isFileStep, isSpecialStep]);
 
-  useEffect(() => { setMultiSelectBuffer([]); }, [stepIndex]);
+  useEffect(() => {
+    // For multi-select steps, seed the buffer from the existing answer so the
+    // previously chosen options are shown as selected when navigating back.
+    if (currentStep?.multiSelect && answers[currentStep.id]) {
+      setMultiSelectBuffer(
+        answers[currentStep.id].split(",").map(s => s.trim()).filter(Boolean)
+      );
+    } else {
+      setMultiSelectBuffer([]);
+    }
+  }, [stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { commitRef.current = commitAnswer; });
 
   // Auto-advance through inferred steps after document upload
@@ -924,9 +983,9 @@ export function ConversationalAssessment({
                     key={chip.value}
                     type="button"
                     className={`ca-chip${
-                      step.multiSelect && multiSelectBuffer.includes(chip.value)
-                        ? " ca-chip--selected"
-                        : ""
+                      step.multiSelect
+                        ? multiSelectBuffer.includes(chip.value) ? " ca-chip--selected" : ""
+                        : answers[step.id] === chip.value       ? " ca-chip--selected" : ""
                     }`}
                     onClick={() => handleChipClick(chip.value)}
                     disabled={isBlocked}
@@ -941,7 +1000,10 @@ export function ConversationalAssessment({
                     onClick={handleMultiSelectConfirm}
                     disabled={isBlocked}
                   >
-                    &check; Confirm ({multiSelectBuffer.length} selected)
+                    {"\u2713"} Use:{" "}
+                    {multiSelectBuffer
+                      .map(v => step.chips!.find(c => c.value === v)?.label ?? v)
+                      .join(", ")}
                   </button>
                 )}
               </div>

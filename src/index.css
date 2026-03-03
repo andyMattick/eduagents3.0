@@ -677,6 +677,49 @@ textarea {
   opacity: 0.85;
 }
 
+/* Compact chip used inside DefaultsCard editable rows */
+.ca-chip--sm {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+/* Chip group inside DefaultsCard */
+.ca-inline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+/* Section layout for editable defaults fields */
+.ca-inline-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0.5rem 0;
+}
+
+.ca-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ca-inline-field__label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 0.1rem;
+}
+
+/* Small variant of the conversational input */
+.ca-input--sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.84rem;
+  border-radius: 8px;
+  width: 7rem;
+}
+
 .ca-chip--confirm {
   background: var(--primary-color);
   border-color: var(--primary-color);
@@ -789,7 +832,7 @@ textarea {
   border-radius: 12px;
   padding: 1rem 1.25rem;
   margin: 0.5rem 0;
-  max-width: 420px;
+  max-width: 520px;
 }
 
 .ca-defaults-card__header {

@@ -1515,40 +1515,27 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   marginBottom: "0.75rem",
                 }}
               >
-                <label
-                  htmlFor="version-select"
-                  style={{ fontWeight: 600, fontSize: "0.9rem" }}
-                >
-                  Version:
-                </label>
-                <select
-                  id="version-select"
-                  value={selectedVersionId ?? ""}
-                  onChange={(e) => setSelectedVersionId(e.target.value)}
-                  style={{
-                    padding: "0.4rem 0.8rem",
-                    borderRadius: "8px",
-                    border: "1.5px solid var(--color-border, #ddd)",
-                    background: "var(--bg, #fff)",
-                    color: "inherit",
-                    fontSize: "0.9rem",
-                    cursor: "pointer",
-                    minWidth: "160px",
-                  }}
-                >
+                <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>Version:</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                   {versions.map((v) => {
                     const vDate = new Date(v.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                    const isSelected = v.id === selectedVersionId;
+                    const isActive = v.id === template.active_version_id;
+                    const qualityIcon = v.quality_score != null ? (v.quality_score >= 8 ? " ✓" : v.quality_score < 5 ? " ⚠" : "") : "";
                     return (
-                      <option key={v.id} value={v.id}>
-                        Version {v.version_number}
-                        {v.id === template.active_version_id ? " (active)" : ""}
-                        {v.parent_version_id ? " · revised" : ""}
-                        {` · ${vDate}`}
-                        {v.quality_score != null ? ` · Quality ${v.quality_score}/10${v.quality_score >= 8 ? " ✓" : v.quality_score >= 5 ? "" : " ⚠"}` : ""}
-                      </option>
+                      <button
+                        key={v.id}
+                        onClick={() => setSelectedVersionId(v.id)}
+                        className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
+                        title={`Version ${v.version_number}${isActive ? " — active" : ""}${v.parent_version_id ? " — revised" : ""}${v.quality_score != null ? ` — Quality ${v.quality_score}/10` : ""}`}
+                      >
+                        v{v.version_number}{qualityIcon}
+                        {isActive && <span style={{ marginLeft: "0.3rem", fontSize: "0.7em", opacity: 0.8 }}>●</span>}
+                        <span style={{ marginLeft: "0.3rem", fontWeight: 400, opacity: 0.7 }}>{vDate}</span>
+                      </button>
                     );
                   })}
-                </select>
+                </div>
 
                 {selectedVersion && (
                   <span style={{ fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)" }}>
