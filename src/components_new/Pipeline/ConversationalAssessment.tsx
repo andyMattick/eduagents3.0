@@ -453,6 +453,80 @@ function SummarizerConfirmCard({
   );
 }
 
+// ── FeasibilityWarning ────────────────────────────────────────────────────────
+
+const LEVEL_TO_BLOOM: Record<string, string> = {
+  support:  "understand",
+  standard: "apply",
+  honors:   "analyze",
+  ap:       "evaluate",
+};
+
+function FeasibilityWarning({
+  answers,
+  courseDefaults,
+}: {
+  answers: Record<StepId, string>;
+  courseDefaults: ResolvedCourseDefaults | null;
+}) {
+  const topic    = answers.topic?.trim()    || "";
+  const details  = [answers.subtopics, answers.additionalDetails].filter(Boolean).join(" ");
+  const formats  = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "mcqOnly")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  const level    = answers.studentLevel || courseDefaults?.typicalDifficulty || "standard";
+  const bloom    = LEVEL_TO_BLOOM[level] ?? "apply";
+  const reqCount = courseDefaults?.estimatedQuestionRange.max ?? 10;
+
+  if (!topic) return null;
+
+  const report = evaluateFeasibility({
+    topic,
+    additionalDetails: details || null,
+    sourceDocuments:   null,
+    requestedSlotCount: reqCount,
+    questionTypes:     formats,
+    depthFloor:        "remember",
+    depthCeiling:      bloom,
+  });
+
+  if (report.riskLevel === "safe") return null;
+
+  const COLOR = {
+    caution:  { bg: "var(--adp-warn-bg,#fffbeb)",  border: "var(--adp-warn-fg,#d97706)",  fg: "var(--adp-warn-fg,#92400e)"  },
+    high:     { bg: "var(--adp-warn-bg,#fffbeb)",  border: "#f59e0b",                      fg: "#92400e"                      },
+    overload: { bg: "var(--adp-danger-bg,#fef2f2)", border: "var(--adp-danger-fg,#dc2626)", fg: "var(--adp-danger-fg,#991b1b)" },
+  }[report.riskLevel];
+
+  const icon    = report.riskLevel === "overload" ? "⚠️" : "ℹ️";
+  const heading = report.riskLevel === "overload"
+    ? "Topic may not support this many questions"
+    : report.riskLevel === "high"
+    ? "Topic density is low for the requested count"
+    : "Topic density is moderate";
+
+  // Show only the first human-readable warning (skip the [Feasibility detail] debug line)
+  const msg = report.warnings.find(w => !w.startsWith("[Feasibility")) ?? report.warnings[0] ?? "";
+
+  return (
+    <div style={{
+      margin: "0.75rem 0 0.25rem",
+      padding: "0.65rem 0.9rem",
+      borderRadius: "8px",
+      border: `1.5px solid ${COLOR.border}`,
+      background: COLOR.bg,
+      color: COLOR.fg,
+      fontSize: "0.82rem",
+      lineHeight: 1.5,
+    }}>
+      <strong>{icon} {heading}</strong>
+      <p style={{ margin: "0.25rem 0 0" }}>{msg}</p>
+      <p style={{ margin: "0.25rem 0 0", opacity: 0.8 }}>
+          You can still generate — the system will adjust automatically if needed.
+        </p>
+    </div>
+  );
+}
+
 // ── FinalConfirmCard ─────────────────────────────────────────────────────────
 
 interface Override { field: string; from: string; to: string }

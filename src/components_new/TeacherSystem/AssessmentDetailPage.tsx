@@ -1730,6 +1730,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                       if (uar.time != null) return Number(uar.time);
                       return null;
                     })()}
+                    title={titleFor(template.uar_json ?? {}, template.domain)}
                     onClose={() => setShowReportResults(false)}
                   />
                 </div>
@@ -1915,7 +1916,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
             <>
               <StudentResultsPanel
                 questionCount={
-                  (selectedVersion.assessment_json as any)?.questions?.length ??
+                  (selectedVersion.assessment_json as any)?.items?.length ??
                   (selectedVersion.assessment_json as any)?.totalItems ??
                   10
                 }
