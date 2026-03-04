@@ -22,6 +22,7 @@ import {
 } from "@/services_new/teacherProfileService";
 import { classifyTrace } from "@/pipeline/agents/classifyTrace";
 import { sendPipelineReport } from "@/services_new/pipelineReportService";
+import type { ReportSource } from "@/services_new/pipelineReportService";
 import "./AssessmentDetailPage.css";
 import "./AssessmentDetailPage.css";
 
@@ -732,6 +733,33 @@ function PacingFeedbackBar({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Prescription helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function hasPrescriptions(blueprintJson: Record<string, any> | null): boolean {
+  const bp     = blueprintJson ?? {};
+  const scribe = bp.scribePrescriptions ?? {};
+  const gk     = bp.gatekeeperPrescriptions ?? {};
+  return (
+    ((scribe.requiredBehaviors ?? []) as string[]).length > 0 ||
+    ((scribe.weaknesses         ?? []) as string[]).length > 0 ||
+    ((gk.addedConstraints       ?? []) as string[]).length > 0
+  );
+}
+
+function getPrescriptionSummary(blueprintJson: Record<string, any> | null): string {
+  const bp     = blueprintJson ?? {};
+  const scribe = bp.scribePrescriptions ?? {};
+  const gk     = bp.gatekeeperPrescriptions ?? {};
+  const parts: string[] = [];
+  const behaviors = (scribe.requiredBehaviors ?? []) as string[];
+  const constraints = (gk.addedConstraints ?? []) as string[];
+  if (behaviors.length > 0)   parts.push(`${behaviors.length} writer behavior${behaviors.length !== 1 ? "s" : ""} required`);
+  if (constraints.length > 0) parts.push(`${constraints.length} gatekeeper constraint${constraints.length !== 1 ? "s" : ""} applied`);
+  return parts.join("; ") || "prescriptions were active";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function SendReportBanner({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [showNote, setShowNote] = useState(false);
@@ -739,12 +767,26 @@ function SendReportBanner({ version, template }: { version: VersionRow; template
   const [status, setStatus]     = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const c = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
-  if (c.severity === "none") return null;
 
   const isError     = c.severity === "error";
-  const borderColor = isError ? "var(--adp-danger-fg,#dc2626)" : "#f59e0b";
-  const bg          = isError ? "var(--adp-danger-bg,#fef2f2)" : "var(--adp-warn-bg,#fffbeb)";
-  const fg          = isError ? "var(--adp-danger-fg,#991b1b)" : "var(--adp-warn-fg,#92400e)";
+  const isWarning   = c.severity === "warning";
+  const isFlagged   = isError || isWarning;
+  const withPresc   = hasPrescriptions(version.blueprint_json);
+
+  // Determine source label for admin dashboard
+  const reportSource: ReportSource = isFlagged ? "flagged" : withPresc ? "recommended" : "voluntary";
+
+  // Build the classification to send — for non-flagged we keep category as "unknown"
+  function buildClassification() {
+    if (isFlagged) return c;
+    return {
+      ...c,
+      category:  "unknown" as const,
+      summary:   reportSource === "recommended"
+        ? `Prescription-assisted generation. ${getPrescriptionSummary(version.blueprint_json)}`
+        : "Teacher submitted voluntary feedback.",
+    };
+  }
 
   async function handleSend() {
     setStatus("sending");
@@ -752,12 +794,14 @@ function SendReportBanner({ version, template }: { version: VersionRow; template
       await sendPipelineReport({
         userId:              template.user_id,
         assessmentVersionId: version.id,
-        classification:      c,
+        classification:      buildClassification(),
         blueprintJson:       version.blueprint_json,
         tokenUsage:          version.token_usage,
         qualityScore:        version.quality_score,
         uarJson:             template.uar_json,
+        assessmentJson:      version.assessment_json as Record<string, any>,
         teacherNote:         note.trim() || undefined,
+        reportSource,
       });
       setStatus("sent");
     } catch {
@@ -773,52 +817,154 @@ function SendReportBanner({ version, template }: { version: VersionRow; template
     );
   }
 
-  return (
-    <div style={{ padding: "0.7rem 0.9rem", borderRadius: "8px", border: `1.5px solid ${borderColor}`, background: bg, color: fg, fontSize: "0.83rem", lineHeight: 1.5 }}>
-      <p style={{ margin: 0, fontWeight: 600 }}>
-        {isError ? "⚠️ Something unexpected happened." : "ℹ️ Something looked unusual during generation."}
-      </p>
-      <p style={{ margin: "0.3rem 0 0", color: "inherit", opacity: 0.9 }}>
-        {c.summary}
-        {c.faultingAgent ? <> ({c.faultingAgent})</> : null}
-      </p>
-      {c.suggestedFix && (
-        <p style={{ margin: "0.3rem 0 0", fontStyle: "italic", opacity: 0.85 }}>{c.suggestedFix}</p>
-      )}
-      {status !== "error" && (
-        <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", flexDirection: "column" }}>
-          {showNote && (
-            <textarea
-              rows={2}
-              placeholder="Anything you want to add? (optional)"
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)" }}
-            />
-          )}
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <button
-              onClick={status === "idle" && !showNote ? () => setShowNote(true) : handleSend}
-              disabled={status === "sending"}
-              style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: isError ? "var(--adp-danger-fg,#dc2626)" : "#d97706", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
-            >
-              {status === "sending" ? "Sending…" : "Send Report"}
-            </button>
-            {!showNote && (
-              <button
-                onClick={() => setShowNote(true)}
-                style={{ background: "none", border: "none", fontSize: "0.78rem", color: fg, opacity: 0.7, cursor: "pointer", textDecoration: "underline" }}
-              >
-                Add a note
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-      {status === "error" && (
-        <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
-          Failed to send — try again later.
+  // ── Flagged (warning / error) — existing styled alert ───────────────────
+  if (isFlagged) {
+    const borderColor = isError ? "var(--adp-danger-fg,#dc2626)" : "#f59e0b";
+    const bg          = isError ? "var(--adp-danger-bg,#fef2f2)" : "var(--adp-warn-bg,#fffbeb)";
+    const fg          = isError ? "var(--adp-danger-fg,#991b1b)" : "var(--adp-warn-fg,#92400e)";
+    return (
+      <div style={{ padding: "0.7rem 0.9rem", borderRadius: "8px", border: `1.5px solid ${borderColor}`, background: bg, color: fg, fontSize: "0.83rem", lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontWeight: 600 }}>
+          {isError ? "⚠️ Something unexpected happened." : "ℹ️ Something looked unusual during generation."}
         </p>
+        <p style={{ margin: "0.3rem 0 0", color: "inherit", opacity: 0.9 }}>
+          {c.summary}
+          {c.faultingAgent ? <> ({c.faultingAgent})</> : null}
+        </p>
+        {c.suggestedFix && (
+          <p style={{ margin: "0.3rem 0 0", fontStyle: "italic", opacity: 0.85 }}>{c.suggestedFix}</p>
+        )}
+        {status !== "error" && (
+          <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", flexDirection: "column" }}>
+            {showNote && (
+              <textarea
+                rows={2}
+                placeholder="Anything you want to add? (optional)"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)" }}
+              />
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <button
+                onClick={status === "idle" && !showNote ? () => setShowNote(true) : handleSend}
+                disabled={status === "sending"}
+                style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: isError ? "var(--adp-danger-fg,#dc2626)" : "#d97706", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+              >
+                {status === "sending" ? "Sending…" : "Send Report"}
+              </button>
+              {!showNote && (
+                <button
+                  onClick={() => setShowNote(true)}
+                  style={{ background: "none", border: "none", fontSize: "0.78rem", color: fg, opacity: 0.7, cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Add a note
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {status === "error" && (
+          <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+            Failed to send — try again later.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Recommended — prescription was used ─────────────────────────────────
+  if (reportSource === "recommended") {
+    return (
+      <div style={{ padding: "0.6rem 0.9rem", borderRadius: "8px", border: "1.5px solid var(--color-accent,#6366f1)", background: "var(--adp-info-bg,#eef2ff)", color: "var(--adp-info-fg,#3730a3)", fontSize: "0.83rem", lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontWeight: 600 }}>✨ Prescription-assisted generation</p>
+        <p style={{ margin: "0.25rem 0 0", opacity: 0.9 }}>
+          {getPrescriptionSummary(version.blueprint_json)}. Sending a report helps us calibrate these rules.
+        </p>
+        {status !== "error" && (
+          <div style={{ marginTop: "0.55rem", display: "flex", gap: "0.5rem", flexDirection: "column" }}>
+            {showNote && (
+              <textarea
+                rows={2}
+                placeholder="Did the prescription help? Any observations? (optional)"
+                value={note}
+                onChange={e => setNote(e.target.value)}
+                style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)" }}
+              />
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <button
+                onClick={status === "idle" && !showNote ? () => setShowNote(true) : handleSend}
+                disabled={status === "sending"}
+                style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: "var(--color-accent,#6366f1)", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+              >
+                {status === "sending" ? "Sending…" : "Send Recommended Report"}
+              </button>
+              {!showNote && (
+                <button
+                  onClick={() => setShowNote(true)}
+                  style={{ background: "none", border: "none", fontSize: "0.78rem", color: "var(--adp-info-fg,#3730a3)", opacity: 0.7, cursor: "pointer", textDecoration: "underline" }}
+                >
+                  Add a note
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        {status === "error" && (
+          <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+            Failed to send — try again later.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // ── Voluntary — generation looked fine, teacher can still send feedback ──
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+      {!showNote ? (
+        <>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-secondary,#6b7280)" }}>
+            Generation looked normal —
+          </span>
+          <button
+            onClick={() => setShowNote(true)}
+            style={{ padding: "0.25rem 0.7rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", background: "transparent", color: "var(--text,#374151)", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" }}
+          >
+            Send Feedback Anyway
+          </button>
+        </>
+      ) : (
+        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+          <textarea
+            rows={2}
+            placeholder="What looked off, or any general feedback? (optional)"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)", boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={handleSend}
+              disabled={status === "sending"}
+              style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: "var(--text-secondary,#6b7280)", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+            >
+              {status === "sending" ? "Sending…" : "Send Feedback"}
+            </button>
+            <button
+              onClick={() => { setShowNote(false); setNote(""); }}
+              style={{ padding: "0.3rem 0.7rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", background: "transparent", fontSize: "0.78rem", cursor: "pointer", color: "var(--text-secondary,#6b7280)" }}
+            >
+              Cancel
+            </button>
+          </div>
+          {status === "error" && (
+            <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+              Failed to send — try again later.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -1091,6 +1237,144 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
           {history.length === 0 && (
             <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)", fontStyle: "italic" }}>
               ℹ️ After students complete this, use "📊 Report Results" to log actual performance. The system will use that data to calibrate difficulty and timing in future assessments.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom report bar — always shown at the foot of every generated assignment
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BottomReportBar({ version, template }: { version: VersionRow; template: TemplateRow }) {
+  const [expanded, setExpanded]   = useState(false);
+  const [note, setNote]           = useState("");
+  const [status, setStatus]       = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const c            = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
+  const isFlagged    = c.severity === "error" || c.severity === "warning";
+  const withPresc    = hasPrescriptions(version.blueprint_json);
+  const reportSource: ReportSource = isFlagged ? "flagged" : withPresc ? "recommended" : "voluntary";
+
+  function buildClassification() {
+    if (isFlagged) return c;
+    return {
+      ...c,
+      category: "unknown" as const,
+      summary:   reportSource === "recommended"
+        ? `Prescription-assisted generation. ${getPrescriptionSummary(version.blueprint_json)}`
+        : "Teacher submitted voluntary feedback.",
+    };
+  }
+
+  async function handleSend() {
+    setStatus("sending");
+    try {
+      await sendPipelineReport({
+        userId:              template.user_id,
+        assessmentVersionId: version.id,
+        classification:      buildClassification(),
+        blueprintJson:       version.blueprint_json,
+        tokenUsage:          version.token_usage,
+        qualityScore:        version.quality_score,
+        uarJson:             template.uar_json,
+        assessmentJson:      version.assessment_json as Record<string, any>,
+        teacherNote:         note.trim() || undefined,
+        reportSource,
+      });
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  // Determine visual treatment
+  const barBg     = isFlagged
+    ? (c.severity === "error" ? "var(--adp-danger-bg,#fef2f2)" : "var(--adp-warn-bg,#fffbeb)")
+    : withPresc
+    ? "var(--adp-info-bg,#eef2ff)"
+    : "var(--bg-secondary,#f9fafb)";
+  const barBorder = isFlagged
+    ? (c.severity === "error" ? "var(--adp-danger-fg,#dc2626)" : "#f59e0b")
+    : withPresc
+    ? "var(--color-accent,#6366f1)"
+    : "var(--color-border,#e5e7eb)";
+  const labelColor = isFlagged
+    ? (c.severity === "error" ? "var(--adp-danger-fg,#991b1b)" : "var(--adp-warn-fg,#92400e)")
+    : withPresc
+    ? "var(--adp-info-fg,#3730a3)"
+    : "var(--text-secondary,#6b7280)";
+  const btnBg     = isFlagged
+    ? (c.severity === "error" ? "var(--adp-danger-fg,#dc2626)" : "#d97706")
+    : withPresc
+    ? "var(--color-accent,#6366f1)"
+    : "var(--text-secondary,#4b5563)";
+
+  const label = isFlagged
+    ? (c.severity === "error" ? "⚠️ Issue detected — see AI Notes above." : "ℹ️ Something looked unusual — see AI Notes above.")
+    : withPresc
+    ? "✨ Prescription-assisted — feedback helps us calibrate."
+    : "Generation looked normal.";
+  const btnLabel = isFlagged ? "Send Report" : withPresc ? "Send Recommended Report" : "Send Feedback";
+
+  if (status === "sent") {
+    return (
+      <div style={{ marginTop: "1.5rem", padding: "0.7rem 1rem", borderRadius: "8px", border: "1.5px solid var(--adp-success-bdr,#bbf7d0)", background: "var(--adp-success-bg,#f0fdf4)", fontSize: "0.82rem", color: "var(--adp-success-fg,#16a34a)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        ✓ Report sent — thanks for helping us improve!
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "1.5rem", padding: "0.7rem 1rem", borderRadius: "8px", border: `1.5px solid ${barBorder}`, background: barBg, fontSize: "0.83rem", lineHeight: 1.5, color: labelColor }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+        <span style={{ flex: 1, minWidth: "12rem" }}>{label}</span>
+        {!expanded && status !== "error" && (
+          <button
+            onClick={() => setExpanded(true)}
+            style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: btnBg, color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            {btnLabel}
+          </button>
+        )}
+      </div>
+      {expanded && (
+        <div style={{ marginTop: "0.6rem", display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+          <textarea
+            rows={2}
+            autoFocus
+            placeholder={
+              isFlagged
+                ? "Anything you want to add about this issue? (optional)"
+                : withPresc
+                ? "Did the prescription help? Any observations? (optional)"
+                : "What looked off, or any general feedback? (optional)"
+            }
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)", boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              onClick={handleSend}
+              disabled={status === "sending"}
+              style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: btnBg, color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+            >
+              {status === "sending" ? "Sending…" : btnLabel}
+            </button>
+            <button
+              onClick={() => { setExpanded(false); setNote(""); }}
+              style={{ padding: "0.3rem 0.7rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", background: "transparent", fontSize: "0.78rem", cursor: "pointer", color: "var(--text-secondary,#6b7280)" }}
+            >
+              Cancel
+            </button>
+          </div>
+          {status === "error" && (
+            <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+              Failed to send — try again later.
             </p>
           )}
         </div>
@@ -2031,6 +2315,11 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                 No assessment content found for this version.
               </p>
             )
+          )}
+
+          {/* ── Send Report — always visible at the bottom ───────────────── */}
+          {selectedVersion && template && (
+            <BottomReportBar version={selectedVersion} template={template} />
           )}
         </>
       )}

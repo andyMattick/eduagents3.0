@@ -73,6 +73,55 @@ function blueprintForScribe(blueprint: any): { plan: Record<string, any> } {
 }
 
 /**
+ * Full telemetry snapshot stored in assessment_versions.blueprint_json.
+ * Richer than blueprintForScribe — includes Writer telemetry, Gatekeeper
+ * violation log, and a WriterContract snapshot for incident report assembly.
+ */
+function blueprintForStorage(
+  blueprint: any,
+  writerTelemetry: any | null,
+  gatekeeperResult: any,
+): Record<string, any> {
+  const p = blueprint.plan ?? {};
+  const c = getContract();
+  return {
+    plan: {
+      cognitiveDistribution: p.cognitiveDistribution,
+      difficultyProfile:     p.difficultyProfile,
+      orderingStrategy:      p.orderingStrategy,
+      pacingSecondsPerItem:  p.pacingSecondsPerItem,
+      targetSlots:           p.targetSlots ?? p.slotCount ?? null,
+      adjustedQuestionCount: p.adjustedCount ?? null,
+    },
+    // Writer adaptive-chunking telemetry
+    rewriteCount:    writerTelemetry?.rewriteCount    ?? 0,
+    itemsGenerated:  writerTelemetry?.itemsGenerated  ?? null,
+    chunksGenerated: writerTelemetry?.chunksGenerated ?? null,
+    // Gatekeeper per-item violation log (needed for incident report)
+    gatekeeperViolations: (gatekeeperResult?.violations ?? []).map((v: any) => ({
+      type:    v.type,
+      message: v.message ?? null,
+      itemId:  v.itemId  ?? null,
+    })),
+    constraintWarnings: blueprint.constraintWarnings ?? [],
+    truncationEvents:   blueprint.truncationEvents   ?? [],
+    feasibilityRisk:    blueprint.feasibilityRisk    ?? blueprint.riskLevel ?? "safe",
+    topicRejected:      blueprint.topicRejected      ?? false,
+    gradeTextWarning:   blueprint.gradeTextWarning   ?? null,
+    // Writer Contract snapshot — preserved for incident report reconstruction
+    writerContract: c ? {
+      teacherIntent:           c.teacherIntent,
+      systemConstraints:       c.systemConstraints,
+      styleConstraints:        c.styleConstraints ?? null,
+      gatekeeperPrescriptions: c.gatekeeperPrescriptions,
+      finalWriterGuidelines:   c.finalWriterGuidelines,
+    } : null,
+    // SCRIBE writer prescriptions (if any were active this run)
+    scribePrescriptions: (blueprint as any).scribePrescriptions ?? null,
+  };
+}
+
+/**
  * SCRIBE only reads course, gradeLevels, assessmentType, guardrails from the UAR.
  */
 function uarForScribe(uar: any): Record<string, any> {
@@ -538,7 +587,7 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
     uar: uarForScribe(uarWithDefaults),
     domain: selected.domain,
     finalAssessment,
-    blueprint: blueprintForScribe(blueprint),
+    blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperResult),
     qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
     tokenUsage: actualTokenCount ?? null,
 
@@ -607,7 +656,7 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     uar: uarForScribe(uarWithDefaults),
     domain: selected.domain,
     finalAssessment,
-    blueprint: blueprintForScribe(blueprint),
+    blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperFinal),
     qualityScore: philosopherWrite.analysis?.qualityScore ?? undefined,
     tokenUsage: actualTokenCount ?? null,
 
@@ -716,7 +765,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     uar: uarForScribe(uarWithDefaults),
     domain: selected.domain,
     finalAssessment,
-    blueprint: blueprintForScribe(blueprint),
+    blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperFinal),
     qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
     tokenUsage: actualTokenCount ?? null,
 
@@ -774,7 +823,7 @@ await SCRIBE.saveAssessmentVersion({
   uar: uarForScribe(uarWithDefaults),
   domain: selected.domain,
   finalAssessment,
-  blueprint: blueprintForScribe(blueprint),
+  blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperResult),
   qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
   tokenUsage: actualTokenCount ?? null,
 

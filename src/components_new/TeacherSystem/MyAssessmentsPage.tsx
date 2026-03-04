@@ -1,20 +1,28 @@
 // src/components_new/TeacherSystem/MyAssessmentsPage.tsx
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/supabase/client";
+import { classifyTrace } from "@/pipeline/agents/classifyTrace";
+import { sendPipelineReport } from "@/services_new/pipelineReportService";
+import type { ReportSource } from "@/services_new/pipelineReportService";
 import "./MyAssessmentsPage.css";
 
 // ── Types ──────────────────────────────────────────────────────────
 
 interface TemplateRecord {
   id: string;
+  user_id: string;
   domain: string | null;
   uar_json: Record<string, any> | null;
   created_at: string;
   latest_version_id: string | null;
   // joined from assessment_versions via latest_version_id
   latest_version?: {
+    id: string;
     version_number: number | null;
     assessment_json: { totalItems?: number; items?: Array<{ questionType?: string }> } | null;
+    blueprint_json: Record<string, any> | null;
+    token_usage: Record<string, any> | null;
+    quality_score: number | null;
   } | null;
 }
 
@@ -189,6 +197,116 @@ function ProblemTypeChip({ type }: { type: string }) {
   );
 }
 
+function CardSendReport({
+  tmpl,
+}: {
+  tmpl: TemplateRecord;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [note, setNote]         = useState("");
+  const [status, setStatus]     = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const ver = tmpl.latest_version;
+  if (!ver) return null;
+
+  const c            = classifyTrace(ver.blueprint_json ?? null, ver.token_usage ?? null, ver.quality_score ?? null);
+  const isFlagged    = c.severity === "error" || c.severity === "warning";
+  const bp           = ver.blueprint_json ?? {};
+  const scribe       = bp.scribePrescriptions ?? {};
+  const gk           = bp.gatekeeperPrescriptions ?? {};
+  const withPresc    = (
+    ((scribe.requiredBehaviors ?? []) as string[]).length > 0 ||
+    ((scribe.weaknesses         ?? []) as string[]).length > 0 ||
+    ((gk.addedConstraints       ?? []) as string[]).length > 0
+  );
+  const reportSource: ReportSource = isFlagged ? "flagged" : withPresc ? "recommended" : "voluntary";
+
+  async function handleSend() {
+    if (!ver) return;
+    setStatus("sending");
+    try {
+      await sendPipelineReport({
+        userId:              tmpl.user_id,
+        assessmentVersionId: ver.id,
+        classification: isFlagged ? c : {
+          ...c,
+          category: "unknown" as const,
+          summary:  reportSource === "recommended"
+            ? "Prescription-assisted generation (from My Assessments)."
+            : "Teacher submitted voluntary feedback (from My Assessments).",
+        },
+        blueprintJson:  ver.blueprint_json ?? null,
+        tokenUsage:     ver.token_usage    ?? null,
+        qualityScore:   ver.quality_score  ?? null,
+        uarJson:        tmpl.uar_json,
+        assessmentJson: ver.assessment_json as Record<string, any> | null,
+        teacherNote:    note.trim() || undefined,
+        reportSource,
+      });
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  if (status === "sent") {
+    return (
+      <span style={{ fontSize: "0.75rem", color: "var(--adp-success-fg,#16a34a)", fontWeight: 600 }}>
+        ✓ Sent
+      </span>
+    );
+  }
+
+  const btnLabel = isFlagged ? "Send Report" : withPresc ? "Send Recommended Report" : "Send Feedback";
+  const btnColor = isFlagged
+    ? (c.severity === "error" ? "#dc2626" : "#d97706")
+    : withPresc
+    ? "var(--color-accent,#6366f1)"
+    : "var(--text-secondary,#4b5563)";
+
+  return (
+    <div style={{ marginTop: "0.5rem" }}>
+      {!expanded ? (
+        <button
+          onClick={() => setExpanded(true)}
+          style={{ padding: "0.25rem 0.7rem", borderRadius: "6px", border: `1px solid ${btnColor}`, background: "transparent", color: btnColor, fontSize: "0.75rem", fontWeight: 600, cursor: "pointer" }}
+        >
+          {btnLabel}
+        </button>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+          <textarea
+            rows={2}
+            autoFocus
+            placeholder="Any observations or feedback? (optional)"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            style={{ width: "100%", padding: "0.3rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.78rem", background: "var(--bg,#fff)", color: "var(--text,#374151)", boxSizing: "border-box", resize: "vertical" }}
+          />
+          <div style={{ display: "flex", gap: "0.4rem" }}>
+            <button
+              onClick={handleSend}
+              disabled={status === "sending"}
+              style={{ padding: "0.25rem 0.7rem", borderRadius: "6px", border: "none", background: btnColor, color: "#fff", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+            >
+              {status === "sending" ? "Sending…" : "Send"}
+            </button>
+            <button
+              onClick={() => { setExpanded(false); setNote(""); }}
+              style={{ padding: "0.25rem 0.55rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", background: "transparent", fontSize: "0.75rem", cursor: "pointer", color: "var(--text-secondary,#6b7280)" }}
+            >
+              Cancel
+            </button>
+          </div>
+          {status === "error" && (
+            <p style={{ margin: 0, fontSize: "0.73rem", color: "#dc2626" }}>Failed to send — try again.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AssignmentCard({
   tmpl,
   onView,
@@ -252,6 +370,9 @@ function AssignmentCard({
           </button>
         )}
       </div>
+
+      {/* Send Report — always visible on each card */}
+      {tmpl.latest_version && <CardSendReport tmpl={tmpl} />}
     </div>
   );
 }
@@ -289,7 +410,7 @@ export function MyAssessmentsPage({ teacherId, teacherName, onNewAssessment, onV
         // Step 1 — load templates
         const { data: tmplData, error: tmplErr } = await supabase
           .from("assessment_templates")
-          .select("id, domain, uar_json, created_at, latest_version_id")
+          .select("id, user_id, domain, uar_json, created_at, latest_version_id")
           .eq("user_id", teacherId)
           .order("created_at", { ascending: false });
 
@@ -306,12 +427,16 @@ export function MyAssessmentsPage({ teacherId, teacherName, onNewAssessment, onV
         if (latestIds.length > 0) {
           const { data: versData } = await supabase
             .from("assessment_versions")
-            .select("id, version_number, assessment_json")
+            .select("id, version_number, assessment_json, blueprint_json, token_usage, quality_score")
             .in("id", latestIds);
           for (const v of (versData ?? [])) {
             versMap[v.id] = {
+              id:             v.id,
               version_number: v.version_number ?? null,
               assessment_json: v.assessment_json ?? null,
+              blueprint_json: v.blueprint_json  ?? null,
+              token_usage:    v.token_usage     ?? null,
+              quality_score:  v.quality_score   ?? null,
             };
           }
         }

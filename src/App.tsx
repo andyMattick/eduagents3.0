@@ -126,25 +126,7 @@ function TeacherAppContent() {
               My Defaults
             </button>
 
-            {/* Developer Mode toggle */}
-            <button
-              onClick={toggleDevMode}
-              title={devMode ? 'Developer Mode ON — click to hide internal data' : 'Developer Mode OFF — click to show internal data'}
-              style={{
-                marginLeft: 'auto',
-                padding: '0.3rem 0.75rem',
-                borderRadius: '8px',
-                border: `1.5px solid ${devMode ? '#7c3aed' : 'var(--border-color, #ddd)'}`,
-                background: devMode ? '#7c3aed' : 'transparent',
-                color: devMode ? '#fff' : 'var(--text-secondary, #6b7280)',
-                cursor: 'pointer',
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                lineHeight: 1,
-              }}
-            >
-              {devMode ? '🛠 Dev Mode ON' : '🛠 Dev'}
-            </button>
+            
 
             {/* Theme Toggle */}
 
