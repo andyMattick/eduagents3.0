@@ -2,6 +2,9 @@
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import { runSummarizer } from "../agents/document/summarizer";
+// DIL Comparator + Analyzer available via:
+//   import { runComparator } from "../agents/document/comparator";
+//   import { runAnalyzer } from "../agents/document/analyzer";
 // Agent imports (you will fill these in as you build each agent)
 import { runArchitect } from "@/pipeline/agents/architect/index";
 import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
@@ -33,7 +36,16 @@ import {
 import { loadOrDefaultTeacherProfile } from "@/services_new/teacherProfileService";
 import { injectProfileIntoUAR } from "@/pipeline/agents/architect/conflictResolution";
 
-console.log("[Pipeline] Loaded runPipeline.ts — Version 2.2.0");
+// ── Plugin-Based Instruction Engine imports ─────────────────────────────────
+import {
+  getConceptGraph,
+  resetConceptGraph,
+} from "@/pipeline/agents/pluginEngine/conceptGraph";
+// Bootstrap plugin registration (templates, diagrams, LLM fallback)
+import "@/pipeline/agents/pluginEngine/problemPlugins";
+// InputJudge is dynamically imported in the pipeline body
+
+console.log("[Pipeline] Loaded runPipeline.ts — Version 3.0.0 (Plugin Engine)");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lean helpers — extract only what each downstream agent actually reads.
@@ -262,6 +274,34 @@ async function validateAndScore(
   return { gatekeeperResult: gk, philosopherWrite: phil };
 }
 
+// ── Concept Graph tagging helper ─────────────────────────────────────────────
+// Called after Builder to tag every generated item into the Concept Graph.
+function tagConceptGraph(finalAssessment: any): void {
+  try {
+    const graph = getConceptGraph();
+    const items = finalAssessment?.items ?? [];
+    for (const item of items) {
+      const meta = item.metadata ?? item.pluginMetadata ?? {};
+      graph.tagProblem({
+        problemId: item.slotId ?? item.id ?? "unknown",
+        concepts: meta.concepts ?? [],
+        skills: meta.skills ?? [],
+        standards: meta.standards ?? [],
+        pluginId: meta.pluginId ?? meta.plugin_id ?? undefined,
+        generationMethod: meta.generationMethod ?? meta.generation_method ?? undefined,
+      });
+    }
+    const snapshot = graph.getSnapshot();
+    console.info(
+      `[ConceptGraph] Tagged ${items.length} items — ` +
+      `${snapshot.coverage.assessedConcepts} concepts, ` +
+      `coverage: ${(snapshot.coverage.coverageRatio * 100).toFixed(0)}%`
+    );
+  } catch (err) {
+    console.warn("[ConceptGraph] Tagging failed (non-fatal):", err);
+  }
+}
+
 // ── Blueprint snapshot (for live preview) ─────────────────────────────────────
 // Set immediately after Architect runs so the UI can retrieve slot info while
 // items are still streaming in from the Writer.
@@ -291,6 +331,9 @@ export async function runPipeline(
 
   // ── Clear any contract from a previous run ────────────────────────────
   clearContract();
+
+  // ── Reset Concept Graph for this run ──────────────────────────────────
+  resetConceptGraph();
 
   // ── Ensure required UAR fields have safe defaults ─────────────────────────
   // mode and subscriptionTier may not be set by convertMinimalToUAR.
@@ -421,6 +464,41 @@ export async function runPipeline(
         docTokens: fr.conceptProfile.documentTokenCount,
       }
     );
+  }
+
+  // ── Plugin Engine: InputJudge — validate slot feasibility ─────────────────
+  // The InputJudge runs after Architect and before the Writer/Generator Router.
+  // It verifies each slot has a resolvable plugin and valid fields.
+  // NOTE: Currently advisory — logs warnings but doesn't block the pipeline.
+  // The existing Writer still handles generation; InputJudge validates that
+  // the slot plan is compatible with the plugin architecture.
+  {
+    const { runInputJudge: _runIJ } = await import("@/pipeline/agents/inputJudge");
+    // Convert blueprint slots to ProblemSlot format for InputJudge
+    const pluginSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
+      slot_id: s.id,
+      problem_source: s.templateId ? "template" as const :
+                      s.diagramType ? "diagram" as const :
+                      s.imageReferenceId ? "image_analysis" as const :
+                      "llm" as const,
+      problem_type: s.questionType ?? "short_answer",
+      template_id: s.templateId,
+      diagram_type: s.diagramType,
+      image_reference_id: s.imageReferenceId,
+      topic: s.topicAngle ?? uarWithDefaults.topic ?? "",
+      difficulty: s.difficulty ?? "medium",
+      pacing_seconds: s.pacingSeconds,
+      cognitive_demand: s.cognitiveDemand,
+    }));
+    const judgeResult = _runIJ(pluginSlots);
+    logAgentStep(trace, "InputJudge", { slotCount: pluginSlots.length }, {
+      feasible: judgeResult.feasible,
+      warnings: judgeResult.warnings.length,
+      errors: judgeResult.errors.length,
+    });
+    if (judgeResult.warnings.length > 0) {
+      console.info("[Pipeline] InputJudge warnings:", judgeResult.warnings);
+    }
   }
 
   // ── Create Writer Contract ─────────────────────────────────────────────────
@@ -582,6 +660,9 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
 
+  // ── Concept Graph tagging ──────────────────────────────────────────────
+  tagConceptGraph(finalAssessment);
+
   await SCRIBE.saveAssessmentVersion({
     userId: uar.userId,
     uar: uarForScribe(uarWithDefaults),
@@ -650,6 +731,9 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   validateSlotIntegrity(blueprint.plan?.slots ?? [], rewritten);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
+
+  // ── Concept Graph tagging ──────────────────────────────────────────────
+  tagConceptGraph(finalAssessment);
 
   await SCRIBE.saveAssessmentVersion({
     userId: uar.userId,
@@ -760,6 +844,9 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: rewritten, blueprint: blueprintForBuilder(blueprint) });
 
+  // ── Concept Graph tagging ──────────────────────────────────────────────────
+  tagConceptGraph(finalAssessment);
+
   await SCRIBE.saveAssessmentVersion({
     userId: uar.userId,
     uar: uarForScribe(uarWithDefaults),
@@ -817,6 +904,9 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 
 validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
 const finalAssessment = await runAgent(trace, "Builder", runBuilder,
   { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
+
+// ── Concept Graph tagging ──────────────────────────────────────────────
+tagConceptGraph(finalAssessment);
 
 await SCRIBE.saveAssessmentVersion({
   userId: uar.userId,

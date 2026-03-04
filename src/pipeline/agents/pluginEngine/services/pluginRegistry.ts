@@ -1,0 +1,68 @@
+/**
+ * pluginRegistry.ts — Central registry for all problem-generation plugins.
+ *
+ * Plugins self-register via registerPlugin(). The ProblemGeneratorRouter
+ * resolves slots to plugins by looking up template_id, diagram_type,
+ * image_reference_id, or falling back to "llm_default".
+ *
+ * Auto-load: import the problemPlugins/ barrel to trigger registration.
+ */
+
+import type { ProblemPlugin } from "../interfaces/problemPlugin";
+
+// ─── Registry Store ────────────────────────────────────────────────────────
+
+const _plugins = new Map<string, ProblemPlugin>();
+
+// ─── Public API ────────────────────────────────────────────────────────────
+
+/**
+ * Register a plugin. Duplicate IDs overwrite silently (hot-reload friendly).
+ */
+export function registerPlugin(plugin: ProblemPlugin): void {
+  _plugins.set(plugin.id, plugin);
+  console.info(`[PluginRegistry] Registered: ${plugin.id} (${plugin.generationType})`);
+}
+
+/**
+ * Retrieve a plugin by its exact ID.
+ * Returns undefined when no plugin matches.
+ */
+export function getPlugin(pluginId: string | undefined): ProblemPlugin | undefined {
+  if (!pluginId) return undefined;
+  return _plugins.get(pluginId);
+}
+
+/**
+ * Return all registered plugins that list the given topic in supportedTopics.
+ * Plugins with an empty supportedTopics array are considered universal and always match.
+ */
+export function getPluginsForTopic(topic: string): ProblemPlugin[] {
+  const lower = topic.toLowerCase();
+  return [..._plugins.values()].filter(
+    (p) =>
+      p.supportedTopics.length === 0 ||
+      p.supportedTopics.some((t) => t.toLowerCase() === lower)
+  );
+}
+
+/**
+ * Return all registered plugin IDs (for debugging / admin dashboard).
+ */
+export function listPlugins(): string[] {
+  return [..._plugins.keys()];
+}
+
+/**
+ * Clear all plugins (used in tests).
+ */
+export function clearPlugins(): void {
+  _plugins.clear();
+}
+
+/**
+ * Total count of registered plugins.
+ */
+export function pluginCount(): number {
+  return _plugins.size;
+}
