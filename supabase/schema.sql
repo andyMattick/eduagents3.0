@@ -315,3 +315,55 @@ ALTER TABLE public.assessment_templates
 -- The most recent row (ORDER BY created_at DESC LIMIT 1) is canonical.
 -- performance_json shape (enforced in application layer):
 --   { "itemStats": [ { "questionNumber": <int>, "percentCorrect": <0-100> }, ... ] }
+
+-- ────────────────────────────────────────────────────────────
+-- 10. PIPELINE REPORTS
+--     Structured records of pipeline issues, sent voluntarily
+--     by teachers via the "Send Report" banner. Stores the full
+--     diagnostic context for triage without exposing raw traces
+--     to teachers.
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.pipeline_reports (
+  id                    uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id               uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  assessment_version_id uuid        REFERENCES public.assessment_versions(id) ON DELETE SET NULL,
+
+  -- Classification output from classifyTrace()
+  severity              text        NOT NULL CHECK (severity IN ('none','warning','error')),
+  category              text        NOT NULL CHECK (category IN ('writer','architect','inputJudge','gatekeeper','orchestrator','unknown')),
+  faulting_agent        text,
+  summary               text        NOT NULL,
+  probable_cause        text,
+  suggested_fix         text,
+  signals               jsonb       NOT NULL DEFAULT '[]',
+
+  -- Context snapshots (copied at report time — versions may be deleted later)
+  blueprint_json        jsonb,
+  token_usage           jsonb,
+  quality_score         integer,
+  uar_json              jsonb,
+
+  -- Optional teacher note (one-click send, note is optional)
+  teacher_note          text,
+
+  created_at            timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pr_user_created
+  ON public.pipeline_reports (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_pr_severity_category
+  ON public.pipeline_reports (severity, category, created_at DESC);
+
+ALTER TABLE public.pipeline_reports ENABLE ROW LEVEL SECURITY;
+
+-- Teachers can only insert their own reports
+CREATE POLICY "pr: own rows insert"
+  ON public.pipeline_reports FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Teachers can read their own reports (optional — for a "my reports" view later)
+CREATE POLICY "pr: own rows select"
+  ON public.pipeline_reports FOR SELECT
+  USING (user_id = auth.uid());

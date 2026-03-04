@@ -7,10 +7,14 @@
  * before the pipeline fires.
  */
 
+import { useState } from "react";
 import type { PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
+import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
 
 interface PromptEngineerPanelProps {
   result: PromptEngineerResult;
+  /** Pre-generation feasibility report — shown as contextual warning before pipeline fires. */
+  feasibility?: FeasibilityReport;
   onProceed: () => void;
   onEdit: () => void;
   /** Allow teacher to override a blocked result and generate anyway */
@@ -19,12 +23,19 @@ interface PromptEngineerPanelProps {
 
 export function PromptEngineerPanel({
   result,
+  feasibility,
   onProceed,
   onEdit,
   onOverride,
 }: PromptEngineerPanelProps) {
   const hasIssues = result.contradictions.length > 0 || result.missingInfo.length > 0;
   const hasSuggestions = result.suggestions.length > 0;
+  // Tracks whether the teacher has explicitly acknowledged the grade-text warning.
+  const [gradeTextConfirmed, setGradeTextConfirmed] = useState(false);
+  const gradeTextWarning = feasibility?.gradeTextWarning ?? null;
+  // Generation is blocked until the teacher confirms the grade-text mismatch
+  // (or until there is no such warning).
+  const isGradeTextBlocked = !!gradeTextWarning && !gradeTextConfirmed;
 
   return (
     <div className="pe-panel" style={{
@@ -140,67 +151,203 @@ export function PromptEngineerPanel({
         </div>
       )}
 
-      {/* Action buttons */}
-      <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.25rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(0,0,0,0.07)" }}>
-        <button
-          onClick={onEdit}
-          style={{
-            padding: "0.5rem 1.25rem",
-            borderRadius: "6px",
-            border: "1px solid #d1d5db",
-            background: "#fff",
-            cursor: "pointer",
-            fontSize: "0.85rem",
-            fontWeight: 500,
-          }}
-        >
-          ← Edit Inputs
-        </button>
+      {/* ── Grade-text plausibility — BLOCKING ─────────────────────── */}
+      {gradeTextWarning && (
+        <div style={{
+          marginTop: "1rem",
+          padding: "1rem 1.1rem",
+          background: gradeTextConfirmed
+            ? "rgba(255,251,235,0.6)"
+            : "rgba(254,226,226,0.9)",
+          border: `1.5px solid ${gradeTextConfirmed ? "#fbbf24" : "#f87171"}`,
+          borderRadius: "9px",
+          fontSize: "0.875rem",
+          lineHeight: 1.55,
+          color: "#1f2937",
+        }}>
+          <div style={{
+            fontWeight: 700,
+            fontSize: "0.95rem",
+            color: gradeTextConfirmed ? "#92400e" : "#b91c1c",
+            marginBottom: "0.5rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}>
+            <span>{gradeTextConfirmed ? "✔️" : "⚠️"}</span>
+            <span>{gradeTextConfirmed ? "Intent confirmed" : "Content & grade-level mismatch"}</span>
+          </div>
+          <p style={{ margin: "0 0 0.75rem", color: gradeTextConfirmed ? "#78350f" : "#991b1b" }}>
+            {gradeTextWarning}
+          </p>
+          {!gradeTextConfirmed && (
+            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+              <button
+                onClick={onEdit}
+                style={{
+                  padding: "0.45rem 1.1rem",
+                  borderRadius: "6px",
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                }}
+              >
+                ← Edit Inputs
+              </button>
+              <button
+                onClick={() => setGradeTextConfirmed(true)}
+                style={{
+                  padding: "0.45rem 1.1rem",
+                  borderRadius: "6px",
+                  border: "1.5px solid #f97316",
+                  background: "rgba(249,115,22,0.08)",
+                  color: "#c2410c",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                }}
+              >
+                Yes, this is intentional — continue
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-        {!result.shouldBlock && (
+      {/* ── Feasibility pre-check warning ─────────────────────────────── */}
+      {feasibility && feasibility.riskLevel !== "safe" && (() => {
+        const isOverload  = feasibility.riskLevel === "overload";
+        const isHigh      = feasibility.riskLevel === "high";
+        const [bgColor, borderColor, textColor, headingColor] = isOverload
+          ? ["rgba(255,237,213,0.85)", "#f97316", "#7c2d12", "#c2410c"]
+          : isHigh
+          ? ["rgba(255,251,235,0.9)",  "#fbbf24", "#78350f", "#92400e"]
+          : ["rgba(240,253,244,0.9)",  "#86efac", "#14532d", "#166534"];
+
+        return (
+          <div style={{
+            marginTop: "0.75rem",
+            marginBottom: "0.25rem",
+            padding: "0.75rem 1rem",
+            background: bgColor,
+            border: `1px solid ${borderColor}`,
+            borderRadius: "8px",
+            fontSize: "0.85rem",
+            lineHeight: 1.5,
+            color: textColor,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: "0.35rem", color: headingColor, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <span>{isOverload ? "⚠️" : isHigh ? "🔶" : "💡"}</span>
+              <span>
+                {isOverload
+                  ? "Topic length may limit question variety"
+                  : isHigh
+                  ? "Topic coverage is moderate"
+                  : "A little light on detail"}
+              </span>
+            </div>
+
+            {isOverload && feasibility.adjustedQuestionCount != null ? (
+              <p style={{ margin: "0 0 0.4rem" }}>
+                This topic comfortably supports about{" "}
+                <strong>{feasibility.recommendedSlotRange.min}–{feasibility.recommendedSlotRange.max}</strong>{" "}
+                questions. I'll automatically reduce from{" "}
+                <strong>{Math.ceil(feasibility.recommendedSlotRange.max * 1.3)}</strong>{" "}
+                to <strong>{feasibility.adjustedQuestionCount}</strong> to keep things coherent.{" "}
+                To enable a longer assessment, add more detail or expand the scope of your topic.
+              </p>
+            ) : isOverload ? (
+              <p style={{ margin: "0 0 0.4rem" }}>
+                This topic may support fewer questions than requested. The Architect will adjust the count automatically before writing.
+              </p>
+            ) : isHigh ? (
+              <p style={{ margin: "0 0 0.4rem" }}>
+                This topic may not fully support the requested number of questions — some variation may be limited.
+                Adding more detail in <em>Additional Details</em> can help.
+              </p>
+            ) : (
+              <p style={{ margin: "0 0 0.4rem" }}>
+                Topic detail is moderate. Adding specifics can improve question variety.
+              </p>
+            )}
+
+            {feasibility.warnings
+              .filter(w => !w.includes("[Feasibility detail]"))
+              .filter(w => w.includes("Bloom"))
+              .map((w, i) => (
+                <p key={i} style={{ margin: "0.2rem 0 0", fontSize: "0.82rem", opacity: 0.85 }}>{w}</p>
+              ))}
+          </div>
+        );
+      })()}
+
+      {/* Action buttons — hidden while grade-text confirmation is pending */}
+      {!isGradeTextBlocked && (
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.25rem", paddingTop: "0.75rem", borderTop: "1px solid rgba(0,0,0,0.07)" }}>
           <button
-            onClick={onProceed}
+            onClick={onEdit}
             style={{
               padding: "0.5rem 1.25rem",
               borderRadius: "6px",
-              border: "none",
-              background: "#4f46e5",
-              color: "#fff",
+              border: "1px solid #d1d5db",
+              background: "#fff",
               cursor: "pointer",
               fontSize: "0.85rem",
-              fontWeight: 600,
+              fontWeight: 500,
             }}
           >
-            Generate Assessment →
+            ← Edit Inputs
           </button>
-        )}
 
-        {result.shouldBlock && (
-          <>
-            <span style={{ fontSize: "0.82rem", color: "#b91c1c", alignSelf: "center" }}>
-              Fix the issues above, or override to generate anyway.
-            </span>
-            {onOverride && (
-              <button
-                onClick={onOverride}
-                style={{
-                  padding: "0.5rem 1.1rem",
-                  borderRadius: "6px",
-                  border: "1.5px solid #d97706",
-                  background: "rgba(217,119,6,0.08)",
-                  color: "#92400e",
-                  cursor: "pointer",
-                  fontSize: "0.82rem",
-                  fontWeight: 600,
-                }}
-                title="Generate anyway — the Philosopher will flag any issues in its report"
-              >
-                ⚠️ Override &amp; Generate Anyway
-              </button>
-            )}
-          </>
-        )}
-      </div>
+          {!result.shouldBlock && (
+            <button
+              onClick={onProceed}
+              style={{
+                padding: "0.5rem 1.25rem",
+                borderRadius: "6px",
+                border: "none",
+                background: "#4f46e5",
+                color: "#fff",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: 600,
+              }}
+            >
+              {feasibility?.adjustedQuestionCount != null
+                ? `Generate Assessment (adjusted to ${feasibility.adjustedQuestionCount} questions) →`
+                : "Generate Assessment →"}
+            </button>
+          )}
+
+          {result.shouldBlock && (
+            <>
+              <span style={{ fontSize: "0.82rem", color: "#b91c1c", alignSelf: "center" }}>
+                Fix the issues above, or override to generate anyway.
+              </span>
+              {onOverride && (
+                <button
+                  onClick={onOverride}
+                  style={{
+                    padding: "0.5rem 1.1rem",
+                    borderRadius: "6px",
+                    border: "1.5px solid #d97706",
+                    background: "rgba(217,119,6,0.08)",
+                    color: "#92400e",
+                    cursor: "pointer",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                  }}
+                  title="Generate anyway — the Philosopher will flag any issues in its report"
+                >
+                  ⚠️ Override &amp; Generate Anyway
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

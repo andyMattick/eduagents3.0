@@ -50,11 +50,10 @@ function assessmentLabel(uar: Record<string, any> | null): string {
 
 function titleFor(uar: Record<string, any> | null, domain: string | null): string {
   if (!uar) return domain ?? "Assessment";
-  const parts = [
-    uar.course ?? uar.topic ?? domain ?? "Assessment",
-    uar.unitName ?? uar.lessonName,
-  ].filter(Boolean);
-  return parts.join(" – ");
+  const course = uar.course ?? domain ?? null;
+  const topic  = uar.topic ?? uar.lessonName ?? uar.unitName ?? null;
+  if (course && topic) return `${course}: ${topic}`;
+  return course ?? topic ?? "Assessment";
 }
 
 const fmt = (iso: string) =>
@@ -127,10 +126,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       {/* Header */}
       <header className="dashboard-header">
         <div className="header-welcome">
-          <h1>My Assessments</h1>
-          {teacherName && (
-            <p className="school-name">Welcome back, {teacherName}!</p>
-          )}
+          <h1>Welcome{teacherName ? `, ${teacherName}` : ''}</h1>
+          <p className="school-name">My Assessments</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <button

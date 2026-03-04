@@ -10,6 +10,7 @@ import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/bui
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
 import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
 import { useDeveloperMode } from "@/hooks/useDeveloperMode";
+import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
 import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
 import type { WriterContract } from "@/pipeline/contracts/WriterContract";
 import { PlaytesterPayloadPanel } from "./PlaytesterPayloadPanel";
@@ -25,269 +26,7 @@ interface ReportData {
   flags: string[];
 }
 
-function computeReport(
-  assessment: FinalAssessment,
-  title: string,
-  _uar?: Record<string, any>
-): ReportData {
-  const items = assessment.items;
-  const total = assessment.totalItems;
-  // Derive cognitive distribution from items (not stored on FinalAssessment directly)
-  const cogDist: Record<string, number> = {};
-  for (const item of items) {
-    const demand = (item as any).cognitiveDemand as string | undefined;
-    if (demand) cogDist[demand] = (cogDist[demand] ?? 0) + 1;
-  }
-  const levels = Object.keys(cogDist).sort((a, b) => cogDist[b] - cogDist[a]);
-  const dominantLevel = levels[0] ?? null;
 
-  const mcqCount = items.filter((i) => i.questionType === "multipleChoice").length;
-  const saCount = total - mcqCount;
-
-  const higherOrderKeys = ["Analyze", "Evaluate", "Create"];
-  const higherOrder = higherOrderKeys.reduce((s, l) => s + (cogDist[l] ?? 0), 0);
-  const higherPct = total > 0 ? Math.round((higherOrder / total) * 100) : 0;
-
-  const totalSec = assessment.metadata?.totalEstimatedTimeSeconds;
-  const secPerQ = totalSec && total > 0 ? Math.round(totalSec / total) : null;
-
-  const sections: ReportSection[] = [];
-
-  // Cognitive Architecture — only when something notable to say
-  if (levels.length === 0) {
-    sections.push({ heading: "Cognitive Architecture", body: "No cognitive-demand data was recorded for this assessment." });
-  } else if (higherPct >= 40) {
-    sections.push({ heading: "Cognitive Architecture", body:
-      `${higherPct}% of questions reach the Analyze / Evaluate / Create tier — a strong higher-order emphasis. ` +
-      `Dominant level: **${dominantLevel}** (${cogDist[dominantLevel!]} of ${total} items).`
-    });
-  } else if (higherPct === 0 && total > 3) {
-    // Flag case: zero higher-order — handled in flags below, skip duplicating here
-  }
-
-  // Item Format — only for extremes
-  if (mcqCount === total && total > 5) {
-    sections.push({ heading: "Item Format", body:
-      `All ${total} items are multiple-choice. This supports rapid grading but limits visibility into student reasoning. ` +
-      `Consider adding a short-answer or constructed-response item for deeper evidence.`
-    });
-  } else if (saCount === total && total > 3) {
-    sections.push({ heading: "Item Format", body:
-      `All ${total} items are open-response. Rich evidence of student thinking, but factor in grading time.`
-    });
-  }
-
-  // Pacing — only if tight
-  if (secPerQ !== null && secPerQ < 35) {
-    const minPerQ = Math.round(secPerQ / 6) / 10;
-    sections.push({ heading: "Pacing Alert", body:
-      `Estimated ~${minPerQ} min per question — unusually tight. Confirm item length against your time budget, especially for open-response items.`
-    });
-  }
-
-  // Strengths & Flags — only include non-trivial, specific observations
-  const strengths: string[] = [];
-  const flags: string[] = [];
-
-  if (levels.length >= 4) strengths.push(`Spans ${levels.length} reasoning levels — strong cognitive range`);
-  if (higherPct >= 30) strengths.push(`${higherPct}% higher-order items — challenges critical thinking`);
-
-  if (higherPct === 0 && total > 5)
-    flags.push("No higher-order items (analysis, evaluation, synthesis) — consider adding at least one");
-  if (levels.length === 1 && total > 3)
-    flags.push("All items at the same reasoning level — limited cognitive variation");
-  if (mcqCount === total && total > 8)
-    flags.push("All MCQ — no opportunity to assess written or constructed reasoning");
-  if (secPerQ !== null && secPerQ < 30)
-    flags.push("Estimated pacing may be too tight — verify item length against time budget");
-
-  const tagline = `${total}-question assessment${dominantLevel ? ` (primary demand: ${dominantLevel})` : ""}${title ? ` on "${title}"` : ""} — ${higherPct}% higher-order`;
-
-  return { tagline, sections, strengths, flags };
-}
-
-function PhilosophersReport({
-  assessment,
-  title,
-  uar,
-  philosopherNotes,
-  philosopherAnalysis,
-  teacherFeedback,
-}: {
-  assessment: FinalAssessment;
-  title: string;
-  uar?: Record<string, any>;
-  philosopherNotes?: string;
-  philosopherAnalysis?: any;
-  teacherFeedback?: any;
-}) {
-  const [open, setOpen] = useState(true);
-  const { devMode } = useDeveloperMode();
-  const report = computeReport(assessment, title, uar);
-
-  return (
-    <div className="av-report">
-      <button className="av-report-toggle" onClick={() => setOpen((o) => !o)}>
-        <span className="av-report-icon">⚗</span>
-        <span className="av-report-label">Philosopher's Report</span>
-        <span className="av-report-chevron">{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div className="av-report-body">
-          <p className="av-report-tagline">{report.tagline}</p>
-
-          {report.sections.map((sec) => (
-            <div key={sec.heading} className="av-report-section">
-              <h3 className="av-report-section-heading">{sec.heading}</h3>
-              <p className="av-report-section-body">
-                {sec.body.split(/(\*\*[^*]+\*\*)/g).map((chunk, i) =>
-                  chunk.startsWith("**") && chunk.endsWith("**") ? (
-                    <strong key={i}>{chunk.slice(2, -2)}</strong>
-                  ) : (
-                    <span key={i}>{chunk}</span>
-                  )
-                )}
-              </p>
-            </div>
-          ))}
-
-          {(report.strengths.length > 0 || report.flags.length > 0) && (
-            <div className="av-report-verdict">
-              {report.strengths.length > 0 && (
-                <div className="av-report-col">
-                  <p className="av-report-col-heading av-report-col-heading--green">✓ Strengths</p>
-                  <ul className="av-report-list">
-                    {report.strengths.map((s) => (
-                      <li key={s}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {report.flags.length > 0 && (
-                <div className="av-report-col">
-                  <p className="av-report-col-heading av-report-col-heading--amber">⚠ Consider</p>
-                  <ul className="av-report-list">
-                    {report.flags.map((f) => (
-                      <li key={f}>{f}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
-          {philosopherNotes && (() => {
-            const allTips = philosopherNotes
-              .split("\n")
-              .filter((l) => l.startsWith("💡"));
-            // Separate quality/correction notes from plain prompt suggestions
-            const correctionNotes = allTips.filter((l) => /Tip \u2014 [✓⚡⚠🔧]/.test(l));
-            const promptSuggestions = allTips.filter((l) => !/Tip \u2014 [✓⚡⚠🔧]/.test(l));
-            return (
-              <>
-                {correctionNotes.length > 0 && (
-                  <div className="av-report-tips">
-                    <p className="av-report-col-heading av-report-col-heading--blue">📋 Generation notes</p>
-                    <ul className="av-report-list">
-                      {correctionNotes.map((tip) => (
-                        <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {promptSuggestions.length > 0 && (
-                  <div className="av-report-tips">
-                    <p className="av-report-col-heading av-report-col-heading--blue">💡 Prompt suggestions</p>
-                    <ul className="av-report-list">
-                      {promptSuggestions.map((tip) => (
-                        <li key={tip}>{tip.replace(/^💡 Tip — /, "")}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-
-          {/* Teacher-visible redundancy notice — always on, no internal labels */}
-          {philosopherAnalysis?.redundantPairs && philosopherAnalysis.redundantPairs.length > 0 && (
-            <div className="av-report-section" style={{ borderTop: "1px solid var(--border-color, #e5e7eb)", paddingTop: "0.85rem", marginTop: "0.5rem" }}>
-              <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--text-secondary, #6b7280)" }}>
-                ⚠ <strong>{philosopherAnalysis.redundantPairs.length} question{philosopherAnalysis.redundantPairs.length > 1 ? " pairs" : ""}</strong> test closely overlapping concepts.
-                {" "}Consider varying coverage to give students a broader assessment of the topic.
-              </p>
-            </div>
-          )}
-
-          {devMode && philosopherAnalysis && (
-            <div className="av-report-section">
-              <h3 className="av-report-section-heading">Pedagogical Analysis</h3>
-              <div className="av-report-section-body" style={{ fontSize: "0.9rem" }}>
-                {philosopherAnalysis.gatekeeperPassed && (
-                  <p style={{ marginBottom: "0.5rem", color: "#2e7d32" }}>
-                    ✓ <strong>Gatekeeper Passed</strong> — All items passed format and structure validation.
-                  </p>
-                )}
-                {philosopherAnalysis.qualityScore !== undefined && (
-                  <p style={{ marginBottom: "0.5rem" }}>
-                    <strong>Quality Score:</strong> {philosopherAnalysis.qualityScore}/10
-                  </p>
-                )}
-                {philosopherAnalysis.violationCount > 0 && (
-                  <p style={{ marginBottom: "0.5rem", color: "#d32f2f" }}>
-                    <strong>{philosopherAnalysis.violationCount} item(s)</strong> triggered Gatekeeper corrections.
-                  </p>
-                )}
-                {philosopherAnalysis.redundantPairs && philosopherAnalysis.redundantPairs.length > 0 && (
-                  <p style={{ marginBottom: "0.5rem", color: "#f57c00" }}>
-                    <strong>Redundancy detected:</strong> {philosopherAnalysis.redundantPairs.join(", ")} have &gt;70% word overlap.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {teacherFeedback && (() => {
-            const tips: Array<{ reason: string; snippet: string }> =
-              teacherFeedback.promptTips ?? [];
-            const rewriteCount: number = teacherFeedback.rewriteCount ?? 0;
-            const cleanRun = rewriteCount === 0 && tips.length === 0;
-            return (
-              <div className="av-report-section">
-                <h3 className="av-report-section-heading">Improve Your Next Prompt</h3>
-                <div className="av-report-section-body">
-
-                  {/* Status banner */}
-                  <div className={`av-prompt-status ${cleanRun ? "av-prompt-status--clean" : "av-prompt-status--corrected"}`}>
-                    {cleanRun
-                      ? "✓ Clean run — the assessment matched your inputs with no corrections needed."
-                      : `⚠ ${rewriteCount > 0 ? `${rewriteCount} question${rewriteCount !== 1 ? "s" : ""} were auto-corrected.` : "Some adjustments were applied."} Adding the suggestions below to your next prompt will reduce this.`
-                    }
-                  </div>
-
-                  {/* Prompt tips */}
-                  {tips.length > 0 && (
-                    <div className="av-prompt-tips">
-                      <p className="av-prompt-tips-heading">Try adding to your prompt:</p>
-                      {tips.map((tip, i) => (
-                        <div key={i} className="av-prompt-tip">
-                          <p className="av-prompt-tip-reason">{tip.reason}</p>
-                          <blockquote className="av-prompt-tip-snippet">{tip.snippet}</blockquote>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -295,6 +34,13 @@ function totalMinutes(seconds?: number): string {
   if (!seconds) return "—";
   const m = Math.round(seconds / 60);
   return `${m} min`;
+}
+
+/** Human-readable pacing time: "30 sec", "1 min", "2.5 min", etc. */
+function formatPacingTime(seconds: number): string {
+  if (seconds < 60) return `${seconds} sec`;
+  const m = seconds / 60;
+  return m === Math.floor(m) ? `${m} min` : `${m.toFixed(1)} min`;
 }
 
 function formatDate(iso: string): string {
@@ -504,9 +250,17 @@ interface AssessmentViewerProps {
   reliability?: { trust: number; alignment: number; stability: number };
   /** Writer Contract — records all guidelines, constraints, and Gatekeeper prescriptions. */
   writerContract?: WriterContract;
+  /** Blueprint-level warnings (feasibility, time adjustments, plausibility). */
+  blueprintWarnings?: string[];
+  /**
+   * Per-question-type seconds from the teacher's pacing defaults.
+   * Falls back to DEFAULT_PACING_SECONDS when not provided.
+   * Used to show per-section time estimates (on-screen only, not in exports).
+   */
+  pacingSeconds?: Record<string, number>;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract, blueprintWarnings, pacingSeconds }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -515,6 +269,9 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
   const displayTitle = title ?? "Assessment";
   const totalTime = totalMinutes(assessment.metadata?.totalEstimatedTimeSeconds);
   const hasMath = assessmentContainsMath(assessment);
+
+  // Per-question-type seconds — use teacher pacing or global fallback
+  const pacing = pacingSeconds ?? DEFAULT_PACING_SECONDS;
 
   async function handleDownloadPDF() {
     setPdfLoading(true);
@@ -708,6 +465,33 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         </div>
       </div>
 
+      {/* ── Pacing breakdown (on-screen only) ──────────────────── */}
+      {(() => {
+        const { sections: secMap, sectionOrder: secOrd } = groupItemsBySection(null, assessment.items);
+        // Only show if there are questions and at least one type has pacing data
+        if (secOrd.length === 0) return null;
+        const rows = secOrd.map((type) => {
+          const count = (secMap[type] ?? []).length;
+          const secPerQ = pacing[type] ?? 60;
+          const totalSec = count * secPerQ;
+          return { type, count, secPerQ, totalSec };
+        });
+        const grandTotalSec = rows.reduce((s, r) => s + r.totalSec, 0);
+        const grandTotalMin = Math.ceil(grandTotalSec / 60);
+        return (
+          <div className="av-pacing-breakdown">
+            <span className="av-pacing-header">&#x23F1; Pacing</span>
+            {rows.map((r) => (
+              <span key={r.type} className="av-pacing-pill">
+                <span className="av-pacing-pill__label">{formatSectionHeader(r.type)}</span>
+                <span className="av-pacing-pill__detail">{r.count} &times; {formatPacingTime(r.secPerQ)} = <strong>{formatPacingTime(r.totalSec)}</strong></span>
+              </span>
+            ))}
+            <span className="av-pacing-total">~{grandTotalMin} min total</span>
+          </div>
+        );
+      })()}
+
       {/* ── Questions ──────────────────────────────────────────── */}
       {(() => {
         const layout = assessment.metadata?.layout ?? "singleColumn";
@@ -716,21 +500,31 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         const hasMultipleSections = sectionOrder.length > 1;
         return (
           <div className={isColumns ? "av-questions-columns" : "av-questions"}>
-            {sectionOrder.map((type) => (
-              <div key={type}>
-                {hasMultipleSections && (
-                  <div className="av-section-header">{formatSectionHeader(type)}</div>
-                )}
-                {sections[type].map((item) => (
-                  <QuestionItem
-                    key={item.slotId}
-                    item={item}
-                    showAnswer={showAnswerKey}
-                    compact={isColumns && item.questionType === "arithmeticFluency"}
-                  />
-                ))}
-              </div>
-            ))}
+            {sectionOrder.map((type) => {
+              const count = (sections[type] ?? []).length;
+              const secPerQ = pacing[type] ?? 60;
+              const sectionSec = count * secPerQ;
+              return (
+                <div key={type}>
+                  {hasMultipleSections && (
+                    <div className="av-section-header">
+                      {formatSectionHeader(type)}
+                      <span className="av-section-time">
+                        {count} question{count !== 1 ? "s" : ""} &middot; ~{formatPacingTime(sectionSec)}
+                      </span>
+                    </div>
+                  )}
+                  {sections[type].map((item) => (
+                    <QuestionItem
+                      key={item.slotId}
+                      item={item}
+                      showAnswer={showAnswerKey}
+                      compact={isColumns && item.questionType === "arithmeticFluency"}
+                    />
+                  ))}
+                </div>
+              );
+            })}
           </div>
         );
       })()}
@@ -778,15 +572,26 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         </div>
       )}
 
-      {/* ── Philosopher's Report ────────────────────────────────── */}
-      <PhilosophersReport
-        assessment={assessment}
-        title={displayTitle}
-        uar={uar}
-        philosopherNotes={philosopherNotes}
-        philosopherAnalysis={philosopherAnalysis}
-        teacherFeedback={teacherFeedback}
-      />
+
+
+      {/* ── Blueprint warnings (feasibility, time, plausibility) ──── */}
+      {blueprintWarnings && blueprintWarnings.length > 0 && (
+        <div className="av-report" style={{ marginTop: "1rem" }}>
+          <div className="av-report-body" style={{ paddingTop: "0.75rem" }}>
+            <p className="av-report-col-heading av-report-col-heading--amber" style={{ marginBottom: "0.5rem" }}>
+              ⚠ Assessment Notes
+            </p>
+            <ul className="av-report-list">
+              {blueprintWarnings
+                .filter(w => !w.startsWith("[Feasibility detail]"))
+                .map((w, i) => (
+                  <li key={i} style={{ fontSize: "0.9rem", marginBottom: "0.35rem" }}>{w}</li>
+                ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* ── Writer Contract (guidelines, constraints, Gatekeeper) ──── */}
       {writerContract && (
         <WriterGuidelinesPanel contract={writerContract} />

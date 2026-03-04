@@ -269,11 +269,14 @@ INSTRUCTION: ${instruction}
 OUTPUT (strict JSON only — no markdown fences, no commentary, no extra keys):
 ${mcqExample}`;
 
+  // Multi-part FRQ prompts (AP stats, essay, etc.) can easily exceed 2048 tokens.
+  // Truncated output leaves unclosed JSON → regex fails → item is silently kept broken.
+  // Use 4096 for non-MCQ, 2048 is sufficient for MCQ-only rewrites.
   const raw = await callGemini({
     model: "gemini-2.5-flash",
     prompt,
     temperature: 0.1,
-    maxOutputTokens: 2048,
+    maxOutputTokens: isMC ? 2048 : 4096,
   });
 
   // ── Clean the LLM response ────────────────────────────────────────────────
@@ -297,10 +300,37 @@ ${mcqExample}`;
     }
   }
 
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  let jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+
+  // ── Truncation recovery ───────────────────────────────────────────────────
+  // When maxOutputTokens is hit mid-response the JSON has no closing brace.
+  // Attempt to close the object so the regex can at least extract a partial match.
+  if (!jsonMatch && cleaned.trimStart().startsWith("{")) {
+    // Count open braces: append the missing closing braces
+    let depth = 0;
+    let inStr = false;
+    for (let ci = 0; ci < cleaned.length; ci++) {
+      const ch = cleaned[ci];
+      if (ch === "\\" && inStr) { ci++; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (!inStr) {
+        if (ch === "{") depth++;
+        else if (ch === "}") depth--;
+      }
+    }
+    if (depth > 0) {
+      // Strip trailing comma/whitespace then close the object
+      const patched = cleaned.replace(/[,\s]+$/, "") + "}".repeat(depth);
+      jsonMatch = patched.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        console.warn(
+          `[rewriteSingle] Truncated JSON patched for slot ${item.slotId} (added ${depth} closing brace(s)).`
+        );
+      }
+    }
+  }
+
   if (!jsonMatch) {
-    // Return original if rewriter fails to produce valid JSON — Gatekeeper
-    // will catch it again on the second pass and log a hard error.
     console.error(
       `[rewriteSingle] No JSON in rewriter response for slot ${item.slotId}. Raw (first 200): ${cleaned.substring(0, 200)}`
     );

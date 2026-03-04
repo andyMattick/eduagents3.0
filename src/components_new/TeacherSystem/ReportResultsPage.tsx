@@ -12,6 +12,8 @@ interface ReportResultsPageProps {
   problems?: string[];
   /** System's predicted completion time in minutes */
   predictedMinutes?: number | null;
+  /** Human-readable title, e.g. "Algebra 2 – Quadratics" */
+  title?: string;
   onClose?: () => void;
 }
 
@@ -38,6 +40,7 @@ export function ReportResultsPage({
   domain = "General",
   problems = [],
   predictedMinutes,
+  title,
   onClose,
 }: ReportResultsPageProps) {
   const questionCount = Math.max(problems.length, 1);
@@ -201,7 +204,7 @@ export function ReportResultsPage({
         Report Classroom Results
       </h2>
       <p style={{ color: "var(--text-secondary, #6b7280)", fontSize: "0.85rem", marginBottom: "1.25rem" }}>
-        Assessment #{assignmentId.slice(0, 8)} · Enter how students performed — this
+        {title ?? `Assessment #${assignmentId.slice(0, 8)}`} · Enter how students performed — this
         calibrates difficulty, timing, and scaffolding for the next generation.
       </p>
 

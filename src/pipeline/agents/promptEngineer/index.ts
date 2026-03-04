@@ -82,6 +82,36 @@ const VAGUE_TOPICS = new Set([
   "everything", "general", "review", "test", "quiz",
 ]);
 
+// ── Complex/canonical literary works (mirrors feasibilityPrecheck.ts) ─────────
+// Used to detect cross-domain requests: literary text in a non-ELA course.
+
+const COMPLEX_TEXTS_PE = [
+  "frankenstein", "1984", "lord of the flies", "macbeth", "hamlet",
+  "romeo and juliet", "the great gatsby", "to kill a mockingbird",
+  "animal farm", "brave new world", "the crucible", "the odyssey",
+  "the iliad", "beowulf", "heart of darkness", "crime and punishment",
+  "war and peace", "les misérables", "moby dick", "dracula",
+  "of mice and men", "the scarlet letter", "fahrenheit 451",
+  "a tale of two cities", "jane eyre", "wuthering heights",
+  "pride and prejudice", "the catcher in the rye", "slaughterhouse-five",
+  "beloved", "invisible man", "their eyes were watching god",
+  "the handmaid's tale", "things fall apart", "an inspector calls",
+];
+
+/**
+ * Signals that a course is *not* ELA / English / Literature.
+ * If a canonical literary text appears in the topic/details but the course
+ * matches one of these, that's a cross-domain contradiction.
+ */
+const NON_ELA_COURSE_SIGNALS = [
+  "science", "math", "mathematics", "algebra", "geometry", "calculus",
+  "biology", "chemistry", "physics", "history", "geography",
+  "social studies", "social science", "health", "pe",
+  "physical education", "art", "music", "technology", "coding",
+  "computer", "economics", "psychology", "sociology", "earth science",
+  "environmental", "astronomy",
+];
+
 // ── Core validator ────────────────────────────────────────────────────────────
 
 export function runPromptEngineer(
@@ -185,6 +215,45 @@ export function runPromptEngineer(
       `Grade ${intent.gradeLevels.join(",")} with "${intent.course}" looks unusual — ` +
       `double-check the grade level or course name.`
     );
+  }
+
+  // 2e-i. Cross-domain literary text check
+  // A canonical literary work in topic/details + a clearly non-ELA course is
+  // almost always a confused or broken prompt.  Flag it as a contradiction so
+  // the teacher is stopped before a useless assessment is generated.
+  {
+    const topicSearchText = [
+      intent.topic ?? "",
+      intent.additionalDetails ?? "",
+    ].join(" ").toLowerCase();
+
+    const matchedTitle = COMPLEX_TEXTS_PE.find(t => topicSearchText.includes(t));
+    const isNonElaCourse = NON_ELA_COURSE_SIGNALS.some(sig =>
+      courseLower.includes(sig)
+    );
+
+    if (matchedTitle && isNonElaCourse) {
+      contradictions.push(
+        `Your topic references "${matchedTitle}" — a literary work — but your course ` +
+        `("${intent.course}") doesn't appear to be ELA or English. ` +
+        `If this is a cross-curricular assessment, clarify in Additional Details how the ` +
+        `text connects to the course content. If it's a reading activity, update the course name.`
+      );
+    }
+
+    // 2e-ii. Chapter reference without a clear source
+    // "Chapter X" or "chapters X and Y" in details when the course is non-ELA
+    // suggests the teacher may have confused which materials to use.
+    const hasChapterRef = /\bchapter[s]?\s*\d/i.test(topicSearchText);
+    if (hasChapterRef && isNonElaCourse && !matchedTitle) {
+      // Only flag if there's no identifiable title — if there IS a title,
+      // the cross-domain check above already covers it.
+      missingInfo.push(
+        `Your additional details reference a specific chapter, but it's not clear ` +
+        `which book or textbook this refers to. Name the source explicitly so the ` +
+        `AI knows what content to draw from.`
+      );
+    }
   }
 
   // 2e. Adaptive field contradictions

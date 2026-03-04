@@ -328,6 +328,9 @@
 
 /* Section divider shown when the assessment has multiple question types */
 .av-section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
   font-weight: 700;
   font-size: 0.85rem;
   text-transform: uppercase;
@@ -337,6 +340,83 @@
   padding-bottom: 0.4rem;
   margin-top: 0.5rem;
   margin-bottom: 0.25rem;
+}
+
+.av-section-time {
+  font-weight: 400;
+  font-size: 0.78rem;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--fg-tertiary, #9ca3af);
+}
+
+/* ── Pacing breakdown (on-screen only) ──────────────────────────────────── */
+.av-pacing-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.25rem 0 1.25rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-subtle, #f3f4f6);
+  border-radius: 6px;
+}
+
+.av-pacing-header {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-tertiary, #9ca3af);
+  margin-right: 0.1rem;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.av-pacing-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--bg, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  white-space: nowrap;
+  font-size: 0.79rem;
+}
+
+.av-pacing-pill__label {
+  font-weight: 600;
+  color: var(--fg, #111827);
+}
+
+.av-pacing-pill__detail {
+  color: var(--fg-secondary, #6b7280);
+  font-size: 0.75rem;
+}
+
+.av-pacing-pill__detail strong {
+  color: var(--fg, #111827);
+  font-weight: 700;
+}
+
+.av-pacing-total {
+  display: inline-flex;
+  align-items: center;
+  background: var(--adp-primary, #2563eb);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.22rem 0.8rem;
+  white-space: nowrap;
+  margin-left: 0.1rem;
+}
+
+/* Hide pacing breakdown in print */
+@media print {
+  .av-pacing-breakdown { display: none; }
+  .av-section-time     { display: none; }
 }
 
 .av-question {

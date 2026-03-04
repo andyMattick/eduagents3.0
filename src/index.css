@@ -562,6 +562,52 @@ textarea {
   align-self: flex-end;
 }
 
+/* Inferred answer bubble — slightly muted so it's distinct from typed answers */
+.ca-bubble--inferred {
+  background: var(--primary-color);
+  opacity: 0.72;
+  font-style: italic;
+}
+
+.ca-inferred-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-style: normal;
+  font-size: 0.75em;
+  opacity: 0.85;
+}
+
+/* Editable past-answer bubble */
+.ca-bubble--editable {
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  text-align: left;
+  line-height: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.ca-bubble--editable:hover:not(:disabled) {
+  opacity: 0.85;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.35);
+}
+
+.ca-edit-icon {
+  font-style: normal;
+  font-size: 0.75em;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.ca-bubble--editable:hover .ca-edit-icon {
+  opacity: 0.8;
+}
+
 .ca-bubble--thinking {
   opacity: 0.7;
   display: flex;
@@ -631,6 +677,49 @@ textarea {
   opacity: 0.85;
 }
 
+/* Compact chip used inside DefaultsCard editable rows */
+.ca-chip--sm {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+/* Chip group inside DefaultsCard */
+.ca-inline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+/* Section layout for editable defaults fields */
+.ca-inline-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0.5rem 0;
+}
+
+.ca-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ca-inline-field__label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 0.1rem;
+}
+
+/* Small variant of the conversational input */
+.ca-input--sm {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.84rem;
+  border-radius: 8px;
+  width: 7rem;
+}
+
 .ca-chip--confirm {
   background: var(--primary-color);
   border-color: var(--primary-color);
@@ -645,6 +734,16 @@ textarea {
 
 .ca-chip-footer {
   padding: 0.5rem 1.25rem 0.75rem;
+}
+
+/* File upload row ----------------------------------------------------------- */
+.ca-upload-area {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 
 /* Input row ----------------------------------------------------------------- */
@@ -719,6 +818,152 @@ textarea {
 .ca-btn-back:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Defaults / Summarizer / Final-confirm cards
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.ca-defaults-card,
+.ca-summarizer-card,
+.ca-final-card {
+  background: var(--surface-elevated, #f9fafb);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin: 0.5rem 0;
+  max-width: 520px;
+}
+
+.ca-defaults-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ca-defaults-card__title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+
+.ca-defaults-card__badge {
+  font-size: 0.72rem;
+  padding: 0.15em 0.5em;
+  border-radius: 9999px;
+  background: var(--adp-info-bg, #eff6ff);
+  color: var(--adp-info-fg, #1d4ed8);
+  border: 1px solid var(--adp-info-border, #bfdbfe);
+}
+
+.ca-defaults-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  margin-bottom: 0.75rem;
+}
+
+.ca-defaults-table th,
+.ca-defaults-table td {
+  text-align: left;
+  padding: 0.22rem 0.35rem;
+}
+
+.ca-defaults-table th {
+  color: var(--text-secondary, #6b7280);
+  font-weight: 500;
+  width: 42%;
+}
+
+.ca-defaults-table td {
+  color: var(--text-primary, #111827);
+  font-weight: 600;
+}
+
+.ca-defaults-card__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+/* Primary / ghost buttons shared by cards */
+.ca-btn-primary {
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--adp-accent, #6366f1);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.ca-btn-primary:hover:not(:disabled) { opacity: 0.88; }
+.ca-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.ca-btn-ghost {
+  padding: 0.42rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #d1d5db);
+  background: transparent;
+  color: var(--text-primary, #111827);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ca-btn-ghost:hover:not(:disabled) { background: var(--hover-bg, #f3f4f6); }
+.ca-btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.ca-btn-ghost--sm {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+/* Summarizer card */
+.ca-summarizer-card__headline {
+  font-size: 0.9rem;
+  margin: 0 0 0.65rem;
+  color: var(--text-primary, #111827);
+  line-height: 1.4;
+}
+
+/* Final card */
+.ca-final-card__headline {
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  color: var(--text-primary, #111827);
+}
+
+.ca-final-card__actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+/* Override notice */
+.ca-override-notice {
+  background: var(--adp-warn-bg, #fffbeb);
+  border: 1px solid var(--adp-warn-border, #fde68a);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.84rem;
+  color: var(--text-primary, #111827);
+  margin: 0.75rem 0;
+}
+
+.ca-override-notice__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 0.45rem;
+  flex-wrap: wrap;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

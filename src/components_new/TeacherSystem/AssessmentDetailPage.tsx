@@ -16,6 +16,12 @@ import { analyzeResults } from "@/pipeline/agents/analyzeResults";
 import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import type { AgentDossierData } from "@/system/dossier/DossierManager";
+import {
+  adjustPacingFromFeedback,
+  type PacingFeedback,
+} from "@/services_new/teacherProfileService";
+import { classifyTrace } from "@/pipeline/agents/classifyTrace";
+import { sendPipelineReport } from "@/services_new/pipelineReportService";
 import "./AssessmentDetailPage.css";
 import "./AssessmentDetailPage.css";
 
@@ -618,15 +624,217 @@ function AiInsightsPanel({
 // AI Generation Notes panel (teacher-language translation of quality data)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Pacing feedback bar — lets teacher say "too long / about right / too short"
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PacingFeedbackBar({
+  userId,
+  assessmentType,
+  currentDefault,
+}: {
+  userId: string;
+  assessmentType: string;
+  currentDefault?: number;
+}) {
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [given, setGiven] = useState<PacingFeedback | null>(null);
+  const [actualInput, setActualInput] = useState("");
+  const [newDefault, setNewDefault] = useState<number | null>(null);
+
+  async function submit(feedback: PacingFeedback) {
+    setGiven(feedback);
+    setStatus("saving");
+    try {
+      const actualMins =
+        actualInput !== "" && !isNaN(Number(actualInput))
+          ? Number(actualInput)
+          : undefined;
+      const updated = await adjustPacingFromFeedback(
+        userId,
+        assessmentType,
+        feedback,
+        actualMins
+      );
+      setNewDefault(
+        updated.pacingDefaults.assessmentDurationMinutes[assessmentType] ?? null
+      );
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  const btnBase: React.CSSProperties = {
+    padding: "0.3rem 0.75rem",
+    borderRadius: "6px",
+    border: "1px solid var(--color-border, #e5e7eb)",
+    background: "var(--bg, #fff)",
+    cursor: "pointer",
+    fontSize: "0.78rem",
+    fontWeight: 600,
+    color: "var(--text, #374151)",
+    transition: "background 0.15s",
+  };
+
+  if (status === "saved") {
+    return (
+      <p style={{ margin: "0.5rem 0 0", fontSize: "0.78rem", color: "var(--adp-success-fg, #16a34a)" }}>
+        ✓ Default updated to{" "}
+        <strong>{newDefault} min</strong> for{" "}
+        <em>{assessmentType}</em>.
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+      <p style={{ margin: 0, fontSize: "0.78rem", fontWeight: 600, color: "var(--text-secondary, #6b7280)" }}>
+        How did the timing feel?
+        {currentDefault != null && (
+          <span style={{ fontWeight: 400, marginLeft: "0.4rem" }}>("{assessmentType}" default: {currentDefault} min)</span>
+        )}
+      </p>
+      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+        <button style={{ ...btnBase, opacity: given === "too_long" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("too_long")}>⏱ Too long (−20%)</button>
+        <button style={{ ...btnBase, opacity: given === "about_right" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("about_right")}>✓ About right</button>
+        <button style={{ ...btnBase, opacity: given === "too_short" ? 0.5 : 1 }} disabled={status === "saving"} onClick={() => submit("too_short")}>⚡ Too short (+20%)</button>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)" }}>or enter actual:</span>
+        <input
+          type="number"
+          min={1}
+          placeholder="min"
+          value={actualInput}
+          onChange={(e) => setActualInput(e.target.value)}
+          style={{
+            width: "4.5rem",
+            padding: "0.25rem 0.4rem",
+            border: "1px solid var(--color-border, #e5e7eb)",
+            borderRadius: "6px",
+            fontSize: "0.78rem",
+          }}
+        />
+        {actualInput !== "" && !isNaN(Number(actualInput)) && Number(actualInput) > 0 && (
+          <button
+            style={{ ...btnBase, background: "var(--color-primary, #6366f1)", color: "#fff", border: "none" }}
+            disabled={status === "saving"}
+            onClick={() => submit("about_right")}
+          >
+            Set as default
+          </button>
+        )}
+      </div>
+      {status === "error" && (
+        <p style={{ margin: 0, fontSize: "0.75rem", color: "var(--adp-danger-fg, #dc2626)" }}>Failed to save — try again.</p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SendReportBanner({ version, template }: { version: VersionRow; template: TemplateRow }) {
+  const [showNote, setShowNote] = useState(false);
+  const [note, setNote]         = useState("");
+  const [status, setStatus]     = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const c = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
+  if (c.severity === "none") return null;
+
+  const isError     = c.severity === "error";
+  const borderColor = isError ? "var(--adp-danger-fg,#dc2626)" : "#f59e0b";
+  const bg          = isError ? "var(--adp-danger-bg,#fef2f2)" : "var(--adp-warn-bg,#fffbeb)";
+  const fg          = isError ? "var(--adp-danger-fg,#991b1b)" : "var(--adp-warn-fg,#92400e)";
+
+  async function handleSend() {
+    setStatus("sending");
+    try {
+      await sendPipelineReport({
+        userId:              template.user_id,
+        assessmentVersionId: version.id,
+        classification:      c,
+        blueprintJson:       version.blueprint_json,
+        tokenUsage:          version.token_usage,
+        qualityScore:        version.quality_score,
+        uarJson:             template.uar_json,
+        teacherNote:         note.trim() || undefined,
+      });
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  if (status === "sent") {
+    return (
+      <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--adp-success-fg,#16a34a)" }}>
+        ✓ Report sent — thanks for helping us improve!
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ padding: "0.7rem 0.9rem", borderRadius: "8px", border: `1.5px solid ${borderColor}`, background: bg, color: fg, fontSize: "0.83rem", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontWeight: 600 }}>
+        {isError ? "⚠️ Something unexpected happened." : "ℹ️ Something looked unusual during generation."}
+      </p>
+      <p style={{ margin: "0.3rem 0 0", color: "inherit", opacity: 0.9 }}>
+        {c.summary}
+        {c.faultingAgent ? <> ({c.faultingAgent})</> : null}
+      </p>
+      {c.suggestedFix && (
+        <p style={{ margin: "0.3rem 0 0", fontStyle: "italic", opacity: 0.85 }}>{c.suggestedFix}</p>
+      )}
+      {status !== "error" && (
+        <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", flexDirection: "column" }}>
+          {showNote && (
+            <textarea
+              rows={2}
+              placeholder="Anything you want to add? (optional)"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)" }}
+            />
+          )}
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button
+              onClick={status === "idle" && !showNote ? () => setShowNote(true) : handleSend}
+              disabled={status === "sending"}
+              style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: isError ? "var(--adp-danger-fg,#dc2626)" : "#d97706", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+            >
+              {status === "sending" ? "Sending…" : "Send Report"}
+            </button>
+            {!showNote && (
+              <button
+                onClick={() => setShowNote(true)}
+                style={{ background: "none", border: "none", fontSize: "0.78rem", color: fg, opacity: 0.7, cursor: "pointer", textDecoration: "underline" }}
+              >
+                Add a note
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {status === "error" && (
+        <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+          Failed to send — try again later.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
   const [dossier, setDossier] = useState<AgentDossierData | null>(null);
 
   const blueprint  = version.blueprint_json ?? {};
-  const plan       = blueprint.plan ?? {};
   const tokenUsage = version.token_usage ?? {};
   const score      = version.quality_score;
   const uar        = template.uar_json ?? {};
+  const requestedMins: number | null = uar.time != null ? Number(uar.time) : null;
 
   // Load dossier the first time the panel is opened
   useEffect(() => {
@@ -647,26 +855,6 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
     else if (score >= 7) { qualityLabel = "Good";       qualityDesc = "Questions were well-formed. Minor edits were applied automatically."; }
     else if (score >= 5) { qualityLabel = "Fair";       qualityDesc = "Some questions needed adjustment. The system corrected them before delivery."; }
     else                 { qualityLabel = "Needs Work"; qualityDesc = "Significant corrections were made. You may want to review the questions."; }
-  }
-
-  // ── Pacing ──────────────────────────────────────────────────────────────
-  const requestedMins: number | null = uar.time != null ? Number(uar.time) : null;
-  const totalItems = version.assessment_json?.totalItems ?? 0;
-  const realisticMins: number | null =
-    blueprint.realisticTotalMinutes != null
-      ? Number(blueprint.realisticTotalMinutes)
-      : plan.pacingSecondsPerItem != null && totalItems > 0
-        ? Math.round((plan.pacingSecondsPerItem * totalItems) / 60)
-        : null;
-
-  let pacingLine = "";
-  if (requestedMins != null && realisticMins != null) {
-    const diff = realisticMins - requestedMins;
-    if (Math.abs(diff) <= 1)  pacingLine = `Pacing matched your ${requestedMins}-minute target.`;
-    else if (diff < 0)        pacingLine = `Questions were adjusted to fit within your ${requestedMins} minutes.`;
-    else                      pacingLine = `The assessment may run about ${diff} minute${Math.abs(diff) !== 1 ? "s" : ""} over your target.`;
-  } else if (realisticMins != null) {
-    pacingLine = `Estimated completion time: ~${realisticMins} minute${realisticMins !== 1 ? "s" : ""}.`;
   }
 
   // ── Revisions ───────────────────────────────────────────────────────────
@@ -738,7 +926,15 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
           textAlign: "left",
         }}
       >
-        <span>📋 AI Generation Notes</span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          📋 AI Generation Notes
+          {(() => {
+            const c = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
+            if (c.severity === "error")   return <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.1rem 0.5rem", borderRadius: "999px", background: "var(--adp-danger-bg,#fef2f2)", color: "var(--adp-danger-fg,#dc2626)" }}>⚠ Issue detected</span>;
+            if (c.severity === "warning") return <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.1rem 0.5rem", borderRadius: "999px", background: "var(--adp-warn-bg,#fffbeb)",   color: "var(--adp-warn-fg,#d97706)"   }}>ℹ Unusual</span>;
+            return null;
+          })()}
+        </span>
         <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)", fontWeight: 400 }}>
           {open ? "Hide ▲" : "Show ▼"}
         </span>
@@ -757,6 +953,9 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             gap: "0.8rem",
           }}
         >
+          {/* ── Report banner ─────────────────────────────────────────── */}
+          <SendReportBanner version={version} template={template} />
+
           {/* Quality badge + description */}
           {qualityLabel && score != null && (
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
@@ -772,11 +971,6 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                 {qualityDesc}
               </span>
             </div>
-          )}
-
-          {/* Pacing */}
-          {pacingLine && (
-            <p style={{ margin: 0 }}>⏱️ <strong>Time: </strong>{pacingLine}</p>
           )}
 
           {/* Revisions — the primary thing teachers care about */}
@@ -873,6 +1067,15 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* Pacing feedback — always visible when we know the assessment type */}
+              {uar.assessmentType && (
+                <PacingFeedbackBar
+                  userId={template.user_id}
+                  assessmentType={String(uar.assessmentType)}
+                  currentDefault={requestedMins ?? undefined}
+                />
               )}
 
               {/* First-session prompt */}
@@ -1398,40 +1601,27 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                   marginBottom: "0.75rem",
                 }}
               >
-                <label
-                  htmlFor="version-select"
-                  style={{ fontWeight: 600, fontSize: "0.9rem" }}
-                >
-                  Version:
-                </label>
-                <select
-                  id="version-select"
-                  value={selectedVersionId ?? ""}
-                  onChange={(e) => setSelectedVersionId(e.target.value)}
-                  style={{
-                    padding: "0.4rem 0.8rem",
-                    borderRadius: "8px",
-                    border: "1.5px solid var(--color-border, #ddd)",
-                    background: "var(--bg, #fff)",
-                    color: "inherit",
-                    fontSize: "0.9rem",
-                    cursor: "pointer",
-                    minWidth: "160px",
-                  }}
-                >
+                <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>Version:</span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
                   {versions.map((v) => {
                     const vDate = new Date(v.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                    const isSelected = v.id === selectedVersionId;
+                    const isActive = v.id === template.active_version_id;
+                    const qualityIcon = v.quality_score != null ? (v.quality_score >= 8 ? " ✓" : v.quality_score < 5 ? " ⚠" : "") : "";
                     return (
-                      <option key={v.id} value={v.id}>
-                        Version {v.version_number}
-                        {v.id === template.active_version_id ? " (active)" : ""}
-                        {v.parent_version_id ? " · revised" : ""}
-                        {` · ${vDate}`}
-                        {v.quality_score != null ? ` · Quality ${v.quality_score}/10${v.quality_score >= 8 ? " ✓" : v.quality_score >= 5 ? "" : " ⚠"}` : ""}
-                      </option>
+                      <button
+                        key={v.id}
+                        onClick={() => setSelectedVersionId(v.id)}
+                        className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
+                        title={`Version ${v.version_number}${isActive ? " — active" : ""}${v.parent_version_id ? " — revised" : ""}${v.quality_score != null ? ` — Quality ${v.quality_score}/10` : ""}`}
+                      >
+                        v{v.version_number}{qualityIcon}
+                        {isActive && <span style={{ marginLeft: "0.3rem", fontSize: "0.7em", opacity: 0.8 }}>●</span>}
+                        <span style={{ marginLeft: "0.3rem", fontWeight: 400, opacity: 0.7 }}>{vDate}</span>
+                      </button>
                     );
                   })}
-                </select>
+                </div>
 
                 {selectedVersion && (
                   <span style={{ fontSize: "0.82rem", color: "var(--text-secondary, #6b7280)" }}>
@@ -1611,7 +1801,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                     userId={template.user_id}
                     domain={template.domain ?? "General"}
                     problems={
-                      ((selectedVersion.assessment_json as any)?.questions as any[] | undefined)
+                      ((selectedVersion.assessment_json as any)?.items as any[] | undefined)
                         ?.map((q: any) => q.prompt ?? q.text ?? "")
                         .filter(Boolean) ?? []
                     }
@@ -1626,6 +1816,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
                       if (uar.time != null) return Number(uar.time);
                       return null;
                     })()}
+                    title={titleFor(template.uar_json ?? {}, template.domain)}
                     onClose={() => setShowReportResults(false)}
                   />
                 </div>
@@ -1811,7 +2002,7 @@ export function AssessmentDetailPage({ templateId, onBack }: AssessmentDetailPag
             <>
               <StudentResultsPanel
                 questionCount={
-                  (selectedVersion.assessment_json as any)?.questions?.length ??
+                  (selectedVersion.assessment_json as any)?.items?.length ??
                   (selectedVersion.assessment_json as any)?.totalItems ??
                   10
                 }

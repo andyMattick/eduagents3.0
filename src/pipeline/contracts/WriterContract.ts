@@ -57,6 +57,22 @@ export interface WriterContract {
     topicAngles: string[];
   };
 
+  // ── 2b. Teacher style constraints (injected from TeacherProfile) ──────────
+  /**
+   * When present, Writer must honour these constraints in every generated item.
+   * Sourced from the teacher's stored profile stylePreferences.
+   */
+  styleConstraints?: {
+    /** "formal" | "conversational" */
+    tone: string;
+    /** "academic" | "studentFriendly" */
+    languageLevel: string;
+    /** "short" | "detailed" */
+    instructionLength: string;
+    /** "realWorld" | "abstract" | "mixed" */
+    contextPreference: string;
+  } | null;
+
   // ── 3. Gatekeeper-added prescriptions ─────────────────────────────────────
   gatekeeperPrescriptions: {
     /** Violation type strings seen across all runs. */

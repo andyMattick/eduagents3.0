@@ -35,8 +35,10 @@ function mapSingleFormat(
     case "arithmeticFluency": return ["arithmeticFluency"];
     case "passageBased":       return ["passageBased"];
     case "mixed":
+      // freeResponse is AP-exam special — never included in generic "mixed".
+      // Teachers who want FRQ must explicitly select "Free Response" (frqOnly).
       if (assessmentType === "test")
-        return ["multipleChoice", "shortAnswer", "freeResponse"];
+        return ["multipleChoice", "shortAnswer", "constructedResponse"];
       if (assessmentType === "quiz")
         return ["multipleChoice", "shortAnswer"];
       return ["multipleChoice", "shortAnswer"];

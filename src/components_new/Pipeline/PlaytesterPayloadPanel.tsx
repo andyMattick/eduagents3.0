@@ -6,7 +6,7 @@
  * simulation and displays the per-(student × problem) StudentProblemInput results.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
 import type { Asteroid, Astronaut, StudentProblemInput } from "@/types/simulation";
 import "./PlaytesterPayloadPanel.css";
@@ -403,17 +403,29 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
   const [results, setResults] = useState<StudentProblemInput[][] | null>(null);
   const [activeTab, setActiveTab] = useState<"asteroids" | "students" | "simulation">("asteroids");
 
-  // Clear simulation whenever a new/revised assessment is loaded
-  useEffect(() => {
-    setResults(null);
-    setActiveTab("asteroids");
-  }, [assessment.id]);
-
   const runSimulation = useCallback(() => {
     const res = simulate(asteroids, astronauts);
     setResults(res);
     setActiveTab("simulation");
   }, [asteroids, astronauts]);
+
+  // Stable ref so the id-change effect can call runSimulation without
+  // needing it as a dep (avoids infinite loop).
+  const runSimulationRef = useRef(runSimulation);
+  useEffect(() => { runSimulationRef.current = runSimulation; }, [runSimulation]);
+
+  // When the assessment changes:
+  //  • Fresh generation  → reset to Asteroids tab, clear results
+  //  • Rewritten version (id ends in -rXXX) → auto-run simulation immediately
+  useEffect(() => {
+    setResults(null);
+    if (assessment.id.includes("-r")) {
+      // Small timeout lets state flush before running
+      setTimeout(() => runSimulationRef.current(), 0);
+    } else {
+      setActiveTab("asteroids");
+    }
+  }, [assessment.id]);
 
   function updateTrait(
     studentIdx: number,
@@ -531,7 +543,7 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
             <div className="ptp-tab-content">
               {!results ? (
                 <div className="ptp-no-results">
-                  <p>No simulation run yet. Click <strong>▶ Run Simulation</strong> above.</p>
+                  <p>No simulation run yet. Click <strong>▶ Run Simulation</strong> above to see per-student predictions.</p>
                 </div>
               ) : (
                 <>

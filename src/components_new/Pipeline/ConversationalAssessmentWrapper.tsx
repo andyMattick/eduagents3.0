@@ -9,10 +9,14 @@ import { TeacherFeedbackPanel } from "./TeacherFeedbackPanel";
 import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
 import { generateAssessment } from "@/config/aiConfig";
 import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
+import { runFeasibilityPrecheck } from "@/pipeline/agents/architect/feasibilityPrecheck";
+import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
 import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
 import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
+import type { TeacherProfile } from "@/types/teacherProfile";
+import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
 
 interface ConversationalAssessmentWrapperProps {
   userId: string | null;
@@ -53,6 +57,7 @@ export function ConversationalAssessmentWrapper({
   const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
   const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
   const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
+  const [preflightFeasibility, setPreflightFeasibility] = useState<FeasibilityReport | null>(null);
 
   // ── Post-Builder teacher feedback state ────────────────────────────────
   const [isRewriting, setIsRewriting] = useState(false);
@@ -60,9 +65,28 @@ export function ConversationalAssessmentWrapper({
 
   // ── Form restore state (populated when teacher clicks "← Edit Inputs") ──
   const [formInitialAnswers, setFormInitialAnswers] = useState<Partial<Record<StepId, string>> | null>(null);
+  const [resetCounter, setResetCounter] = useState(0);
+  const [forceBlank, setForceBlank] = useState(false);
 
 
   const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
+
+  // ── Teacher profile (course defaults) ─────────────────────────────────────
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+
+  useEffect(() => {
+    if (safeUserId === "00000000-0000-0000-0000-000000000000") return;
+    loadOrDefaultTeacherProfile(safeUserId)
+      .then(setTeacherProfile)
+      .catch(() => {/* silently skip — profile is optional */});
+  }, [safeUserId]);
+
+  const handleUpdateDefaults = useCallback(async (updated: TeacherProfile) => {
+    setTeacherProfile(updated);
+    await saveTeacherProfile(updated).catch(e =>
+      console.warn("[Profile] save failed:", e)
+    );
+  }, []);
 
   // Load (or refresh) daily usage
   const refreshUsage = useCallback(async () => {
@@ -82,8 +106,19 @@ export function ConversationalAssessmentWrapper({
       setPipelineError(null);
       setFormInitialAnswers(null); // clear restore state when teacher completes a fresh form
       const validation = runPromptEngineer(intent);
+      const preflight = runFeasibilityPrecheck({
+        topic: intent.topic || intent.unitName || "",
+        additionalDetails: intent.additionalDetails,
+        assessmentType: intent.assessmentType,
+        studentLevel: intent.studentLevel,
+        timeMinutes: intent.time ?? 10,
+        questionFormat: intent.questionFormat,
+        bloomPreference: intent.bloomPreference,
+        gradeLevels: intent.gradeLevels,
+      });
       setPendingIntent(intent);
       setPeResult(validation);
+      setPreflightFeasibility(preflight);
     },
     []
   );
@@ -97,24 +132,24 @@ export function ConversationalAssessmentWrapper({
         gradeLevels:        pendingIntent.gradeLevels.join(", "),
         course:             pendingIntent.course,
         topic:              pendingIntent.topic || pendingIntent.unitName || "",
+        subtopics:          pendingIntent.subtopics ?? "",
         assessmentType:     pendingIntent.assessmentType,
         questionFormat:      pendingIntent.questionFormat ?? "",
-        bloomPreference:     pendingIntent.bloomPreference ?? "",
         multiPartQuestions:  pendingIntent.multiPartQuestions ?? "",
-        sectionStructure:    pendingIntent.sectionStructure ?? "",
         standards:           pendingIntent.standards ?? "",
+        stateCode:           pendingIntent.stateCode ?? "",
         arithmeticOperation: pendingIntent.arithmeticOperation ?? "",
         arithmeticRange:     pendingIntent.arithmeticRange ?? "",
-        passageSource:       (pendingIntent as any).passageSource ?? "",
-        passageText:         (pendingIntent as any).passageText ?? "",
+        passageSource:       pendingIntent.passageSource ?? "",
+        passageText:         pendingIntent.passageText ?? "",
         studentLevel:        pendingIntent.studentLevel,
-        time:                pendingIntent.time?.toString() ?? "",
         additionalDetails:  pendingIntent.additionalDetails ?? "",
       };
       setFormInitialAnswers(restored);
     }
     setPendingIntent(null);
     setPeResult(null);
+    setPreflightFeasibility(null);
   }, [pendingIntent]);
 
   // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
@@ -220,10 +255,17 @@ export function ConversationalAssessmentWrapper({
           console.error("[TeacherRewrite] SCRIBE save failed:", saveErr?.message);
         }
 
-        // Merge rewritten assessment + updated scribe ref back into result
+        // Merge rewritten assessment + updated scribe ref back into result.
+        // Assigning a new id triggers PlaytesterPayloadPanel to reset its
+        // simulation state so teachers don't see stale results from before
+        // the rewrite. The panel will prompt them to ▶ Run Simulation again.
+        const rewrittenWithNewId = {
+          ...rewritten,
+          id: `${rewritten.id}-r${Date.now()}`,
+        };
         setResult((prev: any) => ({
           ...prev,
-          finalAssessment: rewritten,
+          finalAssessment: rewrittenWithNewId,
           teacherRewriteApplied: true,
           scribe: updatedScribe,
         }));
@@ -383,17 +425,22 @@ export function ConversationalAssessmentWrapper({
         </div>
       ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
-          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : "fresh"}
+          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : `fresh-${resetCounter}`}
           onComplete={handleConversationComplete}
           isLoading={isLoading}
           disabled={usage !== null && !usage.canGenerate}
           initialAnswers={formInitialAnswers ?? undefined}
           defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
+          teacherProfile={teacherProfile}
+          onUpdateDefaults={handleUpdateDefaults}
+          forceBlank={forceBlank}
+          onReset={() => { setFormInitialAnswers(null); setForceBlank(true); setResetCounter(c => c + 1); }}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
         /* Input Review validation panel — shown before pipeline fires */
         <PromptEngineerPanel
           result={peResult}
+          feasibility={preflightFeasibility ?? undefined}
           onProceed={handleProceed}
           onEdit={handleEditInputs}
           onOverride={handleProceed}
@@ -431,6 +478,8 @@ export function ConversationalAssessmentWrapper({
                 philosopherAnalysis={result.philosopherWrite?.analysis}
                 teacherFeedback={result.philosopherWrite?.teacherFeedback}
                 reliability={result.scribe?.reliability}
+                blueprintWarnings={result.blueprint?.warnings}
+                pacingSeconds={teacherProfile?.pacingDefaults?.questionTypeSeconds}
               />
 
               {/* Post-Builder Teacher Feedback Panel */}
