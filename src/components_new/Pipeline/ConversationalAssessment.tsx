@@ -121,8 +121,9 @@ function buildSteps(
 
   if (hasProfile) {
     // ── Profile-driven flow ──────────────────────────────────────────────
-    steps.push({ id: "course", kind: "text", question: "What course is this for?", placeholder: "e.g., AP Statistics" });
-    steps.push({ id: "topic",  kind: "text", question: "What topic or lesson should the assessment cover?", placeholder: "e.g., Chi-square tests" });
+    steps.push({ id: "course",      kind: "text", question: "What course is this for?", placeholder: "e.g., AP Statistics" });
+    steps.push({ id: "gradeLevels", kind: "text", question: "What grade level(s)?", placeholder: "e.g., 10  or  9, 10" });
+    steps.push({ id: "topic",       kind: "text", question: "What topic or lesson should the assessment cover?", placeholder: "e.g., Chi-square tests" });
     steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., goodness-of-fit, independence", optional: true });
 
     if (answers.course) {
@@ -763,10 +764,16 @@ export function ConversationalAssessment({
   useEffect(() => {
     // For multi-select steps, seed the buffer from the existing answer so the
     // previously chosen options are shown as selected when navigating back.
+    // Only keep values that are valid chip options — this prevents stale profile
+    // defaults (which may use different naming conventions) from polluting the
+    // buffer and making it impossible to clear them by choosing fresh chips.
     if (currentStep?.multiSelect && answers[currentStep.id]) {
-      setMultiSelectBuffer(
-        answers[currentStep.id].split(",").map(s => s.trim()).filter(Boolean)
-      );
+      const validValues = new Set(currentStep.chips?.map(c => c.value) ?? []);
+      const seeded = answers[currentStep.id]
+        .split(",")
+        .map(s => s.trim())
+        .filter(v => v && validValues.has(v));
+      setMultiSelectBuffer(seeded);
     } else {
       setMultiSelectBuffer([]);
     }

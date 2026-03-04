@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/supabase/client";
+import { useAuth } from "@/components_new/Auth/useAuth";
 
 interface PipelineReport {
   id: string;
@@ -37,6 +38,7 @@ function SeverityBadge({ severity }: { severity: PipelineReport["severity"] }) {
 }
 
 export const AdminDashboard = () => {
+  const { logout } = useAuth();
   const [reports, setReports] = useState<PipelineReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,24 @@ export const AdminDashboard = () => {
 
   return (
     <div className="dashboard-container" style={{ padding: "1.5rem", maxWidth: "1200px", margin: "0 auto" }}>
-      <h1 style={{ marginBottom: "0.25rem" }}>Pipeline Reports</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+        <h1 style={{ margin: 0 }}>Pipeline Reports</h1>
+        <button
+          onClick={logout}
+          style={{
+            padding: "0.4rem 1rem",
+            borderRadius: "8px",
+            border: "1.5px solid #e5e7eb",
+            background: "#fff",
+            color: "#374151",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Sign out
+        </button>
+      </div>
       <p style={{ color: "#6b7280", fontSize: "0.88rem", marginBottom: "1.5rem" }}>
         Submitted by teachers when generation looked unusual. Classified deterministically — no LLM.
       </p>

@@ -19,6 +19,8 @@ interface MinimalAssessmentFormProps {
 }
 
 export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) {
+  const [gradeError, setGradeError] = useState<string | null>(null);
+
   useEffect(() => {
     console.log("[Form] Mounted");
   }, []);
@@ -47,6 +49,11 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.gradeLevels.length) {
+      setGradeError("Please select at least one grade level.");
+      return;
+    }
+    setGradeError(null);
     onSubmit(form);
   }
 
@@ -55,7 +62,7 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
 
       {/* Grade Levels */}
       <div>
-        <label><strong>Grade Levels</strong></label>
+        <label><strong>Grade Levels</strong> <span style={{ color: "#dc2626" }}>*</span></label>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
           {["K","1","2","3","4","5","6","7","8","9","10","11","12"].map((g) => (
             <label key={g}>
@@ -74,8 +81,11 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
               {g}
             </label>
           ))}
-        </div>
-      </div>
+        </div>        {gradeError && (
+          <p style={{ color: "#dc2626", fontSize: "0.82rem", marginTop: "0.35rem", marginBottom: 0 }}>
+            {gradeError}
+          </p>
+        )}      </div>
 
       {/* Course */}
       <div>
