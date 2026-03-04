@@ -24,7 +24,7 @@ import { getPlugin } from "./pluginRegistry";
  * @param context — shared generation context (grade, course, topic, DIL summary)
  * @returns GeneratedProblem from the matched plugin
  */
-export async function generateProblem(
+export async function problemGeneratorRouter(
   slot: ProblemSlot,
   context: GenerationContext
 ): Promise<GeneratedProblem & { _pluginId: string }> {
@@ -75,9 +75,10 @@ export async function generateAllProblems(
   const results: (GeneratedProblem & { _pluginId: string; slot_id: string })[] = [];
 
   for (const slot of slots) {
-    const problem = await generateProblem(slot, context);
+    const problem = await problemGeneratorRouter(slot, context);
     results.push({ ...problem, slot_id: slot.slot_id });
   }
 
   return results;
 }
+

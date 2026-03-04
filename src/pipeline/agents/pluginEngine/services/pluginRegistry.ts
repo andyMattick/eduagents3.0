@@ -66,3 +66,8 @@ export function clearPlugins(): void {
 export function pluginCount(): number {
   return _plugins.size;
 }
+
+export function loadPlugins(): void {
+//place holder for future plugin loading logic, e.g. from a remote source or with dynamic imports
+
+}

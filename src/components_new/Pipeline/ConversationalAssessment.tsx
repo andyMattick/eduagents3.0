@@ -521,7 +521,7 @@ function FeasibilityWarning({
     }}>
       <strong>{icon} {heading}</strong>
       <p style={{ margin: "0.25rem 0 0" }}>{msg}</p>
-      <p style={{ margin: "0.25rem 0 0", opacity: 0.8 }}>
+      <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
           You can still generate — the system will adjust automatically if needed.
         </p>
     </div>
@@ -576,7 +576,7 @@ function FinalConfirmCard({
           </span>
           <div className="ca-override-notice__actions">
             <button className="ca-btn-ghost ca-btn-ghost--sm" onClick={onUpdateDefaults} disabled={disabled}>Update defaults</button>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-secondary,#6b7280)" }}>or use this once</span>
+            <button className="ca-btn-ghost ca-btn-ghost--sm" onClick={onGenerate} disabled={disabled} style={{ color: "var(--text-secondary,#6b7280)" }}>or use this once</button>
           </div>
         </div>
       )}

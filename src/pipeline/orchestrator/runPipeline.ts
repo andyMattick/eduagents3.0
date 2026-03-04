@@ -1,3 +1,4 @@
+import { problemGeneratorRouter } from "@/pipeline/agents/pluginEngine/services/problemGeneratorRouter";
 
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
@@ -26,6 +27,9 @@ import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
 import { resetLLMGate } from "@/pipeline/llm/gemini";
+import "@/pipeline/agents/pluginEngine/problemPlugins";
+import { loadPlugins, listPlugins } from "@/pipeline/agents/pluginEngine/services/pluginRegistry";
+
 import {
   initContract,
   getContract,
@@ -335,6 +339,10 @@ export async function runPipeline(
   // ── Reset Concept Graph for this run ──────────────────────────────────
   resetConceptGraph();
 
+  await loadPlugins(); console.log("[Pipeline] Plugins loaded");
+  console.log("[PluginRegistry] Loaded plugins:", listPlugins());
+
+
   // ── Ensure required UAR fields have safe defaults ─────────────────────────
   // mode and subscriptionTier may not be set by convertMinimalToUAR.
   const safeUar: UnifiedAssessmentRequest = {
@@ -441,6 +449,51 @@ export async function runPipeline(
     teacherProfile,
   });
 
+  // ── Step 2: Convert Architect slots → ProblemSlots ─────────────────────────
+const problemSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
+  slot_id: s.id,
+  problem_source:
+    s.templateId ? "template" :
+    s.diagramType ? "diagram" :
+    s.imageReferenceId ? "image_analysis" :
+    "llm",
+  problem_type: s.questionType ?? "short_answer",
+  template_id: s.templateId ?? null,
+  diagram_type: s.diagramType ?? null,
+  image_reference_id: s.imageReferenceId ?? null,
+  topic: s.topicAngle ?? blueprint.uar?.topic ?? "",
+  subtopic: null,
+  difficulty: s.difficulty ?? "medium",
+  pacing_seconds: s.pacingSeconds ?? null,
+  question_format: s.questionType ?? "short_answer",
+  cognitive_demand: s.cognitiveDemand ?? null,
+}));
+blueprint.problemSlots = problemSlots; // Attach to blueprint for downstream agents
+
+// ── Step 3: Enforce Slot → Plugin Mapping Rules ─────────────────────────────
+for (const slot of blueprint.problemSlots) {
+  if (slot.problem_source === "template") {
+    slot.diagram_type = null;
+    slot.image_reference_id = null;
+  }
+  if (slot.problem_source === "diagram") {
+    slot.template_id = null;
+    slot.image_reference_id = null;
+  }
+  if (slot.problem_source === "image_analysis") {
+    slot.template_id = null;
+    slot.diagram_type = null;
+  }
+  if (slot.problem_source === "llm") {
+    slot.template_id = null;
+    slot.diagram_type = null;
+    slot.image_reference_id = null;
+  }
+}
+
+
+
+
   // Snapshot for live preview — readable by getLastPipelineBlueprint()
   _lastPipelineBlueprint = blueprint;
 
@@ -474,6 +527,13 @@ export async function runPipeline(
   // the slot plan is compatible with the plugin architecture.
   {
     const { runInputJudge: _runIJ } = await import("@/pipeline/agents/inputJudge");
+    // ── Plugin Engine: Router placeholder (Step 1 scaffolding) ───────────────────
+    // In Step 2, this will replace the direct Writer call.
+    // const generated = await problemGeneratorRouter(blueprint.plan.slots);
+    // console.log("[Pipeline] Router placeholder active");
+
+
+
     // Convert blueprint slots to ProblemSlot format for InputJudge
     const pluginSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
       slot_id: s.id,
@@ -564,22 +624,93 @@ export async function runPipeline(
 
   // ── Step 3: Writer — generate the initial draft ───────────────────────────
   const writerPrescriptions = SCRIBE.getWriterPrescriptions();
+// ── Step 5: Router-first generation with Writer fallback ────────────────────
+const routedItems: any[] = [];
 
-const writerDraft = await runAgent(trace, "Writer", runWriter, {
-  blueprint: blueprint.plan,
-  // Merge blueprint.uar (Architect-derived) with extracted doc fields from the
-  // enriched UAR — blueprint.uar is ArchitectUAR and doesn't carry these.
-  uar: uarForWriter({
-    ...blueprint.uar,
-    extractedConcepts:   uarWithDefaults.extractedConcepts,
-    extractedVocabulary: uarWithDefaults.extractedVocabulary,
-    extractedDifficulty: uarWithDefaults.extractedDifficulty,
-    extractedAngles:     uarWithDefaults.extractedAngles,
-  }),
-  scribePrescriptions: writerPrescriptions,
-  compensation: selected.compensationProfile,
-  onItemsProgress,
+for (const slot of blueprint.problemSlots ?? []) {
+  try {
+    // Try plugin engine
+    const problem = await problemGeneratorRouter(slot, {
+      gradeLevels: uarWithDefaults.gradeLevels,
+      course: uarWithDefaults.course,
+      topic: uarWithDefaults.topic ?? blueprint.uar?.topic ?? "",
+      assessmentType: uarWithDefaults.assessmentType,
+      difficultyPreference: uarWithDefaults.difficultyPreference,
+      studentLevel: uarWithDefaults.studentLevel,
+      extractedConcepts: uarWithDefaults.extractedConcepts,
+      extractedVocabulary: uarWithDefaults.extractedVocabulary,
+      extractedDifficulty: uarWithDefaults.extractedDifficulty,
+      extractedAngles: uarWithDefaults.extractedAngles,
+      blueprint, // optional but useful for plugins
 });
+
+
+    routedItems.push({
+      slotId: slot.slot_id,
+      ...problem,
+      pluginMetadata: {
+        pluginId: problem._pluginId,
+        generationMethod: "plugin",
+      },
+    });
+
+  } catch (err) {
+    console.warn(
+      `[Pipeline] Router failed for slot ${slot.slot_id}, falling back to Writer:`,
+      err
+    );
+
+    // Mark slot for Writer fallback
+    routedItems.push({
+      slotId: slot.slot_id,
+      _fallbackToWriter: true,
+    });
+  }
+}
+
+// ── Step 5b: Writer fallback for any slots Router could not handle ─────────
+const writerFallbackSlots = routedItems.filter(i => i._fallbackToWriter);
+
+let writerDraft: any[] = [];
+
+if (writerFallbackSlots.length > 0) {
+  console.log(
+    `[Pipeline] Writer fallback activated for ${writerFallbackSlots.length} slots`
+  );
+
+  writerDraft = await runAgent(trace, "Writer", runWriter, {
+    blueprint: {
+      slots: blueprint.plan.slots.filter((s: any) =>
+        writerFallbackSlots.some((i: any) => i.slotId === s.id)
+      ),
+    },
+    uar: uarForWriter({
+      ...blueprint.uar,
+      extractedConcepts: uarWithDefaults.extractedConcepts,
+      extractedVocabulary: uarWithDefaults.extractedVocabulary,
+      extractedDifficulty: uarWithDefaults.extractedDifficulty,
+      extractedAngles: uarWithDefaults.extractedAngles,
+    }),
+    scribePrescriptions: writerPrescriptions,
+    compensation: selected.compensationProfile,
+    onItemsProgress,
+  });
+}
+
+// ── Step 5c: Merge plugin items + Writer fallback items ─────────────────────
+const mergedDraft = routedItems.map((item) => {
+  if (!item._fallbackToWriter) return item;
+
+  const writerItem = writerDraft.find((w: any) => w.slotId === item.slotId);
+  return {
+    ...writerItem,
+    pluginMetadata: {
+      pluginId: "llm_default",
+      generationMethod: "writer_fallback",
+    },
+  };
+});
+
 
 // 2b. Count invariant — warn if Writer dropped any slots, but continue
 // with what we have rather than aborting the entire run.
@@ -603,8 +734,9 @@ const actualTokenCount: number | null = null;
 
 // 3+4. ValidateAndScore — Gatekeeper + Philosopher write-mode merged (no full-object echoing)
 const { gatekeeperResult, philosopherWrite } = await validateAndScore(
-  blueprint, writerDraft, trace, writerTelemetry
+  blueprint, mergedDraft, trace, writerTelemetry
 );
+
 
 // ── Update Writer Contract with Gatekeeper violations ─────────────────────
 // Maps each violation type to a concrete prescription that the Writer will
