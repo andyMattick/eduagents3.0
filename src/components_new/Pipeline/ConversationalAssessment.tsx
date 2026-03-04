@@ -659,6 +659,10 @@ interface ConversationalAssessmentProps {
   teacherProfile?: TeacherProfile | null;
   /** Called when teacher chooses "Update defaults" on the final confirm card. */
   onUpdateDefaults?: (updated: TeacherProfile) => void;
+  /** Called when teacher clicks "Start over" to reset the entire form. */
+  onReset?: () => void;
+  /** When true, skips course pre-fill from profile so the form starts fully blank. */
+  forceBlank?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -671,6 +675,8 @@ export function ConversationalAssessment({
   defaultAnswers,
   teacherProfile,
   onUpdateDefaults,
+  onReset,
+  forceBlank = false,
 }: ConversationalAssessmentProps) {
   const isBlocked = isLoading || disabled;
 
@@ -682,7 +688,7 @@ export function ConversationalAssessment({
 
   // Pre-fill course with the most recently added course profile (last in array)
   const lastCourse =
-    teacherProfile?.courseProfiles?.length
+    !forceBlank && teacherProfile?.courseProfiles?.length
       ? teacherProfile.courseProfiles[teacherProfile.courseProfiles.length - 1].courseName
       : "";
 
@@ -701,7 +707,7 @@ export function ConversationalAssessment({
       return Math.max(0, allSteps.length - 1);
     }
     // If a course is pre-filled from the profile, start at the topic step
-    if (teacherProfile?.courseProfiles?.length && lastCourse) return 1;
+    if (!forceBlank && teacherProfile?.courseProfiles?.length && lastCourse) return 1;
     return 0;
   });
 
@@ -1080,6 +1086,18 @@ export function ConversationalAssessment({
                       .join(", ")}
                   </button>
                 )}
+                {/* Single-select: when a value is already pre-selected from defaults,
+                    show a confirm button so the teacher knows they can continue. */}
+                {!step.multiSelect && answers[step.id] && (
+                  <button
+                    type="button"
+                    className="ca-chip ca-chip--confirm"
+                    onClick={() => commitAnswer(answers[step.id])}
+                    disabled={isBlocked}
+                  >
+                    {"\u2713"} Confirm &rarr;
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1168,6 +1186,30 @@ export function ConversationalAssessment({
         <div className="ca-chip-footer">
           <button type="button" className="ca-btn-back" onClick={handleBack}>
             &larr; Back
+          </button>
+        </div>
+      )}
+
+      {/* RESET button — always visible below the waterfall (not during loading) */}
+      {!isLoading && onReset && stepIndex > 0 && (
+        <div style={{ padding: "0.75rem 1rem 0.5rem", borderTop: "1px solid var(--color-border, #e5e7eb)" }}>
+          <button
+            type="button"
+            onClick={onReset}
+            disabled={isBlocked}
+            style={{
+              padding: "0.45rem 1.1rem",
+              borderRadius: "6px",
+              border: "1.5px solid var(--color-border, #e5e7eb)",
+              background: "var(--bg, #fff)",
+              color: "var(--text-secondary, #6b7280)",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              cursor: "pointer",
+              letterSpacing: "0.04em",
+            }}
+          >
+            RESET
           </button>
         </div>
       )}

@@ -21,6 +21,17 @@ import {
   SignUpRequest,
 } from "@/types/teacherSystem";
 
+import { supabase } from "../../supabase/client";
+
+async function fetchIsAdmin(userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from("teachers")
+    .select("is_admin")
+    .eq("id", userId)
+    .single();
+  return data?.is_admin === true;
+}
+
 interface AuthUser {
   id: string;
   email: string;
@@ -60,11 +71,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             currentUser.user_metadata?.name ?? null,
             currentUser.user_metadata?.schoolName ?? null,
           );
+          const isAdmin = await fetchIsAdmin(currentUser.id);
           setUser({
             id: currentUser.id,
             email: currentUser.email ?? "",
             name: currentUser.user_metadata?.name ?? "",
-            isAdmin: currentUser.user_metadata?.tier === "admin",
+            isAdmin,
           });
         }
       } finally {
@@ -83,11 +95,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (loginError) throw loginError;
       if (!data?.user?.id) throw new Error("Login failed — no user returned.");
       setSession(null); // Supabase manages the session internally
+      const isAdmin = await fetchIsAdmin(data.user.id);
       setUser({
         id: data.user.id,
         email: data.user.email ?? "",
         name: data.user.user_metadata?.name ?? "",
-        isAdmin: data.user.user_metadata?.tier === "admin",
+        isAdmin,
       });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Login failed";

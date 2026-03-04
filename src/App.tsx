@@ -115,12 +115,7 @@ function TeacherAppContent() {
 
             {/* My Agents tab hidden from teacher nav — component kept for internal use */}
 
-            <button
-              className={`app-tab ${activeTab === 'what-we-infer' ? 'active' : ''}`}
-              onClick={() => setActiveTab('what-we-infer')}
-            >
-              🔍 How Your Inputs Drive the Process
-            </button>
+            
 
             <button
               className={`app-tab ${activeTab === 'my-profile' ? 'active' : ''}`}
@@ -179,6 +174,7 @@ function TeacherAppContent() {
         {activeTab === 'my-assessments' && (
           <MyAssessmentsPage
             teacherId={user?.id ?? ''}
+            teacherName={user?.name}
             onNewAssessment={() => setActiveTab('pipeline')}
             onViewTemplate={(templateId) => {
               setSelectedTemplateId(templateId);

@@ -28,6 +28,7 @@ interface Group {
 
 interface MyAssessmentsPageProps {
   teacherId: string;
+  teacherName?: string;
   onNewAssessment: () => void;
   onViewTemplate?: (templateId: string) => void;
 }
@@ -215,7 +216,7 @@ function AssignmentCard({
     <div className="ma-card">
       <div className="ma-card-headline">
         <span className="ma-card-course">{course}</span>
-        <span className="ma-card-arrow">→</span>
+        <span className="ma-card-sep">:</span>
         <span className="ma-card-topic">{topic}</span>
       </div>
 
@@ -265,7 +266,7 @@ const GROUPING_OPTIONS: { id: GroupingMode; label: string }[] = [
 
 // ── Main page ──────────────────────────────────────────────────────
 
-export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }: MyAssessmentsPageProps) {
+export function MyAssessmentsPage({ teacherId, teacherName, onNewAssessment, onViewTemplate }: MyAssessmentsPageProps) {
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -339,8 +340,8 @@ export function MyAssessmentsPage({ teacherId, onNewAssessment, onViewTemplate }
     <div className="dashboard-container">
       <header className="dashboard-header">
         <div className="header-welcome">
-          <h1>My Assessments</h1>
-          <p>All assessments you've generated.</p>
+          <h1>Welcome{teacherName ? `, ${teacherName}` : ''}</h1>
+          <p>My Assessments</p>
         </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           <button

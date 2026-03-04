@@ -65,6 +65,8 @@ export function ConversationalAssessmentWrapper({
 
   // ── Form restore state (populated when teacher clicks "← Edit Inputs") ──
   const [formInitialAnswers, setFormInitialAnswers] = useState<Partial<Record<StepId, string>> | null>(null);
+  const [resetCounter, setResetCounter] = useState(0);
+  const [forceBlank, setForceBlank] = useState(false);
 
 
   const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
@@ -423,7 +425,7 @@ export function ConversationalAssessmentWrapper({
         </div>
       ) : !result && !limitError && !peResult ? (
         <ConversationalAssessment
-          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : "fresh"}
+          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : `fresh-${resetCounter}`}
           onComplete={handleConversationComplete}
           isLoading={isLoading}
           disabled={usage !== null && !usage.canGenerate}
@@ -431,6 +433,8 @@ export function ConversationalAssessmentWrapper({
           defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
           teacherProfile={teacherProfile}
           onUpdateDefaults={handleUpdateDefaults}
+          forceBlank={forceBlank}
+          onReset={() => { setFormInitialAnswers(null); setForceBlank(true); setResetCounter(c => c + 1); }}
         />
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
         /* Input Review validation panel — shown before pipeline fires */

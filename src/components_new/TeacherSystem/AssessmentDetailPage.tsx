@@ -20,6 +20,8 @@ import {
   adjustPacingFromFeedback,
   type PacingFeedback,
 } from "@/services_new/teacherProfileService";
+import { classifyTrace } from "@/pipeline/agents/classifyTrace";
+import { sendPipelineReport } from "@/services_new/pipelineReportService";
 import "./AssessmentDetailPage.css";
 import "./AssessmentDetailPage.css";
 
@@ -731,15 +733,108 @@ function PacingFeedbackBar({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function SendReportBanner({ version, template }: { version: VersionRow; template: TemplateRow }) {
+  const [showNote, setShowNote] = useState(false);
+  const [note, setNote]         = useState("");
+  const [status, setStatus]     = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const c = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
+  if (c.severity === "none") return null;
+
+  const isError     = c.severity === "error";
+  const borderColor = isError ? "var(--adp-danger-fg,#dc2626)" : "#f59e0b";
+  const bg          = isError ? "var(--adp-danger-bg,#fef2f2)" : "var(--adp-warn-bg,#fffbeb)";
+  const fg          = isError ? "var(--adp-danger-fg,#991b1b)" : "var(--adp-warn-fg,#92400e)";
+
+  async function handleSend() {
+    setStatus("sending");
+    try {
+      await sendPipelineReport({
+        userId:              template.user_id,
+        assessmentVersionId: version.id,
+        classification:      c,
+        blueprintJson:       version.blueprint_json,
+        tokenUsage:          version.token_usage,
+        qualityScore:        version.quality_score,
+        uarJson:             template.uar_json,
+        teacherNote:         note.trim() || undefined,
+      });
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  if (status === "sent") {
+    return (
+      <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--adp-success-fg,#16a34a)" }}>
+        ✓ Report sent — thanks for helping us improve!
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ padding: "0.7rem 0.9rem", borderRadius: "8px", border: `1.5px solid ${borderColor}`, background: bg, color: fg, fontSize: "0.83rem", lineHeight: 1.5 }}>
+      <p style={{ margin: 0, fontWeight: 600 }}>
+        {isError ? "⚠️ Something unexpected happened." : "ℹ️ Something looked unusual during generation."}
+      </p>
+      <p style={{ margin: "0.3rem 0 0", color: "inherit", opacity: 0.9 }}>
+        {c.summary}
+        {c.faultingAgent ? <> ({c.faultingAgent})</> : null}
+      </p>
+      {c.suggestedFix && (
+        <p style={{ margin: "0.3rem 0 0", fontStyle: "italic", opacity: 0.85 }}>{c.suggestedFix}</p>
+      )}
+      {status !== "error" && (
+        <div style={{ marginTop: "0.6rem", display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-start", flexDirection: "column" }}>
+          {showNote && (
+            <textarea
+              rows={2}
+              placeholder="Anything you want to add? (optional)"
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              style={{ width: "100%", padding: "0.35rem 0.5rem", borderRadius: "6px", border: "1px solid var(--color-border,#ddd)", fontSize: "0.82rem", background: "var(--bg,#fff)", color: "var(--text,#374151)" }}
+            />
+          )}
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button
+              onClick={status === "idle" && !showNote ? () => setShowNote(true) : handleSend}
+              disabled={status === "sending"}
+              style={{ padding: "0.3rem 0.85rem", borderRadius: "6px", border: "none", background: isError ? "var(--adp-danger-fg,#dc2626)" : "#d97706", color: "#fff", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", opacity: status === "sending" ? 0.7 : 1 }}
+            >
+              {status === "sending" ? "Sending…" : "Send Report"}
+            </button>
+            {!showNote && (
+              <button
+                onClick={() => setShowNote(true)}
+                style={{ background: "none", border: "none", fontSize: "0.78rem", color: fg, opacity: 0.7, cursor: "pointer", textDecoration: "underline" }}
+              >
+                Add a note
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+      {status === "error" && (
+        <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--adp-danger-fg,#dc2626)" }}>
+          Failed to send — try again later.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function AiGenerationNotes({ version, template }: { version: VersionRow; template: TemplateRow }) {
   const [open, setOpen] = useState(false);
   const [dossier, setDossier] = useState<AgentDossierData | null>(null);
 
   const blueprint  = version.blueprint_json ?? {};
-  const plan       = blueprint.plan ?? {};
   const tokenUsage = version.token_usage ?? {};
   const score      = version.quality_score;
   const uar        = template.uar_json ?? {};
+  const requestedMins: number | null = uar.time != null ? Number(uar.time) : null;
 
   // Load dossier the first time the panel is opened
   useEffect(() => {
@@ -760,26 +855,6 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
     else if (score >= 7) { qualityLabel = "Good";       qualityDesc = "Questions were well-formed. Minor edits were applied automatically."; }
     else if (score >= 5) { qualityLabel = "Fair";       qualityDesc = "Some questions needed adjustment. The system corrected them before delivery."; }
     else                 { qualityLabel = "Needs Work"; qualityDesc = "Significant corrections were made. You may want to review the questions."; }
-  }
-
-  // ── Pacing ──────────────────────────────────────────────────────────────
-  const requestedMins: number | null = uar.time != null ? Number(uar.time) : null;
-  const totalItems = version.assessment_json?.totalItems ?? 0;
-  const realisticMins: number | null =
-    blueprint.realisticTotalMinutes != null
-      ? Number(blueprint.realisticTotalMinutes)
-      : plan.pacingSecondsPerItem != null && totalItems > 0
-        ? Math.round((plan.pacingSecondsPerItem * totalItems) / 60)
-        : null;
-
-  let pacingLine = "";
-  if (requestedMins != null && realisticMins != null) {
-    const diff = realisticMins - requestedMins;
-    if (Math.abs(diff) <= 1)  pacingLine = `Pacing matched your ${requestedMins}-minute target.`;
-    else if (diff < 0)        pacingLine = `Questions were adjusted to fit within your ${requestedMins} minutes.`;
-    else                      pacingLine = `The assessment may run about ${diff} minute${Math.abs(diff) !== 1 ? "s" : ""} over your target.`;
-  } else if (realisticMins != null) {
-    pacingLine = `Estimated completion time: ~${realisticMins} minute${realisticMins !== 1 ? "s" : ""}.`;
   }
 
   // ── Revisions ───────────────────────────────────────────────────────────
@@ -851,7 +926,15 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
           textAlign: "left",
         }}
       >
-        <span>📋 AI Generation Notes</span>
+        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          📋 AI Generation Notes
+          {(() => {
+            const c = classifyTrace(version.blueprint_json, version.token_usage, version.quality_score);
+            if (c.severity === "error")   return <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.1rem 0.5rem", borderRadius: "999px", background: "var(--adp-danger-bg,#fef2f2)", color: "var(--adp-danger-fg,#dc2626)" }}>⚠ Issue detected</span>;
+            if (c.severity === "warning") return <span style={{ fontSize: "0.72rem", fontWeight: 700, padding: "0.1rem 0.5rem", borderRadius: "999px", background: "var(--adp-warn-bg,#fffbeb)",   color: "var(--adp-warn-fg,#d97706)"   }}>ℹ Unusual</span>;
+            return null;
+          })()}
+        </span>
         <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #6b7280)", fontWeight: 400 }}>
           {open ? "Hide ▲" : "Show ▼"}
         </span>
@@ -870,6 +953,9 @@ function AiGenerationNotes({ version, template }: { version: VersionRow; templat
             gap: "0.8rem",
           }}
         >
+          {/* ── Report banner ─────────────────────────────────────────── */}
+          <SendReportBanner version={version} template={template} />
+
           {/* Quality badge + description */}
           {qualityLabel && score != null && (
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>

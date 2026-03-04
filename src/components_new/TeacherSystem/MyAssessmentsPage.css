@@ -117,17 +117,19 @@
 }
 
 .ma-card-course {
+  font-weight: 700;
   color: var(--text);
 }
 
-.ma-card-arrow {
+.ma-card-sep {
   color: var(--text-secondary, #9ca3af);
   font-weight: 400;
-  font-size: 0.8rem;
+  margin: 0 0.1rem;
 }
 
 .ma-card-topic {
-  color: var(--primary);
+  color: var(--text);
+  font-weight: 400;
 }
 
 .ma-card-meta {
