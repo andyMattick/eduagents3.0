@@ -5,13 +5,13 @@
  * Deterministic — no LLM calls.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { renderNumberLineSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { renderNumberLineSVG } from "../../diagramGenerator";
 import { randInt } from "../templates/mathUtils";
 
 export const NumberLinePlugin: ProblemPlugin = {
   id: "number_line",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["number line", "integers", "ordering", "fractions", "decimals"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

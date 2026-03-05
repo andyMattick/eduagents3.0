@@ -11,7 +11,7 @@
  */
 
 // ── Bootstrap: Import triggers plugin auto-registration ──────────────────
-import "./problemPlugins";
+import "./services/problemPlugins";
 
 // ── Interfaces ───────────────────────────────────────────────────────────
 export type {

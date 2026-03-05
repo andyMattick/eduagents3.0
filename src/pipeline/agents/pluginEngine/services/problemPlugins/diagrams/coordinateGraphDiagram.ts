@@ -5,13 +5,13 @@
  * Deterministic — no LLM calls.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { renderCoordinateGraphSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { renderCoordinateGraphSVG } from "../../diagramGenerator";
 import { randInt } from "../templates/mathUtils";
 
 export const CoordinateGraphPlugin: ProblemPlugin = {
   id: "coordinate_graph",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["coordinate geometry", "graphing", "linear functions", "algebra"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

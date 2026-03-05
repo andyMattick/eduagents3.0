@@ -5,15 +5,15 @@
  * No LLM calls. Pure math.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
 import { randInt } from "./mathUtils";
 
 export const LinearEquationPlugin: ProblemPlugin = {
   id: "linear_equation_template",
-  generationType: "TEMPLATE",
+  generationType: "template",
   supportedTopics: ["linear equations", "algebra", "linear functions", "equations"],
 
-  async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {
+  async generate(slot: ProblemSlot, _context: GenerationContext): Promise<any> {
     const difficulty = slot.difficulty ?? "medium";
 
     let a: number, x: number, b: number, c: number;
@@ -41,6 +41,7 @@ export const LinearEquationPlugin: ProblemPlugin = {
     const prompt = `Solve for x: ${a}x ${signB} = ${c}`;
 
     return {
+      slot_id: slot.slot_id,
       prompt,
       answer: `x = ${x}`,
       concepts: ["linear equations", "solving equations", "algebra"],

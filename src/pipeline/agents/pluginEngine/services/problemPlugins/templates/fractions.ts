@@ -5,7 +5,7 @@
  * No LLM calls. Pure math.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
 import { randInt, pick, gcd } from "./mathUtils";
 
 type FracOp = "add" | "subtract" | "multiply" | "simplify";
@@ -20,10 +20,10 @@ function simplify(n: number, d: number): string {
 
 export const FractionsPlugin: ProblemPlugin = {
   id: "fractions_template",
-  generationType: "TEMPLATE",
+  generationType: "template",
   supportedTopics: ["fractions", "rational numbers", "number operations"],
 
-  async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {
+  async generate(slot: ProblemSlot, _context: GenerationContext): Promise<any> {
     const difficulty = slot.difficulty ?? "medium";
     const op: FracOp = pick(["add", "subtract", "multiply", "simplify"]);
 
@@ -55,6 +55,7 @@ export const FractionsPlugin: ProblemPlugin = {
     }
 
     return {
+      slot_id: slot.slot_id,
       prompt,
       answer,
       concepts: ["fractions", "rational numbers"],

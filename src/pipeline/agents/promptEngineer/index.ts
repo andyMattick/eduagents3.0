@@ -152,29 +152,12 @@ export function runPromptEngineer(
     const impliedQCount = Math.round(timeBudget / pacing.avgMinPerQ);
     estimatedTimeMinutes = timeBudget; // teacher set it — echo back as the estimate
 
-    // Tiny time + big assessment type
-    if ((intent.assessmentType === "test" || intent.assessmentType === "worksheet") && timeBudget < 10) {
-      contradictions.push(
-        `A "${intent.assessmentType}" typically needs ≥15 minutes, but you set ${timeBudget} min. ` +
-        `That only fits ~${impliedQCount} questions — consider switching to a bell ringer or exit ticket, or increasing the time.`
-      );
-    }
-
-    // Huge time + tiny assessment type
-    if ((intent.assessmentType === "bellRinger" || intent.assessmentType === "exitTicket") && timeBudget > 15) {
-      contradictions.push(
-        `A "${intent.assessmentType}" is designed for ≤10 minutes, but you set ${timeBudget} min. ` +
-        `Consider switching to a quiz or worksheet if you need the extra time.`
-      );
-    }
-
-    // Extreme question density (< 30 sec per question)
-    if (impliedQCount > pacing.maxQCount * 1.5) {
-      contradictions.push(
-        `${timeBudget} minutes / ${impliedQCount} implied questions = extremely tight pacing. ` +
-        `Students may not finish. Consider reducing scope or increasing time.`
-      );
-    }
+    // NOTE: Assessment type vs. time contradictions removed.
+    // The QuestionMixPreview on the conversation screen now shows actual timing
+    // breakdown and lets teachers adjust before generation. Removed:
+    // - "Tiny time + big assessment type" check
+    // - "Huge time + tiny assessment type" check
+    // - "Extreme question density" check
   } else {
     // No time budget — estimate from type defaults
     estimatedTimeMinutes = Math.round(
@@ -183,12 +166,7 @@ export function runPromptEngineer(
   }
 
   // 2b. Student level vs assessment type / time mismatch
-  if (intent.studentLevel === "remedial" && intent.assessmentType === "test" && timeBudget > 0 && timeBudget < 20) {
-    contradictions.push(
-      "Remedial students on a full test with < 20 minutes is very tight. " +
-      "Consider increasing time or switching to a quiz."
-    );
-  }
+  // Removed "remedial on test < 20 min" check — teacher has already reviewed timing in mix preview
 
   if (intent.studentLevel === "AP" && intent.assessmentType === "bellRinger" && timeBudget > 10) {
     suggestions.push(
@@ -264,12 +242,7 @@ export function runPromptEngineer(
     );
   }
 
-  if (intent.sectionStructure === "multiple" && timeBudget > 0 && timeBudget < 15) {
-    contradictions.push(
-      `Multiple sections in a ${timeBudget}-minute assessment is tight. ` +
-      `Consider a single section or increasing the time to 20+ minutes.`
-    );
-  }
+  // Removed "multiple sections in tight time" check — teacher has reviewed timing in mix preview
 
   if (
     ["saOnly", "essayOnly", "frqOnly"].includes(intent.questionFormat ?? "") &&

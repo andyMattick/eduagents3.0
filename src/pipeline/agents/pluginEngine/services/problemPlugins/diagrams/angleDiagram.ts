@@ -2,13 +2,13 @@
  * angleDiagram.ts — Geometry angle diagram plugin.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { renderAngleSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { renderAngleSVG } from "../../diagramGenerator";
 import { randInt } from "../templates/mathUtils";
 
 export const AngleDiagramPlugin: ProblemPlugin = {
   id: "geometry_angle",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["geometry", "angles", "measuring angles", "protractor"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

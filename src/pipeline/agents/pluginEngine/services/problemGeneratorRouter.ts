@@ -1,56 +1,52 @@
 /**
  * problemGeneratorRouter.ts — Routes ProblemSlots to the correct plugin.
- *
- * Routing priority (per Master Spec §3):
- *   1. slot.template_id     → template plugin
- *   2. slot.diagram_type    → diagram plugin
- *   3. slot.image_reference_id → image plugin
- *   4. fallback             → "llm_default" plugin
- *
- * If no plugin is found at all, throws with a descriptive error.
  */
+
+import {
+  assignPluginFields,
+} from "../../architect/pluginMaps";
 
 import type {
   ProblemSlot,
   GeneratedProblem,
   GenerationContext,
 } from "../interfaces/problemPlugin";
+
 import { getPlugin } from "./pluginRegistry";
 
-/**
- * generateProblem — resolve the correct plugin for `slot` and generate a problem.
- *
- * @param slot    — Architect-emitted slot (never contains content)
- * @param context — shared generation context (grade, course, topic, DIL summary)
- * @returns GeneratedProblem from the matched plugin
- */
 export async function problemGeneratorRouter(
   slot: ProblemSlot,
   context: GenerationContext
 ): Promise<GeneratedProblem & { _pluginId: string }> {
+
+  // 1. Run the selector
+  const assignment = assignPluginFields(slot.topic, slot.questionType);
+
+  // 2. Resolve plugin
   const plugin =
-    getPlugin(slot.template_id) ||
-    getPlugin(slot.diagram_type) ||
-    getPlugin(slot.image_reference_id) ||
+    (assignment.problem_source === "template" && assignment.template_id
+      ? getPlugin(assignment.template_id)
+      : null) ||
+    (assignment.problem_source === "diagram" && assignment.diagram_type
+      ? getPlugin(assignment.diagram_type)
+      : null) ||
     getPlugin("llm_default");
 
-  if (!plugin) {
-    throw new Error(
-      `[ProblemGeneratorRouter] No plugin found for slot ${slot.slot_id}. ` +
-      `template_id=${slot.template_id ?? "none"}, ` +
-      `diagram_type=${slot.diagram_type ?? "none"}, ` +
-      `image_reference_id=${slot.image_reference_id ?? "none"}. ` +
-      `Ensure "llm_default" plugin is registered.`
-    );
-  }
+    if (!plugin) {
+  throw new Error(
+    `[Router] No plugin found for assignment: ${JSON.stringify(assignment)}`
+  );
+}
+
 
   console.info(
     `[Router] Slot ${slot.slot_id} → plugin "${plugin.id}" (${plugin.generationType})`
   );
 
+  // 3. Generate
   const problem = await plugin.generate(slot, context);
 
-  // Run plugin-level validation if available
+  // 4. Optional validation
   if (plugin.validate) {
     const validation = plugin.validate(problem, slot);
     if (!validation.valid) {
@@ -64,10 +60,6 @@ export async function problemGeneratorRouter(
   return { ...problem, _pluginId: plugin.id };
 }
 
-/**
- * generateAllProblems — batch-generate problems for an array of slots.
- * Runs sequentially to respect potential rate limits on LLM plugins.
- */
 export async function generateAllProblems(
   slots: ProblemSlot[],
   context: GenerationContext
@@ -81,4 +73,3 @@ export async function generateAllProblems(
 
   return results;
 }
-

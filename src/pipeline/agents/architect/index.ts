@@ -9,6 +9,9 @@ import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
 import { allocateBloomCounts } from "./allocateBloomCounts";
 import { evaluateFeasibility, type FeasibilityReport } from "./feasibility";
 import type { TeacherProfile } from "@/types/teacherProfile";
+import { ProblemSlot } from "../../agents/pluginEngine";
+import { assignPluginFields } from "./assignPluginFields";
+
 
 import {
   BlueprintPlanV3_2,
@@ -17,6 +20,23 @@ import {
   DifficultyModifier,
   OrderingStrategy
 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+
+export const QUESTION_TYPE_PLUGIN_MAP: Record<string, string> = {
+  arithmeticFluency: "template",
+  passageBasedReading: "template",
+  trueFalse: "template",
+  fillInTheBlank: "template",
+  shortAnswer: "template",
+};
+
+export const QUESTION_TYPE_TEMPLATE_MAP: Record<string, string> = {
+  arithmeticFluency: "arithmetic_fluency_template",
+  passageBasedReading: "generic_content_template",
+  trueFalse: "generic_content_template",
+  fillInTheBlank: "fractions_template",
+  shortAnswer: "linear_equation_template",
+};
+
 
 export async function runArchitect({
   uar,
@@ -580,6 +600,7 @@ export async function runArchitect({
   // with a primary or elementary grade level. This is informational — it
   // never blocks the run, but surfaces a warning for the teacher.
   //
+  
 
   const COMPLEX_TEXTS = [
     "frankenstein", "1984", "lord of the flies", "macbeth", "hamlet",
@@ -654,7 +675,6 @@ export async function runArchitect({
       console.info(`  └ ${adj}`);
     }
   }
-
   // Rebuild cognitive distribution from adjusted slots
   const adjustedCognitiveDist: BlueprintPlanV3_2["cognitiveDistribution"] = {
     remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0,
@@ -741,6 +761,46 @@ export async function runArchitect({
     );
   }
 
+
+function buildProblemSlot(s: any, context: any): ProblemSlot {
+  
+  const topic = s.topicAngle ?? context.topic ?? "";
+
+  // NEW: topic-based plugin assignment
+  const plugin = assignPluginFields(topic, s.questionType);
+  console.log("[SlotBuilder] Built slot:", {
+    slot_id: s.id,
+    questionType: s.questionType,
+    topic: s.topicAngle ?? context.topic,
+  });
+
+
+  return {
+    questionType: s.questionType,   // or request.questionTypes[i]
+
+    slot_id: s.id,
+    problem_source: plugin.problem_source as "template" | "diagram" | "image_analysis" | "llm",
+
+
+    problem_type: s.questionType,
+    template_id: plugin.template_id,
+    diagram_type: plugin.diagram_type,
+    image_reference_id: plugin.image_reference_id,
+    topic,
+    subtopic: null,
+    difficulty: s.difficulty ?? "medium",
+    pacing_seconds: s.pacingSeconds ?? null,
+    question_format: s.questionType,
+    cognitive_demand: s.cognitiveDemand ?? null,
+  };
+}
+
+
+const problemSlots = (finalPlan.slots ?? []).map(s =>
+  buildProblemSlot(s, architectUAR)
+);
+
+
   return {
     uar,
     writerPrompt: "",
@@ -749,6 +809,7 @@ export async function runArchitect({
       realisticTotalSeconds,
       realisticTotalMinutes,
     },
+    problemSlots,
     constraints: {
       mustAlignToTopic: true,
       avoidTrickQuestions:

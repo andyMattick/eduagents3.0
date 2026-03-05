@@ -2,7 +2,7 @@
  * diagrams/index.ts — Barrel export + auto-registration for all diagram plugins.
  */
 
-import { registerPlugin } from "../../services/pluginRegistry";
+import { registerPlugin } from "../../pluginRegistry";
 import { TriangleDiagramPlugin } from "./triangleDiagram";
 import { CoordinateGraphPlugin } from "./coordinateGraphDiagram";
 import { BarChartPlugin } from "./barChartDiagram";

@@ -14,6 +14,7 @@ export type UserGoal = 'create' | 'analyze';
 export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface GeneratedProblem {
+  
   id: string;
   sectionId?: string;
   problemText: string;

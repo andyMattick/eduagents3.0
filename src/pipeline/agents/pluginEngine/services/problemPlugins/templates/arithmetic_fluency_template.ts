@@ -5,7 +5,7 @@
  * No LLM calls. Pure math.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
 import { randInt, pick } from "./mathUtils";
 
 type Op = "add" | "subtract" | "multiply" | "divide";
@@ -57,33 +57,41 @@ function generateArithmetic(
   return { a, b, answer, expression: `${a} ${OP_SYMBOLS[operation]} ${b}` };
 }
 
-export const ArithmeticFluencyPlugin: ProblemPlugin = {
+export const arithmetic_fluency_template: ProblemPlugin = {
   id: "arithmetic_fluency_template",
-  generationType: "TEMPLATE",
+  generationType: "template",
   supportedTopics: [
     "arithmetic", "addition", "subtraction", "multiplication", "division",
     "math fluency", "basic math", "number operations",
   ],
 
-  async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {
-    const op: Op = (slot.operation as Op) ?? pick(["add", "subtract", "multiply", "divide"] as Op[]);
-    const difficulty = slot.difficulty ?? "medium";
-    const { a, b, answer, expression } = generateArithmetic(op, difficulty);
+async generate(slot: ProblemSlot, _context: GenerationContext): Promise<any> {
+  const op: Op = (slot.operation as Op) ?? pick(["add", "subtract", "multiply", "divide"] as Op[]);
+  const difficulty = slot.difficulty ?? "medium";
+  const { a, b, answer, expression } = generateArithmetic(op, difficulty);
 
-    return {
-      prompt: expression,
-      answer: `${answer}`,
-      concepts: ["arithmetic", `${op}ion` === "addion" ? "addition" : `${op}ion`],
-      skills: ["computation", "number sense"],
-      standards: ["CCSS.Math.Content.3.OA.C.7"],
-      metadata: {
-        generation_method: "template",
-        plugin_id: this.id,
-        template_id: "arithmetic_fluency",
-        difficulty,
-        operation: op,
-        operands: { a, b },
-      },
-    };
-  },
+  return {
+    id: slot.slot_id, // required unique ID
+
+    problemText: `${expression} = ?`,
+    correctAnswer: `${answer}`,
+
+    problemType: "procedural",
+    bloomLevel: 1, // Remember
+    questionFormat: "short-answer",
+
+    complexity: difficulty === "easy" ? "low" : difficulty === "medium" ? "medium" : "high",
+    novelty: "low",
+
+    estimatedTime: 1,
+    problemLength: expression.length,
+    hasTip: false,
+
+    rubric: {
+      criteria: ["Correct computation"],
+      expectations: "Student computes the correct value."
+    }
+  };
+}
+
 };

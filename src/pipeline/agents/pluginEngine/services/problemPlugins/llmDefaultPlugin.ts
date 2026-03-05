@@ -12,16 +12,17 @@ import type {
   ProblemSlot,
   GenerationContext,
   GeneratedProblem,
-} from "../interfaces/problemPlugin";
-import { registerPlugin } from "../services/pluginRegistry";
+  TemplateGeneratedProblem,
+} from "../../interfaces/problemPlugin";
+import { registerPlugin } from "../pluginRegistry";
 import { callGemini } from "@/pipeline/llm/gemini";
 
 export const LLMDefaultPlugin: ProblemPlugin = {
   id: "llm_default",
-  generationType: "LLM",
+  generationType: "llm",
   supportedTopics: [], // universal — handles any topic
 
-  async generate(slot: ProblemSlot, context: GenerationContext): Promise<GeneratedProblem> {
+  async generate(slot: ProblemSlot, context: GenerationContext): Promise<TemplateGeneratedProblem> {
     const prompt = buildLLMPrompt(slot, context);
 
     const response = await callGemini({
@@ -33,6 +34,7 @@ export const LLMDefaultPlugin: ProblemPlugin = {
     try {
       const parsed = JSON.parse(response);
       return {
+        slot_id: slot.slot_id,
         prompt: parsed.prompt ?? parsed.question ?? "",
         answer: parsed.answer ?? "",
         concepts: parsed.concepts ?? [],
@@ -48,6 +50,7 @@ export const LLMDefaultPlugin: ProblemPlugin = {
     } catch {
       // If LLM response is not valid JSON, wrap as best-effort
       return {
+        slot_id: slot.slot_id,
         prompt: response.trim(),
         answer: "",
         concepts: [],
@@ -57,6 +60,7 @@ export const LLMDefaultPlugin: ProblemPlugin = {
           generation_method: "llm",
           plugin_id: "llm_default",
           parse_error: true,
+          slot_id: slot.slot_id,
         },
       };
     }

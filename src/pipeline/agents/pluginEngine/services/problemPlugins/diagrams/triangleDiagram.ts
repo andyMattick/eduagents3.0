@@ -5,12 +5,12 @@
  * Deterministic — no LLM calls.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { generateTriangle, renderTriangleSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { generateTriangle, renderTriangleSVG } from "../../diagramGenerator";
 
 export const TriangleDiagramPlugin: ProblemPlugin = {
   id: "triangle",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["geometry", "triangles", "pythagorean theorem", "right triangles"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

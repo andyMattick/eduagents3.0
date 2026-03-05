@@ -8,7 +8,7 @@
  */
 
 import type { GeneratedDiagram, DiagramType } from "../interfaces/problemPlugin";
-import { randInt, shuffle } from "../problemPlugins/templates/mathUtils";
+import { randInt, shuffle } from "./problemPlugins/templates/mathUtils";
 
 // ─── Triangle ──────────────────────────────────────────────────────────────
 

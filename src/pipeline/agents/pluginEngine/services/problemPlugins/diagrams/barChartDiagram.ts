@@ -5,8 +5,8 @@
  * Deterministic — no LLM calls.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { renderBarChartSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { renderBarChartSVG } from "../../diagramGenerator";
 import { randInt, shuffle } from "../templates/mathUtils";
 
 const CATEGORY_SETS = [
@@ -18,7 +18,7 @@ const CATEGORY_SETS = [
 
 export const BarChartPlugin: ProblemPlugin = {
   id: "bar_chart",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["data analysis", "statistics", "graphing", "bar charts"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

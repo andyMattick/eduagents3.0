@@ -93,6 +93,7 @@ type StepId =
   | "standards"
   | "stateCode"
   | "studentLevel"
+  | "assignmentDuration"
   | "additionalDetails"
   | "sourceDocuments"
   | "summarizerConfirm"
@@ -186,6 +187,7 @@ function buildSteps(
   }
 
   // ── Common tail (both flows) ──────────────────────────────────────────────
+  steps.push({ id: "assignmentDuration", kind: "text", question: "How long should the assignment be? (in minutes)", placeholder: "e.g., 30", optional: false });
   steps.push({ id: "additionalDetails", kind: "text", question: "Any specific instructions? (optional)", placeholder: "e.g., Include vocabulary, focus on application", optional: true });
   steps.push({ id: "sourceDocuments", kind: "fileUpload", question: "Upload source documents? (optional \u2014 skip to continue)", optional: true });
   if (hasDocs) {
@@ -315,6 +317,39 @@ function DefaultsCard({
     );
   }
 
+  function SelectDropdown<T extends string>({
+    value, options, onChange, label,
+  }: { value: T; options: Array<{ label: string; value: T }>; onChange: (v: T) => void; label?: string }) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as T)}
+        disabled={disabled}
+        title={label}
+        style={{
+          width: "100%",
+          padding: "0.5rem 0.75rem",
+          border: "1px solid var(--border-color,#e5e7eb)",
+          borderRadius: "5px",
+          fontSize: "0.9rem",
+          backgroundColor: "var(--surface-primary,#ffffff)",
+          color: "var(--text-primary,#1f2937)",
+          cursor: "pointer",
+          appearance: "none",
+          backgroundImage: "url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22currentColor%22 stroke-width=%222%22%3e%3cpolyline points=%226 9 12 15 18 9%22%3e%3c/polyline%3e%3c/svg%3e')",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 0.75rem center",
+          backgroundSize: "1.2em 1.2em",
+          paddingRight: "2.5rem",
+        }}
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+
   return (
     <div className="ca-defaults-card">
       <div className="ca-defaults-card__header">
@@ -333,7 +368,7 @@ function DefaultsCard({
       <div className="ca-inline-fields">
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Assessment type</span>
-          <ChipRow value={assessmentType} options={ASSESSMENT_CHIPS} onChange={setAssessmentType} />
+          <SelectDropdown value={assessmentType} options={ASSESSMENT_CHIPS} onChange={setAssessmentType} label="Assessment type" />
         </div>
 
         <div className="ca-inline-field">
@@ -363,10 +398,11 @@ function DefaultsCard({
 
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Multi-part</span>
-          <ChipRow
+          <SelectDropdown
             value={multiPart ? "yes" : "no"}
             options={MULTI_PART_CHIPS}
             onChange={(v) => setMultiPart(v === "yes")}
+            label="Multi-part questions"
           />
         </div>
 
@@ -385,7 +421,7 @@ function DefaultsCard({
         {(origStandards || defaults.standards != null) && (
           <div className="ca-inline-field">
             <span className="ca-inline-field__label">Standards</span>
-            <ChipRow value={standards} options={STANDARDS_CHIPS} onChange={setStandards} />
+            <SelectDropdown value={standards} options={STANDARDS_CHIPS} onChange={setStandards} label="Standards alignment" />
             {standards === "state" && (
               <input
                 type="text"
@@ -402,10 +438,11 @@ function DefaultsCard({
 
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Difficulty</span>
-          <ChipRow
+          <SelectDropdown
             value={difficulty}
             options={LEVEL_CHIPS}
-            onChange={v => setDifficulty(v as typeof difficulty)}
+            onChange={(v) => setDifficulty(v as typeof difficulty)}
+            label="Student level & difficulty"
           />
         </div>
       </div>
@@ -473,12 +510,35 @@ function FeasibilityWarning({
   const topic    = answers.topic?.trim()    || "";
   const details  = [answers.subtopics, answers.additionalDetails].filter(Boolean).join(" ");
   const formats  = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "mcqOnly")
-    .split(",").map(s => s.trim()).filter(Boolean);
-  const level    = answers.studentLevel || courseDefaults?.typicalDifficulty || "standard";
-  const bloom    = LEVEL_TO_BLOOM[level] ?? "apply";
-  const reqCount = courseDefaults?.estimatedQuestionRange.max ?? 10;
+    .split(",").map(s => s.trim()).filter(Boolean)
+    .filter(f => f !== "mixed"); // Exclude "mixed" for realistic count
+
+  // Skip feasibility check for arithmetic fluency (not topically dense)
+  if (formats.length === 1 && formats[0] === "arithmeticFluency") {
+    return null;
+  }
+
+  // Skip feasibility check if user has customized assignment duration
+  // (they've already made conscious choices about time/questions in the mix preview)
+  const hasCustomDuration = !!answers.assignmentDuration && 
+    parseInt(answers.assignmentDuration, 10) !== (courseDefaults?.estimatedMinutes ?? 30);
+  if (hasCustomDuration) {
+    return null;
+  }
 
   if (!topic) return null;
+
+  const level    = answers.studentLevel || courseDefaults?.typicalDifficulty || "standard";
+  const bloom    = LEVEL_TO_BLOOM[level] ?? "apply";
+
+  // Only run feasibility check if using defaults
+  const assessmentType = answers.assessmentType || courseDefaults?.assessmentTypes[0] || "quiz";
+  const pacingDefaults = courseDefaults?.pacingDefaults ?? { assessmentDurationMinutes: {}, questionTypeSeconds: {} };
+  const durationMinutes = pacingDefaults.assessmentDurationMinutes[assessmentType] ?? 30;
+  const primaryFormat = formats[0] || courseDefaults?.questionTypes[0] || "multipleChoice";
+  const pacingKey = FORMAT_PACING_KEY[primaryFormat] || primaryFormat;
+  const avgSecPerQuestion = pacingDefaults.questionTypeSeconds[pacingKey] ?? DEFAULT_PACING_SECONDS[pacingKey] ?? 60;
+  const reqCount = Math.ceil((durationMinutes * 60) / avgSecPerQuestion);
 
   const report = evaluateFeasibility({
     topic,
@@ -493,9 +553,9 @@ function FeasibilityWarning({
   if (report.riskLevel === "safe") return null;
 
   const COLOR = {
-    caution:  { bg: "var(--adp-warn-bg,#fffbeb)",  border: "var(--adp-warn-fg,#d97706)",  fg: "var(--adp-warn-fg,#92400e)"  },
-    high:     { bg: "var(--adp-warn-bg,#fffbeb)",  border: "#f59e0b",                      fg: "#92400e"                      },
-    overload: { bg: "var(--adp-danger-bg,#fef2f2)", border: "var(--adp-danger-fg,#dc2626)", fg: "var(--adp-danger-fg,#991b1b)" },
+    caution:  { bg: "#fef3c7",  border: "#d97706",  fg: "#78350f"  },
+    high:     { bg: "#fef3c7",  border: "#f59e0b",  fg: "#78350f"  },
+    overload: { bg: "#fecaca", border: "#dc2626",  fg: "#7f1d1d"  },
   }[report.riskLevel];
 
   const icon    = report.riskLevel === "overload" ? "⚠️" : "ℹ️";
@@ -528,6 +588,222 @@ function FeasibilityWarning({
   );
 }
 
+// ── QuestionMixPreview ──────────────────────────────────────────────────────────
+//
+// Shows a breakdown of selected question types with estimated counts and time.
+// Allows teachers to adjust the distribution and see real-time impact.
+
+interface QuestionMixEntry {
+  type: string;
+  label: string;
+  secondsPerQuestion: number;
+  count: number;
+  totalSeconds: number;
+}
+
+function QuestionMixPreview({
+  answers, courseDefaults, disabled,
+}: {
+  answers: Record<StepId, string>;
+  courseDefaults: ResolvedCourseDefaults | null;
+  disabled: boolean;
+}) {
+  const selectedFormats = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "multipleChoice")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(f => f !== "mixed"); // Exclude "mixed" — it means AI chooses
+  
+  const isMixedFormat = (answers.questionFormat || "").includes("mixed");
+  const [adjustments, setAdjustments] = useState<Record<string, number>>({});
+
+  const pacingDefaults = courseDefaults?.pacingDefaults ?? {
+    assessmentDurationMinutes: {},
+    questionTypeSeconds: {},
+  };
+  
+  const assessmentType = answers.assessmentType || courseDefaults?.assessmentTypes[0] || "quiz";
+  const defaultMinutes = pacingDefaults.assessmentDurationMinutes[assessmentType] ?? 30;
+  const totalMinutes = answers.assignmentDuration ? parseInt(answers.assignmentDuration, 10) || defaultMinutes : defaultMinutes;
+  const totalSeconds = totalMinutes * 60;
+
+  // If mixed format or no specific formats selected, show simple message
+  if (isMixedFormat || selectedFormats.length === 0) {
+    return (
+      <div style={{
+        margin: "1rem 0",
+        padding: "0.85rem",
+        borderRadius: "8px",
+        border: "1px solid var(--border-color,#e5e7eb)",
+        background: "var(--surface-secondary,#f9fafb)",
+        fontSize: "0.85rem",
+        color: "var(--text-primary,#1f2937)",
+      }}>
+        <div style={{ fontWeight: 500, marginBottom: "0.75rem" }}>
+          📊 Question Mix
+        </div>
+        <div style={{
+          padding: "0.75rem",
+          borderRadius: "5px",
+          background: "var(--surface-primary,#ffffff)",
+          fontSize: "0.9rem",
+          color: "var(--text-primary,#1f2937)",
+        }}>
+          <strong>AI will choose</strong> the best mix of question formats for {totalMinutes} minutes (~{Math.max(2, Math.ceil((totalSeconds / 60)))}-{Math.ceil((totalSeconds / 45))} questions).
+        </div>
+      </div>
+    );
+  }
+
+  // Build mix entries
+  const mix: QuestionMixEntry[] = useMemo(() => {
+    if (selectedFormats.length === 0) return [];
+    
+    // Get pacing seconds for each format
+    const entries = selectedFormats.map(fmt => {
+      const mapKey = FORMAT_PACING_KEY[fmt] || fmt;
+      const secPerQ = pacingDefaults.questionTypeSeconds[mapKey] ?? DEFAULT_PACING_SECONDS[mapKey] ?? 60;
+      const chipLabel = QUESTION_FORMAT_CHIPS.find(c => c.value === fmt)?.label || fmt;
+      return { type: fmt, label: chipLabel, secondsPerQuestion: secPerQ };
+    });
+
+    // Distribute questions evenly across selected types
+    const avgSecPerQ = entries.reduce((sum, e) => sum + e.secondsPerQuestion, 0) / entries.length;
+    const avgQuestionsTarget = Math.max(2, Math.floor(totalSeconds / avgSecPerQ));
+    
+    // Simple equal distribution (can be enhanced with adjusters later)
+    const perType = Math.floor(avgQuestionsTarget / entries.length);
+    const remainder = avgQuestionsTarget % entries.length;
+
+    return entries.map((e, idx) => {
+      const baseCount = perType + (idx < remainder ? 1 : 0);
+      const adjustedCount = adjustments[e.type] ?? baseCount;
+      return ({
+        ...e,
+        count: Math.max(1, adjustedCount),
+        totalSeconds: Math.max(1, adjustedCount) * e.secondsPerQuestion,
+      });
+    });
+  }, [selectedFormats, pacingDefaults, totalSeconds, adjustments]);
+
+  const totalEstimatedSeconds = mix.reduce((sum, e) => sum + e.totalSeconds, 0);
+  const totalEstimatedMinutes = Math.round(totalEstimatedSeconds / 60);
+  const totalQuestions = mix.reduce((sum, e) => sum + e.count, 0);
+  const isOverBudget = totalEstimatedSeconds > totalSeconds;
+
+  if (mix.length === 0) return null;
+
+  return (
+    <div style={{
+      margin: "1rem 0",
+      padding: "0.85rem",
+      borderRadius: "8px",
+      border: `1px solid ${isOverBudget ? "var(--adp-warn-fg,#d97706)" : "var(--border-color,#e5e7eb)"}`,
+      background: isOverBudget ? "var(--adp-warn-bg,#fffbeb)" : "var(--surface-secondary,#f9fafb)",
+      fontSize: "0.85rem",
+    }}>
+      <div style={{ fontWeight: 500, marginBottom: "0.75rem", color: "var(--text-primary,#1f2937)" }}>
+        📊 Question Mix Preview
+      </div>
+
+      {/* Question breakdown table with adjusters */}
+      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "0.75rem", background: "var(--surface-primary,#ffffff)", borderRadius: "6px", overflow: "hidden" }}>
+        <thead>
+          <tr style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-primary,#1f2937)", textAlign: "left", background: "var(--surface-secondary,#f3f4f6)", borderBottom: "2px solid var(--border-color,#e5e7eb)" }}>
+            <th style={{ padding: "0.6rem 0.5rem 0.6rem 0", textAlign: "left" }}>Type</th>
+            <th style={{ padding: "0.6rem 0.5rem", textAlign: "right" }}># Questions</th>
+            <th style={{ padding: "0.6rem 0.5rem", textAlign: "right" }}>Time/Q</th>
+            <th style={{ padding: "0.6rem 0.5rem 0.6rem 0.5rem", textAlign: "right" }}>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {mix.map((entry, idx) => {
+            const timeStr = entry.secondsPerQuestion < 60
+              ? `${entry.secondsPerQuestion}s`
+              : `${(entry.secondsPerQuestion / 60).toFixed(1)}m`;
+            const totalStr = entry.totalSeconds < 60
+              ? `${entry.totalSeconds}s`
+              : `${(entry.totalSeconds / 60).toFixed(1)}m`;
+            return (
+              <tr key={entry.type} style={{ 
+                borderBottom: idx < mix.length - 1 ? "1px solid var(--border-color,#e5e7eb)" : "none", 
+                color: "var(--text-primary,#1f2937)",
+                transition: "background-color 0.15s ease-in-out",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--surface-secondary,#f9fafb)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}>
+                <td style={{ padding: "0.55rem 0.5rem 0.55rem 0", fontSize: "0.8rem", color: "var(--text-primary,#1f2937)", fontWeight: 500 }}>{entry.label}</td>
+                <td style={{ padding: "0.55rem 0.5rem", textAlign: "right", color: "var(--text-primary,#1f2937)" }}>
+                  <input
+                    type="number"
+                    min="1"
+                    value={entry.count}
+                    onChange={(e) => setAdjustments(prev => ({ ...prev, [entry.type]: parseInt(e.target.value, 10) || 1 }))}
+                    disabled={disabled}
+                    style={{
+                      width: "3.2rem",
+                      padding: "0.35rem 0.4rem",
+                      border: "2px solid var(--border-color,#d1d5db)",
+                      borderRadius: "4px",
+                      textAlign: "right",
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                      color: "var(--text-primary,#1f2937)",
+                      background: "var(--surface-primary,#ffffff)",
+                      cursor: disabled ? "not-allowed" : "text",
+                      opacity: disabled ? 0.6 : 1,
+                    }}
+                  />
+                </td>
+                <td style={{ padding: "0.55rem 0.5rem", textAlign: "right", fontSize: "0.78rem", color: "var(--text-primary,#1f2937)", fontWeight: 500 }}>{timeStr}</td>
+                <td style={{ padding: "0.55rem 0.5rem 0.55rem 0.5rem", textAlign: "right", fontSize: "0.78rem", color: "var(--text-primary,#1f2937)", fontWeight: 500 }}>{totalStr}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      {/* Summary bar */}
+      <div style={{
+        padding: "0.5rem",
+        borderRadius: "5px",
+        background: "var(--surface-primary,#ffffff)",
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr 1fr",
+        gap: "0.5rem",
+        fontSize: "0.8rem",
+      }}>
+        <div>
+          <div style={{ color: "var(--text-secondary,#6b7280)" }}>Total questions</div>
+          <div style={{ fontWeight: 600, color: "var(--text-primary,#1f2937)", fontSize: "1rem" }}>{totalQuestions}</div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-secondary,#6b7280)" }}>Est. time</div>
+          <div style={{ fontWeight: 600, color: isOverBudget ? "var(--adp-warn-fg,#d97706)" : "var(--text-primary,#1f2937)", fontSize: "1rem" }}>
+            ~{totalEstimatedMinutes}m
+          </div>
+        </div>
+        <div>
+          <div style={{ color: "var(--text-secondary,#6b7280)" }}>Budget</div>
+          <div style={{ fontWeight: 600, color: isOverBudget ? "var(--adp-warn-fg,#d97706)" : "var(--adp-success-fg,#16a34a)", fontSize: "1rem" }}>
+            {isOverBudget ? `+${totalEstimatedMinutes - totalMinutes}m` : `${totalMinutes - totalEstimatedMinutes}m left`}
+          </div>
+        </div>
+      </div>
+
+      {isOverBudget && (
+        <p style={{ fontSize: "0.75rem", color: "var(--adp-warn-fg,#d97706)", margin: "0.5rem 0 0" }}>
+          ⚠ Questions exceed time budget. Consider reducing counts or extending time.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── FinalConfirmCard ─────────────────────────────────────────────────────────
 
 interface Override { field: string; from: string; to: string }
@@ -541,6 +817,12 @@ function FinalConfirmCard({
   onGenerate: () => void; onBack: () => void;
   onUpdateDefaults?: () => void; defaultsUpdateApplied: boolean; disabled: boolean;
 }) {
+  // Auto-update defaults if there are overrides
+  useEffect(() => {
+    if (overrides.length > 0 && onUpdateDefaults && !defaultsUpdateApplied) {
+      onUpdateDefaults();
+    }
+  }, [overrides, onUpdateDefaults, defaultsUpdateApplied]);
   const effectiveType  = answers.assessmentType || courseDefaults?.assessmentTypes[0] || "quiz";
   const effectiveFmt   = answers.questionFormat  || courseDefaults?.questionTypes.slice(0,2).join(", ") || "mixed";
   const effectiveLevel = answers.studentLevel    || courseDefaults?.typicalDifficulty || "standard";
@@ -549,6 +831,7 @@ function FinalConfirmCard({
     : answers.multiPartQuestions === "no" ? "Standalone"
     : courseDefaults?.multiPartAllowed ? "Allowed" : "Standalone";
   const gradeBand = courseDefaults?.gradeBand || answers.gradeLevels || "\u2014";
+  const effectiveDuration = answers.assignmentDuration || `${courseDefaults?.estimatedMinutes ?? 30}`;
   const rows = [
     { label: "Course",           value: answers.course    || "\u2014" },
     { label: "Grade",            value: gradeBand               },
@@ -559,6 +842,7 @@ function FinalConfirmCard({
     { label: "Multi-part",       value: effectiveMult          },
     { label: "Standards",        value: effectiveStds          },
     { label: "Level",            value: effectiveLevel         },
+    { label: "Duration",         value: `${effectiveDuration} min` },
     { label: "Est. time",        value: `~${estimatedMinutes} min` },
     ...(docsCount > 0 ? [{ label: "Source docs", value: `${docsCount} file${docsCount !== 1 ? "s" : ""}` }] : []),
   ];
@@ -568,23 +852,14 @@ function FinalConfirmCard({
       <table className="ca-defaults-table"><tbody>
         {rows.map((r) => <tr key={r.label}><th>{r.label}</th><td>{r.value}</td></tr>)}
       </tbody></table>
-      {overrides.length > 0 && onUpdateDefaults && !defaultsUpdateApplied && (
-        <div className="ca-override-notice">
-          <span>You changed{" "}
-            {overrides.map((o, i) => <span key={o.field}>{i > 0 && ", "}<strong>{o.field}</strong></span>)}.{" "}
-            Save as defaults for <strong>{answers.course}</strong>?
-          </span>
-          <div className="ca-override-notice__actions">
-            <button className="ca-btn-ghost ca-btn-ghost--sm" onClick={onUpdateDefaults} disabled={disabled}>Update defaults</button>
-            <button className="ca-btn-ghost ca-btn-ghost--sm" onClick={onGenerate} disabled={disabled} style={{ color: "var(--text-secondary,#6b7280)" }}>or use this once</button>
-          </div>
-        </div>
-      )}
+
       {defaultsUpdateApplied && (
-        <p style={{ fontSize: "0.8rem", color: "var(--adp-success-fg,#16a34a)", margin: "0.5rem 0" }}>
-          &check; Defaults updated for {answers.course}.
+        <p style={{ fontSize: "0.8rem", color: "var(--adp-success-fg,#16a34a)", margin: "0.5rem 0 0.75rem" }}>
+          ✓ Preferences saved for {answers.course}.
         </p>
       )}
+
+      <QuestionMixPreview answers={answers} courseDefaults={courseDefaults} disabled={disabled} />
 
       <FeasibilityWarning answers={answers} courseDefaults={courseDefaults} />
 
@@ -644,6 +919,7 @@ const DEFAULT_ANSWERS: Record<StepId, string> = {
   standards:            "",
   stateCode:            "",
   studentLevel:         "",
+  assignmentDuration:   "",
   additionalDetails:    "",
   sourceDocuments:      "",
   summarizerConfirm:    "",
@@ -679,6 +955,7 @@ export function ConversationalAssessment({
   onReset,
   forceBlank = false,
 }: ConversationalAssessmentProps) {
+  useEffect(() => { commitRef.current = commitAnswer; });
   const isBlocked = isLoading || disabled;
 
   const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; name: string; content: string }>>([]);
@@ -726,17 +1003,18 @@ export function ConversationalAssessment({
 
   // When the resolved course defaults change (course was updated), pre-populate
   // the chip answers so each step shows the correct default pre-selected.
+  // BUT: preserve any answers the user has already selected (don't overwrite them).
   const prevDefaultsCourseRef = useRef<string>("");
   useEffect(() => {
     if (!courseDefaults || answers.course === prevDefaultsCourseRef.current) return;
     prevDefaultsCourseRef.current = answers.course;
     setAnswers(prev => ({
       ...prev,
-      assessmentType:     courseDefaults.assessmentTypes[0]        ?? prev.assessmentType,
-      questionFormat:     courseDefaults.questionTypes.join(","),
-      multiPartQuestions: courseDefaults.multiPartAllowed ? "yes" : "no",
-      studentLevel:       courseDefaults.typicalDifficulty          ?? prev.studentLevel,
-      gradeLevels:        courseDefaults.gradeBand                  ?? prev.gradeLevels,
+      assessmentType:     prev.assessmentType || (courseDefaults.assessmentTypes[0] ?? "quiz"),
+      questionFormat:     prev.questionFormat || courseDefaults.questionTypes.join(","),
+      multiPartQuestions: prev.multiPartQuestions || (courseDefaults.multiPartAllowed ? "yes" : "no"),
+      studentLevel:       prev.studentLevel || (courseDefaults.typicalDifficulty ?? "standard"),
+      gradeLevels:        prev.gradeLevels || (courseDefaults.gradeBand ?? ""),
     }));
   }, [answers.course, courseDefaults]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -778,7 +1056,7 @@ export function ConversationalAssessment({
       setMultiSelectBuffer([]);
     }
   }, [stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { commitRef.current = commitAnswer; });
+  
 
   // Auto-advance through inferred steps after document upload
   useEffect(() => {
@@ -839,6 +1117,7 @@ export function ConversationalAssessment({
     check("Standards",        d.standards ?? "none",                 next.standards);
     check("Grade level",      d.gradeBand ?? "",                     next.gradeLevels);
     check("Difficulty",       d.typicalDifficulty,                   next.studentLevel);
+    check("Duration",         `${d.estimatedMinutes} min`,            next.assignmentDuration ? `${next.assignmentDuration} min` : "");
     return out;
   }, [courseDefaults]);
 
@@ -861,8 +1140,23 @@ export function ConversationalAssessment({
       typicalDifficulty: (courseDefaults?.typicalDifficulty ?? "standard") as "remedial" | "standard" | "honors" | "AP",
     };
     if (next.assessmentType) base.assessmentTypes = [next.assessmentType];
+    if (next.questionFormat) base.questionTypes = next.questionFormat.split(",").map(s => s.trim()) as import("@/types/teacherProfile").CourseProfile["questionTypes"];
     if (next.multiPartQuestions) base.multiPartAllowed = next.multiPartQuestions === "yes";
     if (next.studentLevel) base.typicalDifficulty = next.studentLevel as "remedial" | "standard" | "honors" | "AP";
+    
+    // Update pacing defaults if assignmentDuration is provided
+    if (next.assignmentDuration && /^\d+$/.test(next.assignmentDuration)) {
+      const newMinutes = parseInt(next.assignmentDuration, 10);
+      const aType = next.assessmentType || courseDefaults?.assessmentTypes[0] || "quiz";
+      base.pacingDefaults = {
+        ...base.pacingDefaults,
+        assessmentDurationMinutes: {
+          ...base.pacingDefaults.assessmentDurationMinutes,
+          [aType]: newMinutes,
+        },
+      };
+    }
+    
     const newProfiles = idx >= 0
       ? existing.map((c, i) => i === idx ? base : c)
       : [...existing, base];
@@ -1052,7 +1346,7 @@ export function ConversationalAssessment({
                 answers={answers}
                 courseDefaults={courseDefaults}
                 overrides={computeOverrides(answers)}
-                estimatedMinutes={courseDefaults?.estimatedMinutes ?? 30}
+                estimatedMinutes={answers.assignmentDuration ? parseInt(answers.assignmentDuration, 10) : (courseDefaults?.estimatedMinutes ?? 30)}
                 docsCount={uploadedDocs.length}
                 disabled={isBlocked}
                 onGenerate={() => commitAnswer("generate")}
@@ -1178,7 +1472,11 @@ export function ConversationalAssessment({
             className="ca-input"
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
-            placeholder={currentStep?.placeholder ?? ""}
+            placeholder={
+              currentStep?.id === "assignmentDuration" && courseDefaults
+                ? `e.g., ${courseDefaults.estimatedMinutes} (default for ${answers.assessmentType || courseDefaults.assessmentTypes[0]})`
+                : currentStep?.placeholder ?? ""
+            }
             disabled={isBlocked}
             autoComplete="off"
           />

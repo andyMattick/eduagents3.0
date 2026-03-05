@@ -8,7 +8,10 @@
  * Auto-load: import the problemPlugins/ barrel to trigger registration.
  */
 
+// internal registry
 import type { ProblemPlugin } from "../interfaces/problemPlugin";
+// Explicitly import all plugins to trigger their registration
+import "./problemPlugins/templates";
 
 // ─── Registry Store ────────────────────────────────────────────────────────
 
@@ -32,6 +35,13 @@ export function getPlugin(pluginId: string | undefined): ProblemPlugin | undefin
   if (!pluginId) return undefined;
   return _plugins.get(pluginId);
 }
+
+import { arithmetic_fluency_template } from "./problemPlugins/templates/arithmetic_fluency_template";
+import { FractionsPlugin } from "./problemPlugins/templates/fractions";
+import { LinearEquationPlugin } from "./problemPlugins/templates/linearEquation";
+registerPlugin(arithmetic_fluency_template);
+registerPlugin(FractionsPlugin);
+registerPlugin(LinearEquationPlugin);
 
 /**
  * Return all registered plugins that list the given topic in supportedTopics.

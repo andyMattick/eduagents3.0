@@ -2,13 +2,13 @@
  * scatterPlotDiagram.ts — Scatter plot diagram plugin.
  */
 
-import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../interfaces/problemPlugin";
-import { renderScatterPlotSVG } from "../../services/diagramGenerator";
+import type { ProblemPlugin, ProblemSlot, GenerationContext, GeneratedProblem } from "../../../interfaces/problemPlugin";
+import { renderScatterPlotSVG } from "../../diagramGenerator";
 import { randInt } from "../templates/mathUtils";
 
 export const ScatterPlotPlugin: ProblemPlugin = {
   id: "scatter_plot",
-  generationType: "DIAGRAM",
+  generationType: "diagram",
   supportedTopics: ["statistics", "scatter plots", "data analysis", "correlation"],
 
   async generate(slot: ProblemSlot, _context: GenerationContext): Promise<GeneratedProblem> {

@@ -27,7 +27,7 @@ import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
 import { resetLLMGate } from "@/pipeline/llm/gemini";
-import "@/pipeline/agents/pluginEngine/problemPlugins";
+import "@/pipeline/agents/pluginEngine/services/problemPlugins";
 import { loadPlugins, listPlugins } from "@/pipeline/agents/pluginEngine/services/pluginRegistry";
 
 import {
@@ -46,7 +46,7 @@ import {
   resetConceptGraph,
 } from "@/pipeline/agents/pluginEngine/conceptGraph";
 // Bootstrap plugin registration (templates, diagrams, LLM fallback)
-import "@/pipeline/agents/pluginEngine/problemPlugins";
+import "@/pipeline/agents/pluginEngine/services/problemPlugins";
 // InputJudge is dynamically imported in the pipeline body
 
 console.log("[Pipeline] Loaded runPipeline.ts — Version 3.0.0 (Plugin Engine)");
@@ -457,7 +457,7 @@ const problemSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
     s.diagramType ? "diagram" :
     s.imageReferenceId ? "image_analysis" :
     "llm",
-  problem_type: s.questionType ?? "short_answer",
+  problem_type: s.questionType,
   template_id: s.templateId ?? null,
   diagram_type: s.diagramType ?? null,
   image_reference_id: s.imageReferenceId ?? null,
@@ -465,7 +465,7 @@ const problemSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
   subtopic: null,
   difficulty: s.difficulty ?? "medium",
   pacing_seconds: s.pacingSeconds ?? null,
-  question_format: s.questionType ?? "short_answer",
+  question_format: s.questionType,
   cognitive_demand: s.cognitiveDemand ?? null,
 }));
 blueprint.problemSlots = problemSlots; // Attach to blueprint for downstream agents

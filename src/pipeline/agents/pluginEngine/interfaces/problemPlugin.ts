@@ -31,19 +31,19 @@ export interface ProblemSlot {
   problem_type: string;
 
   /** When problem_source = "template", this MUST be set */
-  template_id?: string;
+  template_id?: string | null;
 
   /** When problem_source = "diagram", this MUST be set */
-  diagram_type?: DiagramType;
+  diagram_type?: string | null;
 
   /** When problem_source = "image_analysis", this MUST be set */
-  image_reference_id?: string;
+  image_reference_id?: string | null;
 
   /** Subject-area topic */
   topic: string;
 
   /** Narrower topic within the main topic */
-  subtopic?: string;
+  subtopic: string | null | undefined;
 
   /** Difficulty band */
   difficulty: "easy" | "medium" | "hard";
@@ -130,7 +130,15 @@ export interface ValidationResult {
 
 // ─── Plugin Interface ──────────────────────────────────────────────────────
 
-export type GenerationType = "LLM" | "TEMPLATE" | "DIAGRAM" | "IMAGE_ANALYSIS";
+export type GenerationType = "llm" | "template" | "diagram" | "image_analysis";
+
+export interface TemplateGeneratedProblem {
+  slot_id: string;
+  prompt: string;
+  answer: string;
+  metadata?: Record<string, any>;
+}
+
 
 export interface ProblemPlugin {
   /** Unique plugin identifier (e.g. "linear_equation_template", "triangle_diagram", "llm_default") */
@@ -143,7 +151,7 @@ export interface ProblemPlugin {
   supportedTopics: string[];
 
   /** Generate a problem for the given slot */
-  generate(slot: ProblemSlot, context: GenerationContext): Promise<GeneratedProblem>;
+  generate(slot: ProblemSlot, context: GenerationContext): Promise<TemplateGeneratedProblem>;
 
   /** Optional: plugin-level validation before Gatekeeper */
   validate?: (problem: GeneratedProblem, slot: ProblemSlot) => ValidationResult;

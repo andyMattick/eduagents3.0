@@ -5,13 +5,16 @@ import type {
   DerivedStructuralConstraints,
 } from "@/pipeline/agents/architect/constraintEngine";
 import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
-
+import { ProblemSlot } from "../agents/pluginEngine";
 export interface Blueprint {
   uar: UnifiedAssessmentRequest;
 
   writerPrompt: string;
 
   plan: BlueprintPlanV3_2;
+
+  problemSlots: ProblemSlot[];
+
 
   /**
    * Legacy boolean flags kept for backward compatibility with Gatekeeper/Writer.
