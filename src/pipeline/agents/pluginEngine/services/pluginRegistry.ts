@@ -35,13 +35,14 @@ export function getPlugin(pluginId: string | undefined): ProblemPlugin | undefin
   if (!pluginId) return undefined;
   return _plugins.get(pluginId);
 }
-
+import { algebraic_fluency_template } from "./problemPlugins/templates/algebraic_fluency_template";
 import { arithmetic_fluency_template } from "./problemPlugins/templates/arithmetic_fluency_template";
 import { FractionsPlugin } from "./problemPlugins/templates/fractions";
 import { LinearEquationPlugin } from "./problemPlugins/templates/linearEquation";
 registerPlugin(arithmetic_fluency_template);
 registerPlugin(FractionsPlugin);
 registerPlugin(LinearEquationPlugin);
+registerPlugin(algebraic_fluency_template);
 
 /**
  * Return all registered plugins that list the given topic in supportedTopics.

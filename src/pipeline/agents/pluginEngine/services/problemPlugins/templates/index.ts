@@ -6,3 +6,5 @@
 export * from "./arithmetic_fluency_template";
 export * from "./fractions";
 export * from "./linearEquation";
+export * from "./algebraic_fluency_template";
+

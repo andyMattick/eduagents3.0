@@ -1,4 +1,5 @@
 import { TEMPLATE_TOPIC_MAP, DIAGRAM_TOPIC_MAP } from "./topicMaps";
+
 import type { ProblemSlot } from "../pluginEngine/interfaces/problemPlugin";
 export interface PluginAssignment {
   problem_source: ProblemSource;
@@ -19,6 +20,8 @@ export const QUESTION_TYPE_PLUGIN_MAP: Record<string, ProblemSource> = {
   graphInterpretation: "diagram",
   trueFalse: "template",
   shortAnswer: "template",
+  algebraicFluency: "template"
+
 
 
 
@@ -26,7 +29,8 @@ export const QUESTION_TYPE_PLUGIN_MAP: Record<string, ProblemSource> = {
 };
 
 export const QUESTION_TYPE_TEMPLATE_MAP: Record<string, string> = {
-  arithmeticFluency: "arithmetic_fluency_template",
+  algebraicFluency: "algebraic_fluency_template",
+ arithmeticFluency: "arithmetic_fluency_template",
   fractions: "fractions_template",
   LinearEquation: "linear_equation_template",
   passageBasedReading: "passage_based_reading_template",

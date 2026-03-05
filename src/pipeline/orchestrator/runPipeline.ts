@@ -712,11 +712,11 @@ const mergedDraft = routedItems.map((item) => {
 });
 
 
-// 2b. Count invariant — warn if Writer dropped any slots, but continue
-// with what we have rather than aborting the entire run.
-if (writerDraft.length !== blueprint.plan.slots.length) {
+// 2b. Count invariant — warn if Writer dropped any of the fallback slots it was
+// responsible for, but continue rather than aborting the entire run.
+if (writerDraft.length !== writerFallbackSlots.length) {
   console.error(
-    `[Pipeline] Warning: Writer returned ${writerDraft.length} items but blueprint has ${blueprint.plan.slots.length} slots. ` +
+    `[Pipeline] Warning: Writer returned ${writerDraft.length} items but was given ${writerFallbackSlots.length} fallback slot(s). ` +
     `Proceeding with partial draft — missing slots will be absent from the final assessment.`
   );
 }
@@ -788,9 +788,9 @@ const { gatekeeperResult, philosopherWrite } = await validateAndScore(
 }
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
   // Skip playtest, skip compare → go straight to Builder
-  validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
+  validateSlotIntegrity(blueprint.plan?.slots ?? [], mergedDraft);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
-    { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
+    { items: mergedDraft, blueprint: blueprintForBuilder(blueprint) });
 
   // ── Concept Graph tagging ──────────────────────────────────────────────
   tagConceptGraph(finalAssessment);
@@ -850,7 +850,7 @@ if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
 
 if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   const rewritten = await runAgent(trace, "Rewriter", runRewriter, {
-    writerDraft,
+    writerDraft: mergedDraft,
     rewriteInstructions: philosopherWrite.rewriteInstructions,
     mathFormat: (uarWithDefaults as any).mathFormat,
   });
@@ -926,7 +926,7 @@ const astro1 = await runAgent(
   "Astronomer Phase 1",
   runAstronomerPhase1,
   {
-    writerDraft,
+    writerDraft: mergedDraft,
     gatekeeperResult,
   }
 );
@@ -962,7 +962,7 @@ const philosopherPlaytest = await runAgent(
 // PLAYTEST BRANCHING
 if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 6) {
   const rewritten = await runAgent(trace, "Rewriter", runRewriter, {
-    writerDraft,
+    writerDraft: mergedDraft,
     rewriteInstructions: philosopherPlaytest.rewriteInstructions,
     mathFormat: (uarWithDefaults as any).mathFormat,
   });
@@ -1033,9 +1033,9 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 
 // 9. BUILDER — FINAL ASSEMBLY (no rewrites needed)
 // ===============================
 
-validateSlotIntegrity(blueprint.plan?.slots ?? [], writerDraft);
+validateSlotIntegrity(blueprint.plan?.slots ?? [], mergedDraft);
 const finalAssessment = await runAgent(trace, "Builder", runBuilder,
-  { items: writerDraft, blueprint: blueprintForBuilder(blueprint) });
+  { items: mergedDraft, blueprint: blueprintForBuilder(blueprint) });
 
 // ── Concept Graph tagging ──────────────────────────────────────────────
 tagConceptGraph(finalAssessment);

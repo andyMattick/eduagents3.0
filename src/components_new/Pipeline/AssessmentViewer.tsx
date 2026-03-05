@@ -278,6 +278,9 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
     try {
       // Answer key is always included as a separate final page.
       await downloadFinalAssessmentPDF(assessment, { title: displayTitle, subtitle, includeAnswerKey: true, version: "teacher" });
+    } catch (error) {
+      console.error("[AssessmentViewer] PDF download failed:", error);
+      alert(`PDF download failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setPdfLoading(false);
     }

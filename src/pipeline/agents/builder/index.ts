@@ -86,10 +86,19 @@ function transformText(text?: string): string | undefined {
   // same typography / math normalisation pipeline as the rest of the prompt.
   const formattedItem = formatTrueFalseItem(item);
 
+  // Safety check: ensure questionType is a valid string, never undefined or the string "undefined"
+  const questionType = formattedItem.questionType && formattedItem.questionType !== 'undefined'
+    ? String(formattedItem.questionType)
+    : 'shortAnswer'; // fallback to shortAnswer if questionType is missing or invalid
+  
+  if (!formattedItem.questionType || formattedItem.questionType === 'undefined') {
+    console.warn(`[Builder] Item ${i + 1} (slot ${formattedItem.slotId}) has missing/invalid questionType; defaulting to shortAnswer`);
+  }
+
   return {
     questionNumber: i + 1,
     slotId: formattedItem.slotId,
-    questionType: formattedItem.questionType,
+    questionType,
 
     prompt: transformText(formattedItem.prompt) ?? "",
 

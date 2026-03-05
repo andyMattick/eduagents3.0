@@ -102,7 +102,9 @@ export function groupItemsBySection(
 }
 
 /** Human-readable section header for a questionType camelCase key. */
-export function formatSectionHeader(type: string): string {
+export function formatSectionHeader(type: string | null | undefined): string {
+  if (!type) return "Untitled";
+  
   switch (type) {
     case "multipleChoice":      return "Multiple Choice";
     case "shortAnswer":         return "Short Answer";

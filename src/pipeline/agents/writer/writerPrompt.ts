@@ -43,6 +43,7 @@ export function buildWriterPrompt(
   scribe: ScribePrescriptions
 ): string {
   const isMC = slot.questionType === "multipleChoice";
+  const isArithmetic = slot.questionType === "arithmeticFluency";
 
   return `
 You are WRITER v4.0. Generate ONE question that satisfies the slot exactly.
@@ -63,7 +64,16 @@ SLOT REQUIREMENTS (MANDATORY)
 - questionType: ${slot.questionType}
 - cognitiveDemand: ${slot.cognitiveDemand}
 - difficulty: ${slot.difficulty}
-
+${isArithmetic ? `
+ARITHMETIC FLUENCY STRICT REQUIREMENTS
+⚠️  CRITICAL: This is an ARITHMETIC FLUENCY slot ONLY.
+- MUST be a bare arithmetic expression (e.g., "7 + 4", "12 - 5", "3 × 6", "16 ÷ 2")
+- NEVER include words, stories, or context narratives
+- NEVER generate word problems or story-based items
+- Operands should stay in the range: min=${context.range?.min ?? 1}, max=${context.range?.max ?? 10}
+- Operation to use: ${context.operation ? context.operation.toUpperCase() : "any"}
+- Answer should be a single number only
+` : ''}
 MATH FORMATTING CONTRACT (mandatory for every question prompt and answer)
 - Fractions: write as (numerator)/(denominator)        e.g. "(4x - 5)/(x + 2)"
 - Radicals:  write as √(expression) with parentheses   e.g. "√(x + 7)", "√(2x - 1)"

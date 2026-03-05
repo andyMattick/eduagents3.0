@@ -763,34 +763,45 @@ export async function runArchitect({
 
 
 function buildProblemSlot(s: any, context: any): ProblemSlot {
-  
-  const topic = s.topicAngle ?? context.topic ?? "";
+  const normalizedType = String(s.questionType).trim();
+  const rawTopic = s.topicAngle ?? context.topic ?? "";
+  const normalizedTopic = String(rawTopic)
+    .toLowerCase()
+    .replace(/—/g, "-")            // normalize em-dash
+    .replace(/[^a-z0-9\s-]/g, "")   // remove punctuation
+    .replace(/\s+/g, " ")           // collapse spaces
+    .trim()
+    .split("-")[0]                  // keep only the part before the dash
+    .trim();
+
 
   // NEW: topic-based plugin assignment
-  const plugin = assignPluginFields(topic, s.questionType);
+  const plugin = assignPluginFields(normalizedTopic, normalizedType);
+
   console.log("[SlotBuilder] Built slot:", {
     slot_id: s.id,
-    questionType: s.questionType,
-    topic: s.topicAngle ?? context.topic,
+    questionType: normalizedType,
+    topic: normalizedTopic,
+
   });
 
 
   return {
-    questionType: s.questionType,   // or request.questionTypes[i]
+    questionType: normalizedType,   // or request.questionTypes[i]
 
     slot_id: s.id,
     problem_source: plugin.problem_source as "template" | "diagram" | "image_analysis" | "llm",
 
 
-    problem_type: s.questionType,
+    problem_type: normalizedType,
     template_id: plugin.template_id,
     diagram_type: plugin.diagram_type,
     image_reference_id: plugin.image_reference_id,
-    topic,
+    topic: normalizedTopic,
     subtopic: null,
     difficulty: s.difficulty ?? "medium",
     pacing_seconds: s.pacingSeconds ?? null,
-    question_format: s.questionType,
+    question_format: normalizedType,
     cognitive_demand: s.cognitiveDemand ?? null,
   };
 }
