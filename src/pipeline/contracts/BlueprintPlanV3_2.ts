@@ -12,6 +12,7 @@ export type QuestionType =
   | "shortAnswer"
   | "constructedResponse"
   | "arithmeticFluency"
+  | "algebraicFluency"
   | "trueFalse"
   | "passageBased"
   | "graphInterpretation"

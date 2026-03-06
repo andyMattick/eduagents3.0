@@ -44,11 +44,15 @@ export function buildWriterPrompt(
 ): string {
   const isMC = slot.questionType === "multipleChoice";
   const isArithmetic = slot.questionType === "arithmeticFluency";
+  const isAlgebraic = slot.questionType === "algebraicFluency";
+  const isFractions = slot.questionType === "fractions";
+  const isLinear = slot.questionType === "linearEquation";
+  const isPassage = slot.questionType === "passageBased";
 
   return `
-You are WRITER v4.0. Generate ONE question that satisfies the slot exactly.
+You are WRITER v5.0. Generate ONE question that satisfies the slot exactly.
 
-GROUNDING (MANDATORY)
+GROUNDING
 - Domain: ${context.domain}
 - Topic: ${context.topic}
 - Grade: ${context.grade}
@@ -59,50 +63,82 @@ GROUNDING (MANDATORY)
 - Misconceptions: ${JSON.stringify(context.misconceptions)}
 - Avoid: ${JSON.stringify(context.avoidList)}
 
-SLOT REQUIREMENTS (MANDATORY)
+SLOT REQUIREMENTS
 - slotId: ${slot.id}
 - questionType: ${slot.questionType}
 - cognitiveDemand: ${slot.cognitiveDemand}
 - difficulty: ${slot.difficulty}
+
+TEMPLATE RULES (MANDATORY)
+
 ${isArithmetic ? `
-ARITHMETIC FLUENCY STRICT REQUIREMENTS
-⚠️  CRITICAL: This is an ARITHMETIC FLUENCY slot ONLY.
-- MUST be a bare arithmetic expression (e.g., "7 + 4", "12 - 5", "3 × 6", "16 ÷ 2")
-- NEVER include words, stories, or context narratives
-- NEVER generate word problems or story-based items
-- Operands should stay in the range: min=${context.range?.min ?? 1}, max=${context.range?.max ?? 10}
-- Operation to use: ${context.operation ? context.operation.toUpperCase() : "any"}
-- Answer should be a single number only
-` : ''}
-MATH FORMATTING CONTRACT (mandatory for every question prompt and answer)
-- Fractions: write as (numerator)/(denominator)        e.g. "(4x - 5)/(x + 2)"
-- Radicals:  write as √(expression) with parentheses   e.g. "√(x + 7)", "√(2x - 1)"
-- Exponents: write as x^2, x^(-1), (x+3)^2            do NOT use Unicode superscripts
-- Negatives: attach minus directly to its value        write "-5x" not "- 5x"
-- Coefficients: write as 3x, not "3·x", "3 x", or "3*x"
+ARITHMETIC FLUENCY TEMPLATE
+- Produce ONLY a bare arithmetic expression (e.g., "7 + 4")
+- NO words, NO stories, NO context
+- Operands range: ${context.range?.min ?? 1} to ${context.range?.max ?? 10}
+- Operation: ${context.operation}
+- Answer must be a single number
+` : ""}
 
-COGNITIVE DEMAND DEFINITIONS
-For cognitiveDemand:
-- remember → ask for recall only
-- understand → ask for explanation or meaning
-- apply → ask to use a procedure
-- analyze → ask to compare, categorize, or break something into parts
-- evaluate → ask to judge or justify with reasons
-- create → ask to design, generate, or construct something new
+${isAlgebraic ? `
+ALGEBRAIC FLUENCY TEMPLATE
+- Produce ONLY symbolic algebra (no stories, no real-world context)
+- Allowed tasks: simplify, combine like terms, evaluate, expand
+- Use variables x or y only
+- Keep expressions short (≤ 2 operations)
+- Answer must be a symbolic expression or number
+- NO words in the prompt except the instruction itself
+` : ""}
 
-SCRIBE BEHAVIORAL GUIDANCE
-Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
-Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
-Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
+${isFractions ? `
+FRACTIONS TEMPLATE
+- Use fraction notation (a)/(b)
+- Tasks: add, subtract, multiply, divide, simplify
+- Keep numbers small (1–12)
+- Answer must be a simplified fraction
+- NO stories or real-world context
+` : ""}
 
-OUTPUT FORMAT (STRICT JSON ONLY)
-{
-  "slotId": "${slot.id}",
-  "questionType": "${slot.questionType}",
-  "prompt": "<question stem>",
-  ${isMC ? `"options": ["...", "...", "...", "..."],` : ""}
-  "answer": "<correct answer>"
-}
+${isLinear ? `
+LINEAR EQUATION TEMPLATE
+- Produce a one-step or two-step linear equation in x
+- Student must solve for x
+- Keep coefficients small (1–12)
+- Answer must be a single number
+- NO stories or real-world context
+` : ""}
+
+${isPassage ? `
+PASSAGE-BASED TEMPLATE
+- Include a short passage (60–90 words)
+- Follow with a question stem (≤ 30 words)
+- Maintain student-friendly, formal tone
+` : ""}
+
+${isMC ? `
+MULTIPLE CHOICE TEMPLATE
+- Provide a short stem (≤ 30 words)
+- Provide exactly 4 options
+- One option must match the answer exactly
+` : ""}
+
+STYLE & PACING RULES
+- Keep stems short (≤ 30 words)
+- Avoid multi-strand integration when scopeWidth = ${context.scopeWidth}
+- Maintain student-friendly, formal tone
+
+SCRIBE GUIDANCE
+- Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
+- Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
+- Compensate For: ${scribe.weaknesses?.join("; ") || "none"}
+
+OUTPUT FORMAT (MANDATORY — RAW FIELDS ONLY)
+Return ONLY the following fields, with NO code fences, NO JSON object wrapper, and NO extra text:
+
+slotId: "${slot.id}"
+questionType: "${slot.questionType}"
+prompt: <the question stem the student sees>
+${isMC ? `options: ["A", "B", "C", "D"]` : `options: null`}
+answer: <the correct answer>
 `;
 }
-

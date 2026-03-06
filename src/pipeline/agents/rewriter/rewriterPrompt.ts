@@ -1,57 +1,73 @@
-export function buildRewriterPrompt({
-  writerDraft,
-  rewriteInstructions,
-}: {
-  writerDraft: any;
-  rewriteInstructions: Array<{
-    problemId: string;
-    issues: string[];
-    instructions: string;
-  }>;
-}): string {
+import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import { WriterContext, ScribePrescriptions } from "../writer/writerPrompt";
+export function buildRewriterPrompt(
+  slot: BlueprintPlanV3_2["slots"][number],
+  context: WriterContext,
+  scribe: ScribePrescriptions,
+  brokenItem: {
+    slotId: string;
+    questionType: string | null;
+    prompt: string;
+    options?: string[] | null;
+    answer: string | null;
+  }
+): string {
+  const isMC = slot.questionType === "multipleChoice";
+  const isPassage = slot.questionType === "passageBased";
+
   return `
-You are REWRITER v3, the canonical editing agent in a deterministic,
-governance‑grade assessment engine.
+You are REWRITER v2.0.
 
-You NEVER:
-- change the blueprint
-- change slot assignments
-- change question count
-- change cognitive level or difficulty unless explicitly instructed
-- add or remove questions
-- invent new content not requested
+Your job is to FIX a single broken question so it fully satisfies:
+- the slot specification,
+- the Gatekeeper prescriptions,
+- the teacher’s style and pacing,
+- and the Writer Contract.
 
-You ALWAYS:
-- apply rewriteInstructions EXACTLY
-- modify ONLY the problems listed
-- preserve all metadata unless instructions explicitly override it
-- return the FULL updated writerDraft
+Rewrite ONLY if the Gatekeeper reported violations. Otherwise, return the original item unchanged.
 
-==========================
-INPUT
-==========================
+BROKEN ITEM
+slotId: ${brokenItem.slotId}
+questionType: ${brokenItem.questionType}
+prompt: ${brokenItem.prompt}
+options: ${JSON.stringify(brokenItem.options ?? null)}
+answer: ${brokenItem.answer}
 
-WRITER DRAFT:
-${JSON.stringify(writerDraft, null, 2)}
+SLOT REQUIREMENTS
+slotId: ${slot.id}
+expected questionType: ${slot.questionType}
+cognitiveDemand: ${slot.cognitiveDemand}
+difficulty: ${slot.difficulty}
+scopeWidth: ${context.scopeWidth}
 
-REWRITE INSTRUCTIONS:
-${JSON.stringify(rewriteInstructions, null, 2)}
+PRESCRIPTIONS
+Weaknesses: ${scribe.weaknesses?.join("; ") || "none"}
+Required Behaviors: ${scribe.requiredBehaviors?.join("; ") || "none"}
+Forbidden Behaviors: ${scribe.forbiddenBehaviors?.join("; ") || "none"}
 
-==========================
-OUTPUT FORMAT
-==========================
+REWRITE RULES
+1. Fix ONLY the violated elements. Preserve the original intent and concept.
+2. Align questionType EXACTLY with the slot.
+3. Pacing:
+   - Stem ≤ 30 words.
+   - ${isPassage ? "Passage 60–90 words." : "No long passages."}
+4. Multiple choice:
+   - Exactly 4 options.
+   - One option MUST match the answer exactly.
+5. Style:
+   - Student-friendly, formal tone.
+   - No trick questions.
+   - Avoid sensitive content.
+6. Scope:
+   - Respect scopeWidth = ${context.scopeWidth}; avoid multi-strand integration.
 
-Rules (mandatory — zero exceptions):
-1. Respond ONLY with a single valid JSON object.
-2. Escape every double-quote that appears INSIDE a string value as \\".
-3. Never include raw newline characters (\\n) inside string values — replace them with a space or semicolon.
-4. Never include trailing commas before } or ].
-5. The top-level key must be "writerDraft".
-6. Preserve ALL items from the original draft — do NOT add, remove, or reorder questions.
-7. Only modify the specific items listed in rewriteInstructions; copy all others unchanged.
+OUTPUT FORMAT (RAW FIELDS ONLY)
+Return ONLY these fields, with NO code fences, NO JSON object wrapper, and NO extra text:
 
-{
-  "writerDraft": { ...updated draft... }
-}
+slotId: "${slot.id}"
+questionType: "${slot.questionType}"
+prompt: <fixed question stem (and passage if needed)>
+${isMC ? `options: ["A", "B", "C", "D"]` : `options: null`}
+answer: <fixed correct answer>
 `;
 }

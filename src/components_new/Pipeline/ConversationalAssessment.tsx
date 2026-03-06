@@ -37,6 +37,7 @@ const QUESTION_FORMAT_CHIPS = [
   { label: "Fill in the Blank",      value: "fitbOnly"          },
   { label: "True / False",           value: "trueFalseOnly"     },
   { label: "Arithmetic Fluency",     value: "arithmeticFluency" },
+  { label: "Algebra Fluency",        value: "algebraicFluency"  },
   { label: "Passage-Based Reading",  value: "passageBased"      },
   { label: "Mixed Format",           value: "mixed"             },
 ];
@@ -62,6 +63,7 @@ const FORMAT_PACING_KEY: Record<string, string> = {
   fitbOnly:          "fillInTheBlank",
   trueFalseOnly:     "trueFalse",
   arithmeticFluency: "arithmeticFluency",
+  algebraicFluency:  "algebraicFluency",
   passageBased:      "passageBased",
   mixed:             "",
 };

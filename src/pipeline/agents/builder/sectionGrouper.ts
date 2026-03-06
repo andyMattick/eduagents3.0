@@ -112,6 +112,7 @@ export function formatSectionHeader(type: string | null | undefined): string {
     case "constructedResponse": return "Constructed Response";
     case "trueFalse":            return "True / False";
     case "arithmeticFluency":   return "Arithmetic Fluency";
+    case "algebraicFluency":    return "Algebra Fluency";
     case "passageBased":        return "Reading Passage";
     case "graphInterpretation": return "Graph Interpretation";
     case "fillInTheBlank":      return "Fill in the Blank";
