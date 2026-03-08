@@ -312,6 +312,8 @@ public async debugPhase5(rawText: string) {
   // -----------------------------
   
 private defaultBlockify(rawText: string): NormalizedBlock[] {
+  console.log(">>> USING UPDATED BLOCKIFIER <<<");
+
   return rawText
     .split("\n")
     .map(line => {
@@ -339,7 +341,6 @@ private defaultBlockify(rawText: string): NormalizedBlock[] {
     })
     .filter(Boolean) as NormalizedBlock[];
 }
-
 private buildHierarchy(blocks: NormalizedBlock[]): SegmentedItem[] {
   const items: SegmentedItem[] = [];
   const stack: { indent: number; item: SegmentedItem }[] = [];
@@ -363,93 +364,44 @@ private buildHierarchy(blocks: NormalizedBlock[]): SegmentedItem[] {
     }
 
     if (stack.length === 0) {
-      // top-level item
       items.push(item);
     } else {
-      // child item
       const parent = stack[stack.length - 1].item;
       parent.subItems.push(item);
-      // Mark parent as container if it has text
-      if (parent.rawPrompt.length > 0) {
-        parent.isContainer = true;
-      }
+      parent.isContainer = true;
     }
 
     stack.push({ indent: block.indent, item });
+  }
+
+  // Mark containers recursively
+  const markContainers = (nodes: SegmentedItem[]) => {
+    for (const n of nodes) {
+      if (n.subItems.length > 0) {
+        n.isContainer = true;
+      }
+      markContainers(n.subItems);
+    }
+  };
+  markContainers(items);
+
+  // ⭐ FIX: wrap multiple roots under a synthetic root
+  if (items.length > 1) {
+    return [{
+      id: `item_${this.globalItemCounter++}`,
+      rawPrompt: "",
+      blocks: [],
+      subItems: items,
+      indent: -1,
+      numbering: null,
+      isContainer: true
+    }];
   }
 
   return items;
 }
 
 
-
-segmentIntoItems(text: string, sectionTaskType?: string): SegmentedItem[] {
-  const lines = text
-    .split("\n")
-    .map(l => l.trimEnd())
-    .filter(l => l.trim().length > 0);
-  const root: SegmentedItem = {
-  id: "root",
-  rawPrompt: "",
-  blocks: [],
-  subItems: [],
-  indent: -1,
-  numbering: null,
-  isContainer: true,
-  sectionTaskType
-};
-
-
-    const stack: SegmentedItem[] = [root];
-
-  for (const line of lines) {
-    const indent = countIndent(line);
-    const numbering = extractNumbering(line);
-    const textWithoutNum = numbering ? stripNumbering(line) : line.trim();
-    
-
-    const newItem: SegmentedItem = {
-      id: `item_${this.globalItemCounter++}`,
-
-      rawPrompt: textWithoutNum,
-      blocks: [
-        { type: "paragraph", text: textWithoutNum } as NormalizedBlock
-      ], 
-      subItems: [],
-      indent,
-      numbering,
-      isContainer: false,
-      sectionTaskType
-    };
-
-    // Find correct parent using numbering-first logic
-    let parent = stack[stack.length - 1];
-
-    // If numbering exists, use numbering hierarchy
-    if (numbering) {
-      while (parent.numbering && !isChildNumbering(parent.numbering, numbering)) {
-        stack.pop();
-        parent = stack[stack.length - 1];
-      }
-    } else {
-      // No numbering → fallback to indentation
-      while (indent <= parent.indent) {
-        stack.pop();
-        parent = stack[stack.length - 1];
-      }
-    }
-
-    // If parent has text AND numbering, it becomes a container
-    if (parent !== root && parent.rawPrompt.length > 0) {
-      parent.isContainer = true;
-    }
-
-    parent.subItems.push(newItem);
-    stack.push(newItem);
-  }
-
-  return root.subItems;
-}
 
 
 private preprocessAndSegment(input: AnalyzerV2Input) {
@@ -467,7 +419,7 @@ private preprocessAndSegment(input: AnalyzerV2Input) {
   const allSegmentedItems: SegmentedItem[] = [];
 
   // Phase 1c: Group items into sections
-  const processItems = (items: SegmentedItem[], sectionTaskType?: string | null) => {
+  const processItems = (items: SegmentedItem[], sectionTaskType?: string | null, isTopLevel: boolean = true) => {
     for (const item of items) {
       // Check if this is a section instruction
       const inferredTask = this.detectSectionInstruction(item.rawPrompt);
@@ -500,17 +452,26 @@ private preprocessAndSegment(input: AnalyzerV2Input) {
 
         // Add item to current section
         currentSection.itemIds.push(item.id);
-        allSegmentedItems.push(item);
+        
+        // Only add top-level items to segmented items list
+        // Children will be discovered through the recursive walk in parseItems()
+        if (isTopLevel) {
+          allSegmentedItems.push(item);
+        }
 
         // Recursively process children
         if (item.subItems.length > 0) {
-          processItems(item.subItems, item.sectionTaskType ?? currentSection.taskType);
+          processItems(item.subItems, item.sectionTaskType ?? currentSection.taskType, false);
         }
       }
     }
   };
 
-  processItems(hierarchicalItems);
+  if (hierarchicalItems.length > 0) {
+  processItems([hierarchicalItems[0]], null, true);
+}
+
+
 
   // Flush last section
   if (currentSection) {
@@ -529,8 +490,26 @@ private preprocessAndSegment(input: AnalyzerV2Input) {
 
 
 private detectSectionInstruction(text: string): string | null {
-  const lower = text.toLowerCase();
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
 
+  // === PATTERN 1: Part / Section boundaries (highest priority) ===
+  // "Part A:", "Part B.", "part c :", etc.
+  if (/^\s*Part\s+[A-Z]\s*[:.]/i.test(trimmed)) {
+    return "section";
+  }
+
+  // "Section I:", "Section II.", "section iii :", etc. (roman numerals)
+  if (/^\s*Section\s+(I|II|III|IV|V|VI|VII|VIII|IX|X)\s*[:.]/i.test(trimmed)) {
+    return "section";
+  }
+
+  // "Section 1:", "Section 2.", "section 3 :", etc. (numeric)
+  if (/^\s*Section\s+\d+\s*[:.]/i.test(trimmed)) {
+    return "section";
+  }
+
+  // === PATTERN 2: Instructional verbs (task-specific) ===
   if (lower.endsWith(":")) {
     if (lower.includes("solve")) return "calculate";
     if (lower.includes("simplify")) return "calculate";
@@ -541,6 +520,13 @@ private detectSectionInstruction(text: string): string | null {
     if (lower.includes("explain")) return "explain";
     if (lower.includes("compare")) return "compareContrast";
     if (lower.includes("label")) return "labeling";
+    if (lower.includes("short response")) return "shortAnswer";
+    if (lower.includes("extended response")) return "extendedAnswer";
+    if (lower.includes("multiple choice")) return "multipleChoice";
+    if (lower.includes("vocabulary")) return "vocabulary";
+    if (lower.includes("data interpretation")) return "interpretation";
+    if (lower.includes("read the passage")) return "reading";
+    if (lower.includes("answer the questions")) return "questionAnswering";
   }
 
   return null;
@@ -980,6 +966,70 @@ private isProcedural(item: AnalyzedItem): boolean {
   // -----------------------------
   // Phase 5
   // -----------------------------
+
+private inferSectionTaskType(taskTypeDist: Record<string, number>, itemCount: number): string {
+  if (itemCount === 0) return "generic";
+
+  // Find dominant taskType (>= 40%)
+  const total = Object.values(taskTypeDist).reduce((a, b) => a + b, 0);
+  if (total === 0) return "generic";
+
+  for (const [taskType, count] of Object.entries(taskTypeDist)) {
+    const percent = (count / total) * 100;
+    if (percent >= 40) {
+      if (taskType === "calculate") return "procedural";
+      if (taskType === "explain") return "conceptual";
+      if (taskType === "identify") return "recognition";
+      if (taskType === "interpret") return "dataInterpretation";
+      return taskType;
+    }
+  }
+
+  // No single dominant type → mixed
+  if (taskTypeDist["interpret"] && (taskTypeDist["interpret"] / total) * 100 >= 30) {
+    return "dataInterpretation";
+  }
+
+  return "mixed";
+}
+
+private getSecondaryTaskTypes(taskTypeDist: Record<string, number>, dominantTaskType: string, topN: number = 2): string[] {
+  const total = Object.values(taskTypeDist).reduce((a, b) => a + b, 0);
+  if (total === 0) return [];
+
+  return Object.entries(taskTypeDist)
+    .filter(([taskType]) => taskType !== dominantTaskType)
+    .sort(([, countA], [, countB]) => countB - countA)
+    .slice(0, topN)
+    .map(([taskType]) => taskType);
+}
+
+private getSurfaceFormDistribution(surfaceFormDist: Record<string, number>): { dominant: string | null; secondary: string[] } {
+  const dominant = this.getDominant(surfaceFormDist);
+  const secondary = Object.entries(surfaceFormDist)
+    .filter(([form]) => form !== dominant)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2)
+    .map(([form]) => form);
+  
+  return { dominant, secondary };
+}
+
+private inferStructurePattern(items: ParsedItem[]): string {
+  const containerCount = items.filter(it => it.subItems && it.subItems.length > 0).length;
+  const leafCount = items.filter(it => !it.subItems || it.subItems.length === 0).length;
+  
+  if (containerCount === 0) {
+    return `${leafCount} independent items`;
+  }
+  
+  if (containerCount === 1 && leafCount > 0) {
+    return `1 stem with ${leafCount} sub-items`;
+  }
+  
+  return `${containerCount} container(s), ${leafCount} leaf items`;
+}
+
 private extractSectionStructure(
   segmentedSections: SegmentedSection[],
   parsedItems: ParsedItem[]
@@ -991,27 +1041,39 @@ private extractSectionStructure(
     const difficultyDist = this.computeDistribution(items, it => it.difficultySignals);
     const surfaceFormDist = this.computeDistribution(items, it => [it.surfaceForm]);
     const taskTypeDist = this.computeDistribution(items, it => [it.taskType ?? "generic"]);
-    const concepts = [...new Set(items.flatMap(it => it.concepts))]; 
+    const concepts = [...new Set(items.flatMap(it => it.concepts))];
+
+    // === Section-level task-type inference ===
+    const inferredTaskType = this.inferSectionTaskType(taskTypeDist, items.length);
+    const secondaryTaskTypes = this.getSecondaryTaskTypes(taskTypeDist, inferredTaskType);
+    const { dominant: dominantSurfaceForm, secondary: secondarySurfaceForms } = this.getSurfaceFormDistribution(surfaceFormDist);
+    const structurePattern = this.inferStructurePattern(items);
 
     return {
       id: section.id,
       title: section.title,
       itemIds: section.itemIds,
-      taskType: section.taskType ?? null,
+      taskType: section.taskType ?? inferredTaskType,
       distributions: {
         bloom: bloomDist,
         difficulty: difficultyDist,
         surfaceForm: surfaceFormDist,
         taskType: taskTypeDist
-    },
+      },
       conceptCoverage: concepts,
       sectionTemplate: {
         id: `section_template_${section.id}`,
-        taskType: section.taskType ?? null,
+        taskType: inferredTaskType,
+        secondaryTaskTypes,
+        dominantSurfaceForm,
+        secondarySurfaceForms,
         itemCount: items.length,
         conceptCount: concepts.length,
-        dominantSurfaceForm: this.getDominant(surfaceFormDist),
-        dominantTaskType: this.getDominant(taskTypeDist)
+        structurePattern,
+        difficultyDistribution: difficultyDist,
+        bloomDistribution: bloomDist,
+        surfaceFormDistribution: surfaceFormDist,
+        taskTypeDistribution: taskTypeDist
       }
     };
   });

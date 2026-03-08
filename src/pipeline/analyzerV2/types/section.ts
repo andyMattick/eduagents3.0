@@ -16,9 +16,16 @@ export interface SectionStructure {
   sectionTemplate: {
     id: string;
     taskType: string | null;
+    secondaryTaskTypes?: string[];
     itemCount: number;
     conceptCount: number;
     dominantSurfaceForm: string | null;
-    dominantTaskType: string | null;
+    dominantTaskType?: string | null;
+    secondarySurfaceForms?: string[];
+    structurePattern?: string;
+    difficultyDistribution?: Record<string, number>;
+    bloomDistribution?: Record<string, number>;
+    surfaceFormDistribution?: Record<string, number>;
+    taskTypeDistribution?: Record<string, number>;
   };
 }
