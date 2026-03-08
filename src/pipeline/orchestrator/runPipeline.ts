@@ -855,7 +855,30 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
     mathFormat: (uarWithDefaults as any).mathFormat,
   });
 
-  const gatekeeperFinal = Gatekeeper.validate(blueprint.plan, rewritten);
+  // Normalize template plugin output BEFORE Gatekeeper sees it
+function normalizeForGatekeeper(item: any) {
+  if (item.problemText && !item.prompt) {
+    item.prompt = item.problemText;
+  }
+  if (item.correctAnswer && !item.answer) {
+    item.answer = item.correctAnswer;
+  }
+  if (!item.questionType && item.problemType) {
+    item.questionType = item.problemType;
+  }
+  if (!Array.isArray(item.options)) {
+    item.options = null;
+  }
+  return item;
+}
+
+const normalizedForGK = rewritten.map(normalizeForGatekeeper);
+
+const gatekeeperFinal = Gatekeeper.validate(
+  blueprint.plan,
+  normalizedForGK
+);
+
   logAgentStep(trace, "Gatekeeper (Final)",
     { slotCount: blueprint.plan?.slots?.length ?? 0, itemCount: rewritten.length },
     { ok: gatekeeperFinal.ok, violationCount: gatekeeperFinal.violations?.length ?? 0 });

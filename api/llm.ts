@@ -128,11 +128,13 @@ async function checkDailyLimit(
 
 /** Call Gemini using the server-only API key. */
 async function callGeminiServer({
+  
   model,
   prompt,
   temperature = 0.2,
   maxOutputTokens = 4096,
 }: {
+  
   model: string;
   prompt: string;
   temperature?: number;

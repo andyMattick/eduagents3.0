@@ -5,6 +5,7 @@ import { applyMathFormat } from "../../../utils/mathFormatters";
 import type { MathFormat } from "../../../utils/mathFormatters";
 import { applyLexicalCalibration } from "@/utils/lexical/Calibration";
 import { formatTrueFalseItem } from "./trueFalseFormatter";
+
 type BuilderInput =
   | GeneratedItem[]
   | { items: GeneratedItem[]; blueprint?: any };
@@ -18,82 +19,96 @@ function generateId(): string {
   return `assessment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// --- TEMPLATE → WRITER FIELD NORMALIZATION -------------------------
+// --- TEMPLATE → WRITER FIELD NORMALIZATION -------------------------
+function normalizeTemplateFields(item: any) {
+  if (item.problemText && !item.prompt) {
+    item.prompt = item.problemText;
+  }
+
+  if (item.correctAnswer && !item.answer) {
+    item.answer = item.correctAnswer;
+  }
+
+  if (!item.questionType && item.problemType) {
+    item.questionType = item.problemType;
+  }
+
+  if (!Array.isArray(item.options)) {
+    item.options = null;
+  }
+
+  if (!Array.isArray(item.questions)) {
+    item.questions = undefined;
+  }
+
+  return item;
+}
+
+
 export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> {
-  
   const { items, blueprint } = normalise(input);
- 
   const plan = blueprint?.plan ?? blueprint ?? null;
 
-  // ── Column layout decision ───────────────────────────────────────────
-  // If all (or majority) items are arithmeticFluency, use column layout.
   const arithmeticCount = items.filter(i => i.questionType === "arithmeticFluency").length;
-  const layout: "columns" | "singleColumn" = arithmeticCount > items.length / 2 ? "columns" : "singleColumn";
+  const layout: "columns" | "singleColumn" =
+    arithmeticCount > items.length / 2 ? "columns" : "singleColumn";
 
-  // ── Section instructions per question type ───────────────────────────
   const SECTION_INSTRUCTIONS: Record<string, string> = {
-    multipleChoice:     "Choose the best answer.",
-    shortAnswer:        "Show your work when appropriate.",
+    multipleChoice:      "Choose the best answer.",
+    shortAnswer:         "Show your work when appropriate.",
     constructedResponse: "Explain your reasoning clearly.",
-    trueFalse:          "Circle True or False for each statement.",
-    passageBased:       "Read the passage and answer the questions.",
-    arithmeticFluency:  "Solve each problem. Show your work.",
+    trueFalse:           "Circle True or False for each statement.",
+    passageBased:        "Read the passage and answer the questions.",
+    arithmeticFluency:   "Solve each problem. Show your work.",
     graphInterpretation: "Use the graph to answer each question.",
-    fillInTheBlank:     "Fill in each blank with the correct answer.",
-    matching:           "Match each item on the left to its correct answer on the right.",
+    fillInTheBlank:      "Fill in each blank with the correct answer.",
+    matching:            "Match each item on the left to its correct answer on the right.",
   };
 
-  // Collect the section instructions for types actually present in this assessment
   const presentTypes = [...new Set(items.map(i => i.questionType))];
   const sectionInstructions: Record<string, string> = {};
   for (const qt of presentTypes) {
     if (SECTION_INSTRUCTIONS[qt]) sectionInstructions[qt] = SECTION_INSTRUCTIONS[qt];
   }
 
-  /** Strip residual JSON escape artifacts and normalise typography from user-facing text strings. */
   function cleanText(s: string | undefined): string | undefined {
     if (!s) return s;
     return s
-      .replace(/\\'/g, "'")              // \' → '
-      .replace(/\\"/g, "'")              // \" → ' (escaped double-quote → apostrophe)
-      .replace(/\\n/g, " ")              // literal \n sequence → space
-      .replace(/\\t/g, " ")              // literal \t → space
-      // Smart quote / typography normalisation (LLM output)
-      .replace(/[\u201C\u201D]/g, '"')   // \u201C \u201D (“”) → straight double quote
-      .replace(/[\u2018\u2019]/g, "'")   // \u2018 \u2019 (‘’) → straight apostrophe
-      .replace(/\u2014/g, "--")           // \u2014 (—) → double hyphen
-      .replace(/\u2013/g, "-")            // \u2013 (–) → hyphen
-      .replace(/\u2026/g, "...")          // \u2026 (…) → ellipsis
+      .replace(/\\'/g, "'")
+      .replace(/\\"/g, "'")
+      .replace(/\\n/g, " ")
+      .replace(/\\t/g, " ")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/\u2014/g, "--")
+      .replace(/\u2013/g, "-")
+      .replace(/\u2026/g, "...")
       .trim();
   }
 
   const grade = parseInt(
-  blueprint?.uar?.grade ?? blueprint?.uar?.gradeLevels?.[0] ?? "9",
-  10
-);
+    blueprint?.uar?.grade ?? blueprint?.uar?.gradeLevels?.[0] ?? "9",
+    10
+  );
   const mathFmt: MathFormat = (blueprint?.uar?.mathFormat ?? "unicode") as MathFormat;
 
-function transformText(text?: string): string | undefined {
-  if (typeof text !== "string") return undefined;
-
-  const cleaned = cleanText(text) ?? "";
-  const normalized = normalizeMath(cleaned) ?? cleaned;
-  const formatted  = applyMathFormat(normalized, mathFmt);
-  return applyLexicalCalibration(formatted, grade);
-}
-  const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
-  // Inject "Circle T or F." for trueFalse items that lack an instruction line.
-  // Applied before transformText so the injected text passes through the
-  // same typography / math normalisation pipeline as the rest of the prompt.
-  const formattedItem = formatTrueFalseItem(item);
-
-  // Safety check: ensure questionType is a valid string, never undefined or the string "undefined"
-  const questionType = formattedItem.questionType && formattedItem.questionType !== 'undefined'
-    ? String(formattedItem.questionType)
-    : 'shortAnswer'; // fallback to shortAnswer if questionType is missing or invalid
-  
-  if (!formattedItem.questionType || formattedItem.questionType === 'undefined') {
-    console.warn(`[Builder] Item ${i + 1} (slot ${formattedItem.slotId}) has missing/invalid questionType; defaulting to shortAnswer`);
+  function transformText(text?: string): string | undefined {
+    if (typeof text !== "string") return undefined;
+    const cleaned = cleanText(text) ?? "";
+    const normalized = normalizeMath(cleaned) ?? cleaned;
+    const formatted = applyMathFormat(normalized, mathFmt);
+    return applyLexicalCalibration(formatted, grade);
   }
+
+const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
+  const normalized = normalizeTemplateFields(item);
+  const formattedItem = formatTrueFalseItem(normalized);
+
+  const questionType =
+    formattedItem.questionType && formattedItem.questionType !== "undefined"
+      ? String(formattedItem.questionType)
+      : "shortAnswer";
 
   return {
     questionNumber: i + 1,
@@ -102,28 +117,30 @@ function transformText(text?: string): string | undefined {
 
     prompt: transformText(formattedItem.prompt) ?? "",
 
-    options: formattedItem.options?.map(opt => transformText(opt) ?? ""),
+options: Array.isArray(formattedItem.options)
+  ? formattedItem.options.map((opt: string) => transformText(opt) ?? "")
+  : undefined,
 
     answer: transformText(formattedItem.answer),
 
-    // Passage-based: carry passage text and sub-questions through the same
-    // typography / math normalization pipeline as all other text fields.
     passage:
       formattedItem.passage != null
         ? (transformText(formattedItem.passage) ?? "")
         : undefined,
 
-    questions:
-      formattedItem.questions?.map(q => ({
-        prompt: transformText(q.prompt) ?? "",
-        answer: transformText(q.answer) ?? "",
-      })),
+questions: Array.isArray(formattedItem.questions)
+  ? formattedItem.questions.map((q: { prompt: string; answer: string }) => ({
+      prompt: transformText(q.prompt) ?? "",
+      answer: transformText(q.answer) ?? "",
+    }))
+  : undefined,
+
 
     metadata: formattedItem.metadata,
   };
-});// answerKey removed from pipeline payload — item.answer is already on each item.
-  // Cognitive distribution tally
-  
+});
+
+
   return {
     id: generateId(),
     generatedAt: new Date().toISOString(),

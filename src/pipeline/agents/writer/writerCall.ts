@@ -22,6 +22,7 @@ export async function writerCall(
 ): Promise<WriterOutput> {
   // 1. Build the prompt
   const prompt = buildWriterCallPrompt(uar, plan, constraints);
+  console.log("[Writer] WriterPrompt:", prompt);   // ← PUT IT HERE
 
   // 2. Call the model
   const raw = await callGemini({

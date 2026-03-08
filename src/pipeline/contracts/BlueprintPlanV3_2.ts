@@ -13,6 +13,8 @@ export type QuestionType =
   | "constructedResponse"
   | "arithmeticFluency"
   | "algebraicFluency"
+  | "fractions"
+  | "linearEquation"
   | "trueFalse"
   | "passageBased"
   | "graphInterpretation"

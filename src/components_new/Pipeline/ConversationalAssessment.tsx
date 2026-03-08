@@ -29,18 +29,123 @@ const LEVEL_CHIPS = [
   { label: "AP / Advanced", value: "AP"        },
 ];
 
-const QUESTION_FORMAT_CHIPS = [
-  { label: "Multiple Choice",        value: "mcqOnly"           },
-  { label: "Short Answer",           value: "saOnly"            },
-  { label: "Essay",                  value: "essayOnly"         },
-  { label: "Free Response",          value: "frqOnly"           },
-  { label: "Fill in the Blank",      value: "fitbOnly"          },
-  { label: "True / False",           value: "trueFalseOnly"     },
-  { label: "Arithmetic Fluency",     value: "arithmeticFluency" },
-  { label: "Algebra Fluency",        value: "algebraicFluency"  },
-  { label: "Passage-Based Reading",  value: "passageBased"      },
-  { label: "Mixed Format",           value: "mixed"             },
+const COURSE_CHIPS = [
+  // Math
+  { group: "Math", label: "Math (General)", value: "math" },
+  { group: "Math", label: "Arithmetic", value: "arithmetic" },
+  { group: "Math", label: "Algebra 1", value: "algebra1" },
+  { group: "Math", label: "Algebra 2", value: "algebra2" },
+  { group: "Math", label: "Geometry", value: "geometry" },
+  { group: "Math", label: "Precalculus", value: "precalculus" },
+  { group: "Math", label: "Calculus", value: "calculus" },
+  { group: "Math", label: "Statistics / Probability", value: "statistics" },
+
+  //Foreign Language
+  { group: "Foreign Language", label: "Spanish", value: "spanish" },
+  { group: "Foreign Language", label: "French", value: "french" },
+  { group: "Foreign Language", label: "German", value: "german" },
+  { group: "Foreign Language", label: "Latin", value: "latin" },
+  { group: "Foreign Language", label: "Chinese", value: "chinese" },
+  
+  // English/Language Arts
+  { group: "English/Language Arts", label: "English (General)", value: "english" },
+  { group: "English/Language Arts", label: "Reading & Writing", value: "readingWriting" },
+  { group: "English/Language Arts", label: "Literature", value: "literature" },
+  { group: "English/Language Arts", label: "Composition", value: "composition" },
+  { group: "English/Language Arts", label: "Grammar & Vocabulary", value: "grammar" },
+  { group: "English/Language Arts", label: "ESL/ELL", value: "esl" },
+
+  // Science
+  { group: "Science", label: "Science (General)", value: "science" },
+  { group: "Science", label: "Biology", value: "biology" },
+  { group: "Science", label: "Chemistry", value: "chemistry" },
+  { group: "Science", label: "Physics", value: "physics" },
+  { group: "Science", label: "Environmental Science", value: "envScience" },
+  { group: "Science", label: "Earth Science", value: "earthScience" },
+
+  // History/Social Studies
+  { group: "History/Social Studies", label: "History/Social Studies (General)", value: "socialStudies" },
+  { group: "History/Social Studies", label: "U.S. History", value: "usHistory" },
+  { group: "History/Social Studies", label: "World History", value: "worldHistory" },
+  { group: "History/Social Studies", label: "Civics", value: "civics" },
+  { group: "History/Social Studies", label: "Government", value: "government" },
+  { group: "History/Social Studies", label: "Economics", value: "economics" },
+
+  // STEM
+  { group: "STEM", label: "Computer Science", value: "computerScience" },
+  { group: "STEM", label: "Engineering", value: "engineering" },
+  
+  // Other
+  { group: "Other", label: "Foreign Language", value: "foreignLanguage" },
+  { group: "Other", label: "Physical Education", value: "pe" },
+  { group: "Other", label: "Arts", value: "arts" },
+  { group: "Other", label: "Bible", value: "bible" },
+  { group: "Other", label: "Other (please specify)", value: "other" },
 ];
+
+const GRADE_LEVEL_CHIPS = [
+  // Elementary
+  { group: "Elementary (K-5)", label: "Kindergarten", value: "K" },
+  { group: "Elementary (K-5)", label: "1st Grade", value: "1" },
+  { group: "Elementary (K-5)", label: "2nd Grade", value: "2" },
+  { group: "Elementary (K-5)", label: "3rd Grade", value: "3" },
+  { group: "Elementary (K-5)", label: "4th Grade", value: "4" },
+  { group: "Elementary (K-5)", label: "5th Grade", value: "5" },
+
+  // Middle School
+  { group: "Middle School (6-8)", label: "6th Grade", value: "6" },
+  { group: "Middle School (6-8)", label: "7th Grade", value: "7" },
+  { group: "Middle School (6-8)", label: "8th Grade", value: "8" },
+
+  // High School
+  { group: "High School (9-12)", label: "9th Grade", value: "9" },
+  { group: "High School (9-12)", label: "10th Grade", value: "10" },
+  { group: "High School (9-12)", label: "11th Grade", value: "11" },
+  { group: "High School (9-12)", label: "12th Grade", value: "12" },
+];
+
+const QUESTION_FORMAT_CHIPS = [
+  // Math Types
+  { group: "Math Problems", label: "Arithmetic Fluency",     value: "arithmeticFluency" },
+  { group: "Math Problems",   label: "Algebra Fluency",        value: "algebraicFluency"  },
+  { group: "Math Problems",   label: "Fractions",              value: "fractions"         },
+  { group: "Math Problems", label: "Linear Equations",       value: "linearEquation"    },
+
+  // Quick Assessment
+  { group: "Quick Assessment", label: "Multiple Choice",        value: "mcqOnly"           },
+  { group: "Quick Assessment", label: "True / False",           value: "trueFalseOnly"     },
+  
+  
+  // Short Response
+  { group: "Short Response", label: "Fill in the Blank",      value: "fitbOnly"          },
+  { group: "Short Response",   label: "Short Answer",           value: "saOnly"            },
+  
+  
+  // Extended Response
+  { group: "Extended Response", label: "Free Response",          value: "frqOnly"           },
+  { group: "Extended Response", label: "Essay",                  value: "essayOnly"         },
+  
+  { group: "Extended Response", label: "Passage-Based Reading",  value: "passageBased"      },
+  
+  // Standalone options
+  { group: "Standalone", label: "AI Decides Problem Type",           value: "mixed"             },
+];
+
+// Examples for each problem type
+const PROBLEM_EXAMPLES: Record<string, { title: string; examples: string[] }> = {
+  mcqOnly: { title: "Multiple Choice", examples: ["What is the capital of France? A) London B) Paris C) Berlin D) Madrid", "Which element has the atomic number 6? A) Oxygen B) Carbon C) Nitrogen D) Hydrogen"] },
+  trueFalseOnly: { title: "True / False", examples: ["The Earth orbits around the Sun. (True/False)", "Photosynthesis occurs in animal cells. (True/False)"] },
+  fitbOnly: { title: "Fill in the Blank", examples: ["The process by which plants make their own food is called ________.", "A ________ is a statement believed to be true but unproven."] },
+  arithmeticFluency: { title: "Arithmetic Fluency", examples: ["7 + 8 = ?", "24 ÷ 6 = ?", "12 × 5 = ?"] },
+  saOnly: { title: "Short Answer", examples: ["Explain the role of mitochondria in a cell. (1-3 sentences)", "Describe two ways plants adapt to drought. (2-4 sentences)"] },
+  algebraicFluency: { title: "Algebra Fluency", examples: ["Simplify: 3x + 2x = ?", "Expand: 2(x + 5) = ?", "Factor: x² + 5x + 6 = ?"] },
+  fractions: { title: "Fractions", examples: ["What is 3/4 + 1/2? Simplify your answer.", "Multiply: 2/3 × 5/8 = ?", "Simplify: 12/18 = ?"] },
+  frqOnly: { title: "Free Response", examples: ["Analyze the causes and effects of climate change with evidence.", "Compare and contrast two historical figures and their societal impact."] },
+  essayOnly: { title: "Essay", examples: ["Write a five-paragraph essay on the theme of resilience in literature.", "Discuss the impact of technology on modern communication. (500-750 words)"] },
+  linearEquation: { title: "Linear Equations", examples: ["Solve: 2x + 5 = 13", "Solve for y: 3x + 2y = 12 when x = 2", "Find the slope of the line through (1, 2) and (3, 6)"] },
+  passageBased: { title: "Passage-Based Reading", examples: ["Read the passage and answer: What is the main idea?", "Based on the text, what can you infer about the author's perspective?"] },
+  mixed: { title: "Mixed Format", examples: ["Combination of multiple question types throughout the assessment.", "Assesses different cognitive levels and varied response modes."] },
+};
 
 const STANDARDS_CHIPS = [
   { label: "Common Core",     value: "commonCore"  },
@@ -62,8 +167,9 @@ const FORMAT_PACING_KEY: Record<string, string> = {
   frqOnly:           "freeResponse",
   fitbOnly:          "fillInTheBlank",
   trueFalseOnly:     "trueFalse",
-  arithmeticFluency: "arithmeticFluency",
   algebraicFluency:  "algebraicFluency",
+  fractions:         "fractions",
+  linearEquation:    "linearEquation",
   passageBased:      "passageBased",
   mixed:             "",
 };
@@ -81,6 +187,7 @@ type StepKind = "text" | "chips" | "fileUpload" | "defaultsCard" | "summarizerCo
 type StepId =
   | "gradeLevels"
   | "course"
+  | "courseCustom"
   | "topic"
   | "subtopics"
   | "defaultsCard"
@@ -108,7 +215,7 @@ interface Step {
   placeholder?: string;
   optional?: boolean;
   multiSelect?: boolean;
-  chips?: Array<{ label: string; value: string }>;
+  chips?: Array<{ label: string; value: string; group?: string }>;
 }
 
 // ── buildSteps ────────────────────────────────────────────────────────────────
@@ -124,8 +231,14 @@ function buildSteps(
 
   if (hasProfile) {
     // ── Profile-driven flow ──────────────────────────────────────────────
-    steps.push({ id: "course",      kind: "text", question: "What course is this for?", placeholder: "e.g., AP Statistics" });
-    steps.push({ id: "gradeLevels", kind: "text", question: "What grade level(s)?", placeholder: "e.g., 10  or  9, 10" });
+    steps.push({ id: "course",      kind: "chips", question: "What course is this for?", chips: COURSE_CHIPS });
+    
+    // If "other" is selected, prompt for custom course name
+    if (answers.course === "other") {
+      steps.push({ id: "courseCustom", kind: "text", question: "What is the course name?", placeholder: "e.g., Marine Biology, Digital Art" });
+    }
+    
+    steps.push({ id: "gradeLevels", kind: "chips", question: "What grade level(s)?", chips: GRADE_LEVEL_CHIPS, multiSelect: true });
     steps.push({ id: "topic",       kind: "text", question: "What topic or lesson should the assessment cover?", placeholder: "e.g., Chi-square tests" });
     steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., goodness-of-fit, independence", optional: true });
 
@@ -138,8 +251,14 @@ function buildSteps(
     }
   } else {
     // ── Manual flow (no profile) ─────────────────────────────────────────
-    steps.push({ id: "course",      kind: "text",  question: "What subject or course?", placeholder: "e.g., 7th Grade English" });
-    steps.push({ id: "gradeLevels", kind: "text",  question: "What grade level(s)?", placeholder: "e.g., 7  or  9, 10" });
+    steps.push({ id: "course",      kind: "chips",  question: "What subject or course?", chips: COURSE_CHIPS });
+    
+    // If "other" is selected, prompt for custom course name
+    if (answers.course === "other") {
+      steps.push({ id: "courseCustom", kind: "text", question: "What is the course name?", placeholder: "e.g., Marine Biology, Digital Art" });
+    }
+    
+    steps.push({ id: "gradeLevels", kind: "chips",  question: "What grade level(s)?", chips: GRADE_LEVEL_CHIPS, multiSelect: true });
     steps.push({ id: "topic",       kind: "text",  question: "What topic or lesson should this cover?", placeholder: "e.g., The French Revolution" });
     steps.push({ id: "subtopics",   kind: "text",  question: "Any subtopics to focus on? (optional)", placeholder: "e.g., causes, effects, timeline", optional: true });
     steps.push({ id: "assessmentType", kind: "chips", question: "What type of assessment?", chips: ASSESSMENT_CHIPS });
@@ -149,17 +268,8 @@ function buildSteps(
     if (STRUCTURED.has(answers.assessmentType)) {
       steps.push({ id: "questionFormat", kind: "chips", question: "What question formats should this include?", chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
 
-      // Arithmetic fluency sub-steps
       const fmts = answers.questionFormat ? answers.questionFormat.split(",").map(s => s.trim()) : [];
-      if (fmts.includes("arithmeticFluency")) {
-        steps.push({ id: "arithmeticOperation", kind: "chips", question: "Which operation?", chips: [
-          { label: "Addition (+)",       value: "add"      },
-          { label: "Subtraction (\u2212)",    value: "subtract" },
-          { label: "Multiplication (\u00d7)", value: "multiply" },
-          { label: "Division (\u00f7)",       value: "divide"   },
-        ]});
-        steps.push({ id: "arithmeticRange", kind: "text", question: "Number range for operands? (default: 1\u201310)", placeholder: "e.g. 1\u201310 or 2\u201312", optional: true });
-      }
+      
       // Passage-based sub-steps
       if (fmts.includes("passageBased")) {
         steps.push({ id: "passageSource", kind: "chips", question: "Should AI write the passage, or will you provide one?", chips: [
@@ -280,6 +390,7 @@ function DefaultsCard({
   const [selectedFormats, setSelectedFormats] = useState<string[]>(
     () => origFormat ? origFormat.split(",").map(s => s.trim()).filter(Boolean) : []
   );
+  const [expandedGroups,  setExpandedGroups]  = useState<Set<string>>(() => new Set());
   const [multiPart,       setMultiPart]       = useState(origMultiPart);
   const [grade,           setGrade]           = useState(origGrade);
   const [difficulty,      setDifficulty]      = useState(origDifficulty);
@@ -297,26 +408,6 @@ function DefaultsCard({
     if (standards       !== origStandards)      overrides.standards = standards;
     if (standards === "state" && stateCode)     overrides.stateCode = stateCode;
     onUse(overrides);
-  }
-
-  function ChipRow<T extends string>({
-    value, options, onChange,
-  }: { value: T; options: Array<{ label: string; value: T }>; onChange: (v: T) => void }) {
-    return (
-      <div className="ca-inline-chips">
-        {options.map(o => (
-          <button
-            key={o.value}
-            type="button"
-            className={`ca-chip ca-chip--sm${value === o.value ? " ca-chip--selected" : ""}`}
-            onClick={() => !disabled && onChange(o.value)}
-            disabled={disabled}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    );
   }
 
   function SelectDropdown<T extends string>({
@@ -375,28 +466,101 @@ function DefaultsCard({
 
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Question formats <span style={{ fontWeight: 400, color: "var(--text-secondary, #9ca3af)" }}>(pick all that apply)</span></span>
-          <div className="ca-inline-chips">
-            {QUESTION_FORMAT_CHIPS.map(o => {
-              const pacingKey = FORMAT_PACING_KEY[o.value];
-              const sec = pacingKey ? DEFAULT_PACING_SECONDS[pacingKey] : null;
-              const isSelected = selectedFormats.includes(o.value);
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
-                  onClick={() => !disabled && setSelectedFormats(prev =>
-                    prev.includes(o.value) ? prev.filter(v => v !== o.value) : [...prev, o.value]
-                  )}
-                  disabled={disabled}
-                  title={sec ? fmtPacingTime(sec) : undefined}
-                >
-                  {o.label}{sec ? <span style={{ opacity: 0.7, fontSize: "0.7rem", marginLeft: "0.3rem" }}>({fmtPacingTime(sec)})</span> : null}
-                </button>
-              );
-            })}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {((): React.ReactNode[] => {
+              const grouped = new Map<string, typeof QUESTION_FORMAT_CHIPS>();
+              const groupNames: string[] = [];
+              for (const chip of QUESTION_FORMAT_CHIPS) {
+                const g = chip.group || "Standalone";
+                if (!grouped.has(g)) {
+                  grouped.set(g, []);
+                  groupNames.push(g);
+                }
+                grouped.get(g)!.push(chip);
+              }
+              return groupNames.map(groupName => {
+                const isExpanded = expandedGroups.has(groupName);
+                const groupChips = grouped.get(groupName) || [];
+                return (
+                  <div key={groupName}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedGroups(prev => {
+                        const next = new Set(prev);
+                        if (next.has(groupName)) next.delete(groupName);
+                        else next.add(groupName);
+                        return next;
+                      })}
+                      disabled={disabled}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.5rem 0.75rem",
+                        background: "transparent",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "0.375rem",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                        fontSize: "0.875rem",
+                        width: "100%",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span style={{ display: "inline-block", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s", fontSize: "0.75rem", lineHeight: 1 }}>▼</span>
+                      {groupName}
+                    </button>
+                    {isExpanded && (
+                      <div style={{ paddingLeft: "0.5rem", marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                        {groupChips.map(o => {
+                          const pacingKey = FORMAT_PACING_KEY[o.value];
+                          const sec = pacingKey ? DEFAULT_PACING_SECONDS[pacingKey] : null;
+                          const isSelected = selectedFormats.includes(o.value);
+                          return (
+                            <button
+                              key={o.value}
+                              type="button"
+                              className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
+                              onClick={() => !disabled && setSelectedFormats(prev =>
+                                prev.includes(o.value) ? prev.filter(v => v !== o.value) : [...prev, o.value]
+                              )}
+                              disabled={disabled}
+                              title={sec ? fmtPacingTime(sec) : undefined}
+                            >
+                              {o.label}{sec ? <span style={{ opacity: 0.7, fontSize: "0.7rem", marginLeft: "0.3rem" }}>({fmtPacingTime(sec)})</span> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
+
+        {selectedFormats.length > 0 && (
+          <div style={{ backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "1rem", marginBottom: "1rem" }}>
+            <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.75rem", color: "#374151" }}>Examples of selected types:</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {selectedFormats.map(fmt => {
+                const examples = PROBLEM_EXAMPLES[fmt];
+                if (!examples) return null;
+                return (
+                  <div key={fmt}>
+                    <div style={{ fontWeight: 500, fontSize: "0.875rem", color: "#1f2937", marginBottom: "0.5rem" }}>{examples.title}</div>
+                    <ul style={{ margin: "0", paddingLeft: "1.5rem", fontSize: "0.8rem", color: "#6b7280", lineHeight: "1.5" }}>
+                      {examples.examples.map((ex, idx) => (
+                        <li key={idx}>{ex}</li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Multi-part</span>
@@ -542,11 +706,37 @@ function FeasibilityWarning({
   const avgSecPerQuestion = pacingDefaults.questionTypeSeconds[pacingKey] ?? DEFAULT_PACING_SECONDS[pacingKey] ?? 60;
   const reqCount = Math.ceil((durationMinutes * 60) / avgSecPerQuestion);
 
+  // After computing reqCount
+// Surface-aware ceilings for heavy formats
+const HEAVY_FORMATS = ["passageBased", "frq", "dbq", "essay"];
+let adjustedReqCount = reqCount;
+
+
+if (HEAVY_FORMATS.includes(primaryFormat)) {
+  switch (assessmentType) {
+    case "exitTicket":
+      adjustedReqCount = Math.min(adjustedReqCount, 1);
+      break;
+    case "worksheet":
+      adjustedReqCount = Math.min(adjustedReqCount, 2);
+      break;
+    case "quiz":
+      adjustedReqCount = Math.min(adjustedReqCount, 3);
+      break;
+    case "test":
+      adjustedReqCount = Math.min(adjustedReqCount, 4);
+      break;
+    default:
+      adjustedReqCount = Math.min(adjustedReqCount, 2);
+  }
+}
+
+
   const report = evaluateFeasibility({
     topic,
     additionalDetails: details || null,
     sourceDocuments:   null,
-    requestedSlotCount: reqCount,
+    requestedSlotCount: adjustedReqCount,
     questionTypes:     formats,
     depthFloor:        "remember",
     depthCeiling:      bloom,
@@ -604,11 +794,13 @@ interface QuestionMixEntry {
 }
 
 function QuestionMixPreview({
-  answers, courseDefaults, disabled,
+  answers, courseDefaults, disabled, timeAdjustments, onTimeAdjust,
 }: {
   answers: Record<StepId, string>;
   courseDefaults: ResolvedCourseDefaults | null;
   disabled: boolean;
+  timeAdjustments: Record<string, number>;
+  onTimeAdjust: (type: string, seconds: number) => void;
 }) {
   const selectedFormats = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "multipleChoice")
     .split(",")
@@ -661,10 +853,11 @@ function QuestionMixPreview({
   const mix: QuestionMixEntry[] = useMemo(() => {
     if (selectedFormats.length === 0) return [];
     
-    // Get pacing seconds for each format
+    // Get pacing seconds for each format (using adjustments if available)
     const entries = selectedFormats.map(fmt => {
       const mapKey = FORMAT_PACING_KEY[fmt] || fmt;
-      const secPerQ = pacingDefaults.questionTypeSeconds[mapKey] ?? DEFAULT_PACING_SECONDS[mapKey] ?? 60;
+      const defaultSecPerQ = pacingDefaults.questionTypeSeconds[mapKey] ?? DEFAULT_PACING_SECONDS[mapKey] ?? 60;
+      const secPerQ = timeAdjustments[fmt] ?? defaultSecPerQ;
       const chipLabel = QUESTION_FORMAT_CHIPS.find(c => c.value === fmt)?.label || fmt;
       return { type: fmt, label: chipLabel, secondsPerQuestion: secPerQ };
     });
@@ -686,7 +879,7 @@ function QuestionMixPreview({
         totalSeconds: Math.max(1, adjustedCount) * e.secondsPerQuestion,
       });
     });
-  }, [selectedFormats, pacingDefaults, totalSeconds, adjustments]);
+  }, [selectedFormats, pacingDefaults, totalSeconds, adjustments, timeAdjustments]);
 
   const totalEstimatedSeconds = mix.reduce((sum, e) => sum + e.totalSeconds, 0);
   const totalEstimatedMinutes = Math.round(totalEstimatedSeconds / 60);
@@ -720,9 +913,6 @@ function QuestionMixPreview({
         </thead>
         <tbody>
           {mix.map((entry, idx) => {
-            const timeStr = entry.secondsPerQuestion < 60
-              ? `${entry.secondsPerQuestion}s`
-              : `${(entry.secondsPerQuestion / 60).toFixed(1)}m`;
             const totalStr = entry.totalSeconds < 60
               ? `${entry.totalSeconds}s`
               : `${(entry.totalSeconds / 60).toFixed(1)}m`;
@@ -761,7 +951,34 @@ function QuestionMixPreview({
                     }}
                   />
                 </td>
-                <td style={{ padding: "0.55rem 0.5rem", textAlign: "right", fontSize: "0.78rem", color: "var(--text-primary,#1f2937)", fontWeight: 500 }}>{timeStr}</td>
+                <td style={{ padding: "0.55rem 0.5rem", textAlign: "right", color: "var(--text-primary,#1f2937)" }}>
+                  <input
+                    type="number"
+                    min="1"
+                    step="5"
+                    value={entry.secondsPerQuestion}
+                    onChange={(e) => {
+                      const newSeconds = parseInt(e.target.value, 10) || 60;
+                      onTimeAdjust(entry.type, newSeconds);
+                    }}
+                    disabled={disabled}
+                    title="Edit time per question in seconds"
+                    style={{
+                      width: "3.2rem",
+                      padding: "0.35rem 0.4rem",
+                      border: "2px solid var(--border-color,#d1d5db)",
+                      borderRadius: "4px",
+                      textAlign: "right",
+                      fontSize: "0.8rem",
+                      fontWeight: 600,
+                      color: "var(--text-primary,#1f2937)",
+                      background: "var(--surface-primary,#ffffff)",
+                      cursor: disabled ? "not-allowed" : "text",
+                      opacity: disabled ? 0.6 : 1,
+                    }}
+                  />
+                  <span style={{ marginLeft: "0.25rem", fontSize: "0.7rem", color: "var(--text-secondary,#6b7280)" }}>s</span>
+                </td>
                 <td style={{ padding: "0.55rem 0.5rem 0.55rem 0.5rem", textAlign: "right", fontSize: "0.78rem", color: "var(--text-primary,#1f2937)", fontWeight: 500 }}>{totalStr}</td>
               </tr>
             );
@@ -812,12 +1029,14 @@ interface Override { field: string; from: string; to: string }
 
 function FinalConfirmCard({
   answers, courseDefaults, overrides, estimatedMinutes, docsCount,
-  onGenerate, onBack, onUpdateDefaults, defaultsUpdateApplied, disabled,
+  onGenerate, onBack, onUpdateDefaults, defaultsUpdateApplied, disabled, timeAdjustments, onTimeAdjust,
 }: {
   answers: Record<StepId, string>; courseDefaults: ResolvedCourseDefaults | null;
   overrides: Override[]; estimatedMinutes: number; docsCount: number;
   onGenerate: () => void; onBack: () => void;
   onUpdateDefaults?: () => void; defaultsUpdateApplied: boolean; disabled: boolean;
+  timeAdjustments: Record<string, number>;
+  onTimeAdjust: (type: string, seconds: number) => void;
 }) {
   // Auto-update defaults if there are overrides
   useEffect(() => {
@@ -861,7 +1080,7 @@ function FinalConfirmCard({
         </p>
       )}
 
-      <QuestionMixPreview answers={answers} courseDefaults={courseDefaults} disabled={disabled} />
+<QuestionMixPreview answers={answers} courseDefaults={courseDefaults} disabled={disabled} timeAdjustments={timeAdjustments} onTimeAdjust={onTimeAdjust} />
 
       <FeasibilityWarning answers={answers} courseDefaults={courseDefaults} />
 
@@ -906,6 +1125,7 @@ export type ConversationalIntent = {
 
 const DEFAULT_ANSWERS: Record<StepId, string> = {
   course:               "",
+  courseCustom:         "",
   gradeLevels:          "",
   topic:                "",
   subtopics:            "",
@@ -964,6 +1184,7 @@ export function ConversationalAssessment({
   const docInferredRef = useRef<Partial<Record<StepId, string>>>({});
   const [defaultsUpdateApplied, setDefaultsUpdateApplied] = useState(false);
   const [docSummaryMessage, setDocSummaryMessage] = useState<string | null>(null);
+  const [expandedChipGroups, setExpandedChipGroups] = useState<Set<string>>(() => new Set());
   const commitRef = useRef<(value: string) => void>(() => {});
 
   // Pre-fill course with the most recently added course profile (last in array)
@@ -993,6 +1214,7 @@ export function ConversationalAssessment({
 
   const [inputValue, setInputValue] = useState(() => initialAnswers?.additionalDetails ?? "");
   const [multiSelectBuffer, setMultiSelectBuffer] = useState<string[]>([]);
+  const [timeAdjustments, setTimeAdjustments] = useState<Record<string, number>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -1058,8 +1280,12 @@ export function ConversationalAssessment({
       setMultiSelectBuffer([]);
     }
   }, [stepIndex]); // eslint-disable-line react-hooks/exhaustive-deps
-  
 
+  // Reset expanded chip groups when navigating to a different step
+  useEffect(() => {
+    setExpandedChipGroups(new Set());
+  }, [stepIndex]);
+  
   // Auto-advance through inferred steps after document upload
   useEffect(() => {
     if (!currentStep) return;
@@ -1081,9 +1307,13 @@ export function ConversationalAssessment({
     const effectiveLevel          = next.studentLevel    || d?.typicalDifficulty || "";
     const effectiveGrade          = next.gradeLevels     || d?.gradeBand || "";
     const estimatedMinutes        = d?.estimatedMinutes ?? null;
+    
+    // Use custom course name if "other" was selected
+    const effectiveCourse = next.course === "other" ? next.courseCustom : next.course;
+    
     return {
       gradeLevels:        effectiveGrade.split(",").map(g => g.trim()).filter(Boolean),
-      course:             next.course,
+      course:             effectiveCourse,
       unitName:           next.topic,
       topic:              next.topic,
       subtopics:          next.subtopics  || undefined,
@@ -1155,6 +1385,21 @@ export function ConversationalAssessment({
         assessmentDurationMinutes: {
           ...base.pacingDefaults.assessmentDurationMinutes,
           [aType]: newMinutes,
+        },
+      };
+    }
+    
+    // Update time per question if any were adjusted
+    if (Object.keys(timeAdjustments).length > 0) {
+      base.pacingDefaults = {
+        ...base.pacingDefaults,
+        questionTypeSeconds: {
+          ...base.pacingDefaults.questionTypeSeconds,
+          ...Object.entries(timeAdjustments).reduce((acc, [type, seconds]) => {
+            const mapKey = FORMAT_PACING_KEY[type] || type;
+            acc[mapKey] = seconds;
+            return acc;
+          }, {} as Record<string, number>),
         },
       };
     }
@@ -1355,27 +1600,120 @@ export function ConversationalAssessment({
                 onBack={() => handleBack()}
                 onUpdateDefaults={onUpdateDefaults ? () => handleApplyOverrides(answers) : undefined}
                 defaultsUpdateApplied={defaultsUpdateApplied}
+                timeAdjustments={timeAdjustments}
+                onTimeAdjust={(type: string, seconds: number) => setTimeAdjustments(prev => ({ ...prev, [type]: seconds }))}
               />
             )}
 
             {/* Chip row for current chip-step */}
             {idx === stepIndex && step.kind === "chips" && step.chips && (
               <div className="ca-chips">
-                {step.chips.map(chip => (
-                  <button
-                    key={chip.value}
-                    type="button"
-                    className={`ca-chip${
-                      step.multiSelect
-                        ? multiSelectBuffer.includes(chip.value) ? " ca-chip--selected" : ""
-                        : answers[step.id] === chip.value       ? " ca-chip--selected" : ""
-                    }`}
-                    onClick={() => handleChipClick(chip.value)}
-                    disabled={isBlocked}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
+                {(() => {
+                  // Check if chips have grouping (group property)
+                  const hasGrouping = step.chips!.some(c => c.group !== undefined);
+                  
+                  if (hasGrouping) {
+                    // Grouped rendering (collapsible groups)
+                    const grouped = new Map<string, typeof step.chips>();
+                    const groupNames: string[] = [];
+                    for (const chip of step.chips!) {
+                      const g = chip.group || "Standalone";
+                      if (!grouped.has(g)) {
+                        grouped.set(g, []);
+                        groupNames.push(g);
+                      }
+                      grouped.get(g)!.push(chip);
+                    }
+                    
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", width: "100%" }}>
+                        {groupNames.map(groupName => {
+                          const isExpanded = expandedChipGroups.has(groupName);
+                          const groupChips = grouped.get(groupName) || [];
+                          return (
+                            <div key={groupName}>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedChipGroups(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(groupName)) next.delete(groupName);
+                                  else next.add(groupName);
+                                  return next;
+                                })}
+                                disabled={isBlocked}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.5rem",
+                                  padding: "0.5rem 0.75rem",
+                                  background: "var(--surface-primary,#ffffff)",
+                                  border: "1px solid var(--border-color,#e5e7eb)",
+                                  borderRadius: "0.375rem",
+                                  cursor: "pointer",
+                                  fontWeight: 600,
+                                  fontSize: "0.875rem",
+                                  width: "100%",
+                                  textAlign: "left",
+                                  color: "var(--text-primary,#1f2937)",
+                                }}
+                              >
+                                <span style={{ display: "inline-block", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s", fontSize: "0.75rem", lineHeight: 1 }}>▼</span>
+                                {groupName}
+                              </button>
+                              <div
+                                style={{
+                                  paddingLeft: "0.5rem",
+                                  marginTop: "0.5rem",
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: "0.5rem",
+                                  maxHeight: isExpanded ? "1000px" : "0px",
+                                  overflow: "hidden",
+                                  opacity: isExpanded ? 1 : 0,
+                                  transition: "max-height 0.3s ease, opacity 0.3s ease",
+                                }}
+                              >
+                                {groupChips.map(chip => (
+                                  <button
+                                    key={chip.value}
+                                    type="button"
+                                    className={`ca-chip ca-chip--sm${
+                                      step.multiSelect
+                                        ? multiSelectBuffer.includes(chip.value) ? " ca-chip--selected" : ""
+                                        : answers[step.id] === chip.value       ? " ca-chip--selected" : ""
+                                    }`}
+                                    onClick={() => handleChipClick(chip.value)}
+                                    disabled={isBlocked}
+                                  >
+                                    {chip.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  } else {
+                    // Flat rendering (no groups)
+                    return step.chips!.map(chip => (
+                      <button
+                        key={chip.value}
+                        type="button"
+                        className={`ca-chip${
+                          step.multiSelect
+                            ? multiSelectBuffer.includes(chip.value) ? " ca-chip--selected" : ""
+                            : answers[step.id] === chip.value       ? " ca-chip--selected" : ""
+                        }`}
+                        onClick={() => handleChipClick(chip.value)}
+                        disabled={isBlocked}
+                      >
+                        {chip.label}
+                      </button>
+                    ));
+                  }
+                })()}
+                
                 {step.multiSelect && multiSelectBuffer.length > 0 && (
                   <button
                     type="button"
@@ -1401,6 +1739,36 @@ export function ConversationalAssessment({
                     {"\u2713"} Confirm &rarr;
                   </button>
                 )}
+
+                {/* Show examples when question formats are selected */}
+                {step.id === "questionFormat" && (() => {
+                  const selectedFormats = step.multiSelect
+                    ? multiSelectBuffer
+                    : answers[step.id]
+                    ? answers[step.id].split(",").map(s => s.trim()).filter(Boolean)
+                    : [];
+                  return selectedFormats.length > 0 ? (
+                    <div style={{ marginTop: "1rem", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "1rem" }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.75rem", color: "#374151" }}>Examples of selected types:</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                        {selectedFormats.map(fmt => {
+                          const examples = PROBLEM_EXAMPLES[fmt];
+                          if (!examples) return null;
+                          return (
+                            <div key={fmt}>
+                              <div style={{ fontWeight: 500, fontSize: "0.875rem", color: "#1f2937", marginBottom: "0.5rem" }}>{examples.title}</div>
+                              <ul style={{ margin: "0", paddingLeft: "1.5rem", fontSize: "0.8rem", color: "#6b7280", lineHeight: "1.5" }}>
+                                {examples.examples.map((ex, idx) => (
+                                  <li key={idx}>{ex}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             )}
           </div>

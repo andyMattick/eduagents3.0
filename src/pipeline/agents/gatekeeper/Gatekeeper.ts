@@ -250,7 +250,17 @@ export class Gatekeeper {
       // provides a content-quality signal independent of literal phrasing.
       // Topic alignment is a Writer responsibility enforced via the system prompt;
       // Gatekeeper validates structure, cognition, and format — not stem wording.
-      const promptLower = item.prompt.toLowerCase();
+      console.log("[Gatekeeper] Item received:", item);      
+      // Safety check: ensure prompt exists before processing
+      if (!item.prompt || typeof item.prompt !== "string") {
+        violations.push({
+          slotId: slot.id,
+          type: "missing_item",
+          message: "Item is missing a valid prompt string."
+        });
+        continue;
+      }
+            const promptLower = item.prompt.toLowerCase();
 
       //
       // 3. MCQ structural rules

@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { MinimalAssessmentFormWrapper } from "./MinimalAssessmentFormWrapper";
+import { ConversationalAssessmentWrapper } from "./ConversationalAssessmentWrapper";
 import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
 import { TraceViewer } from "@/components_new/TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
@@ -69,10 +69,9 @@ export function PipelineRouter({
     <div style={{ padding: "1rem" }}>
       {/* ── Form panel ───────────────────────────────────────────────────── */}
       {showForm && (
-        <MinimalAssessmentFormWrapper
+        <ConversationalAssessmentWrapper
           userId={userId}
           onResult={handlePipelineResult}
-          onItemsProgress={handleItemsProgress}
         />
       )}
 

@@ -19,6 +19,10 @@ import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentD
 import { loadTeacherProfile } from './services_new/teacherProfileService';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
+import { AnalyzerV2 } from "@/pipeline/analyzerV2/analyzerV2";
+
+(window as any).AnalyzerV2 = AnalyzerV2;
+
 
 console.log("ENV CHECK", import.meta.env);
 
@@ -44,7 +48,6 @@ function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('my-assessments');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const { logout, user } = useAuth();
-  const { devMode, toggleDevMode } = useDeveloperMode();
   const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});  // Tracks whether this user has ever saved a teacher profile.
   // null = still loading, false = no profile yet (show first-run banner), true = exists.
   const [hasStoredProfile, setHasStoredProfile] = useState<boolean | null>(null);

@@ -9,8 +9,28 @@ import { runArchitectWriterDebug } from "@/pipeline/devTools/runArchitectWriterD
 import { MathFormatSelector } from "@/components_new/Pipeline/MathFormatSelector";
 import type { MathFormat } from "@/utils/mathFormatters";
 
-
-
+// Question format chips with grouping
+const QUESTION_FORMAT_CHIPS = [
+  // Quick Assessment
+  { group: "Quick Assessment", label: "Multiple Choice", value: "mcqOnly" },
+  { group: "Quick Assessment", label: "True / False", value: "trueFalseOnly" },
+  { group: "Quick Assessment", label: "Fill in the Blank", value: "fitbOnly" },
+  { group: "Quick Assessment", label: "Arithmetic Fluency", value: "arithmeticFluency" },
+  
+  // Short Response
+  { group: "Short Response", label: "Short Answer", value: "saOnly" },
+  { group: "Short Response", label: "Algebra Fluency", value: "algebraicFluency" },
+  { group: "Short Response", label: "Fractions", value: "fractions" },
+  
+  // Extended Response
+  { group: "Extended Response", label: "Free Response", value: "frqOnly" },
+  { group: "Extended Response", label: "Essay", value: "essayOnly" },
+  { group: "Extended Response", label: "Linear Equations", value: "linearEquation" },
+  { group: "Extended Response", label: "Passage-Based Reading", value: "passageBased" },
+  
+  // Standalone
+  { group: "Standalone", label: "Mixed Format", value: "mixed" },
+];
 
 
 interface MinimalAssessmentFormProps {
@@ -20,6 +40,11 @@ interface MinimalAssessmentFormProps {
 
 export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFormProps) {
   const [gradeError, setGradeError] = useState<string | null>(null);
+  const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => 
+    new Set(["Quick Assessment", "Short Response", "Extended Response"])
+  );
+  const [hasPassage, setHasPassage] = useState<string | null>(null);
 
   useEffect(() => {
     console.log("[Form] Mounted");
@@ -54,7 +79,20 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
       return;
     }
     setGradeError(null);
-    onSubmit(form);
+    
+    // Build details with question formats and passage info
+    let details = form.additionalDetails || "";
+    if (selectedFormats.length > 0) {
+      const formatsStr = selectedFormats.join(", ");
+      details = details ? `${details}\n\nQuestion Formats: ${formatsStr}` : `Question Formats: ${formatsStr}`;
+    }
+    if (selectedFormats.includes("passageBased") && hasPassage) {
+      details = details 
+        ? `${details}\nPassage: ${hasPassage === "yes" ? "User provided" : "Generate one"}` 
+        : `Passage: ${hasPassage === "yes" ? "User provided" : "Generate one"}`;
+    }
+    
+    onSubmit({ ...form, additionalDetails: details });
   }
 
   return (
@@ -156,6 +194,126 @@ export default function MinimalAssessmentForm({ onSubmit }: MinimalAssessmentFor
           ))}
         </select>
       </div>
+
+      {/* Question Formats */}
+      <div>
+        <label><strong>Question Formats</strong> <span style={{ fontWeight: 400, color: "var(--gray-500, #888)" }}>(optional)</span></label>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginTop: "0.5rem" }}>
+          {((): React.ReactNode[] => {
+            const grouped = new Map<string, typeof QUESTION_FORMAT_CHIPS>();
+            const groupNames: string[] = [];
+            for (const chip of QUESTION_FORMAT_CHIPS) {
+              const g = chip.group || "Standalone";
+              if (!grouped.has(g)) {
+                grouped.set(g, []);
+                groupNames.push(g);
+              }
+              grouped.get(g)!.push(chip);
+            }
+            return groupNames.map(groupName => {
+              const isExpanded = expandedGroups.has(groupName);
+              const groupChips = grouped.get(groupName) || [];
+              return (
+                <div key={groupName}>
+                  <button
+                    type="button"
+                    onClick={() => setExpandedGroups(prev => {
+                      const next = new Set(prev);
+                      if (next.has(groupName)) next.delete(groupName);
+                      else next.add(groupName);
+                      return next;
+                    })}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      padding: "0.5rem 0.75rem",
+                      background: "transparent",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: "0.375rem",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: "0.875rem",
+                      width: "100%",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ display: "inline-block", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.2s", fontSize: "0.75rem", lineHeight: 1 }}>▼</span>
+                    {groupName}
+                  </button>
+                  {isExpanded && (
+                    <div style={{ paddingLeft: "0.5rem", marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+                      {groupChips.map(o => {
+                        const isSelected = selectedFormats.includes(o.value);
+                        return (
+                          <button
+                            key={o.value}
+                            type="button"
+                            onClick={() => setSelectedFormats(prev =>
+                              prev.includes(o.value) 
+                                ? prev.filter(v => v !== o.value) 
+                                : [...prev, o.value]
+                            )}
+                            style={{
+                              padding: "0.375rem 0.75rem",
+                              borderRadius: "0.375rem",
+                              border: isSelected ? "2px solid #3b82f6" : "1px solid #d1d5db",
+                              background: isSelected ? "#dbeafe" : "#ffffff",
+                              cursor: "pointer",
+                              fontSize: "0.875rem",
+                              fontWeight: isSelected ? 500 : 400,
+                              color: isSelected ? "#1e40af" : "#6b7280",
+                            }}
+                          >
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
+        </div>
+      </div>
+
+      {/* Passage Input - shown only when "Passage-Based Reading" is selected */}
+      {selectedFormats.includes("passageBased") && (
+        <div>
+          <label><strong>Do you have a passage ready?</strong></label>
+          <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
+            <label>
+              <input
+                type="radio"
+                name="hasPassage"
+                value="yes"
+                checked={hasPassage === "yes"}
+                onChange={(e) => setHasPassage(e.target.value)}
+              />
+              Yes, I'll paste it below
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="hasPassage"
+                value="no"
+                checked={hasPassage === "no"}
+                onChange={(e) => setHasPassage(e.target.value)}
+              />
+              No, generate one for me
+            </label>
+          </div>
+          {hasPassage === "yes" && (
+            <div style={{ marginTop: "0.75rem" }}>
+              <textarea
+                placeholder="Paste your passage text here..."
+                style={{ width: "100%", minHeight: "120px", padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Time */}
       <div>
