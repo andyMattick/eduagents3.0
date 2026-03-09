@@ -129,6 +129,7 @@ async function checkDailyLimit(
 /** Call Gemini using the server-only API key. */
 async function callGeminiServer({
   
+  
   model,
   prompt,
   temperature = 0.2,
@@ -140,6 +141,8 @@ async function callGeminiServer({
   temperature?: number;
   maxOutputTokens?: number;
 }): Promise<string> {
+  console.log("Gemini key loaded by proxy:", process.env.GEMINI_API_KEY);
+
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not configured on the server.");

@@ -20,8 +20,16 @@ import { loadTeacherProfile } from './services_new/teacherProfileService';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 import { AnalyzerV2 } from "@/pipeline/analyzerV2/analyzerV2";
-
 (window as any).AnalyzerV2 = AnalyzerV2;
+
+import { saveAnalyzerOutput } from "./pipeline/persistence/saveAnalyzerOutput";
+(window as any).saveAnalyzerOutput = saveAnalyzerOutput;
+
+import { loadAnalyzerOutput } from "./pipeline/persistence/loadAnalyzerOutput";
+// @ts-ignore
+window.loadAnalyzerOutput = loadAnalyzerOutput;
+
+
 
 
 console.log("ENV CHECK", import.meta.env);
