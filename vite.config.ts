@@ -104,7 +104,13 @@ export default defineConfig(({ mode }) => {
   },
   build: {
     outDir: 'dist',
-    sourcemap: true
+    sourcemap: true,
+    rollupOptions: {
+      external: ['server', 'api']
+    }
+  },
+  optimizeDeps: {
+    exclude: ['server', 'api']
   },
   resolve: {
     alias: {
