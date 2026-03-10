@@ -316,7 +316,7 @@ export function getLastPipelineBlueprint(): any {
   return _lastPipelineBlueprint;
 }
 
-export async function runPipeline(
+export async function runCreatePipeline(
   uar: UnifiedAssessmentRequest,
   _depth = 0,
   onItemsProgress?: (partialItems: import("@/pipeline/agents/writer/types").GeneratedItem[]) => void
@@ -937,7 +937,7 @@ const gatekeeperFinal = Gatekeeper.validate(
 
 if (philosopherWrite.status === "rewrite" && philosopherWrite.severity >= 7) {
   // Structural failure → restart pipeline with depth counter
-  return await runPipeline(uar, _depth + 1, onItemsProgress);
+  return await runCreatePipeline(uar, _depth + 1, onItemsProgress);
 }
 
 // ===============================
@@ -1049,7 +1049,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
 }
 
 if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 7) {
-  return await runPipeline(uar, _depth + 1, onItemsProgress);
+  return await runCreatePipeline(uar, _depth + 1, onItemsProgress);
 }
 
 // ===============================

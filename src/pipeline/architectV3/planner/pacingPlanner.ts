@@ -1,26 +1,18 @@
-import { ArchitectV3Input } from "../types";
+// planner/pacingPlanner.ts
+import { ArchitectV3Slot } from "../types";
 
-export function planPacing(input: ArchitectV3Input): number {
-  const pacing = input.teacherProfile?.pacing;
+export function applySlotPacing(slots: ArchitectV3Slot[]): ArchitectV3Slot[] {
+  return slots.map((slot) => {
+    let seconds = 45;
 
-  if (typeof pacing === "number") {
-    return pacing;
-  }
+    if (slot.questionType === "multipleChoice") seconds = 30;
+    if (slot.questionType === "shortAnswer") seconds = 60;
+    if (slot.questionType === "constructedResponse") seconds = 120;
 
-  if (typeof pacing === "string") {
-    switch (pacing) {
-      case "slow": return 90;
-      case "fast": return 45;
-      case "normal":
-      default:
-        return 60;
-    }
-  }
+    if (slot.difficulty === "hard") seconds += 20;
+    if (slot.cognitiveDemand === "evaluate") seconds += 20;
+    if (slot.cognitiveDemand === "create") seconds += 40;
 
-  // fallback to course profile if numeric
-  if (typeof input.courseProfile?.pacing === "number") {
-    return input.courseProfile.pacing;
-  }
-
-  return 60;
+    return { ...slot, pacingSeconds: seconds };
+  });
 }

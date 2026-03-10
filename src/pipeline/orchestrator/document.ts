@@ -1,4 +1,4 @@
-// src/pipeline/orchestrator/orchestrator.ts
+// src/pipeline/orchestrator/document.ts
 
 import {
   UnifiedAnalyzerOutput,
@@ -12,9 +12,7 @@ import { mapToComparisonProfile } from "../mapper/mapToComparisonProfile";
 import { mapToSummaryView } from "../mapper/mapToSummaryView";
 import { mapToConceptGraph } from "../mapper/mapToConceptGraph";
 
-export type OrchestratorIntent =
-  | "create"
-  | "analyze"
+export type DocumentIntent =
   | "difficulty"
   | "compare"
   | "summary"
@@ -22,8 +20,6 @@ export type OrchestratorIntent =
   | "raw";
 
 const viewMappers = {
-  create: mapToUnifiedSchema,
-  analyze: mapToUnifiedSchema,
   difficulty: mapToDifficultyProfile,
   compare: mapToComparisonProfile,
   summary: mapToSummaryView,
@@ -31,18 +27,18 @@ const viewMappers = {
   raw: (internal: any) => internal
 };
 
-export interface ArchitectInput {
-  view: OrchestratorIntent;
+export interface DocumentViewOutput {
+  view: DocumentIntent;
   schema: UnifiedAnalyzerOutput;
   viewData: any;
   teacherProfile: UnifiedTeacherStyleProfile;
   courseProfile: UnifiedTemplateProfile;
 }
 
-export function runOrchestrator(
-  intent: OrchestratorIntent,
+export function runDocumentView(
+  intent: DocumentIntent,
   internal: any
-): ArchitectInput {
+): DocumentViewOutput {
   const schema = mapToUnifiedSchema(internal);
   const viewData = viewMappers[intent](internal);
 

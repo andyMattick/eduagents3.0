@@ -1,3 +1,4 @@
+// planner/pluginPlanner.ts
 import { ArchitectV3Input, ArchitectV3Slot } from "../types";
 
 export function applyPluginHints(
@@ -8,30 +9,35 @@ export function applyPluginHints(
     let templateId: string | null = null;
     let diagramType: string | null = null;
 
-    if (slot.questionType === "multipleChoice") {
-      templateId = "mcq-basic";
+    switch (slot.questionType) {
+      case "multipleChoice":
+        templateId = "mcq-basic";
+        break;
+      case "shortAnswer":
+        templateId = "sa-basic";
+        break;
+      case "constructedResponse":
+        templateId = "cr-structured";
+        break;
+      case "graphing":
+        templateId = "graphing-basic";
+        diagramType = "graph";
+        break;
+      default:
+        templateId = "generic-basic";
     }
 
-    if (slot.questionType === "shortAnswer") {
+    if (!diagramType && slot.topicAngle) {
+      const angle = slot.topicAngle.toLowerCase();
+      if (angle.includes("relationship")) diagramType = "multiGraph";
+      if (angle.includes("process")) diagramType = "flowDiagram";
+    }
+
+    if (templateId === "graphing-basic" && !slot.topicAngle?.includes("numeric")) {
       templateId = "sa-basic";
+      diagramType = null;
     }
 
-    if (slot.questionType === "constructedResponse") {
-      templateId = "cr-structured";
-    }
-
-    if (slot.topicAngle?.toLowerCase().includes("graph")) {
-      diagramType = "graph";
-    }
-
-    if (slot.topicAngle?.toLowerCase().includes("map")) {
-      diagramType = "map";
-    }
-
-    return {
-      ...slot,
-      templateId,
-      diagramType,
-    };
+    return { ...slot, templateId, diagramType };
   });
 }
