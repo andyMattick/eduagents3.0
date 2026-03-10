@@ -3,11 +3,6 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "functions": {
-    "server/rewrite.ts": { "runtime": "nodejs@18.x" },
-    "server/llm.ts": { "runtime": "nodejs@18.x" },
-    "server/generate-assessment.ts": { "runtime": "nodejs@18.x" }
-  },
   "routes": [
     { "src": "/api/rewrite", "dest": "/server/rewrite.ts" },
     { "src": "/api/llm", "dest": "/server/llm.ts" },
