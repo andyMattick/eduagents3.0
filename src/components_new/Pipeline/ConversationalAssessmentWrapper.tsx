@@ -17,6 +17,14 @@ import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 import type { TeacherProfile } from "@/types/teacherProfile";
 import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
+import {
+  AssessmentIntentSelector,
+  AnalyzeDocumentPanel,
+  CompareDocumentsPanel,
+  PlaytestAssessmentPanel,
+  DocumentViewPanel,
+} from "./AssessmentIntentSelector";
+import type { OrchestratorIntent } from "@/pipeline/orchestrator";
 
 interface ConversationalAssessmentWrapperProps {
   userId: string | null;
@@ -47,6 +55,7 @@ export function ConversationalAssessmentWrapper({
   onResult,
   defaultAnswers,
 }: ConversationalAssessmentWrapperProps) {
+  const [selectedIntent, setSelectedIntent] = useState<OrchestratorIntent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
   const [usage, setUsage] = useState<DailyUsage | null>(null);
@@ -98,6 +107,9 @@ export function ConversationalAssessmentWrapper({
   useEffect(() => { refreshUsage(); }, [refreshUsage]);
 
   const [pipelineError, setPipelineError] = useState<string | null>(null);
+
+  const showingCreateFlow = selectedIntent === "create";
+  const showingGeneratedCreateResult = showingCreateFlow && !!result;
 
   // ── Prompt Engineer: intercepts intent before pipeline ─────────────────
   const handleConversationComplete = useCallback(
@@ -424,18 +436,54 @@ export function ConversationalAssessmentWrapper({
           )}
         </div>
       ) : !result && !limitError && !peResult ? (
-        <ConversationalAssessment
-          key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : `fresh-${resetCounter}`}
-          onComplete={handleConversationComplete}
-          isLoading={isLoading}
-          disabled={usage !== null && !usage.canGenerate}
-          initialAnswers={formInitialAnswers ?? undefined}
-          defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
-          teacherProfile={teacherProfile}
-          onUpdateDefaults={handleUpdateDefaults}
-          forceBlank={forceBlank}
-          onReset={() => { setFormInitialAnswers(null); setForceBlank(true); setResetCounter(c => c + 1); }}
-        />
+        <>
+          {!selectedIntent && (
+            <AssessmentIntentSelector onSelect={setSelectedIntent} />
+          )}
+
+          {selectedIntent && !showingCreateFlow && (
+            <button
+              type="button"
+              onClick={() => setSelectedIntent(null)}
+              className="ca-btn-ghost"
+              style={{ marginBottom: "0.75rem" }}
+            >
+              ← Choose a different workflow
+            </button>
+          )}
+
+          {selectedIntent === "create" && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSelectedIntent(null)}
+                className="ca-btn-ghost"
+                style={{ marginBottom: "0.75rem" }}
+              >
+                ← Choose a different workflow
+              </button>
+              <ConversationalAssessment
+                key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : `fresh-${resetCounter}`}
+                onComplete={handleConversationComplete}
+                isLoading={isLoading}
+                disabled={usage !== null && !usage.canGenerate}
+                initialAnswers={formInitialAnswers ?? undefined}
+                defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
+                teacherProfile={teacherProfile}
+                onUpdateDefaults={handleUpdateDefaults}
+                forceBlank={forceBlank}
+                onReset={() => { setFormInitialAnswers(null); setForceBlank(true); setResetCounter(c => c + 1); }}
+              />
+            </>
+          )}
+
+          {selectedIntent === "analyze" && <AnalyzeDocumentPanel />}
+          {selectedIntent === "compare" && <CompareDocumentsPanel />}
+          {selectedIntent === "test" && <PlaytestAssessmentPanel />}
+          {(selectedIntent === "summary" || selectedIntent === "concepts" || selectedIntent === "difficulty" || selectedIntent === "raw") && (
+            <DocumentViewPanel initialIntent={selectedIntent} />
+          )}
+        </>
       ) : !result && !peResult && limitError ? null : !result && peResult ? (
         /* Input Review validation panel — shown before pipeline fires */
         <PromptEngineerPanel
@@ -457,15 +505,16 @@ export function ConversationalAssessmentWrapper({
             setIsLoading(false);
             setPendingEstimatedSeconds(null);
             setFormInitialAnswers(null);
+            setSelectedIntent(null);
             refreshUsage();
           }}
           style={{ marginBottom: "1rem", cursor: "pointer" }}
         >
-          ← New Assessment
+          ← Back to Intent Selector
         </button>
       )}
 
-      {result && (
+      {showingGeneratedCreateResult && (
         <div style={{ marginTop: "1rem" }}>
           {result.finalAssessment ? (
             <>
