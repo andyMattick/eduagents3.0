@@ -4,28 +4,13 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "functions": {
-    "server/rewrite.ts": {
-      "runtime": "nodejs18.x"
-    },
-    "server/llm.ts": {
-      "runtime": "nodejs18.x"
-    },
-    "server/generate-assessment.ts": {
-      "runtime": "nodejs18.x"
-    }
+    "server/rewrite.ts": { "runtime": "nodejs18.x" },
+    "server/llm.ts": { "runtime": "nodejs18.x" },
+    "server/generate-assessment.ts": { "runtime": "nodejs18.x" }
   },
   "routes": [
-    {
-      "src": "/api/rewrite",
-      "dest": "/server/rewrite.ts"
-    },
-    {
-      "src": "/api/llm",
-      "dest": "/server/llm.ts"
-    },
-    {
-      "src": "/api/generate-assessment",
-      "dest": "/server/generate-assessment.ts"
-    }
+    { "src": "/api/rewrite", "dest": "/server/rewrite.ts" },
+    { "src": "/api/llm", "dest": "/server/llm.ts" },
+    { "src": "/api/generate-assessment", "dest": "/server/generate-assessment.ts" }
   ]
 }
