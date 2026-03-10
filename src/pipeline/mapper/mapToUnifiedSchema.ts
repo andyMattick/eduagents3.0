@@ -4,13 +4,11 @@ import {
   UnifiedItem,
   UnifiedConceptGraph,
   UnifiedTeacherStyleProfile,
-  UnifiedTemplateProfile,
-  UnifiedMetadata
+  UnifiedMetadata,
+  UnifiedTemplateProfile
 } from "../schema/unifiedSchema";
 
-import { defaultTeacherStyle } from "../schema/teacherStyleProfile";
-
-
+import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
 
 export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
   const structure: UnifiedSectionStructure[] = internal.sectionStructures.map((s: any) => ({

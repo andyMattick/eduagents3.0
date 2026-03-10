@@ -1,3 +1,5 @@
+import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
+
 export function mapToDifficultyProfile(internal: any) {
   return {
     items: internal.items.map((it: any) => ({

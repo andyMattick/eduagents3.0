@@ -1,3 +1,11 @@
+// ---------------------------------------------
+// Unified Schema (Bottom of the dependency tree)
+// ---------------------------------------------
+// This file must contain ONLY type/interface exports.
+// No imports. No defaults. No functions.
+// Nothing in the pipeline may import back into this file.
+// ---------------------------------------------
+
 export interface UnifiedAnalyzerOutput {
   document_type: string;
   structure: UnifiedSectionStructure[];

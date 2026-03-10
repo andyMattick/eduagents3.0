@@ -1,3 +1,5 @@
+import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
+
 export function mapToSummaryView(internal: any) {
   return {
     item_count: internal.items?.length ?? 0,
