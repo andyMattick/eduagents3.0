@@ -110,6 +110,27 @@ const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
       ? String(formattedItem.questionType)
       : "shortAnswer";
 
+      function renderShortAnswer(item: any) {
+        return {
+          prompt: transformText(item.prompt) ?? "",
+          answer: transformText(item.answer) ?? ""
+        };
+      }
+
+            
+      if (questionType === "shortAnswer") {
+        const sa = renderShortAnswer(formattedItem);
+        return {
+          questionNumber: i + 1,
+          slotId: formattedItem.slotId,
+          questionType,
+          prompt: sa.prompt,
+          answer: sa.answer,
+          metadata: formattedItem.metadata
+        };
+      }
+
+
   return {
     questionNumber: i + 1,
     slotId: formattedItem.slotId,
