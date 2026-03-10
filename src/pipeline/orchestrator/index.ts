@@ -1,5 +1,5 @@
 import { runCreatePipeline } from "./create";
-import { DocumentIntent, runDocumentView } from "./document";
+import { runDocumentView } from "./document";
 import { runAnalyzePipeline } from "./analyze";
 import { runComparePipeline } from "./compare";
 import { runTestPipeline } from "./test";
@@ -9,7 +9,11 @@ export type OrchestratorIntent =
   | "analyze"
   | "compare"
   | "test"
-  | DocumentIntent;
+  | "summary"
+  | "concepts"
+  | "difficulty"
+  | "raw";
+
 
 export async function runOrchestrator(options: {
   intent: OrchestratorIntent;
