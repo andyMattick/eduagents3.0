@@ -14,18 +14,18 @@
       "runtime": "nodejs18.x"
     }
   },
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/rewrite",
-      "destination": "/server/rewrite"
+      "src": "/api/rewrite",
+      "dest": "/server/rewrite.ts"
     },
     {
-      "source": "/api/llm",
-      "destination": "/server/llm"
+      "src": "/api/llm",
+      "dest": "/server/llm.ts"
     },
     {
-      "source": "/api/generate-assessment",
-      "destination": "/server/generate-assessment.ts"
+      "src": "/api/generate-assessment",
+      "dest": "/server/generate-assessment.ts"
     }
   ]
 }
