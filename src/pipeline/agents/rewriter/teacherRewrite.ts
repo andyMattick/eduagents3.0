@@ -13,6 +13,7 @@
 
 import { callAI } from "@/config/aiConfig";
 import type { FinalAssessment } from "@/pipeline/agents/builder/FinalAssessment";
+import { getPrompt, getAnswer } from "@/pipeline/utils/itemNormalizer";
 
 export interface TeacherRewriteInput {
   finalAssessment: FinalAssessment;
@@ -97,8 +98,8 @@ export async function runTeacherRewrite(
   parsed.items = parsed.items.map((item, i) => ({
     ...item,
     questionNumber: i + 1,
-    prompt: fixSpacing(item.prompt ?? ""),
-    answer: item.answer ? fixSpacing(item.answer) : item.answer,
+    prompt: fixSpacing(getPrompt(item) ?? ""),
+    answer: typeof getAnswer(item) === "string" ? fixSpacing(getAnswer(item) as string) : getAnswer(item),
   }));
   parsed.totalItems = parsed.items.length;
 

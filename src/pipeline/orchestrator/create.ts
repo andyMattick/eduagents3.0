@@ -27,6 +27,7 @@ import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
 import { resetLLMGate } from "@/pipeline/llm/gemini";
+import { normalizeItems } from "@/pipeline/utils/itemNormalizer";
 import "@/pipeline/agents/pluginEngine/services/problemPlugins";
 import { loadPlugins, listPlugins } from "@/pipeline/agents/pluginEngine/services/pluginRegistry";
 
@@ -57,16 +58,25 @@ console.log("[Pipeline] Loaded runPipeline.ts — Version 3.0.0 (Plugin Engine)"
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Builder only needs slot id/cognitiveDemand/difficulty to enrich items.
- * Strip everything else (validation config, pacing, distribution, etc.).
+ * Builder needs slot metadata for rendering and output enrichment.
+ * Keep this object lean, but preserve slot-level governance fields.
  */
 function blueprintForBuilder(blueprint: any): { plan: { slots: any[] } } {
   return {
     plan: {
       slots: (blueprint.plan?.slots ?? []).map((s: any) => ({
         id: s.id,
+        questionType: s.questionType,
         cognitiveDemand: s.cognitiveDemand,
         difficulty: s.difficulty,
+        pacing: s.pacing,
+        topicAngle: s.topicAngle,
+        generationMethod: s.generationMethod,
+        templateId: s.templateId ?? null,
+        diagramType: s.diagramType ?? null,
+        imageReferenceId: s.imageReferenceId ?? null,
+        constraints: s.constraints ?? null,
+        media: s.media ?? null,
       })),
     },
   };
@@ -155,10 +165,27 @@ function uarForScribe(uar: any): Record<string, any> {
  * Avoids serialising the full items array into Supabase / dossier calls.
  * ~1,000 token saving per run on assessments with 5+ items.
  */
-function finalAssessmentForScribe(fa: any): { questionCount: number; questionTypes: string[] } {
+function finalAssessmentForScribe(fa: any): {
+  questionCount: number;
+  questionTypes: string[];
+  templateSlotsUsed: number;
+  diagramSlotsUsed: number;
+  imageSlotsUsed: number;
+  sectionCount: number;
+} {
+  const items = fa.items ?? [];
+  const templateSlotsUsed = items.filter((i: any) => !!(i.metadata?.templateId)).length;
+  const diagramSlotsUsed = items.filter((i: any) => !!(i.metadata?.diagramType)).length;
+  const imageSlotsUsed = items.filter((i: any) => !!(i.metadata?.imageReferenceId)).length;
+  const sectionCount = Object.keys(fa.metadata?.sectionInstructions ?? {}).length;
+
   return {
-    questionCount: fa.items?.length ?? 0,
-    questionTypes: (fa.items ?? []).map((i: any) => i.questionType).filter(Boolean) as string[],
+    questionCount: items.length,
+    questionTypes: items.map((i: any) => i.questionType).filter(Boolean) as string[],
+    templateSlotsUsed,
+    diagramSlotsUsed,
+    imageSlotsUsed,
+    sectionCount,
   };
 }
 
@@ -856,23 +883,8 @@ if (philosopherWrite.status === "rewrite" && philosopherWrite.severity <= 6) {
   });
 
   // Normalize template plugin output BEFORE Gatekeeper sees it
-function normalizeForGatekeeper(item: any) {
-  if (item.problemText && !item.prompt) {
-    item.prompt = item.problemText;
-  }
-  if (item.correctAnswer && !item.answer) {
-    item.answer = item.correctAnswer;
-  }
-  if (!item.questionType && item.problemType) {
-    item.questionType = item.problemType;
-  }
-  if (!Array.isArray(item.options)) {
-    item.options = null;
-  }
-  return item;
-}
-
-const normalizedForGK = rewritten.map(normalizeForGatekeeper);
+  // NOTE: Using itemNormalizer from utils to ensure single source of truth
+  const normalizedForGK = normalizeItems(rewritten);
 
 const gatekeeperFinal = Gatekeeper.validate(
   blueprint.plan,

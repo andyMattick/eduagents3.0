@@ -45,4 +45,11 @@ export type WriterRunSummary = {
     difficultyMismatch: boolean;
     structureViolation: boolean;
   };
+  /** Optional generation-mode usage metrics from the final assessment. */
+  generationStats?: {
+    templateSlotsUsed: number;
+    diagramSlotsUsed: number;
+    imageSlotsUsed: number;
+    sectionCount: number;
+  };
 };

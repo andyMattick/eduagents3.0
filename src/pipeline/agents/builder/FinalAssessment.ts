@@ -22,6 +22,10 @@ export interface FinalAssessmentItem {
    * Passage-based only: the sub-questions with prompts + model answers.
    */
   questions?: Array<{ prompt: string; answer?: string }>;
+  /** Diagram plugin rendering: URL to diagram asset */
+  diagramUrl?: string | null;
+  /** Image plugin rendering: URL to image asset */
+  imageUrl?: string | null;
   metadata?: Record<string, any>;
 }
 
@@ -46,5 +50,9 @@ export interface FinalAssessment {
     layout?: "columns" | "singleColumn";
     /** Per section-type label → instruction line for builders/exporters to print. */
     sectionInstructions?: Record<string, string>;
+    /** Ordered section keys as they appear in blueprint slot order. */
+    sectionOrder?: string[];
+    /** Per-section item counts keyed by questionType. */
+    sectionGroups?: Record<string, number>;
   };
 }

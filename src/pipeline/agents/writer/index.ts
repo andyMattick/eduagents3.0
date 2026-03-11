@@ -1,6 +1,7 @@
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { GeneratedItem } from "./types";
+import type { GeneratedItem } from "./types";
+
 import { writerParallel } from "./chunk/writerParallel";
 import type { WriterTelemetry } from "./telemetry";
 

@@ -84,6 +84,13 @@ export async function updateWriterAgentDossier(
     passFailByDomain: existing.passFailByDomain ?? {},
     errorPatterns: { ...base.errorPatterns!, ...existing.errorPatterns },
     topicMastery: existing.topicMastery ?? {},
+    generationStats: existing.generationStats ?? {
+      templateSlotsUsed: 0,
+      diagramSlotsUsed: 0,
+      imageSlotsUsed: 0,
+      sectionCount: 0,
+      runs: 0,
+    },
   };
 
   // ── Trust score (0–100) ───────────────────────────────────────────────────
@@ -165,6 +172,23 @@ export async function updateWriterAgentDossier(
     d.passFailByDomain![topic].passes++;
   } else {
     d.passFailByDomain![topic].fails++;
+  }
+
+  // ── Generation stats (template/diagram/image usage) ──────────────────────
+  if (run.generationStats) {
+    d.generationStats = d.generationStats ?? {
+      templateSlotsUsed: 0,
+      diagramSlotsUsed: 0,
+      imageSlotsUsed: 0,
+      sectionCount: 0,
+      runs: 0,
+    };
+
+    d.generationStats.templateSlotsUsed += run.generationStats.templateSlotsUsed;
+    d.generationStats.diagramSlotsUsed += run.generationStats.diagramSlotsUsed;
+    d.generationStats.imageSlotsUsed += run.generationStats.imageSlotsUsed;
+    d.generationStats.sectionCount += run.generationStats.sectionCount;
+    d.generationStats.runs += 1;
   }
 
   // ── Persist ───────────────────────────────────────────────────────────────

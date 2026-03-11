@@ -46,7 +46,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest"
+    "test": "vitest",
+    "test:regression": "vitest run src/__tests__/pipelineRegression.test.ts",
+    "legacy:report": "node scripts/report-legacy-patterns.mjs",
+    "ci:legacy-check": "bash scripts/check-legacy-patterns.sh"
   },
   "description": "**Transform static educational assessments into dynamic, multidimensional simulations.**",
   "main": "index.js",

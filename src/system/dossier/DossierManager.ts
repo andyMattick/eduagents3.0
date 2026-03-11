@@ -138,6 +138,15 @@ export interface AgentDossierData {
     layout: "columns" | "singleColumn";
     reason: string;
   };
+
+  /** Aggregate slot-generation mode usage learned from completed runs. */
+  generationStats?: {
+    templateSlotsUsed: number;
+    diagramSlotsUsed: number;
+    imageSlotsUsed: number;
+    sectionCount: number;
+    runs: number;
+  };
 }
 
 /**

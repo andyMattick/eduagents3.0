@@ -1,10 +1,13 @@
 import type { GeneratedItem } from "@/pipeline/agents/writer/types";
 import type { FinalAssessment, FinalAssessmentItem } from "./FinalAssessment";
+import { normalizeItem, getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
 import { normalizeMath } from "../../../utils/normalizeMath";
 import { applyMathFormat } from "../../../utils/mathFormatters";
 import type { MathFormat } from "../../../utils/mathFormatters";
 import { applyLexicalCalibration } from "@/utils/lexical/Calibration";
 import { formatTrueFalseItem } from "./trueFalseFormatter";
+import { groupItemsBySection } from "./sectionGrouper";
+import { internalLogger } from "../shared/internalLogging";
 
 type BuilderInput =
   | GeneratedItem[]
@@ -15,40 +18,14 @@ function normalise(input: BuilderInput): { items: GeneratedItem[]; blueprint?: a
   return input;
 }
 
-function generateId(): string {
-  return `assessment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-// --- TEMPLATE → WRITER FIELD NORMALIZATION -------------------------
-// --- TEMPLATE → WRITER FIELD NORMALIZATION -------------------------
-function normalizeTemplateFields(item: any) {
-  if (item.problemText && !item.prompt) {
-    item.prompt = item.problemText;
-  }
-
-  if (item.correctAnswer && !item.answer) {
-    item.answer = item.correctAnswer;
-  }
-
-  if (!item.questionType && item.problemType) {
-    item.questionType = item.problemType;
-  }
-
-  if (!Array.isArray(item.options)) {
-    item.options = null;
-  }
-
-  if (!Array.isArray(item.questions)) {
-    item.questions = undefined;
-  }
-
-  return item;
-}
-
+ function generateId(): string {
+   return `assessment_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+ }
 
 export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> {
   const { items, blueprint } = normalise(input);
   const plan = blueprint?.plan ?? blueprint ?? null;
+  const slotMetaById = new Map((plan?.slots ?? []).map((s: any) => [s.id, s]));
 
   const arithmeticCount = items.filter(i => i.questionType === "arithmeticFluency").length;
   const layout: "columns" | "singleColumn" =
@@ -101,34 +78,114 @@ export async function runBuilder(input: BuilderInput): Promise<FinalAssessment> 
     return applyLexicalCalibration(formatted, grade);
   }
 
+  /**
+   * Render diagram item: uses diagram type to generate/reference a diagram asset.
+   */
+  function renderDiagram(item: any, diagramType?: string | null) {
+    return {
+      prompt: transformText(getPrompt(item)) ?? "",
+      answer: transformText((getAnswer(item) as string) ?? "") ?? "",
+      diagramUrl: diagramType ? `/diagrams/${diagramType}.svg` : null,
+      diagramType: diagramType ?? null,
+    };
+  }
+
+  /**
+   * Render image item: resolves image reference and attaches asset URL.
+   */
+  function renderImage(item: any, imageReferenceId?: string | null) {
+    return {
+      prompt: transformText(getPrompt(item)) ?? "",
+      answer: transformText((getAnswer(item) as string) ?? "") ?? "",
+      imageUrl: imageReferenceId ? `/images/${imageReferenceId}.jpg` : null,
+      imageReferenceId: imageReferenceId ?? null,
+    };
+  }
+
+  /**
+   * Render short answer item cleanly.
+   */
+  function renderShortAnswer(item: any) {
+    return {
+      prompt: transformText(getPrompt(item)) ?? "",
+      answer: transformText((getAnswer(item) as string) ?? "") ?? ""
+    };
+  }
+
 const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
-  const normalized = normalizeTemplateFields(item);
+  const normalized = normalizeItem(item);
   const formattedItem = formatTrueFalseItem(normalized);
+  const slotMeta: any = slotMetaById.get(formattedItem.slotId) ?? {};
+
+  const mergedMetadata = {
+    ...(formattedItem.metadata ?? {}),
+    slotId: formattedItem.slotId,
+    generationMethod: (formattedItem.metadata as any)?.generationMethod ?? slotMeta.generationMethod ?? null,
+    templateId: (formattedItem.metadata as any)?.templateId ?? slotMeta.templateId ?? null,
+    diagramType: (formattedItem.metadata as any)?.diagramType ?? slotMeta.diagramType ?? null,
+    imageReferenceId: (formattedItem.metadata as any)?.imageReferenceId ?? slotMeta.imageReferenceId ?? null,
+    topicAngle: (formattedItem.metadata as any)?.topicAngle ?? slotMeta.topicAngle ?? null,
+    difficulty: slotMeta.difficulty ?? null,
+    cognitiveDemand: slotMeta.cognitiveDemand ?? null,
+    pacing: slotMeta.pacing ?? null,
+  };
 
   const questionType =
     formattedItem.questionType && formattedItem.questionType !== "undefined"
       ? String(formattedItem.questionType)
       : "shortAnswer";
 
-      function renderShortAnswer(item: any) {
-        return {
-          prompt: transformText(item.prompt) ?? "",
-          answer: transformText(item.answer) ?? ""
-        };
-      }
+  const generationMethod = mergedMetadata.generationMethod;
 
-            
-      if (questionType === "shortAnswer") {
-        const sa = renderShortAnswer(formattedItem);
-        return {
-          questionNumber: i + 1,
-          slotId: formattedItem.slotId,
-          questionType,
-          prompt: sa.prompt,
-          answer: sa.answer,
-          metadata: formattedItem.metadata
-        };
-      }
+  // Type guard: ensure metadata has required fields based on generationMethod
+  if (generationMethod === "diagram" && !mergedMetadata.diagramType) {
+    console.warn(`[Builder] Diagram slot ${formattedItem.slotId} missing diagramType; using default rendering`);
+  }
+  if (generationMethod === "image" && !mergedMetadata.imageReferenceId) {
+    console.warn(`[Builder] Image slot ${formattedItem.slotId} missing imageReferenceId; using default rendering`);
+  }
+  if (generationMethod === "template" && !mergedMetadata.templateId) {
+    console.warn(`[Builder] Template slot ${formattedItem.slotId} missing templateId; using default rendering`);
+  }
+
+  // Route based on generationMethod
+  if (generationMethod === "diagram") {
+    const rendered = renderDiagram(formattedItem, mergedMetadata.diagramType);
+    return {
+      questionNumber: i + 1,
+      slotId: formattedItem.slotId,
+      questionType,
+      prompt: rendered.prompt,
+      answer: rendered.answer,
+      diagramUrl: rendered.diagramUrl,
+      metadata: mergedMetadata,
+    };
+  }
+
+  if (generationMethod === "image") {
+    const rendered = renderImage(formattedItem, mergedMetadata.imageReferenceId);
+    return {
+      questionNumber: i + 1,
+      slotId: formattedItem.slotId,
+      questionType,
+      prompt: rendered.prompt,
+      answer: rendered.answer,
+      imageUrl: rendered.imageUrl,
+      metadata: mergedMetadata,
+    };
+  }
+
+  if (questionType === "shortAnswer") {
+    const sa = renderShortAnswer(formattedItem);
+    return {
+      questionNumber: i + 1,
+      slotId: formattedItem.slotId,
+      questionType,
+      prompt: sa.prompt,
+      answer: sa.answer,
+      metadata: mergedMetadata
+    };
+  }
 
 
   return {
@@ -136,17 +193,17 @@ const finalItems: FinalAssessmentItem[] = items.map((item, i) => {
     slotId: formattedItem.slotId,
     questionType,
 
-    prompt: transformText(formattedItem.prompt) ?? "",
+    prompt: transformText(getPrompt(formattedItem)) ?? "",
 
-options: Array.isArray(formattedItem.options)
-  ? formattedItem.options.map((opt: string) => transformText(opt) ?? "")
+options: Array.isArray(getOptions(formattedItem))
+  ? (getOptions(formattedItem) as string[]).map((opt: string) => transformText(opt) ?? "")
   : undefined,
 
-    answer: transformText(formattedItem.answer),
+    answer: transformText((getAnswer(formattedItem) as string) ?? ""),
 
     passage:
-      formattedItem.passage != null
-        ? (transformText(formattedItem.passage) ?? "")
+      getPassage(formattedItem) != null
+        ? (transformText(getPassage(formattedItem) as string) ?? "")
         : undefined,
 
 questions: Array.isArray(formattedItem.questions)
@@ -157,10 +214,26 @@ questions: Array.isArray(formattedItem.questions)
   : undefined,
 
 
-    metadata: formattedItem.metadata,
+    metadata: mergedMetadata,
   };
 });
 
+  const grouped = groupItemsBySection(blueprint ?? null, finalItems);
+
+  // ── Internal logging: rendering decision summary ──────────────────────────
+  const renderingCounts = finalItems.reduce((acc, item) => {
+    const method = (item as any).metadata?.generationMethod ?? "default";
+    acc[method] = (acc[method] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  internalLogger.info("Builder", "Assessment built", {
+    totalItems: finalItems.length,
+    renderingMethods: renderingCounts,
+    hasDiagrams: finalItems.some((i: any) => i.diagramUrl),
+    hasImages: finalItems.some((i: any) => i.imageUrl),
+    sectionCount: grouped.sectionOrder.length,
+  });
 
   return {
     id: generateId(),
@@ -174,6 +247,8 @@ questions: Array.isArray(formattedItem.questions)
       pacingSecondsPerItem: plan?.pacingSecondsPerItem,
       layout,
       sectionInstructions,
+      sectionOrder: grouped.sectionOrder,
+      sectionGroups: grouped.totalPerSection,
     },
   };
 }

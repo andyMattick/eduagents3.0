@@ -12,6 +12,8 @@ import {
   decayGuardrails,
   getInjectableGuardrails
 } from "./GuardrailEngine";
+import { internalLogger } from "../shared/internalLogging";
+import { getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
 
 export class SCRIBE {
 
@@ -238,7 +240,14 @@ export class SCRIBE {
     userId: string;
     agentType: string;
     gatekeeperReport: any;
-    finalAssessment: { questionCount: number; questionTypes: string[] };
+    finalAssessment: {
+      questionCount: number;
+      questionTypes: string[];
+      templateSlotsUsed?: number;
+      diagramSlotsUsed?: number;
+      imageSlotsUsed?: number;
+      sectionCount?: number;
+    };
     blueprint: any;
     uar: any;
     writerTelemetry?: any;
@@ -286,10 +295,30 @@ export class SCRIBE {
           difficultyMismatch:  violationTypes.has("difficulty_mismatch"),
           structureViolation:  violationTypes.has("format") || violationTypes.has("missing_item"),
         },
+        generationStats: {
+          templateSlotsUsed: finalAssessment.templateSlotsUsed ?? 0,
+          diagramSlotsUsed: finalAssessment.diagramSlotsUsed ?? 0,
+          imageSlotsUsed: finalAssessment.imageSlotsUsed ?? 0,
+          sectionCount: finalAssessment.sectionCount ?? 0,
+        },
       };
 
       // ── 3. Update extended dossier and get reliability scores ─────────────
       const reliability = await updateWriterAgentDossier(userId, run);
+
+      // ── 4. Persist journal rows to Supabase (writer_runs + writer_run_slots) ────
+      try {
+        await SCRIBE.persistWriterRunToJournal({
+          userId,
+          domain,
+          run,
+          finalAssessment,
+          gatekeeperReport,
+          blueprint,
+        });
+      } catch (journalErr: any) {
+        console.warn("[SCRIBE] Journal persistence failed (non-fatal):", journalErr?.message);
+      }
 
       // Cache trust score for hint-budget algo on the next run
       SCRIBE._cachedTrustScore100 = reliability.trust;
@@ -324,6 +353,104 @@ export class SCRIBE {
     } catch (err: any) {
       console.error("[SCRIBE.updateUserDossier]", err);
       return { status: "error" };
+    }
+  }
+
+  /**
+   * Persist Writer run data to journal tables (writer_runs + writer_run_slots).
+   * Non-fatal: catches all errors to avoid blocking the pipeline.
+   */
+  private static async persistWriterRunToJournal({
+    userId,
+    domain,
+    run,
+    finalAssessment,
+    gatekeeperReport,
+    blueprint,
+  }: {
+    userId: string;
+    domain: string;
+    run: WriterRunSummary;
+    finalAssessment: any;
+    gatekeeperReport: any;
+    blueprint: any;
+  }): Promise<void> {
+    try {
+      // Insert writer_runs row
+      const { data: runRow, error: runErr } = await supabase
+        .from("writer_runs")
+        .insert({
+          teacher_id: userId,
+          course_id: domain,
+          total_slots: run.questionCount,
+          template_slots_used: run.generationStats?.templateSlotsUsed ?? 0,
+          diagram_slots_used: run.generationStats?.diagramSlotsUsed ?? 0,
+          image_slots_used: run.generationStats?.imageSlotsUsed ?? 0,
+          llm_slots_used: run.questionCount - (run.generationStats?.templateSlotsUsed ?? 0) - (run.generationStats?.diagramSlotsUsed ?? 0) - (run.generationStats?.imageSlotsUsed ?? 0),
+          section_count: run.generationStats?.sectionCount ?? 0,
+          gatekeeper_passed: run.questionCount - (gatekeeperReport?.violations?.length ?? 0),
+          gatekeeper_failed: gatekeeperReport?.violations?.length ?? 0,
+          metadata: { qualityScore: run.qualityScore, topic: run.topic },
+        })
+        .select("id")
+        .single();
+
+      if (runErr || !runRow) {
+        console.warn("[SCRIBE] writer_runs insert failed:", runErr?.message);
+        return;
+      }
+
+      // Insert writer_run_slots rows (one per question in finalAssessment)
+      const slotsForInsert = (finalAssessment?.items ?? []).map((item: any) => {
+        // Type guard: warn if metadata is missing (non-fatal — use defaults)
+        if (!item.metadata) {
+          console.warn(`[SCRIBE] writer_run_slots: item ${item.slotId} missing metadata; using defaults`);
+        }
+        return {
+          run_id: runRow.id,
+          slot_id: item.slotId ?? `slot_${item.questionNumber}`,
+          question_type: item.questionType ?? "unknown",
+          generation_method: item.metadata?.generationMethod ?? "llm",
+          template_id: item.metadata?.templateId ?? null,
+          diagram_type: item.metadata?.diagramType ?? null,
+          image_reference_id: item.metadata?.imageReferenceId ?? null,
+          difficulty: item.metadata?.difficulty ?? "medium",
+          cognitive_demand: item.metadata?.cognitiveDemand ?? null,
+          topic_angle: item.metadata?.topicAngle ?? null,
+          pacing_seconds: item.metadata?.pacingSeconds ?? null,
+          gatekeeper_status: "pass",
+          gatekeeper_issues: [],
+          prompt: getPrompt(item),
+          answer: getAnswer(item),
+          options: getOptions(item),
+          passage: getPassage(item),
+          questions: item.questions ?? null,
+        };
+      });
+
+      if (slotsForInsert.length > 0) {
+        const { error: slotsErr } = await supabase
+          .from("writer_run_slots")
+          .insert(slotsForInsert);
+
+        if (slotsErr) {
+          console.warn("[SCRIBE] writer_run_slots insert failed:", slotsErr.message);
+        } else {
+          console.log(`[SCRIBE] Persisted ${slotsForInsert.length} slot records to journal.`);
+          internalLogger.info("Scribe", "Journal persistence complete", {
+            teacher_id: userId,
+            course_id: domain,
+            run_slots_inserted: slotsForInsert.length,
+            generation_methods: slotsForInsert.reduce((acc, slot) => {
+              acc[slot.generation_method] = (acc[slot.generation_method] ?? 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            quality_score: run.qualityScore,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.warn("[SCRIBE.persistWriterRunToJournal] Error:", err?.message);
     }
   }
 

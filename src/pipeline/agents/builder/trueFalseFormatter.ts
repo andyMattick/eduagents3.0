@@ -1,3 +1,5 @@
+import { getPrompt } from "@/pipeline/utils/itemNormalizer";
+
 /**
  * trueFalseFormatter.ts
  *
@@ -29,11 +31,12 @@ export interface TrueFalseFormattable {
 export function formatTrueFalseItem<T extends TrueFalseFormattable>(item: T): T {
   if (item.questionType !== "trueFalse") return item;
 
-  const needsInstruction = !INSTRUCTION_PATTERN.test(item.prompt);
+  const prompt = getPrompt(item);
+  const needsInstruction = !INSTRUCTION_PATTERN.test(prompt);
   if (!needsInstruction) return item;
 
   return {
     ...item,
-    prompt: `Circle True or False.\n\n${item.prompt}`,
+    prompt: `Circle True or False.\n\n${prompt}`,
   };
 }

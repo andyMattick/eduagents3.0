@@ -25,6 +25,11 @@
  * is NOT modified.
  */
 
+// Immutable helper: Create updated slot without mutation
+function updateSlot(slot: any, updates: Partial<any>): any {
+  return { ...slot, ...updates };
+}
+
 import type { BlueprintSlot } from "@/types/Blueprint";
 import type { CognitiveProcess } from "@/pipeline/contracts/BlueprintPlanV3_2";
 
@@ -145,9 +150,10 @@ export function adjustPlanForTime(
     if (targets.length === 0) continue;
 
     let changed = 0;
-    for (const slot of working) {
-      if (slot.questionType !== from) continue;
-      slot.questionType = to as any;
+    for (let i = 0; i < working.length; i++) {
+      if (working[i].questionType !== from) continue;
+      // Immutable update: create new slot instead of mutating
+      working[i] = updateSlot(working[i], { questionType: to });
       changed++;
 
       // Recheck after each conversion (greedy: stop as soon as budget is met)
@@ -202,16 +208,20 @@ export function adjustPlanForTime(
     const newCeiling = BLOOM_ORDER[ceilIdx];
 
     let capped = 0;
-    for (const slot of working) {
+    for (let i = 0; i < working.length; i++) {
+      const slot = working[i];
       const slotIdx = BLOOM_ORDER.indexOf(
         (slot.cognitiveDemand ?? "understand") as CognitiveProcess
       );
       if (slotIdx > ceilIdx) {
-        slot.cognitiveDemand = newCeiling;
-        // Difficulty tracks Bloom: keep mapping consistent
-        slot.difficulty =
-          ceilIdx <= 0 ? "easy" :
-          ceilIdx <= 2 ? "medium" : "hard";
+        // Immutable update: create new slot instead of mutating
+        working[i] = updateSlot(slot, {
+          cognitiveDemand: newCeiling,
+          // Difficulty tracks Bloom: keep mapping consistent
+          difficulty:
+            ceilIdx <= 0 ? "easy" :
+            ceilIdx <= 2 ? "medium" : "hard",
+        });
         capped++;
       }
     }

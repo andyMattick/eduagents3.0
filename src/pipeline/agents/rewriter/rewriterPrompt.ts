@@ -1,15 +1,17 @@
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import { WriterContext, ScribePrescriptions } from "../writer/writerPrompt";
+import { getPrompt, getAnswer, getOptions } from "@/pipeline/utils/itemNormalizer";
 export function buildRewriterPrompt(
   slot: BlueprintPlanV3_2["slots"][number],
   context: WriterContext,
   scribe: ScribePrescriptions,
-  brokenItem: {
+   brokenItem: {
     slotId: string;
     questionType: string | null;
     prompt: string;
     options?: string[] | null;
     answer: string | null;
+      metadata?: Record<string, unknown>;
   }
 ): string {
   const isMC = slot.questionType === "multipleChoice";
@@ -29,9 +31,9 @@ Rewrite ONLY if the Gatekeeper reported violations. Otherwise, return the origin
 BROKEN ITEM
 slotId: ${brokenItem.slotId}
 questionType: ${brokenItem.questionType}
-prompt: ${brokenItem.prompt}
-options: ${JSON.stringify(brokenItem.options ?? null)}
-answer: ${brokenItem.answer}
+prompt: ${getPrompt(brokenItem)}
+options: ${JSON.stringify(getOptions(brokenItem) ?? null)}
+answer: ${String(getAnswer(brokenItem) ?? "")}
 
 SLOT REQUIREMENTS
 slotId: ${slot.id}

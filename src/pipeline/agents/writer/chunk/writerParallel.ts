@@ -44,6 +44,7 @@ import {
   buildContractGuidelines,
   setFinalWriterGuidelines,
 } from "@/pipeline/agents/scribe/WriterContractStore";
+import { internalLogger } from "../../shared/internalLogging";
 
 // Module-level bloom alignment log — reset each run, read by SCRIBE post-run
 let _lastBloomAlignmentLog: BloomAlignmentLog = [];
@@ -263,6 +264,20 @@ export async function writerParallel(
       questionType: "arithmeticFluency",
       prompt: "",
       answer: "",
+      metadata: {
+        generationMethod: "llm",
+        templateId: null,
+        diagramType: null,
+        imageReferenceId: null,
+        difficulty: (slot.difficulty ?? "medium") as "easy" | "medium" | "hard",
+        cognitiveDemand: slot.cognitiveDemand ?? null,
+        topicAngle: slot.topicAngle ?? null,
+        pacingSeconds: slot.pacingSeconds ?? null,
+        slotId: slot.id,
+        questionType: "arithmeticFluency",
+        sectionId: (slot as any).sectionId ?? null,
+        passageId: (slot as any).passageId ?? null,
+      },
     };
     const generated = generateArithmeticItem(stub, {
       grade,
@@ -540,9 +555,31 @@ export async function writerParallel(
   }
 
   // ── Step 6: Return in original slot order ───────────────────────────────
-  const finalItems = allSlots.flatMap((s) => {
+  let finalItems = allSlots.flatMap((s) => {
     const item = allItems.get(s.id);
     return item ? [item] : [];
+  });
+
+  // ── Enrich items with complete metadata from slots ──────────────────────
+  finalItems = finalItems.map((item) => {
+    const slot = allSlots.find((s) => s.id === item.slotId);
+    if (slot) {
+      item.metadata = {
+        generationMethod: (item.metadata?.generationMethod ?? slot.generationMethod ?? "llm") as any,
+        templateId: item.metadata?.templateId ?? slot.templateId ?? null,
+        diagramType: item.metadata?.diagramType ?? slot.diagramType ?? null,
+        imageReferenceId: item.metadata?.imageReferenceId ?? slot.imageReferenceId ?? null,
+        difficulty: item.metadata?.difficulty ?? slot.difficulty ?? "medium",
+        cognitiveDemand: item.metadata?.cognitiveDemand ?? slot.cognitiveDemand ?? null,
+        topicAngle: item.metadata?.topicAngle ?? slot.topicAngle ?? null,
+        pacingSeconds: item.metadata?.pacingSeconds ?? slot.pacingSeconds ?? null,
+        slotId: item.slotId,
+        questionType: item.questionType,
+        sectionId: item.metadata?.sectionId ?? (slot as any).sectionId ?? null,
+        passageId: item.metadata?.passageId ?? (slot as any).passageId ?? null,
+      };
+    }
+    return item;
   });
 
   telemetry.finalProblemCount = finalItems.length;
@@ -557,6 +594,41 @@ export async function writerParallel(
 
   // Cache rewrite count for the budget algorithm's stability check next run.
   _lastRunRewriteCount = telemetry.rewriteCount;
+
+  // ── Type guard: ensure all items have complete WriterItemMetadata ────────
+  for (const item of finalItems) {
+    if (!item.metadata) {
+      throw new Error(`WriterItemMetadata missing for slot ${item.slotId}. This violates the governance contract.`);
+    }
+    if (!item.metadata.generationMethod) {
+      throw new Error(`generationMethod missing for slot ${item.slotId}.`);
+    }
+    if (!item.metadata.difficulty || !["easy", "medium", "hard"].includes(item.metadata.difficulty)) {
+      throw new Error(`difficulty invalid for slot ${item.slotId}: ${item.metadata.difficulty}`);
+    }
+    if (!item.metadata.slotId) {
+      throw new Error(`slotId missing from metadata for item.`);
+    }
+    if (!item.metadata.questionType) {
+      throw new Error(`questionType missing from metadata for slot ${item.slotId}.`);
+    }
+  }
+
+  // ── Internal logging: generation method usage ────────────────────────────
+  const generationCounts = finalItems.reduce((acc, item) => {
+    const method = item.metadata.generationMethod || "llm";
+    acc[method] = (acc[method] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  internalLogger.info("Writer", "Generation method distribution", {
+    total: finalItems.length,
+    methods: generationCounts,
+    rewriteCount: telemetry.rewriteCount,
+    bloomDrift: _lastBloomAlignmentLog.length > 0 
+      ? (_lastBloomAlignmentLog.filter(e => !e.aligned).length / _lastBloomAlignmentLog.length * 100).toFixed(1)
+      : "no-data",
+  });
 
   return { items: finalItems, telemetry };
 }

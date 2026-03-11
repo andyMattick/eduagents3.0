@@ -3,6 +3,7 @@ import { buildRewriterPrompt } from "./rewriterPrompt";
 import { PipelineTrace } from "@/types/Trace";
 import { applyMathFormat } from "@/utils/mathFormatters";
 import type { MathFormat } from "@/utils/mathFormatters";
+import { getPrompt, getAnswer } from "@/pipeline/utils/itemNormalizer";
 
 /**
  * Validate that a value is strict JSON-serialisable (no undefined, no circular refs).
@@ -24,8 +25,8 @@ function validateStrictJSON(value: any): { ok: boolean; error?: string } {
 function applyMathFormatToItems(items: any[], fmt: MathFormat): any[] {
   return items.map(item => ({
     ...item,
-    prompt: typeof item.prompt === "string" ? applyMathFormat(item.prompt, fmt) : item.prompt,
-    answer: typeof item.answer === "string" ? applyMathFormat(item.answer, fmt) : item.answer,
+    prompt: typeof getPrompt(item) === "string" ? applyMathFormat(getPrompt(item), fmt) : getPrompt(item),
+    answer: typeof getAnswer(item) === "string" ? applyMathFormat(getAnswer(item) as string, fmt) : getAnswer(item),
   }));
 }
 

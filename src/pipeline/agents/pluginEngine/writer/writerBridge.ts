@@ -74,9 +74,12 @@ export function wrapPluginOutput(
     },
   };
 
-  // MCQ handling: if answer looks like an option set, parse options
+  // MCQ handling: preserve immutability when attaching options.
   if (questionType === "multipleChoice" && problem.metadata?.options) {
-    item.options = problem.metadata.options;
+    return {
+      ...item,
+      options: Array.isArray(problem.metadata.options) ? problem.metadata.options : null,
+    };
   }
 
   return item;

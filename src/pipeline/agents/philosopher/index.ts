@@ -116,6 +116,24 @@ function analyzeWriteMode(input: {
 
   notes.push(`Quality score: ${qualityScore}/10`);
 
+  const bloomMismatchCount = violations.filter((v: any) => v.type === "cognitive_demand_mismatch").length;
+  const driftRate = slots.length > 0 ? bloomMismatchCount / slots.length : 0;
+  if (driftRate > 0.3) {
+    return {
+      status: "rewrite",
+      severity: 6,
+      philosopherNotes:
+        `Bloom drift detected: ${Math.round(driftRate * 100)}% of slots did not match cognitive demand. Triggering corrective rewrite.`,
+      rewriteInstructions: [
+        "bloomCorrective: Regenerate mismatched slots so each prompt verb and task matches the slot cognitiveDemand.",
+        "Preserve slot questionType and keep topicAngle distinct across rewritten slots.",
+      ],
+      analysis,
+      teacherFeedback,
+      input,
+    };
+  }
+
   // Build a useful narrative for teachers about what the gatekeeper corrected
   const notesForTeacher: string[] = [];
   if (violations.length === 0) {

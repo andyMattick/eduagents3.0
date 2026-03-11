@@ -19,7 +19,7 @@ export class CompensationEngine {
     }
 
     if ((weaknesses["difficulty_mismatch"] ?? 0) > 3) {
-      compensation.difficulty = `Match ${domain} difficulty exactly to the blueprint.`;
+      compensation.difficultyNote = `Match ${domain} difficulty exactly to the blueprint.`;
     }
 
     if ((weaknesses["mcq_options_invalid"] ?? 0) > 2) {

@@ -10,6 +10,7 @@
 import { callGemini } from "@/pipeline/llm/gemini";
 import type { GeneratedItem } from "../writer/types";
 import type { RewriteMode } from "../gatekeeper/Gatekeeper";
+import { getPrompt } from "@/pipeline/utils/itemNormalizer";
 
 const MODE_INSTRUCTIONS: Record<RewriteMode, string> = {
   formatFix:
@@ -126,7 +127,7 @@ export function generateArithmeticItem(
       op = topicOps[Math.floor(Math.random() * topicOps.length)];
     } else {
       // Fall back to original item's operator if detectable
-      const original = item.prompt ?? "";
+      const original = getPrompt(item) ?? "";
       const opMatch = original.match(/[+\-×÷*/]/);
       const rawOp = opMatch?.[0] ?? "+";
       op = rawOp === "*" ? "×" : rawOp === "/" ? "÷" : rawOp;

@@ -1,6 +1,8 @@
 import type { BlueprintPlanV3_2 } from "@/types/Blueprint";
 import type { BlueprintSlot } from "@/types/Blueprint";
 import type { GeneratedItem } from "../writer/types";
+import { internalLogger } from "../shared/internalLogging";
+import { getPrompt, getPassage, getAnswer, getOptions } from "@/pipeline/utils/itemNormalizer";
 
 export interface GatekeeperViolation {
   slotId: string;
@@ -31,9 +33,18 @@ export interface GatekeeperSingleResult {
   violations: GatekeeperViolation[];
 }
 
+export interface GatekeeperRewriteInstruction {
+  slotId: string;
+  mode: RewriteMode;
+  issues: string[];
+}
+
 /** Maps a violation type string to the most appropriate RewriteMode. */
 function violationToMode(type: string): RewriteMode {
   switch (type) {
+    case "invalid_template_id":
+    case "invalid_diagram_type":
+    case "invalid_image_id":
     case "mcq_options_invalid":
     case "mcq_answer_mismatch":
     case "mcq_options_unexpected":
@@ -110,12 +121,50 @@ export class Gatekeeper {
         });
       }
 
+      // Template/diagram/image slot compliance checks against blueprint metadata.
+      const metadata = (item as any).metadata ?? {};
+      if ((slot as any).templateId) {
+        const expectedTemplateId = String((slot as any).templateId);
+        const actualTemplateId = metadata.templateId ?? metadata.template_id ?? null;
+        if (actualTemplateId == null || String(actualTemplateId) !== expectedTemplateId) {
+          violations.push({
+            slotId: slot.id,
+            type: "invalid_template_id",
+            message: `Slot requires templateId "${expectedTemplateId}" but Writer returned "${actualTemplateId ?? "null"}".`,
+          });
+        }
+      }
+
+      if ((slot as any).diagramType) {
+        const expectedDiagramType = String((slot as any).diagramType);
+        const actualDiagramType = metadata.diagramType ?? metadata.diagram_type ?? null;
+        if (actualDiagramType == null || String(actualDiagramType) !== expectedDiagramType) {
+          violations.push({
+            slotId: slot.id,
+            type: "invalid_diagram_type",
+            message: `Slot requires diagramType "${expectedDiagramType}" but Writer returned "${actualDiagramType ?? "null"}".`,
+          });
+        }
+      }
+
+      if ((slot as any).imageReferenceId) {
+        const expectedImageRef = String((slot as any).imageReferenceId);
+        const actualImageRef = metadata.imageReferenceId ?? metadata.image_reference_id ?? null;
+        if (actualImageRef == null || String(actualImageRef) !== expectedImageRef) {
+          violations.push({
+            slotId: slot.id,
+            type: "invalid_image_id",
+            message: `Slot requires imageReferenceId "${expectedImageRef}" but Writer returned "${actualImageRef ?? "null"}".`,
+          });
+        }
+      }
+
       //
       // 1b. Passage-based structural validation — validate passage + sub-questions; skip LLM checks.
       //
       if (item.questionType === "passageBased") {
         const passageItem = item as any;
-        const passageText: string = passageItem.passage ?? "";
+        const passageText: string = getPassage(passageItem) ?? "";
         const subQs: Array<{ prompt?: string; answer?: string }> = passageItem.questions ?? [];
 
         if (!passageText || typeof passageText !== "string") {
@@ -177,32 +226,34 @@ export class Gatekeeper {
       //
       // 1c. Arithmetic fluency — structural validation; skip all LLM-oriented checks.
       //
-      if (item.questionType === "arithmeticFluency") {        const arithPattern = /^\d+\s*[+\-×÷*/]\s*\d+$/;
-        if (!arithPattern.test(item.prompt.trim())) {
+      if (item.questionType === "arithmeticFluency") {
+        const arithPattern = /^\d+\s*[+\-×÷*/]\s*\d+$/;
+        const promptText = getPrompt(item);
+        if (!arithPattern.test(promptText.trim())) {
           violations.push({
             slotId: slot.id,
             type: "arithmetic_format_invalid",
-            message: `Arithmetic fluency prompt must be a bare expression (e.g. "7 + 4"). Got: "${item.prompt}".`,
+            message: `Arithmetic fluency prompt must be a bare expression (e.g. "7 + 4"). Got: "${promptText}".`,
           });
         } else {
           // Verify the answer is numerically correct
-          const expr = item.prompt.replace(/×/g, "*").replace(/÷/g, "/");
+          const expr = promptText.replace(/×/g, "*").replace(/÷/g, "/");
           try {
             // eslint-disable-next-line no-new-func
             const computed: number = Function(`"use strict"; return (${expr})`)();
-            const given = parseFloat(item.answer ?? "");
+            const given = parseFloat((getAnswer(item) as string) ?? "");
             if (isNaN(given) || Math.abs(computed - given) > 0.001) {
               violations.push({
                 slotId: slot.id,
                 type: "arithmetic_answer_incorrect",
-                message: `Answer "${item.answer}" is incorrect. Expected ${computed} for "${item.prompt}".`,
+                message: `Answer "${getAnswer(item)}" is incorrect. Expected ${computed} for "${promptText}".`,
               });
             }
           } catch {
             violations.push({
               slotId: slot.id,
               type: "arithmetic_eval_error",
-              message: `Could not evaluate arithmetic expression "${item.prompt}".`,
+              message: `Could not evaluate arithmetic expression "${promptText}".`,
             });
           }
           // Operator check when slot specifies a required operation
@@ -213,11 +264,11 @@ export class Gatekeeper {
               multiply: /[×*]/,
               divide:   /[÷/]/,
             };
-            if (!opMap[slot.operation]?.test(item.prompt)) {
+            if (!opMap[slot.operation]?.test(promptText)) {
               violations.push({
                 slotId: slot.id,
                 type: "arithmetic_operator_mismatch",
-                message: `Slot requires "${slot.operation}" but expression "${item.prompt}" uses a different operator.`,
+                message: `Slot requires "${slot.operation}" but expression "${promptText}" uses a different operator.`,
               });
             }
           }
@@ -225,7 +276,7 @@ export class Gatekeeper {
           // ── Operand range check ──────────────────────────────────────────
           const slotRange = (slot as any).range ?? (uar as any).range;
           if (slotRange) {
-            const nums = item.prompt.match(/\d+/g)?.map(Number) ?? [];
+            const nums = promptText.match(/\d+/g)?.map(Number) ?? [];
             const outOfRange = nums.filter(n => n < slotRange.min || n > slotRange.max);
             if (outOfRange.length > 0) {
               violations.push({
@@ -252,7 +303,8 @@ export class Gatekeeper {
       // Gatekeeper validates structure, cognition, and format — not stem wording.
       console.log("[Gatekeeper] Item received:", item);      
       // Safety check: ensure prompt exists before processing
-      if (!item.prompt || typeof item.prompt !== "string") {
+      const promptText = getPrompt(item);
+      if (!promptText || typeof promptText !== "string") {
         violations.push({
           slotId: slot.id,
           type: "missing_item",
@@ -260,13 +312,14 @@ export class Gatekeeper {
         });
         continue;
       }
-            const promptLower = item.prompt.toLowerCase();
+      const promptLower = promptText.toLowerCase();
 
       //
       // 3. MCQ structural rules
       //
       if (slot.questionType === "multipleChoice") {
-        if (!Array.isArray(item.options) || item.options.length !== 4) {
+        const options = getOptions(item);
+        if (!Array.isArray(options) || options.length !== 4) {
           violations.push({
             slotId: slot.id,
             type: "mcq_options_invalid",
@@ -276,8 +329,8 @@ export class Gatekeeper {
 
         // Accept both exact match and letter-prefix match.
         // LLMs commonly output "B" when the full option is "B. Find a common..."
-        const answerStr = (item.answer ?? "").trim();
-        const opts = item.options ?? [];
+        const answerStr = String(getAnswer(item) ?? "").trim();
+        const opts = options ?? [];
         const answerMatches =
           opts.includes(answerStr) ||
           opts.some(
@@ -295,7 +348,7 @@ export class Gatekeeper {
         }
       } else {
         // Only flag if options is genuinely populated (not null/undefined from JSON cleanup)
-        if (Array.isArray(item.options) && item.options.length > 0) {
+        if (Array.isArray(getOptions(item)) && (getOptions(item) as string[]).length > 0) {
           violations.push({
             slotId: slot.id,
             type: "mcq_options_unexpected",
@@ -548,6 +601,164 @@ export class Gatekeeper {
       }
     }
 
+    // ── Aggregate Policy Enforcement ─────────────────────────────────────────
+    // Check distribution, depth, pacing, and ordering constraints across all items.
+
+    // Build maps for aggregate checks
+    const allSlots = blueprint.slots || [];
+    const allItems = new Map(items.map(i => [i.slotId, i]));
+
+    // Type guard: ensure all items have metadata
+    for (const item of items) {
+      if (!item.metadata) {
+        console.warn(`[Gatekeeper] Item ${item.slotId} missing metadata: using defaults`);
+        item.metadata = {
+          generationMethod: "llm",
+          templateId: null,
+          diagramType: null,
+          imageReferenceId: null,
+          difficulty: "medium",
+          cognitiveDemand: null,
+          topicAngle: null,
+          pacingSeconds: null,
+          slotId: item.slotId,
+          questionType: item.questionType,
+          sectionId: null,
+          passageId: null,
+        } as any;
+      }
+    }
+
+    // 1. Depth floor/ceiling enforcement
+    if (blueprint.depthFloor || blueprint.depthCeiling) {
+      const bloomOrder = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
+      const depthFloorIdx = blueprint.depthFloor ? bloomOrder.indexOf(blueprint.depthFloor as any) : -1;
+      const depthCeilIdx = blueprint.depthCeiling ? bloomOrder.indexOf(blueprint.depthCeiling as any) : -1;
+
+      for (const slot of allSlots) {
+        const demand = (slot.cognitiveDemand ?? "understand").toLowerCase();
+        const demandIdx = bloomOrder.indexOf(demand as any);
+
+        if (depthFloorIdx >= 0 && demandIdx < depthFloorIdx) {
+          violations.push({
+            slotId: slot.id,
+            type: "violates_depth_floor",
+            message: `Slot "${slot.id}" has cognitiveDemand="${demand}" but blueprint requires floor="${blueprint.depthFloor}".`,
+          });
+        }
+
+        if (depthCeilIdx >= 0 && demandIdx > depthCeilIdx) {
+          violations.push({
+            slotId: slot.id,
+            type: "violates_depth_ceiling",
+            message: `Slot "${slot.id}" has cognitiveDemand="${demand}" but blueprint limits ceiling="${blueprint.depthCeiling}".`,
+          });
+        }
+      }
+    }
+
+    // 2. Distribution enforcement (question type, difficulty, cognitive demand)
+    if ((blueprint as any).distribution) {
+      const dist = (blueprint as any).distribution;
+
+      // Question type distribution
+      if (dist.questionTypes) {
+        const typeCount: Record<string, number> = {};
+        for (const item of Array.from(allItems.values())) {
+          typeCount[item.questionType] = (typeCount[item.questionType] ?? 0) + 1;
+        }
+        for (const [type, expected] of Object.entries(dist.questionTypes)) {
+          const actual = typeCount[type] ?? 0;
+          if (actual < (expected as number) * 0.8) {
+            violations.push({
+              slotId: `blueprint`,
+              type: "violates_distribution",
+              message: `Expected at least ${expected} questions of type "${type}", got ${actual}.`,
+            });
+          }
+        }
+      }
+
+      // Difficulty distribution
+      if (dist.difficulty) {
+        const diffCount: Record<string, number> = {};
+        for (const slot of allSlots) {
+          diffCount[slot.difficulty] = (diffCount[slot.difficulty] ?? 0) + 1;
+        }
+        for (const [level, expected] of Object.entries(dist.difficulty)) {
+          const actual = diffCount[level] ?? 0;
+          if (actual < (expected as number) * 0.8) {
+            violations.push({
+              slotId: `blueprint`,
+              type: "violates_distribution",
+              message: `Expected at least ${expected} questions of difficulty "${level}", got ${actual}.`,
+            });
+          }
+        }
+      }
+
+      // Bloom distribution
+      if (dist.bloom) {
+        const bloomCount: Record<string, number> = {};
+        for (const slot of allSlots) {
+          const demand = (slot.cognitiveDemand ?? "understand").toLowerCase();
+          bloomCount[demand] = (bloomCount[demand] ?? 0) + 1;
+        }
+        for (const [level, expected] of Object.entries(dist.bloom)) {
+          const actual = bloomCount[level] ?? 0;
+          if (actual < (expected as number) * 0.8) {
+            violations.push({
+              slotId: `blueprint`,
+              type: "violates_distribution",
+              message: `Expected at least ${expected} questions at Bloom level "${level}", got ${actual}.`,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. Pacing enforcement (total time + per-item constraints)
+    if (blueprint.totalEstimatedTimeSeconds) {
+      const totalPacing = allSlots.reduce((sum, s) => sum + (s.pacingSeconds ?? 60), 0);
+      if (totalPacing > blueprint.totalEstimatedTimeSeconds * 1.2) {
+        violations.push({
+          slotId: `blueprint`,
+          type: "violates_pacing",
+          message: `Total pacing ${totalPacing}s exceeds blueprint limit ${blueprint.totalEstimatedTimeSeconds}s by >20%.`,
+        });
+      }
+    }
+
+    // 4. Ordering constraints (if present in blueprint)
+    if ((blueprint as any).orderingStrategy === "sequentialDifficulty") {
+      let prevDiffIdx = -1;
+      const diffOrder = ["easy", "medium", "hard"];
+      for (const slot of allSlots) {
+        const currentDiffIdx = diffOrder.indexOf(slot.difficulty);
+        if (prevDiffIdx > currentDiffIdx) {
+          violations.push({
+            slotId: slot.id,
+            type: "violates_ordering",
+            message: `Slot "${slot.id}" violates sequential difficulty ordering: found ${slot.difficulty} after higher difficulty.`,
+          });
+        }
+        prevDiffIdx = currentDiffIdx;
+      }
+    }
+
+    // ── Internal logging: violations summary ──────────────────────────────
+    const violationsByType = violations.reduce((acc, v) => {
+      acc[v.type] = (acc[v.type] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    internalLogger.info("Gatekeeper", "Validation complete", {
+      totalItems: items.length,
+      totalViolations: violations.length,
+      violationsByType,
+      pass: violations.length === 0,
+    });
+
     return {
       ok: violations.length === 0,
       violations
@@ -585,5 +796,23 @@ export class Gatekeeper {
       mode,
       violations: result.violations,
     };
+  }
+
+  /**
+   * Convert a validation result into structured rewrite instructions grouped by slot.
+   */
+  static toRewriteInstructions(result: GatekeeperValidationResult): GatekeeperRewriteInstruction[] {
+    const bySlot = new Map<string, GatekeeperViolation[]>();
+    for (const v of result.violations ?? []) {
+      const list = bySlot.get(v.slotId) ?? [];
+      list.push(v);
+      bySlot.set(v.slotId, list);
+    }
+
+    return Array.from(bySlot.entries()).map(([slotId, issues]) => ({
+      slotId,
+      mode: violationToMode(issues[0]?.type ?? "formatFix"),
+      issues: issues.map((v) => `${v.type}: ${v.message}`),
+    }));
   }
 }

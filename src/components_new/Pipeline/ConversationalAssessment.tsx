@@ -1215,6 +1215,7 @@ export function ConversationalAssessment({
   const [inputValue, setInputValue] = useState(() => initialAnswers?.additionalDetails ?? "");
   const [multiSelectBuffer, setMultiSelectBuffer] = useState<string[]>([]);
   const [timeAdjustments, setTimeAdjustments] = useState<Record<string, number>>({});
+  const [timeAdjustmentScopes, setTimeAdjustmentScopes] = useState<Record<string, "assessment" | "default">>({});
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -1389,17 +1390,19 @@ export function ConversationalAssessment({
       };
     }
     
-    // Update time per question if any were adjusted
-    if (Object.keys(timeAdjustments).length > 0) {
+    // Update time per question only for edits explicitly marked as defaults.
+    const defaultScopedAdjustments = Object.entries(timeAdjustments).reduce((acc, [type, seconds]) => {
+      if (timeAdjustmentScopes[type] !== "default") return acc;
+      const mapKey = FORMAT_PACING_KEY[type] || type;
+      acc[mapKey] = seconds;
+      return acc;
+    }, {} as Record<string, number>);
+    if (Object.keys(defaultScopedAdjustments).length > 0) {
       base.pacingDefaults = {
         ...base.pacingDefaults,
         questionTypeSeconds: {
           ...base.pacingDefaults.questionTypeSeconds,
-          ...Object.entries(timeAdjustments).reduce((acc, [type, seconds]) => {
-            const mapKey = FORMAT_PACING_KEY[type] || type;
-            acc[mapKey] = seconds;
-            return acc;
-          }, {} as Record<string, number>),
+          ...defaultScopedAdjustments,
         },
       };
     }
@@ -1468,6 +1471,22 @@ export function ConversationalAssessment({
   const handleMultiSelectConfirm = () => {
     if (multiSelectBuffer.length > 0) commitAnswer(multiSelectBuffer.join(","));
   };
+
+  const handleTimeAdjust = useCallback((type: string, seconds: number) => {
+    const normalizedSeconds = Math.max(1, Math.floor(seconds || 0));
+    const existingScope = timeAdjustmentScopes[type];
+    const chosenScope = existingScope ?? (
+      window.confirm(
+        "Apply this time change as your new default for this question type?\n\nClick OK to update defaults.\nClick Cancel to use it only for this assessment."
+      ) ? "default" : "assessment"
+    );
+
+    setTimeAdjustments(prev => ({ ...prev, [type]: normalizedSeconds }));
+    setTimeAdjustmentScopes(prev => ({
+      ...prev,
+      [type]: chosenScope,
+    }));
+  }, [timeAdjustmentScopes]);
 
   const handleBack = () => {
     if (stepIndex === 0) return;
@@ -1601,7 +1620,7 @@ export function ConversationalAssessment({
                 onUpdateDefaults={onUpdateDefaults ? () => handleApplyOverrides(answers) : undefined}
                 defaultsUpdateApplied={defaultsUpdateApplied}
                 timeAdjustments={timeAdjustments}
-                onTimeAdjust={(type: string, seconds: number) => setTimeAdjustments(prev => ({ ...prev, [type]: seconds }))}
+                onTimeAdjust={handleTimeAdjust}
               />
             )}
 
