@@ -49,7 +49,8 @@
     "test": "vitest",
     "test:regression": "vitest run src/__tests__/pipelineRegression.test.ts",
     "legacy:report": "node scripts/report-legacy-patterns.mjs",
-    "ci:legacy-check": "bash scripts/check-legacy-patterns.sh"
+    "legacy:report:strict": "LEGACY_STRICT=true node scripts/report-legacy-patterns.mjs",
+    "ci:legacy-check": "LEGACY_STRICT=true node scripts/report-legacy-patterns.mjs"
   },
   "description": "**Transform static educational assessments into dynamic, multidimensional simulations.**",
   "main": "index.js",

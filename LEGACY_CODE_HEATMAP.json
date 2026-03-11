@@ -1,24 +1,27 @@
 {
   "metadata": {
     "scanDate": "2025-01-16T12:00:00Z",
-    "version": "1.0",
-    "description": "Static analysis heatmap detecting four categories of legacy patterns in eduagents3.0 pipeline",
-    "scope": "src/pipeline/agents/{writer,gatekeeper,builder,scribe}/**"
+    "version": "1.1",
+    "description": "Static analysis heatmap detecting five categories of legacy patterns and unused files in eduagents3.0 pipeline",
+    "scope": "src/pipeline/**"
   },
+
   "summary": {
     "totalFindings": 15,
     "categories": {
       "A_legacyWriterFields": 3,
       "B_legacyInferenceLogic": 0,
       "C_legacyBlueprintCoupling": 0,
-      "D_legacyItemShapes": 12
+      "D_legacyItemShapes": 12,
+      "E_unusedFiles": 0
     },
     "riskLevel": "medium",
-    "keyInsight": "Legacy item field mappings (prompt/answer/options/passage) are widely used during orchestration and building phases. Direct slot mutations in Architect warrant consolidation."
+    "keyInsight": "Legacy item field mappings (prompt/answer/options/passage) remain in orchestrator, builder, writer fallback paths, and Scribe exporter. Direct slot mutations appear in Architect. Unused-file heatmap category added; initial scan pending."
   },
+
   "findings": {
     "categoryA_legacyWriterFields": {
-      "description": "Writer metadata fields appearing OUTSIDE metadata context (difficulty, cognitiveDemand, questionType, templateId, etc.)",
+      "description": "Writer metadata fields appearing outside metadata context (difficulty, cognitiveDemand, questionType, templateId, etc.)",
       "severity": "medium",
       "count": 3,
       "locations": [
@@ -27,41 +30,44 @@
           "lines": [150, 210, 212],
           "pattern": "Direct slot field mutations",
           "code": [
-            "slot.questionType = to as any;  // line 150",
-            "slot.cognitiveDemand = newCeiling;  // line 210",
-            "slot.difficulty = [mutating value];  // line 212"
+            "slot.questionType = to as any;",
+            "slot.cognitiveDemand = newCeiling;",
+            "slot.difficulty = [mutating value];"
           ],
-          "issue": "Slots are mutated directly rather than through builder/normalization pattern",
-          "recommendation": "Use immutable update pattern or wrap in metadata builder",
+          "issue": "Slots mutated directly rather than through governed builder/normalization pattern",
+          "recommendation": "Use immutable update pattern or metadata builder",
           "risk": "Bypasses validation and normalization logic"
         },
         {
           "file": "src/pipeline/agents/scribe/CompensationEngine.ts",
           "lines": [22],
-          "pattern": "Direct field assignment in compensation object",
+          "pattern": "Direct field assignment",
           "code": "compensation.difficulty = `Match ${domain} difficulty exactly to the blueprint.`;",
-          "issue": "Assigning string description to difficulty field that should be enum",
+          "issue": "Assigns string description to difficulty field that should be enum",
           "recommendation": "Use separate description field or rename to compensationReason",
-          "risk": "Type mismatch; difficulty field should be 'easy'|'medium'|'hard', not string message"
+          "risk": "Type mismatch; difficulty must be 'easy'|'medium'|'hard'"
         }
       ]
     },
+
     "categoryB_legacyInferenceLogic": {
       "description": "Legacy inference functions (guess, infer, fallback, defaultDifficulty, determineQuestionType, etc.)",
       "severity": "low",
       "count": 0,
       "status": "CLEAR",
-      "note": "No legacy inference functions detected. 'fallback' references are all documented Writer fallback routing (legitimate).",
+      "note": "No legacy inference functions detected. All fallback logic is legitimate Writer routing.",
       "locations": []
     },
+
     "categoryC_legacyBlueprintCoupling": {
-      "description": "References to blueprint.* outside Orchestrator (indicates tight coupling to architecture plan)",
+      "description": "References to blueprint.* outside Orchestrator",
       "severity": "low",
       "count": 0,
       "status": "CLEAR",
-      "note": "No blueprint. references detected in Writer, Gatekeeper, Builder, or Scribe agents. Blueprint coupling properly isolated to Orchestrator.",
+      "note": "Blueprint coupling properly isolated to Orchestrator.",
       "locations": []
     },
+
     "categoryD_legacyItemShapes": {
       "description": "Items using prompt|answer|options|passage fields directly without metadata wrapper context",
       "severity": "medium",
@@ -70,112 +76,121 @@
         {
           "file": "src/pipeline/orchestrator/create.ts",
           "lines": [886, 887, 889, 890, 895, 896],
-          "pattern": "Legacy field mapping during orchestration",
+          "pattern": "Legacy field mapping",
           "code": [
-            "if (item.problemText && !item.prompt) item.prompt = item.problemText;  // lines 886-887",
-            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;  // lines 889-890",
-            "if (!Array.isArray(item.options)) item.options = null;  // lines 895-896"
+            "if (item.problemText && !item.prompt) item.prompt = item.problemText;",
+            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;",
+            "if (!Array.isArray(item.options)) item.options = null;"
           ],
-          "issue": "Handles legacy problemText/correctAnswer fields by mapping to prompt/answer",
-          "recommendation": "Consolidate schema to single naming; add legacy migration layer if needed",
-          "risk": "Creates dual-schema state; users can interact with either old or new naming",
-          "frequency": "Critical path: orchestrator entry point"
+          "issue": "Dual-schema state created by mapping legacy fields",
+          "recommendation": "Move all legacy → modern mapping into itemNormalizer",
+          "risk": "Schema drift at orchestrator entry point"
         },
+
         {
           "file": "src/pipeline/agents/builder/index.ts",
           "lines": [27, 28, 31, 32, 39, 40],
-          "pattern": "Legacy field mapping during build phase",
+          "pattern": "Duplicate legacy mapping",
           "code": [
-            "if (item.problemText && !item.prompt) item.prompt = item.problemText;  // lines 27-28",
-            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;  // lines 31-32",
-            "if (!Array.isArray(item.options)) item.options = null;  // lines 39-40"
+            "if (item.problemText && !item.prompt) item.prompt = item.problemText;",
+            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;",
+            "if (!Array.isArray(item.options)) item.options = null;"
           ],
-          "issue": "Duplicates orchestrator field mapping logic",
-          "recommendation": "Extract to shared normalization utility; apply once at entry",
-          "risk": "Code duplication; builder repeats orchestrator's schema handling",
-          "frequency": "High: builder is called for all rendered items"
+          "issue": "Builder repeats orchestrator logic",
+          "recommendation": "Extract to shared normalization utility",
+          "risk": "Inconsistent schema handling"
         },
+
         {
           "file": "src/pipeline/agents/writer/chunk/writerParallel.ts",
           "lines": [425, 474, 531],
-          "pattern": "Reading item.prompt directly without metadata extraction",
+          "pattern": "Direct prompt access",
           "code": [
-            "const pLower = (item.prompt ?? \"\").toLowerCase();  // line 425",
-            "item.prompt ?? \"\"  // line 474",
-            "const text = (item.prompt ?? \"\").toLowerCase();  // line 531"
+            "const pLower = (item.prompt ?? \"\").toLowerCase();",
+            "item.prompt ?? \"\"",
+            "const text = (item.prompt ?? \"\").toLowerCase();"
           ],
-          "issue": "Accesses prompt field directly for text analysis",
-          "recommendation": "Wrap in metadata accessor: item.metadata?.prompt ?? item.prompt as fallback",
-          "risk": "Tight coupling to item shape; hard to refactor to metadata-only model",
-          "frequency": "Moderate: invoked during fallback routing"
+          "issue": "Writer fallback path assumes flat prompt",
+          "recommendation": "Use metadata-aware accessor",
+          "risk": "Breaks for metadata-only items"
         },
+
         {
           "file": "src/pipeline/agents/pluginEngine/writer/writerBridge.ts",
           "lines": [79],
-          "pattern": "Setting options field directly",
+          "pattern": "Direct options mutation",
           "code": "item.options = problem.metadata.options;",
-          "issue": "Mutates item.options directly outside structured builder",
-          "recommendation": "Consolidate to builder pattern or metadata normalization",
-          "risk": "Bypasses validation; side-effects on item object",
-          "frequency": "Low: plugin-specific path"
+          "issue": "Mutates item.options directly",
+          "recommendation": "Use builder or normalization layer",
+          "risk": "Side-effects on item object"
         },
+
         {
           "file": "src/pipeline/agents/rewriter/rewriteSingle.ts",
           "lines": [129],
-          "pattern": "Reading item.prompt for text processing",
+          "pattern": "Direct prompt read",
           "code": "const original = item.prompt ?? \"\";",
-          "issue": "Accesses prompt directly without metadata context",
-          "recommendation": "Use consistent metadata extraction",
-          "risk": "Assumes item.prompt exists; may miss metadata-only items",
-          "frequency": "Moderate: rewriter processes all items"
+          "issue": "Assumes flat prompt exists",
+          "recommendation": "Use metadata accessor",
+          "risk": "Breaks for metadata-only items"
         },
+
         {
           "file": "src/pipeline/agents/gatekeeper/Gatekeeper.ts",
           "lines": [166, 229],
-          "pattern": "Reading passage and prompt fields directly",
+          "pattern": "Direct prompt/passage access",
           "code": [
-            "const passageText: string = passageItem.passage ?? \"\";  // line 166",
-            "if (!arithPattern.test(item.prompt.trim())) {  // line 229"
+            "const passageText: string = passageItem.passage ?? \"\";",
+            "if (!arithPattern.test(item.prompt.trim())) {"
           ],
-          "issue": "Direct field access for validation logic",
-          "recommendation": "Extract to item accessor that respects metadata structure",
-          "risk": "Assumes flat item shape; breaks if schema becomes hierarchical",
-          "frequency": "High: core validation path"
+          "issue": "Validation logic assumes flat fields",
+          "recommendation": "Use metadata-aware accessors",
+          "risk": "Breaks for multi-part and template-driven items"
         },
+
         {
           "file": "src/pipeline/agents/builder/trueFalseFormatter.ts",
           "lines": [32, 37],
-          "pattern": "Reading prompt directly",
+          "pattern": "Direct prompt read",
           "code": "const needsInstruction = !INSTRUCTION_PATTERN.test(item.prompt);",
-          "issue": "Checks prompt field without metadata wrapper awareness",
-          "recommendation": "Use metadata-aware prompt extraction",
-          "risk": "Format detection may fail if prompt moved to metadata",
-          "frequency": "Moderate: true/false items only"
+          "issue": "Formatter assumes flat prompt",
+          "recommendation": "Use metadata accessor",
+          "risk": "Incorrect formatting for metadata-only items"
         },
+
         {
           "file": "src/pipeline/agents/scribe/SCRIBE.ts",
           "lines": [422, 423, 424, 425],
-          "pattern": "Extracting all four legacy fields for output",
+          "pattern": "Flat schema export",
           "code": [
             "prompt: item.prompt ?? \"\",",
             "answer: item.answer ?? null,",
             "options: item.options ?? null,",
             "passage: item.passage ?? null,"
           ],
-          "issue": "Final exporter reads flat schema; assumes prompt/answer/options/passage",
-          "recommendation": "Map from metadata structure to output schema",
-          "risk": "Metadata-only items will output empty prompt/answer",
-          "frequency": "CRITICAL: affects final assessment output"
+          "issue": "Final exporter assumes flat schema",
+          "recommendation": "Export from metadata structure",
+          "risk": "CRITICAL: affects final assessment output"
         }
       ]
+    },
+
+    "categoryE_unusedFiles": {
+      "description": "Files in src/pipeline/** not reachable from any pipeline entry point (orchestrator, Architect V3 planners, Writer, Gatekeeper, Builder, Scribe). Indicates dead code, deprecated agents, unused templates, or legacy utilities.",
+      "severity": "low-to-medium",
+      "count": 0,
+      "status": "PENDING INITIAL SCAN",
+      "note": "Reachability analysis not yet executed. Once implemented, this category will surface all files never imported or referenced by the active pipeline.",
+      "locations": []
     }
   },
+
   "refactoringPriority": [
     {
       "priority": 1,
       "category": "D_legacyItemShapes",
       "file": "src/pipeline/scribe/SCRIBE.ts",
-      "reason": "CRITICAL: Final exporter must handle both flat and metadata schemas",
+      "reason": "Final exporter must handle metadata-only items",
       "effort": "medium",
       "estimatedDaysToFix": 2
     },
@@ -183,7 +198,7 @@
       "priority": 2,
       "category": "D_legacyItemShapes",
       "file": "src/pipeline/agents/gatekeeper/Gatekeeper.ts",
-      "reason": "HIGH: Validation logic runs on all items; impacts system stability",
+      "reason": "Validation logic touches all items",
       "effort": "medium",
       "estimatedDaysToFix": 2
     },
@@ -191,7 +206,7 @@
       "priority": 3,
       "category": "D_legacyItemShapes",
       "file": "src/pipeline/orchestrator/create.ts + src/pipeline/agents/builder/index.ts",
-      "reason": "MEDIUM: Duplicate field mapping logic; consolidate to single normalization",
+      "reason": "Duplicate legacy mapping logic",
       "effort": "medium",
       "estimatedDaysToFix": 1
     },
@@ -199,7 +214,7 @@
       "priority": 4,
       "category": "A_legacyWriterFields",
       "file": "src/pipeline/agents/architect/adjustPlanForTime.ts",
-      "reason": "MEDIUM: Direct slot mutations bypass validation",
+      "reason": "Direct slot mutations bypass validation",
       "effort": "low",
       "estimatedDaysToFix": 1
     },
@@ -207,32 +222,44 @@
       "priority": 5,
       "category": "A_legacyWriterFields",
       "file": "src/pipeline/agents/scribe/CompensationEngine.ts",
-      "reason": "LOW: Type mismatch; fix field semantics",
+      "reason": "Type mismatch",
       "effort": "low",
       "estimatedDaysToFix": 0.5
+    },
+    {
+      "priority": 6,
+      "category": "E_unusedFiles",
+      "file": "src/pipeline/** (multiple)",
+      "reason": "Identify and remove dead code paths",
+      "effort": "low-to-medium",
+      "estimatedDaysToFix": 1
     }
   ],
+
   "cleanCodePaths": {
     "writer": {
       "status": "CLEAN (re: blueprint coupling)",
-      "note": "Writer agent has no blueprint.* references; properly isolated"
+      "note": "Writer agent has no blueprint.* references"
     },
     "orchestrator": {
       "status": "PARTIALLY CLEAN",
-      "note": "Properly owns blueprint routing, but duplicates field normalization with Builder"
+      "note": "Owns blueprint routing but duplicates normalization logic"
     },
     "pluginEngine": {
       "status": "MOSTLY CLEAN",
-      "note": "Generates items with metadata structure; few direct field accesses"
+      "note": "Metadata-first; few direct field accesses"
     }
   },
+
   "nextSteps": [
-    "1. Create `src/pipeline/utils/itemNormalizer.ts` - single-source-of-truth for legacy → modern schema mapping",
-    "2. Refactor Orchestrator and Builder to both use itemNormalizer",
-    "3. Add item accessor utility: `getPrompt(item)`, `getAnswer(item)`, `getOptions(item)` that respect metadata",
+    "1. Create itemNormalizer.ts as single-source-of-truth for legacy → modern schema mapping",
+    "2. Refactor Orchestrator and Builder to use itemNormalizer",
+    "3. Add metadata-aware accessors: getPrompt, getAnswer, getOptions, getPassage",
     "4. Update Scribe exporter to use accessors",
     "5. Update Gatekeeper validation to use accessors",
-    "6. Remove direct slot mutation in adjustPlanForTime; use immutable builders",
-    "7. Run full integration tests on dry-run suite to validate"
+    "6. Remove direct slot mutations in adjustPlanForTime",
+    "7. Run full integration tests on dry-run suite",
+    "8. Add reachability heatmap to reporting script: build import graph, walk from pipeline entry points, surface unused files",
+    "9. Remove or archive unused files; update CI guard to prevent reintroduction"
   ]
 }

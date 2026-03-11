@@ -467,8 +467,11 @@ export class Gatekeeper {
       // misconception keyword verbatim in the stem.
       //
       if (uar.misconceptions) {
-        const answerLower = (item.answer ?? "").toLowerCase();
-        const optionsLower = (item.options ?? []).join(" ").toLowerCase();
+        const answerLower = (getAnswer(item) ?? "").toLowerCase();
+
+
+        const optionsLower = (getOptions(item) ?? []).join(" ").toLowerCase();
+
         const fullText = `${promptLower} ${answerLower} ${optionsLower}`;
         for (const misconception of uar.misconceptions) {
           if (!fullText.includes(misconception.toLowerCase())) {
@@ -483,8 +486,8 @@ export class Gatekeeper {
 
       //
       // 8. Pacing sanity
-      //
-      if (slot.pacing === "normal" && item.prompt.length > 300) {
+        const prompt = getPrompt(item) ?? "";
+        if (slot.pacing === "normal" && prompt.length > 300) {
         violations.push({
           slotId: slot.id,
           type: "pacing_violation",
@@ -496,7 +499,7 @@ export class Gatekeeper {
       // 9. Scope width (soft check)
       //
       if (blueprint.scopeWidth === "narrow") {
-        const commaCount = (item.prompt.match(/,/g) || []).length;
+        const commaCount = (prompt.match(/,/g) || []).length;
         if (commaCount > 3) {
           violations.push({
             slotId: slot.id,
@@ -518,7 +521,7 @@ export class Gatekeeper {
         const isMath = /math|algebra|calculus|geometry|statistics|arithmetic/i.test(domain);
         if (isMath) {
           // Check radical format: bare √ without parentheses
-          if (/√[^(]/.test(item.prompt)) {
+          if (/√[^(]/.test(getPrompt(item))) {
             violations.push({
               slotId: slot.id,
               type: "math_clarity_violation",
@@ -526,7 +529,7 @@ export class Gatekeeper {
             });
           }
           // Check log format: log without parentheses
-          if (/\blog[^(]/.test(item.prompt)) {
+          if (/\blog[^(]/.test(getPrompt(item))) {
             violations.push({
               slotId: slot.id,
               type: "math_clarity_violation",
@@ -548,8 +551,8 @@ export class Gatekeeper {
         // Light heuristic: if the prompt has NO academic vocabulary at all,
         // it's a signal that standards alignment may have been ignored.
         const academicVocab = /[A-Z]{2,}\.[A-Z0-9]{2,}|standard|objective|ccss|teks|ngsss/i;
-        const promptLength = item.prompt.length;
-        if (promptLength < 20 && !academicVocab.test(item.prompt)) {
+        const promptLength = prompt.length;
+        if (promptLength < 20 && !academicVocab.test(prompt)) {
           violations.push({
             slotId: slot.id,
             type: "standards_mismatch",
@@ -563,8 +566,8 @@ export class Gatekeeper {
       // Checks that don't require LLM: instruction length, informal markers.
       // Only applied when styleConstraints are present (from the WriterContract).
       //
-      if (styleConstraints && item.prompt) {
-        const wordCount = item.prompt.trim().split(/\s+/).filter(Boolean).length;
+      if (styleConstraints && prompt) {
+        const wordCount = prompt.trim().split(/\s+/).filter(Boolean).length;
 
         // Instruction length: "short" = max 30 words per stem
         if (styleConstraints.instructionLength === "short" && wordCount > 40) {
@@ -578,7 +581,7 @@ export class Gatekeeper {
         // Tone: "formal" should have no contractions
         if (styleConstraints.tone === "formal") {
           const contractionPattern = /\b(can't|won't|don't|isn't|aren't|wasn't|weren't|it's|i'm|you're|they're|we're|he's|she's|that's|there's)\b/i;
-          if (contractionPattern.test(item.prompt)) {
+          if (contractionPattern.test(getPrompt(item))) {
             violations.push({
               slotId: slot.id,
               type: "style_tone_mismatch",
@@ -590,7 +593,7 @@ export class Gatekeeper {
         // Language level: "academic" should not use overly casual phrases
         if (styleConstraints.languageLevel === "academic") {
           const casualPhrases = /\b(kids|super easy|super hard|easy peasy|no big deal|totally|like (a|the))\b/i;
-          if (casualPhrases.test(item.prompt)) {
+          if (casualPhrases.test(getPrompt(item))) {
             violations.push({
               slotId: slot.id,
               type: "style_language_level",

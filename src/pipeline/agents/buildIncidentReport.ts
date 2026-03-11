@@ -12,6 +12,7 @@
 
 import { classifyTrace } from "./classifyTrace";
 import type { TraceClassification } from "./classifyTrace";
+import { getPrompt, getAnswer } from "@/pipeline/utils/itemNormalizer";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Output types
@@ -249,10 +250,10 @@ export function buildIncidentReport({
       index:       idx + 1,
       id:          String(item.id ?? `Q${idx + 1}`),
       type:        (item.questionType ?? null) as string | null,
-      stem:        (item.prompt ?? item.stem ?? item.text ?? null) as string | null,
+      stem:        (getPrompt(item) ?? item.stem ?? item.text ?? null) as string | null,
       bloom_level: (item.bloomLevel ?? item.cognitiveDemand ?? null) as string | null,
       difficulty:  (item.difficulty ?? null) as string | null,
-      answer:      (item.answer ?? null) as string | null,
+      answer:      (getAnswer(item) ?? null) as string | null,
       issues:      itemViolations.map(v => v.type),
     };
   });

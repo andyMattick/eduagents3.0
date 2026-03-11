@@ -7,6 +7,7 @@
 
 import type { GeneratedItem } from "@/pipeline/agents/writer/types";
 import type { GeneratedDiagram } from "../interfaces/problemPlugin";
+import { getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -60,10 +61,10 @@ export function enrichItemWithPluginData(
     id: `item_${index + 1}`,
     slotId: item.slotId,
     questionType: item.questionType,
-    prompt: item.prompt,
-    answer: item.answer,
-    options: item.options,
-    passage: item.passage,
+    prompt: getPrompt(item),
+    answer: getAnswer(item),
+    options: getOptions(item),
+    passage: getPassage(item),
     metadata: { ...meta },
   };
 

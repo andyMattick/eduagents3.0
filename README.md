@@ -1,103 +1,73 @@
-# Supabase CLI
+# eduagents3.0
 
-[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
-](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
+An intelligent educational assessment pipeline that transforms static assignments into dynamic, multidimensional simulations for actionable student feedback and adaptive content generation.
 
-[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+## Overview
 
-This repository contains all the functionality for Supabase CLI.
+eduagents3.0 decomposes educational assessments into **problems** (Asteroids), evaluates them against **student profiles** (Astronauts) through a unified simulation engine, and produces analytics-driven rewrites for improved pedagogical quality.
 
-- [x] Running Supabase locally
-- [x] Managing database migrations
-- [x] Creating and deploying Supabase Functions
-- [x] Generating types directly from your database schema
-- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+## Key Features
 
-## Getting started
+- **Problem Decomposition**: Extract and tag assignments with Bloom's taxonomy, linguistic complexity, and novelty scores
+- **Student Profiling**: Model learner personas with accessibility overlays and trait profiles
+- **Simulation-Driven Feedback**: Generate realistic student-problem interactions producing aggregated analytics
+- **Iterative Refinement**: Rewrite problems for clarity, difficulty, and accessibility based on simulation output
+- **Incident Reporting**: Deterministic admin-readable reports from enriched assessments
 
-### Install the CLI
+## Development
 
-Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
+### Prerequisites
+
+- Node.js 18+
+- npm
+
+### Installation
 
 ```bash
-npm i supabase --save-dev
+npm install
 ```
 
-When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
+### Development Server
 
+```bash
+npm run dev
 ```
-NODE_OPTIONS=--no-experimental-fetch yarn add supabase
+
+Starts Vite dev server on port 5173.
+
+### Build
+
+```bash
+npm run build
 ```
 
-> **Note**
-For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
+### Testing
 
-<details>
-  <summary><b>macOS</b></summary>
+```bash
+npm test
+```
 
-  Available via [Homebrew](https://brew.sh). To install:
+## Architecture
 
-  ```sh
-  brew install supabase/tap/supabase
-  ```
+### Pipeline Phases
 
-  To install the beta release channel:
-  
-  ```sh
-  brew install supabase/tap/supabase-beta
-  brew link --overwrite supabase-beta
-  ```
-  
-  To upgrade:
+1. **Ingestion**: Document parsing (PDF, Word, plain text) → problem extraction
+2. **Analysis**: Tag extraction, Bloom classification, metadata enrichment
+3. **Simulation**: Student persona evaluation against problem set
+4. **Rewriting**: Adaptive content generation based on simulation results
+5. **Export**: Final assessment assembly and reporting
 
-  ```sh
-  brew upgrade supabase
-  ```
-</details>
+### Key Components
 
-<details>
-  <summary><b>Windows</b></summary>
+- **Pipeline Orchestrator** (`src/pipeline/orchestrator/`) — Coordinates all stages
+- **Architect** (`src/pipeline/architectV3/`) — Assessment planning and feasibility analysis
+- **Writer** (`src/pipeline/agents/writer/`) — Problem generation and rewriting
+- **Gatekeeper** (`src/pipeline/agents/gatekeeper/`) — Validation and quality gates
+- **Scribe** (`src/pipeline/agents/scribe/`) — Final assessment output
 
-  Available via [Scoop](https://scoop.sh). To install:
+## License
 
-  ```powershell
-  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
-  scoop install supabase
-  ```
-
-  To upgrade:
-
-  ```powershell
-  scoop update supabase
-  ```
-</details>
-
-<details>
-  <summary><b>Linux</b></summary>
-
-  Available via [Homebrew](https://brew.sh) and Linux packages.
-
-  #### via Homebrew
-
-  To install:
-
-  ```sh
-  brew install supabase/tap/supabase
-  ```
-
-  To upgrade:
-
-  ```sh
-  brew upgrade supabase
-  ```
-
-  #### via Linux packages
-
-  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
-
-  ```sh
-  sudo apk add --allow-untrusted <...>.apk
-  ```
+Proprietary
 
   ```sh
   sudo dpkg -i <...>.deb
