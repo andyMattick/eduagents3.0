@@ -467,7 +467,10 @@ export class Gatekeeper {
       // misconception keyword verbatim in the stem.
       //
       if (uar.misconceptions) {
-        const answerLower = (getAnswer(item) ?? "").toLowerCase();
+        const answerValue = getAnswer(item);
+        const answerLower = Array.isArray(answerValue)
+          ? answerValue.join(" ").toLowerCase()
+          : String(answerValue ?? "").toLowerCase();
 
 
         const optionsLower = (getOptions(item) ?? []).join(" ").toLowerCase();
@@ -686,7 +689,8 @@ export class Gatekeeper {
       if (dist.difficulty) {
         const diffCount: Record<string, number> = {};
         for (const slot of allSlots) {
-          diffCount[slot.difficulty] = (diffCount[slot.difficulty] ?? 0) + 1;
+          const difficulty = slot.difficulty ?? "medium";
+          diffCount[difficulty] = (diffCount[difficulty] ?? 0) + 1;
         }
         for (const [level, expected] of Object.entries(dist.difficulty)) {
           const actual = diffCount[level] ?? 0;
@@ -737,12 +741,13 @@ export class Gatekeeper {
       let prevDiffIdx = -1;
       const diffOrder = ["easy", "medium", "hard"];
       for (const slot of allSlots) {
-        const currentDiffIdx = diffOrder.indexOf(slot.difficulty);
+        const currentDifficulty = slot.difficulty ?? "medium";
+        const currentDiffIdx = diffOrder.indexOf(currentDifficulty);
         if (prevDiffIdx > currentDiffIdx) {
           violations.push({
             slotId: slot.id,
             type: "violates_ordering",
-            message: `Slot "${slot.id}" violates sequential difficulty ordering: found ${slot.difficulty} after higher difficulty.`,
+            message: `Slot "${slot.id}" violates sequential difficulty ordering: found ${currentDifficulty} after higher difficulty.`,
           });
         }
         prevDiffIdx = currentDiffIdx;

@@ -20,7 +20,6 @@ const isAllowedPath = (absPath) => {
  */
 const whitelist = {
   legacySchemaFields: [
-    'src/pipeline/agents/pluginEngine/writer/writerBridge.ts',
     'src/pipeline/agents/pluginEngine/services/problemPlugins/templates/arithmetic_fluency_template.ts',
   ],
 };
@@ -39,8 +38,30 @@ const listTsFiles = (dir) => {
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
+        if (entry.name === 'legacyV2') continue;
         stack.push(full);
       } else if (entry.isFile() && full.endsWith('.ts')) {
+        out.push(full);
+      }
+    }
+  }
+
+  return out;
+};
+
+const listWorkspaceCodeFiles = (dir) => {
+  const out = [];
+  const stack = [dir];
+
+  while (stack.length) {
+    const current = stack.pop();
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (['.git', 'node_modules', 'dist', 'legacyV2'].includes(entry.name)) continue;
+        stack.push(full);
+      } else if (entry.isFile() && /\.(ts|tsx|js|mjs)$/.test(full)) {
         out.push(full);
       }
     }
@@ -171,6 +192,7 @@ const tryResolveFile = (filePath) => {
 
 const candidateEntryPoints = [
   'src/pipeline/orchestrator/create.ts',
+  'src/pipeline/runPipeline.ts',
   'src/pipeline/orchestrator/runPipeline.ts',
   'src/pipeline/architectV3/planner/cognitivePlanner.ts',
   'src/pipeline/architectV3/planner/pacingPlanner.ts',
@@ -180,7 +202,39 @@ const candidateEntryPoints = [
   'src/pipeline/agents/scribe/SCRIBE.ts',
 ];
 
-const pipelineEntryPoints = candidateEntryPoints.filter(ep => fs.existsSync(ep));
+const workspaceFiles = listWorkspaceCodeFiles(root);
+const externalPipelineEntrypoints = new Set();
+
+for (const file of workspaceFiles) {
+  const relPath = path.relative(root, file).replace(/\\/g, '/');
+  if (relPath.startsWith('src/pipeline/')) continue;
+
+  const text = fs.readFileSync(file, 'utf8');
+  const imports = new Set();
+
+  importPattern.lastIndex = 0;
+  let match;
+  while ((match = importPattern.exec(text)) !== null) {
+    imports.add(match[1]);
+  }
+
+  requirePattern.lastIndex = 0;
+  while ((match = requirePattern.exec(text)) !== null) {
+    imports.add(match[1]);
+  }
+
+  for (const imp of imports) {
+    const resolved = resolveImportPath(relPath, imp);
+    if (resolved && allPipelineFiles.has(resolved)) {
+      externalPipelineEntrypoints.add(resolved);
+    }
+  }
+}
+
+const pipelineEntryPoints = Array.from(new Set([
+  ...candidateEntryPoints.filter(ep => fs.existsSync(ep)),
+  ...externalPipelineEntrypoints,
+]));
 
 const reachable = new Set();
 const queue = [...pipelineEntryPoints];
@@ -202,6 +256,7 @@ while (queue.length > 0) {
 
 const unusedFiles = Array.from(allPipelineFiles)
   .filter(f => !reachable.has(f))
+  .filter(f => !f.startsWith('src/pipeline/legacyV2/'))
   .filter(f => !f.includes('/node_modules/'))
   .filter(f => !f.includes('.test.ts'))
   .sort();
@@ -234,7 +289,7 @@ const finalReport = {
       description: 'Files in src/pipeline/** not reachable from any pipeline entry point',
       severity: 'low-to-medium',
       count: unusedFiles.length,
-      locations: unusedFiles.slice(0, 50).map(f => ({
+      locations: unusedFiles.map(f => ({
         file: f,
         note: 'Not imported by active pipeline components; may be dead code, deprecated agent, or unused template.',
       })),

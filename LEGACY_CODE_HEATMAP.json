@@ -1,186 +1,67 @@
 {
   "metadata": {
-    "scanDate": "2025-01-16T12:00:00Z",
-    "version": "1.1",
-    "description": "Static analysis heatmap detecting five categories of legacy patterns and unused files in eduagents3.0 pipeline",
-    "scope": "src/pipeline/**"
+    "scanDate": "2026-03-11T21:55:05Z",
+    "version": "1.2",
+    "description": "Static analysis heatmap for the active eduagents3.0 pipeline after legacyV2 archival and strict CI enforcement",
+    "scope": "src/pipeline/** (excluding src/pipeline/legacyV2/**)"
   },
 
   "summary": {
-    "totalFindings": 15,
+    "totalFindings": 0,
     "categories": {
-      "A_legacyWriterFields": 3,
+      "A_legacyWriterFields": 0,
       "B_legacyInferenceLogic": 0,
       "C_legacyBlueprintCoupling": 0,
-      "D_legacyItemShapes": 12,
+      "D_legacyItemShapes": 0,
       "E_unusedFiles": 0
     },
-    "riskLevel": "medium",
-    "keyInsight": "Legacy item field mappings (prompt/answer/options/passage) remain in orchestrator, builder, writer fallback paths, and Scribe exporter. Direct slot mutations appear in Architect. Unused-file heatmap category added; initial scan pending."
+    "riskLevel": "low",
+    "keyInsight": "The active V3 pipeline is clean. Legacy schema access, slot mutations, and unreachable code have been removed from the active tree or archived under legacyV2, and strict CI now enforces regression prevention."
   },
 
   "findings": {
     "categoryA_legacyWriterFields": {
-      "description": "Writer metadata fields appearing outside metadata context (difficulty, cognitiveDemand, questionType, templateId, etc.)",
-      "severity": "medium",
-      "count": 3,
-      "locations": [
-        {
-          "file": "src/pipeline/agents/architect/adjustPlanForTime.ts",
-          "lines": [150, 210, 212],
-          "pattern": "Direct slot field mutations",
-          "code": [
-            "slot.questionType = to as any;",
-            "slot.cognitiveDemand = newCeiling;",
-            "slot.difficulty = [mutating value];"
-          ],
-          "issue": "Slots mutated directly rather than through governed builder/normalization pattern",
-          "recommendation": "Use immutable update pattern or metadata builder",
-          "risk": "Bypasses validation and normalization logic"
-        },
-        {
-          "file": "src/pipeline/agents/scribe/CompensationEngine.ts",
-          "lines": [22],
-          "pattern": "Direct field assignment",
-          "code": "compensation.difficulty = `Match ${domain} difficulty exactly to the blueprint.`;",
-          "issue": "Assigns string description to difficulty field that should be enum",
-          "recommendation": "Use separate description field or rename to compensationReason",
-          "risk": "Type mismatch; difficulty must be 'easy'|'medium'|'hard'"
-        }
-      ]
-    },
-
-    "categoryB_legacyInferenceLogic": {
-      "description": "Legacy inference functions (guess, infer, fallback, defaultDifficulty, determineQuestionType, etc.)",
+      "description": "Writer metadata fields appearing outside governed metadata context in the active pipeline",
       "severity": "low",
       "count": 0,
       "status": "CLEAR",
-      "note": "No legacy inference functions detected. All fallback logic is legitimate Writer routing.",
+      "note": "No direct slot-field mutation patterns or stray writer-field governance issues remain in the active pipeline. Historical implementations were archived where appropriate.",
+      "locations": []
+    },
+
+    "categoryB_legacyInferenceLogic": {
+      "description": "Legacy inference functions (guess, infer, fallback, defaultDifficulty, determineQuestionType, etc.) in the active pipeline",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "No legacy inference logic detected in active execution paths.",
       "locations": []
     },
 
     "categoryC_legacyBlueprintCoupling": {
-      "description": "References to blueprint.* outside Orchestrator",
+      "description": "References to blueprint.* outside approved orchestration boundaries",
       "severity": "low",
       "count": 0,
       "status": "CLEAR",
-      "note": "Blueprint coupling properly isolated to Orchestrator.",
+      "note": "Blueprint coupling is properly isolated in the active V3 flow.",
       "locations": []
     },
 
     "categoryD_legacyItemShapes": {
-      "description": "Items using prompt|answer|options|passage fields directly without metadata wrapper context",
-      "severity": "medium",
-      "count": 12,
-      "locations": [
-        {
-          "file": "src/pipeline/orchestrator/create.ts",
-          "lines": [886, 887, 889, 890, 895, 896],
-          "pattern": "Legacy field mapping",
-          "code": [
-            "if (item.problemText && !item.prompt) item.prompt = item.problemText;",
-            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;",
-            "if (!Array.isArray(item.options)) item.options = null;"
-          ],
-          "issue": "Dual-schema state created by mapping legacy fields",
-          "recommendation": "Move all legacy → modern mapping into itemNormalizer",
-          "risk": "Schema drift at orchestrator entry point"
-        },
-
-        {
-          "file": "src/pipeline/agents/builder/index.ts",
-          "lines": [27, 28, 31, 32, 39, 40],
-          "pattern": "Duplicate legacy mapping",
-          "code": [
-            "if (item.problemText && !item.prompt) item.prompt = item.problemText;",
-            "if (item.correctAnswer && !item.answer) item.answer = item.correctAnswer;",
-            "if (!Array.isArray(item.options)) item.options = null;"
-          ],
-          "issue": "Builder repeats orchestrator logic",
-          "recommendation": "Extract to shared normalization utility",
-          "risk": "Inconsistent schema handling"
-        },
-
-        {
-          "file": "src/pipeline/agents/writer/chunk/writerParallel.ts",
-          "lines": [425, 474, 531],
-          "pattern": "Direct prompt access",
-          "code": [
-            "const pLower = (item.prompt ?? \"\").toLowerCase();",
-            "item.prompt ?? \"\"",
-            "const text = (item.prompt ?? \"\").toLowerCase();"
-          ],
-          "issue": "Writer fallback path assumes flat prompt",
-          "recommendation": "Use metadata-aware accessor",
-          "risk": "Breaks for metadata-only items"
-        },
-
-        {
-          "file": "src/pipeline/agents/pluginEngine/writer/writerBridge.ts",
-          "lines": [79],
-          "pattern": "Direct options mutation",
-          "code": "item.options = problem.metadata.options;",
-          "issue": "Mutates item.options directly",
-          "recommendation": "Use builder or normalization layer",
-          "risk": "Side-effects on item object"
-        },
-
-        {
-          "file": "src/pipeline/agents/rewriter/rewriteSingle.ts",
-          "lines": [129],
-          "pattern": "Direct prompt read",
-          "code": "const original = item.prompt ?? \"\";",
-          "issue": "Assumes flat prompt exists",
-          "recommendation": "Use metadata accessor",
-          "risk": "Breaks for metadata-only items"
-        },
-
-        {
-          "file": "src/pipeline/agents/gatekeeper/Gatekeeper.ts",
-          "lines": [166, 229],
-          "pattern": "Direct prompt/passage access",
-          "code": [
-            "const passageText: string = passageItem.passage ?? \"\";",
-            "if (!arithPattern.test(item.prompt.trim())) {"
-          ],
-          "issue": "Validation logic assumes flat fields",
-          "recommendation": "Use metadata-aware accessors",
-          "risk": "Breaks for multi-part and template-driven items"
-        },
-
-        {
-          "file": "src/pipeline/agents/builder/trueFalseFormatter.ts",
-          "lines": [32, 37],
-          "pattern": "Direct prompt read",
-          "code": "const needsInstruction = !INSTRUCTION_PATTERN.test(item.prompt);",
-          "issue": "Formatter assumes flat prompt",
-          "recommendation": "Use metadata accessor",
-          "risk": "Incorrect formatting for metadata-only items"
-        },
-
-        {
-          "file": "src/pipeline/agents/scribe/SCRIBE.ts",
-          "lines": [422, 423, 424, 425],
-          "pattern": "Flat schema export",
-          "code": [
-            "prompt: item.prompt ?? \"\",",
-            "answer: item.answer ?? null,",
-            "options: item.options ?? null,",
-            "passage: item.passage ?? null,"
-          ],
-          "issue": "Final exporter assumes flat schema",
-          "recommendation": "Export from metadata structure",
-          "risk": "CRITICAL: affects final assessment output"
-        }
-      ]
+      "description": "Direct prompt|answer|options|passage field usage outside accessor-governed normalization",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "The active pipeline is fully accessor-driven. Item reads are normalized through itemNormalizer accessors, and shape mutation is no longer scattered across agents.",
+      "locations": []
     },
 
     "categoryE_unusedFiles": {
-      "description": "Files in src/pipeline/** not reachable from any pipeline entry point (orchestrator, Architect V3 planners, Writer, Gatekeeper, Builder, Scribe). Indicates dead code, deprecated agents, unused templates, or legacy utilities.",
-      "severity": "low-to-medium",
+      "description": "Files in the active src/pipeline tree not reachable from real pipeline entry points or external imports",
+      "severity": "low",
       "count": 0,
-      "status": "PENDING INITIAL SCAN",
-      "note": "Reachability analysis not yet executed. Once implemented, this category will surface all files never imported or referenced by the active pipeline.",
+      "status": "CLEAR",
+      "note": "Reachability analysis is implemented. Previously unreachable files were mirrored into src/pipeline/legacyV2/, which is intentionally excluded from active scanning.",
       "locations": []
     }
   },
@@ -188,78 +69,49 @@
   "refactoringPriority": [
     {
       "priority": 1,
-      "category": "D_legacyItemShapes",
-      "file": "src/pipeline/scribe/SCRIBE.ts",
-      "reason": "Final exporter must handle metadata-only items",
-      "effort": "medium",
-      "estimatedDaysToFix": 2
-    },
-    {
-      "priority": 2,
-      "category": "D_legacyItemShapes",
-      "file": "src/pipeline/agents/gatekeeper/Gatekeeper.ts",
-      "reason": "Validation logic touches all items",
-      "effort": "medium",
-      "estimatedDaysToFix": 2
-    },
-    {
-      "priority": 3,
-      "category": "D_legacyItemShapes",
-      "file": "src/pipeline/orchestrator/create.ts + src/pipeline/agents/builder/index.ts",
-      "reason": "Duplicate legacy mapping logic",
-      "effort": "medium",
-      "estimatedDaysToFix": 1
-    },
-    {
-      "priority": 4,
-      "category": "A_legacyWriterFields",
-      "file": "src/pipeline/agents/architect/adjustPlanForTime.ts",
-      "reason": "Direct slot mutations bypass validation",
-      "effort": "low",
-      "estimatedDaysToFix": 1
-    },
-    {
-      "priority": 5,
-      "category": "A_legacyWriterFields",
-      "file": "src/pipeline/agents/scribe/CompensationEngine.ts",
-      "reason": "Type mismatch",
+      "category": "E_unusedFiles",
+      "file": "src/pipeline/legacyV2/**",
+      "reason": "Preserve archive boundaries and prevent accidental reactivation of historical code",
       "effort": "low",
       "estimatedDaysToFix": 0.5
     },
     {
-      "priority": 6,
-      "category": "E_unusedFiles",
-      "file": "src/pipeline/** (multiple)",
-      "reason": "Identify and remove dead code paths",
-      "effort": "low-to-medium",
-      "estimatedDaysToFix": 1
+      "priority": 2,
+      "category": "D_legacyItemShapes",
+      "file": "scripts/report-legacy-patterns.mjs",
+      "reason": "Keep strict CI enforcement active so flat-field and mutation regressions fail immediately",
+      "effort": "low",
+      "estimatedDaysToFix": 0.5
+    },
+    {
+      "priority": 3,
+      "category": "NEXT_PHASE",
+      "file": "src/pipeline/**",
+      "reason": "Proceed to multi-part implementation on top of the now-clean, schema-agnostic pipeline",
+      "effort": "medium",
+      "estimatedDaysToFix": 2
     }
   ],
 
   "cleanCodePaths": {
     "writer": {
-      "status": "CLEAN (re: blueprint coupling)",
-      "note": "Writer agent has no blueprint.* references"
+      "status": "CLEAN",
+      "note": "Writer reads normalized item accessors and stays isolated from blueprint coupling"
     },
     "orchestrator": {
-      "status": "PARTIALLY CLEAN",
-      "note": "Owns blueprint routing but duplicates normalization logic"
+      "status": "CLEAN",
+      "note": "Active orchestration path no longer carries duplicate legacy normalization concerns"
     },
     "pluginEngine": {
-      "status": "MOSTLY CLEAN",
-      "note": "Metadata-first; few direct field accesses"
+      "status": "CLEAN",
+      "note": "Active plugin-engine path is clean; unreachable legacy plugin components were archived under legacyV2"
     }
   },
 
   "nextSteps": [
-    "1. Create itemNormalizer.ts as single-source-of-truth for legacy → modern schema mapping",
-    "2. Refactor Orchestrator and Builder to use itemNormalizer",
-    "3. Add metadata-aware accessors: getPrompt, getAnswer, getOptions, getPassage",
-    "4. Update Scribe exporter to use accessors",
-    "5. Update Gatekeeper validation to use accessors",
-    "6. Remove direct slot mutations in adjustPlanForTime",
-    "7. Run full integration tests on dry-run suite",
-    "8. Add reachability heatmap to reporting script: build import graph, walk from pipeline entry points, surface unused files",
-    "9. Remove or archive unused files; update CI guard to prevent reintroduction"
+    "1. Keep npm run legacy:report:strict active in CI as a hard guard",
+    "2. Treat src/pipeline/legacyV2/ as archive-only and do not import from it into active code",
+    "3. Proceed with multi-part item implementation on the clean accessor-driven pipeline",
+    "4. Periodically review legacyV2 for possible long-term deletion or external archival if history is no longer needed"
   ]
 }

@@ -67,7 +67,7 @@ npm run legacy:report           # Report mode (no failures)
 npm run ci:legacy-check         # CI runs in strict mode
 ```
 
-**Report Output** (zero violations, whitelisted templates excluded):
+**Report Output** (zero violations, zero unused active files):
 ```json
 {
   "metadata": {
@@ -75,13 +75,13 @@ npm run ci:legacy-check         # CI runs in strict mode
     "whitelistEnabled": true,
     "whitelistedFiles": {
       "legacySchemaFields": [
-        "src/pipeline/agents/pluginEngine/writer/writerBridge.ts",
         "src/pipeline/agents/pluginEngine/services/problemPlugins/templates/arithmetic_fluency_template.ts"
       ]
     }
   },
   "summary": {
     "totalViolations": 0,
+    "unusedFiles": 0,
     "passed": true
   }
 }
@@ -89,13 +89,10 @@ npm run ci:legacy-check         # CI runs in strict mode
 
 **Status**: CI guard active ✅
 ### **5. ✅ Reachability Analysis & Unused File Detection**
-- **New**: Reachability graph analyzes all TypeScript files in pipeline
-- **Walks**: 7 entry points through import graph
-- **Surfaces**: 90 unused files (dead code, deprecated agents, templates)
-- **Reports**: Five-category heatmap now complete with `E_unusedFiles`
-- **Strict Mode**: Fails CI if unused files exceed threshold
-   - Current run: 90 unused files found (under review)
-   - Implementation: `src/pipeline/agents/**`, `architectV3/**`, deprecated paths
+- Reachability graph now seeds from active external imports plus pipeline entry points.
+- Archived, unreachable code has been moved into `src/pipeline/legacyV2/`.
+- The scanner ignores `legacyV2` and reports only the active pipeline.
+- Current state: **0 unused active files**.
 
 ---
 
@@ -115,11 +112,10 @@ With the architecture fully aligned, the pipeline is ready for multi-part implem
 ## Configuration
 
 ### Whitelist
-`scripts/report-legacy-patterns.mjs` ← Template sources allowed to use legacy schema fields:
-- `writerBridge.ts` — Plugin item generation
-- `arithmetic_fluency_template.ts` — Template-driven item generation
+`scripts/report-legacy-patterns.mjs` allows the active arithmetic template source to retain legacy schema fields:
+- `arithmetic_fluency_template.ts` — Template-driven legacy input surface
 
-These are intentional entry points where legacy schema is converted to modern accessor-friendly format.
+Archived legacy code under `src/pipeline/legacyV2/` is excluded from active scanning.
 
 ### Strict Mode
 Enabled via `LEGACY_STRICT=true`:
@@ -154,7 +150,7 @@ findings: {
   legacySchemaFields: {},        // ✅ 0 violations (whitelisted)
   legacyMutations: {},           // ✅ 0 violations
   slotMutations: {},             // ✅ 0 violations
-  unusedFiles: { count: 90, ... }  // ✅ NOW DETECTING
+  unusedFiles: { count: 0, ... }  // ✅ NOW DETECTING
 }
 ```
 
@@ -168,11 +164,11 @@ npm run ci:legacy-check             # CI runs in strict mode automatically
 
 **Current Status:**
 - ✅ Pattern-based violations: 0
-- ⚠️ Unused files (under review): 90
-- Unused files are legitimate candidates for cleanup (deprecated agents, old templates, abandoned paths)
+- ✅ Unused active files: 0
+- ✅ Archived legacy code relocated to `src/pipeline/legacyV2/`
 
 **What This Means:**
-You can now identify and remove dead code systematically without losing critical utilities. The reachability graph walks from entry points and reports unreachable files—this is **step 8 from the original nextSteps, now complete**.
+You can now keep the active pipeline clean without deleting historical implementations. The reachability graph walks from real entry points, and archived V2 code remains preserved under `src/pipeline/legacyV2/`.
 
 ---
 
