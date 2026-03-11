@@ -47,8 +47,7 @@ import {
   resetConceptGraph,
 } from "@/pipeline/agents/pluginEngine/conceptGraph";
 // Bootstrap plugin registration (templates, diagrams, LLM fallback)
-import "@/pipeline/agents/pluginEngine/services/problemPlugins";
-// InputJudge is dynamically imported in the pipeline body
+// (problemPlugins barrel already imported above; InputJudge is dynamically imported in the pipeline body)
 
 console.log("[Pipeline] Loaded runPipeline.ts — Version 3.0.0 (Plugin Engine)");
 
@@ -546,47 +545,6 @@ for (const slot of blueprint.problemSlots) {
     );
   }
 
-  // ── Plugin Engine: InputJudge — validate slot feasibility ─────────────────
-  // The InputJudge runs after Architect and before the Writer/Generator Router.
-  // It verifies each slot has a resolvable plugin and valid fields.
-  // NOTE: Currently advisory — logs warnings but doesn't block the pipeline.
-  // The existing Writer still handles generation; InputJudge validates that
-  // the slot plan is compatible with the plugin architecture.
-  {
-    const { runInputJudge: _runIJ } = await import("@/pipeline/agents/inputJudge");
-    // ── Plugin Engine: Router placeholder (Step 1 scaffolding) ───────────────────
-    // In Step 2, this will replace the direct Writer call.
-    // const generated = await problemGeneratorRouter(blueprint.plan.slots);
-    // console.log("[Pipeline] Router placeholder active");
-
-
-
-    // Convert blueprint slots to ProblemSlot format for InputJudge
-    const pluginSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
-      slot_id: s.id,
-      problem_source: s.templateId ? "template" as const :
-                      s.diagramType ? "diagram" as const :
-                      s.imageReferenceId ? "image_analysis" as const :
-                      "llm" as const,
-      problem_type: s.questionType ?? "short_answer",
-      template_id: s.templateId,
-      diagram_type: s.diagramType,
-      image_reference_id: s.imageReferenceId,
-      topic: s.topicAngle ?? uarWithDefaults.topic ?? "",
-      difficulty: s.difficulty ?? "medium",
-      pacing_seconds: s.pacingSeconds,
-      cognitive_demand: s.cognitiveDemand,
-    }));
-    const judgeResult = _runIJ(pluginSlots);
-    logAgentStep(trace, "InputJudge", { slotCount: pluginSlots.length }, {
-      feasible: judgeResult.feasible,
-      warnings: judgeResult.warnings.length,
-      errors: judgeResult.errors.length,
-    });
-    if (judgeResult.warnings.length > 0) {
-      console.info("[Pipeline] InputJudge warnings:", judgeResult.warnings);
-    }
-  }
 
   // ── Create Writer Contract ─────────────────────────────────────────────────
   // Captures teacher intent + system constraints derived by the Architect.
