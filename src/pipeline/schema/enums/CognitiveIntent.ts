@@ -48,4 +48,5 @@ export enum CognitiveIntent {
   Compete = "compete",
   Cooperate = "cooperate",
   Interpret = "interpret",
+  Plan = "plan"
 }
