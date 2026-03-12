@@ -3,7 +3,10 @@ import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAsses
 import type { GeneratedItem } from "./types";
 
 import { writerParallel } from "./chunk/writerParallel";
+import type { WriterSlotChunk } from "./chunk/writerParallel";
 import type { WriterTelemetry } from "./telemetry";
+
+export type { WriterSlotChunk };
 
 /**
  * Last telemetry snapshot from the most recent runWriter call.
@@ -22,6 +25,7 @@ export async function runWriter({
   agentId: _agentId,
   compensation: _compensation,
   onItemsProgress,
+  onSlotComplete,
 }: {
   blueprint: BlueprintPlanV3_2;
   uar: UnifiedAssessmentRequest;
@@ -33,12 +37,15 @@ export async function runWriter({
   agentId: string;
   compensation: any;
   onItemsProgress?: (partialItems: GeneratedItem[]) => void;
+  /** Called once per slot as soon as its JSON block is parsed out of the LLM response. */
+  onSlotComplete?: (chunk: WriterSlotChunk) => void;
 }): Promise<GeneratedItem[]> {
   const { items, telemetry } = await writerParallel(
     blueprint,
     uar,
     scribePrescriptions,
-    onItemsProgress
+    onItemsProgress,
+    onSlotComplete
   );
 
   _lastWriterTelemetry = telemetry;

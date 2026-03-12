@@ -6,6 +6,17 @@ export enum ItemType {
   ShortAnswer = "short_answer",
   Explanation = "explanation",
   ExtendedResponse = "extended_response",
+  MultiPart = "multi_part",
+
+  FillInTheBlank = "fill_in_the_blank",
+  Essay = "essay",
+  ProblemSolving = "problem_solving",
+  CodeWriting = "code_writing",
+  CodeDebugging = "code_debugging",
+  Simulation = "simulation",
+  ScenarioAnalysis = "scenario_analysis",
+
+  Code = "code",
 
   Diagram = "diagram",
   Labeling = "labeling",

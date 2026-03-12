@@ -7,7 +7,7 @@ import { runSummarizer } from "../agents/document/summarizer";
 //   import { runComparator } from "../agents/document/comparator";
 //   import { runAnalyzer } from "../agents/document/analyzer";
 // Agent imports (you will fill these in as you build each agent)
-import { runArchitect } from "@/pipeline/agents/architect/index";
+import { runArchitectCached } from "@/pipeline/agents/architect/planCache";
 import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
 import { getLastBloomAlignmentLog } from "@/pipeline/agents/writer/chunk/writerParallel";
 
@@ -40,6 +40,7 @@ import {
 } from "@/pipeline/agents/scribe/WriterContractStore";
 import { loadOrDefaultTeacherProfile } from "@/services_new/teacherProfileService";
 import { injectProfileIntoUAR } from "@/pipeline/agents/architect/conflictResolution";
+import { withConcurrencyLimit } from "@/pipeline/utils/concurrency";
 
 // ── Plugin-Based Instruction Engine imports ─────────────────────────────────
 import {
@@ -468,7 +469,7 @@ export async function runCreatePipeline(
   console.log("[Pipeline] Selected Agents:", selected);
 
   // ── Step 2: Architect — build the blueprint ───────────────────────────────
-  const blueprint = await runAgent(trace, "Architect", runArchitect, {
+  const blueprint = await runAgent(trace, "Architect", runArchitectCached, {
     
     uar: uarWithDefaults,
     compensation: selected.compensationProfile,
@@ -610,48 +611,46 @@ for (const slot of blueprint.problemSlots) {
   // ── Step 3: Writer — generate the initial draft ───────────────────────────
   const writerPrescriptions = SCRIBE.getWriterPrescriptions();
 // ── Step 5: Router-first generation with Writer fallback ────────────────────
-const routedItems: any[] = [];
+/** Max concurrent plugin router calls — keeps template lookups bounded. */
+const PLUGIN_ROUTER_CONCURRENCY = 4;
 
-for (const slot of blueprint.problemSlots ?? []) {
+const pluginContext = {
+  gradeLevels: uarWithDefaults.gradeLevels,
+  course: uarWithDefaults.course,
+  topic: uarWithDefaults.topic ?? blueprint.uar?.topic ?? "",
+  assessmentType: uarWithDefaults.assessmentType,
+  difficultyPreference: uarWithDefaults.difficultyPreference,
+  studentLevel: uarWithDefaults.studentLevel,
+  extractedConcepts: uarWithDefaults.extractedConcepts,
+  extractedVocabulary: uarWithDefaults.extractedVocabulary,
+  extractedDifficulty: uarWithDefaults.extractedDifficulty,
+  extractedAngles: uarWithDefaults.extractedAngles,
+  blueprint,
+};
+
+const routerTasks = (blueprint.problemSlots ?? []).map((slot: any) => async () => {
   try {
     // Try plugin engine
-    const problem = await problemGeneratorRouter(slot, {
-      gradeLevels: uarWithDefaults.gradeLevels,
-      course: uarWithDefaults.course,
-      topic: uarWithDefaults.topic ?? blueprint.uar?.topic ?? "",
-      assessmentType: uarWithDefaults.assessmentType,
-      difficultyPreference: uarWithDefaults.difficultyPreference,
-      studentLevel: uarWithDefaults.studentLevel,
-      extractedConcepts: uarWithDefaults.extractedConcepts,
-      extractedVocabulary: uarWithDefaults.extractedVocabulary,
-      extractedDifficulty: uarWithDefaults.extractedDifficulty,
-      extractedAngles: uarWithDefaults.extractedAngles,
-      blueprint, // optional but useful for plugins
-});
-
-
-    routedItems.push({
+    const problem = await problemGeneratorRouter(slot, pluginContext);
+    return {
       slotId: slot.slot_id,
       ...problem,
       pluginMetadata: {
         pluginId: problem._pluginId,
         generationMethod: "plugin",
       },
-    });
-
+    };
   } catch (err) {
     console.warn(
       `[Pipeline] Router failed for slot ${slot.slot_id}, falling back to Writer:`,
       err
     );
-
     // Mark slot for Writer fallback
-    routedItems.push({
-      slotId: slot.slot_id,
-      _fallbackToWriter: true,
-    });
+    return { slotId: slot.slot_id, _fallbackToWriter: true };
   }
-}
+});
+
+const routedItems: any[] = await withConcurrencyLimit(PLUGIN_ROUTER_CONCURRENCY, routerTasks);
 
 // ── Step 5b: Writer fallback for any slots Router could not handle ─────────
 const writerFallbackSlots = routedItems.filter(i => i._fallbackToWriter);

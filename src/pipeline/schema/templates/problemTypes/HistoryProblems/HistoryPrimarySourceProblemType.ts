@@ -1,0 +1,19 @@
+import { ItemType } from "../../../enums/ItemType";
+import { CognitiveIntent } from "../../../enums/CognitiveIntent";
+import { Difficulty } from "../../../enums/Difficulty";
+import { SharedContext } from "../../../enums/SharedContent";
+
+export const HistoryPrimarySourceProblemType = {
+  id: "history_primary_source",
+  label: "Primary Source Analysis",
+  itemType: ItemType.ShortAnswer,
+  defaultIntent: CognitiveIntent.Analyze,
+  defaultDifficulty: Difficulty.Medium,
+  sharedContext: SharedContext.Primary_Source,
+
+  configurableFields: {
+    sourceType: ["text", "image", "political_cartoon", "speech", "letter"],
+    questionTypes: ["mcq", "short_answer", "evidence"],
+    difficulty: ["easy", "medium", "hard"]
+  }
+};

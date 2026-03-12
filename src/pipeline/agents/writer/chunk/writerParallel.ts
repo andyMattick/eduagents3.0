@@ -31,6 +31,7 @@ import type { GeneratedItem } from "../types";
 import { callGeminiStreaming } from "@/pipeline/llm/gemini";
 import { buildChunkPrompt } from "./writerChunkPrompt";
 import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
+import { withConcurrencyLimit } from "@/pipeline/utils/concurrency";
 import { rewriteSingle, generateArithmeticItem } from "@/pipeline/agents/rewriter/rewriteSingle";
 import { createTelemetry, type WriterTelemetry } from "../telemetry";
 import { computeBloomAlignment, type BloomAlignmentLog } from "@/pipeline/agents/gatekeeper/bloomClassifier";
@@ -61,6 +62,12 @@ export function getLastBloomAlignmentLog(): BloomAlignmentLog {
 
 /** Fixed group size — 5 slots per parallel agent call */
 const GROUP_SIZE = 5;
+
+/**
+ * Maximum number of Writer group LLM calls in flight simultaneously.
+ * Keeps the Gemini proxy fan-out reasonable — raise if throughput allows.
+ */
+const WRITER_GROUP_CONCURRENCY = 6;
 
 /** Max retries for missing slots in the fallback round */
 const MAX_RETRY_ROUNDS = 2;
@@ -195,6 +202,20 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Per-slot completion event emitted as soon as an item has been parsed out
+ * of the LLM response.  Because the proxy is blocking (full response arrives
+ * before callbacks fire), `delta` is the complete raw JSON block for the slot
+ * rather than a token-level delta.  Wire `onSlotComplete` into a WebSocket /
+ * SSE channel to show partial results in the UI before the full draft is ready.
+ */
+export type WriterSlotChunk = {
+  slot_id: string;
+  /** The complete raw JSON block for this slot (as returned by the LLM). */
+  delta: string;
+  done: true;
+};
+
 export interface WriterParallelResult {
   items: GeneratedItem[];
   telemetry: WriterTelemetry;
@@ -212,7 +233,9 @@ export async function writerParallel(
   blueprint: BlueprintPlanV3_2,
   uar: UnifiedAssessmentRequest,
   scribePrescriptions: ScribePrescriptions,
-  onItemsProgress?: (partialItems: GeneratedItem[]) => void
+  onItemsProgress?: (partialItems: GeneratedItem[]) => void,
+  /** Called once per slot as soon as its JSON block has been parsed. */
+  onSlotComplete?: (chunk: WriterSlotChunk) => void
 ): Promise<WriterParallelResult> {
   const telemetry = createTelemetry();
 
@@ -343,7 +366,8 @@ export async function writerParallel(
     scribePrescriptions,
     telemetry,
     hintMode,
-    onItemsProgress
+    onItemsProgress,
+    onSlotComplete
   );
 
   // ── Step 2: Merge into a single map ─────────────────────────────────────
@@ -641,42 +665,31 @@ async function dispatchGroupsParallel(
   scribe: ScribePrescriptions,
   telemetry: WriterTelemetry,
   hintMode: HintMode = "FULL",
-  onItemsProgress?: (partialItems: GeneratedItem[]) => void
+  onItemsProgress?: (partialItems: GeneratedItem[]) => void,
+  onSlotComplete?: (chunk: WriterSlotChunk) => void
 ): Promise<GroupResult[]> {
   // Shared accumulator: updated as each group settles so the callback
   // always delivers a monotonically growing snapshot.
   const accumulated = new Map<string, GeneratedItem>();
 
-  const promises = groups.map((group, idx) =>
-    callGroupLLM(group, context, scribe, telemetry, hintMode).then((result) => {
+  const tasks = groups.map((group, idx) => async (): Promise<GroupResult> => {
+    try {
+      const result = await callGroupLLM(group, context, scribe, telemetry, hintMode, onSlotComplete);
       const r = { ...result, groupIndex: idx };
       if (onItemsProgress) {
         for (const [slotId, item] of r.items) accumulated.set(slotId, item);
         onItemsProgress([...accumulated.values()]);
       }
       return r;
-    })
-  );
-
-  const settled = await Promise.allSettled(promises);
-  const results: GroupResult[] = [];
-
-  for (let i = 0; i < settled.length; i++) {
-    const outcome = settled[i];
-    if (outcome.status === "fulfilled") {
-      results.push(outcome.value);
-    } else {
-      console.error(
-        `[writerParallel] Group ${i} failed entirely:`,
-        outcome.reason
-      );
+    } catch (err) {
+      console.error(`[writerParallel] Group ${idx} failed entirely:`, err);
       // Push empty result — slots will be picked up by the retry round
-      results.push({ groupIndex: i, items: new Map(), truncated: true });
       telemetry.truncationEvents++;
+      return { groupIndex: idx, items: new Map(), truncated: true };
     }
-  }
+  });
 
-  return results;
+  return withConcurrencyLimit(WRITER_GROUP_CONCURRENCY, tasks);
 }
 
 // ── Single group LLM call (used by both parallel dispatch and retry) ──────────
@@ -686,7 +699,8 @@ async function callGroupLLM(
   context: WriterContext,
   scribe: ScribePrescriptions,
   telemetry: WriterTelemetry,
-  hintMode: HintMode = "FULL"
+  hintMode: HintMode = "FULL",
+  onSlotComplete?: (chunk: WriterSlotChunk) => void
 ): Promise<GroupResult> {
   telemetry.chunkSizes.push(slots.length);
 
@@ -743,6 +757,7 @@ async function callGroupLLM(
     parsed.questionType = slot.questionType;
 
     items.set(slot.id, parsed);
+    onSlotComplete?.({ slot_id: slot.id, delta: rawBlocks[i], done: true });
   }
 
   return { groupIndex: 0, items, truncated };

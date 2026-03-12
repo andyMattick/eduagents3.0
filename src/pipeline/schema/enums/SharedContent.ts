@@ -6,5 +6,12 @@ export enum SharedContext {
   Graph = "graph",
   Image = "image",
   Map = "map",
-  Diagram = "diagram"
+  Diagram = "diagram",
+  Primary_Source = "primary_source",
+  Timeline = "timeline",
+  Video = "video",
+  Audio = "audio",
+  Multi_Part = "multipart",
+  Multi_Source = "multi_source",
+  CodeSnippet = "code_snippet"
 }
