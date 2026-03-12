@@ -1,0 +1,19 @@
+import { ItemType } from "../../../enums/ItemType";
+import { CognitiveIntent } from "../../../enums/CognitiveIntent";
+import { Difficulty } from "../../../enums/Difficulty";
+import { SharedContext } from "../../../enums/SharedContent";
+
+export const PairedPassagesProblemType = {
+  id: "ela_paired_passages",
+  label: "Paired Passages",
+  itemType: ItemType.ShortAnswer,
+  defaultIntent: CognitiveIntent.Compare,
+  defaultDifficulty: Difficulty.Hard,
+  sharedContext: SharedContext.Passage,
+
+  configurableFields: {
+    pairingType: ["same_topic", "opposing_claims", "different_genres"],
+    questionTypes: ["mcq", "short_answer", "evidence"],
+    difficulty: ["medium", "hard"]
+  }
+};
