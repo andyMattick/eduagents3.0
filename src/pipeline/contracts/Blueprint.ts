@@ -6,6 +6,13 @@ import type {
 } from "@/pipeline/agents/architect/constraintEngine";
 import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
 import { ProblemSlot } from "../agents/pluginEngine";
+
+// Template-derivation taxonomy aliases.
+export type ItemType = string;
+export type CognitiveIntent = string;
+export type Difficulty = "easy" | "medium" | "hard" | string;
+export type SharedContext = Record<string, unknown> | string | null;
+
 export interface Blueprint {
   uar: UnifiedAssessmentRequest;
 

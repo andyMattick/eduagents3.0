@@ -1,6 +1,32 @@
+import { ItemType, CognitiveIntent, Difficulty, SharedContext } from "./Blueprint";
+import { TeacherPreferences, StudentProfile } from "./index";
+
+export interface DeriveTemplateRequest {
+  mode: "deriveTemplate";
+  examples: string[];
+  subject?: string;
+  itemType?: ItemType;
+  cognitiveIntent?: CognitiveIntent;
+  difficulty?: Difficulty;
+  teacherPreferences: TeacherPreferences;
+  studentProfile: StudentProfile;
+  teacherId: string;
+}
+
 export interface UnifiedAssessmentRequest {
   subscriptionTier: "free" | "tier1" | "tier2" | "admin";
-  mode: "write" | "compare" | "playtest";
+  mode: "create" | "write" | "compare" | "playtest" | "deriveTemplate";
+
+  // Derive-template mode fields
+  examples?: string[];
+  subject?: string;
+  itemType?: ItemType;
+  cognitiveIntent?: CognitiveIntent;
+  difficulty?: Difficulty;
+  sharedContext?: SharedContext;
+  teacherPreferences?: TeacherPreferences;
+  studentProfile?: StudentProfile;
+  teacherId?: string;
 
   // Teacher context
   userId: string;

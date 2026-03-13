@@ -13,10 +13,11 @@ import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
-import { useDeveloperMode } from './hooks/useDeveloperMode';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
 import { loadTeacherProfile } from './services_new/teacherProfileService';
+import { TemplatesPage, TemplateWizardPage } from './components_new/templates';
+import type { TemplateOption } from './components_new/templates';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 import { AnalyzerV2 } from "@/pipeline/analyzerV2/analyzerV2";
@@ -55,6 +56,8 @@ export interface AssignmentContext {
 function TeacherAppContent() {
   const [activeTab, setActiveTab] = useState<AppTab>('my-assessments');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [pathname, setPathname] = useState<string>(window.location.pathname);
+  const [builderTemplateToApply, setBuilderTemplateToApply] = useState<TemplateOption | null>(null);
   const { logout, user } = useAuth();
   const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});  // Tracks whether this user has ever saved a teacher profile.
   // null = still loading, false = no profile yet (show first-run banner), true = exists.
@@ -65,6 +68,25 @@ function TeacherAppContent() {
     if (!user?.id) return;
     loadTeacherProfile(user.id).then((p) => setHasStoredProfile(p !== null)).catch(() => setHasStoredProfile(false));
   }, [user?.id]);
+
+  useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  const navigate = (path: string) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setPathname(path);
+  };
+
+  const onUseTemplateInBuilder = (template: TemplateOption) => {
+    setBuilderTemplateToApply(template);
+    setActiveTab('pipeline');
+    navigate('/');
+  };
 
   /** Derive most-used course + grade from the teacher's last 20 assessments */
   useEffect(() => {
@@ -110,7 +132,10 @@ function TeacherAppContent() {
           <div className="app-tabs">
             <button
               className={`app-tab ${activeTab === 'my-assessments' ? 'active' : ''}`}
-              onClick={() => setActiveTab('my-assessments')}
+              onClick={() => {
+                setActiveTab('my-assessments');
+                navigate('/');
+              }}
             >
               <span className="app-tab-icon">📋</span>
               My Assessments
@@ -118,10 +143,21 @@ function TeacherAppContent() {
 
             <button
               className={`app-tab ${activeTab === 'pipeline' ? 'active' : ''}`}
-              onClick={() => setActiveTab('pipeline')}
+              onClick={() => {
+                setActiveTab('pipeline');
+                navigate('/');
+              }}
             >
               <span className="app-tab-icon">📝</span>
               Pipeline
+            </button>
+
+            <button
+              className={`app-tab ${pathname.startsWith('/templates') ? 'active' : ''}`}
+              onClick={() => navigate('/templates')}
+            >
+              <span className="app-tab-icon">🧩</span>
+              Templates
             </button>
 
             {/* My Agents tab hidden from teacher nav — component kept for internal use */}
@@ -130,7 +166,10 @@ function TeacherAppContent() {
 
             <button
               className={`app-tab ${activeTab === 'my-profile' ? 'active' : ''}`}
-              onClick={() => setActiveTab('my-profile')}
+              onClick={() => {
+                setActiveTab('my-profile');
+                navigate('/');
+              }}
               title="Your teaching defaults — pre-fill every new assessment"
             >
               <span className="app-tab-icon">⚙️</span>
@@ -153,18 +192,36 @@ function TeacherAppContent() {
 
       {/* Content — all tabs stay mounted; CSS hides inactive ones so pipeline state survives navigation */}
       <div className="app-content">
+        {pathname === '/templates/new' && user?.id && (
+          <TemplateWizardPage
+            teacherId={user.id}
+            onNavigate={navigate}
+          />
+        )}
+
+        {pathname === '/templates' && user?.id && (
+          <TemplatesPage
+            teacherId={user.id}
+            onNavigate={navigate}
+            onUseTemplateInBuilder={onUseTemplateInBuilder}
+          />
+        )}
+
+        {pathname === '/' && (
         <div style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
           <ConversationalAssessmentWrapper
             userId={user?.id ?? null}
             defaultAnswers={pipelineDefaults}
+            builderTemplateToApply={builderTemplateToApply}
             onResult={(data) => {
               console.log("Pipeline result:", data);
             }}
           />
         </div>
+        )}
 
         {/* My Assessments — uses TeacherDashboard which renders rich cards and handles navigation */}
-        {activeTab === 'my-assessments' && (
+        {pathname === '/' && activeTab === 'my-assessments' && (
           <MyAssessmentsPage
             teacherId={user?.id ?? ''}
             teacherName={user?.name}
@@ -176,30 +233,30 @@ function TeacherAppContent() {
           />
         )}
 
-        {activeTab === 'my-agents' && (
+        {pathname === '/' && activeTab === 'my-agents' && (
           <MyAgentsPage
             userId={user?.id ?? ''}
             onNewAssessment={() => { setActiveTab('pipeline'); }}
           />
         )}
 
-        <div style={{ display: activeTab === 'what-we-infer' ? 'block' : 'none' }}>
+        <div style={{ display: pathname === '/' && activeTab === 'what-we-infer' ? 'block' : 'none' }}>
           <WhatWeInferPage />
         </div>
 
-        {activeTab === 'assessment-detail' && selectedTemplateId && (
+        {pathname === '/' && activeTab === 'assessment-detail' && selectedTemplateId && (
           <AssessmentDetailPage
             templateId={selectedTemplateId}
             onBack={() => setActiveTab('my-assessments')}
           />
         )}
 
-        {activeTab === 'my-profile' && user?.id && (
+        {pathname === '/' && activeTab === 'my-profile' && user?.id && (
           <TeacherProfilePage userId={user.id} />
         )}
 
         {/* ── First-run banner for users without a stored profile ──── */}
-        {activeTab === 'my-assessments' &&
+        {pathname === '/' && activeTab === 'my-assessments' &&
           hasStoredProfile === false &&
           !profileBannerDismissed && (
           <div style={{

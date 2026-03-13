@@ -90,6 +90,119 @@ function localLLMProxy(geminiApiKey: string): Plugin {
   };
 }
 
+/**
+ * Local dev middleware for template endpoints so /api/* routes return JSON
+ * while running `npm run dev` (without Vercel runtime).
+ */
+function localTemplateProxy(): Plugin {
+  return {
+    name: 'local-template-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/templates', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'GET') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        // Dev-safe fallback payload; production uses /api/templates serverless function.
+        res.end(JSON.stringify({ system: [], teacher: [] }));
+      });
+
+      server.middlewares.use('/api/derive-template', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        try {
+          const chunks: Buffer[] = [];
+          await new Promise<void>((resolve, reject) => {
+            req.on('data', (chunk: Buffer) => chunks.push(chunk));
+            req.on('end', resolve);
+            req.on('error', reject);
+          });
+
+          const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+          const examples = Array.isArray(body.examples) ? body.examples : [];
+          const first = (examples[0] ?? 'Custom Template').toString();
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            template: {
+              id: `dev-${Date.now()}`,
+              label: first.slice(0, 60) || 'Custom Template',
+              subject: body.subject ?? 'General',
+              itemType: body.itemType ?? 'short_answer',
+              cognitiveIntent: body.cognitiveIntent ?? 'understand',
+              difficulty: body.difficulty ?? 'medium',
+              sharedContext: null,
+              configurableFields: {},
+              examples,
+              inferred: {
+                itemType: !body.itemType,
+                cognitiveIntent: !body.cognitiveIntent,
+                difficulty: !body.difficulty,
+                sharedContext: true,
+              },
+              previewItems: examples.slice(0, 2).map((prompt: string, i: number) => ({
+                id: `dev-preview-${i + 1}`,
+                prompt,
+              })),
+            },
+          }));
+        } catch (err: any) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message ?? 'Invalid request body' }));
+        }
+      });
+
+      server.middlewares.use('/api/save-template', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
   // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
@@ -97,7 +210,7 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
-  plugins: [react(), localLLMProxy(geminiApiKey)],
+  plugins: [react(), localLLMProxy(geminiApiKey), localTemplateProxy()],
   server: {
     port: 3000,
     open: true

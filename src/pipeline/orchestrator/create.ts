@@ -1,4 +1,8 @@
 import { problemGeneratorRouter } from "@/pipeline/agents/pluginEngine/services/problemGeneratorRouter";
+import { runDeriveTemplate } from "@/pipeline/agents/templateDeriver/index";
+import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+
+
 
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
@@ -341,6 +345,21 @@ let _lastPipelineBlueprint: any = null;
 /** Return the most recently built blueprint (set after Architect step). */
 export function getLastPipelineBlueprint(): any {
   return _lastPipelineBlueprint;
+}
+
+export async function create(request: UnifiedAssessmentRequest) {
+  switch (request.mode) {
+    case "create":
+      return runCreatePipeline({ ...request, mode: "write" } as UnifiedAssessmentRequest);
+    case "write":
+    case "compare":
+    case "playtest":
+      return runCreatePipeline(request);
+    case "deriveTemplate":
+      return runDeriveTemplate(request as DeriveTemplateRequest);
+    default:
+      throw new Error(`Unsupported mode: ${request.mode}`);
+  }
 }
 
 export async function runCreatePipeline(

@@ -17,6 +17,8 @@ import type { MinimalTeacherIntent } from "@/pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 import type { TeacherProfile } from "@/types/teacherProfile";
 import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
+import { listTemplates } from "@/services_new/pipelineClient";
+import type { TemplateOption } from "@/components_new/templates";
 import {
   AssessmentIntentSelector,
   AnalyzeDocumentPanel,
@@ -31,6 +33,7 @@ interface ConversationalAssessmentWrapperProps {
   onResult: (result: unknown) => void;
   /** Soft defaults pre-filled on a fresh form (e.g. most-used course / grade). */
   defaultAnswers?: Partial<Record<StepId, string>>;
+  builderTemplateToApply?: TemplateOption | null;
 }
 
 function getTitle(result: any): string {
@@ -54,6 +57,7 @@ export function ConversationalAssessmentWrapper({
   userId,
   onResult,
   defaultAnswers,
+  builderTemplateToApply,
 }: ConversationalAssessmentWrapperProps) {
   const [selectedIntent, setSelectedIntent] = useState<OrchestratorIntent | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +65,8 @@ export function ConversationalAssessmentWrapper({
   const [usage, setUsage] = useState<DailyUsage | null>(null);
   const [limitError, setLimitError] = useState<string | null>(null);
   const [partialItems, setPartialItems] = useState<any[]>([]);
+  const [myTemplates, setMyTemplates] = useState<TemplateOption[]>([]);
+  const [selectedBuilderTemplate, setSelectedBuilderTemplate] = useState<TemplateOption | null>(null);
 
   // ── Prompt Engineer state ──────────────────────────────────────────────
   const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
@@ -105,6 +111,25 @@ export function ConversationalAssessmentWrapper({
   }, [safeUserId]);
 
   useEffect(() => { refreshUsage(); }, [refreshUsage]);
+
+  useEffect(() => {
+    if (safeUserId === "00000000-0000-0000-0000-000000000000") return;
+    listTemplates(safeUserId)
+      .then((payload) => {
+        setMyTemplates(
+          (payload.teacher ?? []).map((template: any) => ({
+            id: String(template.id),
+            label: String(template.label ?? template.id),
+          }))
+        );
+      })
+      .catch(() => setMyTemplates([]));
+  }, [safeUserId]);
+
+  useEffect(() => {
+    if (!builderTemplateToApply) return;
+    setSelectedBuilderTemplate(builderTemplateToApply);
+  }, [builderTemplateToApply]);
 
   const [pipelineError, setPipelineError] = useState<string | null>(null);
 
@@ -206,6 +231,7 @@ export function ConversationalAssessmentWrapper({
             const a = Number(m[1]), b = Number(m[2]);
             return { min: Math.min(a, b), max: Math.max(a, b) };
           })(),
+          additionalDetails: `${pendingIntent.additionalDetails ?? ""}${selectedBuilderTemplate ? `\n\nPreferred teacher template: ${selectedBuilderTemplate.label} (id: ${selectedBuilderTemplate.id}).` : ""}`,
         };
 
         const uar = {
@@ -229,7 +255,7 @@ export function ConversationalAssessmentWrapper({
         setIsLoading(false);
       }
     },
-    [pendingIntent, safeUserId, onResult, refreshUsage]
+    [pendingIntent, safeUserId, onResult, refreshUsage, selectedBuilderTemplate]
   );
 
   // ── Post-Builder teacher feedback → targeted rewrite ───────────────────
@@ -454,6 +480,42 @@ export function ConversationalAssessmentWrapper({
 
           {selectedIntent === "create" && (
             <>
+              <div style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "10px",
+                padding: "0.8rem",
+                marginBottom: "0.75rem",
+                background: "#fcfcfd",
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: "0.4rem" }}>My Templates</div>
+                {myTemplates.length === 0 ? (
+                  <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+                    No saved templates yet. Create one in Templates - New Template.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                    {myTemplates.map((template) => {
+                      const isSelected = selectedBuilderTemplate?.id === template.id;
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          className={`ca-chip${isSelected ? " ca-chip--selected" : ""}`}
+                          onClick={() => setSelectedBuilderTemplate(template)}
+                        >
+                          {template.label}
+                        </button>
+                      );
+                    })}
+                    {selectedBuilderTemplate && (
+                      <button type="button" className="ca-btn-ghost" onClick={() => setSelectedBuilderTemplate(null)}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <button
                 type="button"
                 onClick={() => setSelectedIntent(null)}

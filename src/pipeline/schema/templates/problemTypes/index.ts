@@ -5,6 +5,7 @@ import { LinearEquationProblemType } from "./MathProblems/linearEquation";
 import { PolynomialOperationsProblemType } from "./MathProblems/polynomialEquation";
 import { GraphInterpretationProblemType } from "./MathProblems/graphInterpretation";
 import { ForeignLanguageProblemType } from "./foreignLanguage";
+import { loadTemplatesForTeacher } from "@/pipeline/persistence/loadTemplate";
 
 export const ProblemTypesRegistry = {
   arithmetic_fluency: ArithmeticFluencyProblemType,
@@ -15,5 +16,15 @@ export const ProblemTypesRegistry = {
   graph_interpretation: GraphInterpretationProblemType,
   foreign_language: ForeignLanguageProblemType,
 };
+
+export const systemProblemTypes = ProblemTypesRegistry;
+
+export async function getAllProblemTypesForTeacher(teacherId: string) {
+  const teacherTemplates = await loadTemplatesForTeacher(teacherId);
+  return {
+    system: systemProblemTypes,
+    teacher: teacherTemplates,
+  };
+}
 
 export type ProblemTypeId = keyof typeof ProblemTypesRegistry;
