@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const ReadingComprehensionProblemType = {
+  subject: "English Language Arts",
   id: "ela_reading_comprehension",
   label: "Reading Comprehension",
   itemType: ItemType.ShortAnswer, // parts can override

@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryMapInterpretationProblemType = {
+  subject: "History",
   id: "history_map_interpretation",
   label: "Map Interpretation",
   itemType: ItemType.GraphInterpretation,

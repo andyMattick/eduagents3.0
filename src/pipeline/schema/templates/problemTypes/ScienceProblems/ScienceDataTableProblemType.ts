@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const ScienceDataTableProblemType = {
+  subject: "Science",
   id: "science_data_table",
   label: "Data Table Interpretation",
   itemType: ItemType.TableInterpretation,

@@ -3,6 +3,7 @@ import { CognitiveIntent } from "../../../enums/CognitiveIntent";
 import { Difficulty } from "../../../enums/Difficulty";
 
 export const LinearEquationProblemType = {
+  subject: "Mathematics",
   id: "linear_equation",
   label: "Linear Equation",
   itemType: ItemType.Plugin,

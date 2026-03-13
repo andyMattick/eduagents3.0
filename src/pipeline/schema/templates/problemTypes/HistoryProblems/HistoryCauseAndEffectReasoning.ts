@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryCauseEffectProblemType = {
+  subject: "History",
   id: "history_cause_effect",
   label: "Cause and Effect",
   itemType: ItemType.Explanation,

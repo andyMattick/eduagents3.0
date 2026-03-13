@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryTimelineProblemType = {
+  subject: "History",
   id: "history_timeline",
   label: "Timeline Ordering",
   itemType: ItemType.Ordering,

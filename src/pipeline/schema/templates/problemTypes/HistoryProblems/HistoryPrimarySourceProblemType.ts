@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryPrimarySourceProblemType = {
+  subject: "History",
   id: "history_primary_source",
   label: "Primary Source Analysis",
   itemType: ItemType.ShortAnswer,

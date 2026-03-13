@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const LiteraryAnalysisProblemType = {
+  subject: "English Language Arts",
   id: "ela_literary_analysis",
   label: "Literary Analysis",
   itemType: ItemType.Explanation,

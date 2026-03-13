@@ -3,6 +3,7 @@ import { CognitiveIntent } from "../../enums/CognitiveIntent";
 import { Difficulty } from "../../enums/Difficulty";
 
 export const ForeignLanguageProblemType = {
+  Subject: "Foreign Language",
   id: "foreign_language",
   label: "Foreign Language",
   itemType: ItemType.Plugin,

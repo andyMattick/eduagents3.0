@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const EvidenceBasedResponseProblemType = {
+  subject: "English Language Arts",
   id: "ela_evidence_based_response",
   label: "Evidence-Based Response",
   itemType: ItemType.Explanation,

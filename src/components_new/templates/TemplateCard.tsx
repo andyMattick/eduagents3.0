@@ -1,24 +1,24 @@
-import { DerivedTemplate } from "../../pipeline/contracts"; // adjust path if needed
+import { TemplateRecord } from "./types";
 
 interface TemplateCardProps {
-  template: DerivedTemplate;
-  readOnly?: boolean;
+  template: TemplateRecord;
+  onOpen?: (template: TemplateRecord) => void;
 }
 
-export default function TemplateCard({ template, readOnly = false }: TemplateCardProps) {
+export default function TemplateCard({ template, onOpen }: TemplateCardProps) {
   return (
-    <div className="template-card">
-      <h3>{template.label}</h3>
-      <p><strong>Subject:</strong> {template.subject}</p>
-      <p><strong>Item Type:</strong> {template.itemType}</p>
-      <p><strong>Intent:</strong> {template.cognitiveIntent}</p>
-      <p><strong>Difficulty:</strong> {template.difficulty}</p>
-
-      {!readOnly && (
-        <a href={`/templates/${template.id}`} className="btn btn-secondary">
-          Edit
-        </a>
-      )}
-    </div>
+    <button
+      type="button"
+      className="template-card"
+      onClick={() => onOpen?.(template)}
+    >
+      <h3 className="template-card__title">{template.label}</h3>
+      <div className="template-card__meta">
+        <span>{String(template.cognitiveIntent ?? "n/a")}</span> · <span>{String(template.difficulty ?? "n/a")}</span>
+      </div>
+      <p className="template-card__explanation">
+        {template.explanation ?? "No explanation available."}
+      </p>
+    </button>
   );
 }

@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const ShortConstructedResponseProblemType = {
+  subject: "English Language Arts",
   id: "ela_short_constructed_response",
   label: "Short Constructed Response",
   itemType: ItemType.Explanation,

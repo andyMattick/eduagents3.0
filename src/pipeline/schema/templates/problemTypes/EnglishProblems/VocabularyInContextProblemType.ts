@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const VocabularyInContextProblemType = {
+  subject: "English Language Arts",
   id: "ela_vocabulary_in_context",
   label: "Vocabulary in Context",
   itemType: ItemType.MultipleChoice,

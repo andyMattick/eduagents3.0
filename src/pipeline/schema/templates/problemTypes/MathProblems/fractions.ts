@@ -3,6 +3,7 @@ import { CognitiveIntent } from "../../../enums/CognitiveIntent";
 import { Difficulty } from "../../../enums/Difficulty";
 
 export const FractionsProblemType = {
+  subject: "Mathematics",
   id: "fractions",
   label: "Fractions",
   itemType: ItemType.Plugin,

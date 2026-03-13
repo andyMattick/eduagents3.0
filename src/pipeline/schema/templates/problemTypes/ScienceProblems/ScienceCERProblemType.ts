@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const ScienceCERProblemType = {
+  subject: "Science",
   id: "science_cer",
   label: "Scientific Explanation (CER)",
   itemType: ItemType.Explanation,

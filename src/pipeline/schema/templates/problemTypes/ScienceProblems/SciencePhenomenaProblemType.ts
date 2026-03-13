@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const SciencePhenomenaProblemType = {
+  subject: "Science",
   id: "science_phenomena",
   label: "Phenomena-Based Question",
   itemType: ItemType.ShortAnswer,

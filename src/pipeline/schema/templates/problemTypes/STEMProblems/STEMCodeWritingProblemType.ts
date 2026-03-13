@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const STEMCodeWritingProblemType = {
+  subject: "STEM",
   id: "stem_code_writing",
   label: "Code Writing",
   itemType: ItemType.Code,

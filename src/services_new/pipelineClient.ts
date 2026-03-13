@@ -2,9 +2,25 @@ import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentReq
 import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
 import { TemplateAnalysis } from "@/pipeline/agents/templateDeriver/types";
 
+export interface TemplateListEntry {
+	id: string;
+	label: string;
+	subject?: string;
+	itemType?: string;
+	cognitiveIntent?: string;
+	difficulty?: string;
+	sharedContext?: string;
+	configurableFields?: Record<string, unknown>;
+	explanation?: string;
+	previewItems?: unknown[];
+	isTeacherTemplate?: boolean;
+	examples?: string[];
+	inferred?: Record<string, unknown>;
+}
+
 export interface TemplatesListing {
-	system: Array<Record<string, unknown>>;
-	teacher: DerivedTemplate[];
+	system: TemplateListEntry[];
+	teacher: TemplateListEntry[];
 }
 
 export async function deriveTemplate(request: DeriveTemplateRequest): Promise<{ template: DerivedTemplate; analysis?: TemplateAnalysis }> {
@@ -32,6 +48,19 @@ export async function saveTemplate(teacherId: string, template: DerivedTemplate)
 	if (!response.ok) {
 		const payload = await response.json().catch(() => ({}));
 		throw new Error(payload?.message ?? payload?.error ?? "saveTemplate request failed");
+	}
+}
+
+export async function deleteTemplate(teacherId: string, templateId: string): Promise<void> {
+	const response = await fetch("/api/delete-template", {
+		method: "DELETE",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ teacherId, templateId }),
+	});
+
+	if (!response.ok) {
+		const payload = await response.json().catch(() => ({}));
+		throw new Error(payload?.message ?? payload?.error ?? "deleteTemplate request failed");
 	}
 }
 

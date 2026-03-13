@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryDBQProblemType = {
+  subject: "History",
   id: "history_dbq",
   label: "Document-Based Question (DBQ)",
   itemType: ItemType.MultiPart,

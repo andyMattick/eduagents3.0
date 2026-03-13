@@ -3,6 +3,7 @@ import { CognitiveIntent } from "../../../enums/CognitiveIntent";
 import { Difficulty } from "../../../enums/Difficulty";
 
 export const PolynomialOperationsProblemType = {
+  subject: "Mathematics",
   id: "polynomial_operations",
   label: "Polynomial Operations",
   itemType: ItemType.Plugin,

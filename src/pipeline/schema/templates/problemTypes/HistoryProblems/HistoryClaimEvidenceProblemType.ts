@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const HistoryClaimEvidenceProblemType = {
+  subject: "History",
   id: "history_claim_evidence",
   label: "Historical Argument (Claim–Evidence)",
   itemType: ItemType.Explanation,

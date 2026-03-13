@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const STEMEngineeringDesignProblemType = {
+  subject: "STEM",
   id: "stem_engineering_design",
   label: "Engineering Design",
   itemType: ItemType.Explanation,

@@ -125,19 +125,164 @@ function localTemplateProxy(): Plugin {
             return;
           }
 
-          const mod = await server.ssrLoadModule('/src/pipeline/schema/templates/problemTypes/index.ts');
-          const merged = await mod.getAllProblemTypesForTeacher(teacherId);
-          const system = Object.values(merged.system ?? {}).map((entry: any) => ({
-            id: entry.id,
-            label: entry.label,
-            itemType: entry.itemType,
-            defaultIntent: entry.defaultIntent,
-            defaultDifficulty: entry.defaultDifficulty,
-            configurableFields: entry.configurableFields ?? {},
-          }));
+          const schemaMod = await server.ssrLoadModule('/src/pipeline/schema/templates/problemTypes/index.ts');
+          const explanationMod = await server.ssrLoadModule('/src/utils/templateExplanation.ts');
+          const merged = await schemaMod.getAllProblemTypesForTeacher(teacherId);
+
+          const subjectMap: Record<string, string> = {
+            'English Language Arts': 'ELA',
+            English: 'ELA',
+            ELA: 'ELA',
+            Math: 'Math',
+            Mathematics: 'Math',
+            Science: 'Science',
+            History: 'Social Studies',
+            'Social Studies': 'Social Studies',
+            STEM: 'STEM',
+            'World Languages': 'World Languages',
+            'Foreign Language': 'World Languages',
+          };
+
+          const normalizeString = (value: unknown, fallback = ''): string => {
+            const str = String(value ?? fallback).trim();
+            return str || fallback;
+          };
+
+          const firstConfigOption = (configurableFields: Record<string, unknown> | undefined): string | null => {
+            if (!configurableFields) return null;
+            for (const value of Object.values(configurableFields)) {
+              if (Array.isArray(value) && value.length > 0) {
+                return String(value[0]);
+              }
+              if (typeof value === 'string' && value.trim()) {
+                return value.trim();
+              }
+            }
+            return null;
+          };
+
+          const fallbackPreviewItems = (template: {
+            label: string;
+            subject: string;
+            cognitiveIntent: string;
+            sharedContext: string;
+            configurableFields?: Record<string, unknown>;
+          }): Array<{ prompt: string; answer: string }> => {
+            const focus = firstConfigOption(template.configurableFields);
+            const contextPhrase = template.sharedContext && template.sharedContext !== 'none'
+              ? `using a ${template.sharedContext.replace(/_/g, ' ')}`
+              : 'from a short prompt';
+            const focusPhrase = focus ? ` Focus on ${String(focus).replace(/_/g, ' ')}.` : '';
+
+            return [
+              {
+                prompt: `${template.label}: Have students ${template.cognitiveIntent} ${contextPhrase}.${focusPhrase}`,
+                answer: `Sample response should clearly ${template.cognitiveIntent} and reference key details accurately.`,
+              },
+              {
+                prompt: `${template.subject} task: Ask students to ${template.cognitiveIntent} in a second variation of the same skill.${focusPhrase}`,
+                answer: 'Sample response should demonstrate consistent reasoning and domain-appropriate vocabulary.',
+              },
+            ];
+          };
+
+          const normalizePreviewItems = (
+            entry: any,
+            normalizedTemplate: {
+              label: string;
+              subject: string;
+              cognitiveIntent: string;
+              sharedContext: string;
+              configurableFields?: Record<string, unknown>;
+            }
+          ) => {
+            if (Array.isArray(entry.previewItems) && entry.previewItems.length > 0) {
+              return entry.previewItems;
+            }
+
+            if (Array.isArray(entry.examples) && entry.examples.length > 0) {
+              return entry.examples.slice(0, 2).map((example: unknown, idx: number) => ({
+                prompt: String(example),
+                answer: `Sample answer outline ${idx + 1}`,
+              }));
+            }
+
+            return fallbackPreviewItems(normalizedTemplate);
+          };
+
+          const inferSystemSubject = (templateId: string): string => {
+            if (templateId.startsWith('ela_')) return 'English';
+            if (templateId.startsWith('history_')) return 'History';
+            if (templateId.startsWith('science_')) return 'Science';
+            if (templateId.startsWith('stem_')) return 'STEM';
+            if (templateId === 'foreign_language') return 'World Languages';
+            return 'Math';
+          };
+
+          const normalizeSystemTemplate = (entry: any) => {
+            const id = normalizeString(entry.id);
+            const rawSubject =
+              (typeof entry.subject === 'string' && entry.subject.trim().length > 0
+                ? entry.subject.trim()
+                : inferSystemSubject(id));
+            const subject = subjectMap[rawSubject] ?? 'Other';
+
+            const normalized = {
+              id,
+              label: normalizeString(entry.label, id),
+              subject,
+              itemType: entry.itemType ?? 'short_answer',
+              cognitiveIntent: entry.defaultIntent ?? entry.cognitiveIntent ?? 'analyze',
+              difficulty: entry.defaultDifficulty ?? entry.difficulty ?? 'medium',
+              sharedContext: entry.sharedContext ?? 'none',
+              configurableFields: entry.configurableFields ?? {},
+              previewItems: [] as unknown[],
+              isTeacherTemplate: false,
+            };
+
+            normalized.previewItems = normalizePreviewItems(entry, normalized);
+
+            return {
+              ...normalized,
+              explanation: explanationMod.generateTemplateExplanation(normalized),
+            };
+          };
+
+          const normalizeTeacherTemplate = (entry: any) => {
+            const id = normalizeString(entry.id);
+
+            const normalized = {
+              id,
+              label: normalizeString(entry.label, id),
+              subject: normalizeString(entry.subject, 'Other'),
+              itemType: entry.itemType ?? 'short_answer',
+              cognitiveIntent: entry.cognitiveIntent ?? 'analyze',
+              difficulty: entry.difficulty ?? 'medium',
+              sharedContext: entry.sharedContext ?? 'none',
+              configurableFields: entry.configurableFields ?? {},
+              previewItems: [] as unknown[],
+              examples: Array.isArray(entry.examples) ? entry.examples : [],
+              inferred: entry.inferred ?? {},
+              isTeacherTemplate: true,
+            };
+
+            normalized.previewItems = normalizePreviewItems(entry, normalized);
+
+            return {
+              ...normalized,
+              explanation: explanationMod.generateTemplateExplanation(normalized),
+            };
+          };
+
+          const systemSource = Array.isArray(merged.system)
+            ? merged.system
+            : Object.values(merged.system ?? {});
+
+          const system = systemSource.map((entry: any) => normalizeSystemTemplate(entry));
+          const teacher = (merged.teacher ?? []).map((entry: any) => normalizeTeacherTemplate(entry));
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ system, teacher: merged.teacher ?? [] }));
+          res.end(JSON.stringify({ system, teacher }));
         } catch (err: any) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err?.message ?? 'Failed to load templates' }));
@@ -224,6 +369,52 @@ function localTemplateProxy(): Plugin {
         } catch (err: any) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err?.message ?? 'saveTemplate failed' }));
+        }
+      });
+
+      server.middlewares.use('/api/delete-template', async (req, res) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'DELETE') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        try {
+          const chunks: Buffer[] = [];
+          await new Promise<void>((resolve, reject) => {
+            req.on('data', (chunk: Buffer) => chunks.push(chunk));
+            req.on('end', resolve);
+            req.on('error', reject);
+          });
+
+          const body = JSON.parse(Buffer.concat(chunks).toString() || '{}');
+          const teacherId = body?.teacherId;
+          const templateId = body?.templateId;
+
+          if (!teacherId || !templateId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'teacherId and templateId are required' }));
+            return;
+          }
+
+          const mod = await server.ssrLoadModule('/src/pipeline/persistence/deleteTemplate.ts');
+          await mod.deleteTemplate(String(teacherId), String(templateId));
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err: any) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message ?? 'deleteTemplate failed' }));
         }
       });
     },

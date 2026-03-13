@@ -3,6 +3,7 @@ import { CognitiveIntent } from "../../../enums/CognitiveIntent";
 import { Difficulty } from "../../../enums/Difficulty";
 
 export const AlgebraicFluencyProblemType = {
+  subject: "Mathematics",
   id: "algebraic_fluency",
   label: "Algebraic Fluency",
   itemType: ItemType.Plugin,

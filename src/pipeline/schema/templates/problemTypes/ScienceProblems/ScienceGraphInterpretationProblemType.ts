@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const ScienceGraphInterpretationProblemType = {
+  subject: "Science",
   id: "science_graph_interpretation",
   label: "Graph Interpretation",
   itemType: ItemType.GraphInterpretation,

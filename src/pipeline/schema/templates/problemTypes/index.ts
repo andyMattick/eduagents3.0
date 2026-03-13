@@ -1,28 +1,37 @@
-import { ArithmeticFluencyProblemType } from "./MathProblems/arithmeticFluency";
-import { AlgebraicFluencyProblemType } from "./MathProblems/algebraicFluency";
-import { FractionsProblemType } from "./MathProblems/fractions";
-import { LinearEquationProblemType } from "./MathProblems/linearEquation";
-import { PolynomialOperationsProblemType } from "./MathProblems/polynomialEquation";
-import { GraphInterpretationProblemType } from "./MathProblems/graphInterpretation";
+import { englishProblemTypes } from "./EnglishProblems";
+import { historyProblemTypes } from "./HistoryProblems";
+import { mathProblemTypes } from "./MathProblems";
+import { scienceProblemTypes } from "./ScienceProblems";
+import { stemProblemTypes } from "./STEMProblems";
 import { ForeignLanguageProblemType } from "./foreignLanguage";
 import { loadTemplatesForTeacher } from "@/pipeline/persistence/loadTemplate";
 
-export const ProblemTypesRegistry = {
-  arithmetic_fluency: ArithmeticFluencyProblemType,
-  algebraic_fluency: AlgebraicFluencyProblemType,
-  fractions: FractionsProblemType,
-  linear_equation: LinearEquationProblemType,
-  polynomial_operations: PolynomialOperationsProblemType,
-  graph_interpretation: GraphInterpretationProblemType,
-  foreign_language: ForeignLanguageProblemType,
-};
+import { withTemplate } from "./templateCarrier";
+
+const foreignLanguageProblemType = withTemplate(ForeignLanguageProblemType, "World Languages");
+
+// Canonical source for all built-in templates.
+export const allSystemProblemTypes = [
+  ...mathProblemTypes.map((problemType) => problemType.template),
+  ...englishProblemTypes.map((problemType) => problemType.template),
+  ...historyProblemTypes.map((problemType) => problemType.template),
+  ...scienceProblemTypes.map((problemType) => problemType.template),
+  ...stemProblemTypes.map((problemType) => problemType.template),
+  foreignLanguageProblemType.template,
+] as const;
+
+type SystemProblemType = (typeof allSystemProblemTypes)[number];
+
+export const ProblemTypesRegistry = Object.fromEntries(
+  allSystemProblemTypes.map((problemType) => [problemType.id, problemType])
+) as Record<SystemProblemType["id"], SystemProblemType>;
 
 export const systemProblemTypes = ProblemTypesRegistry;
 
 export async function getAllProblemTypesForTeacher(teacherId: string) {
   const teacherTemplates = await loadTemplatesForTeacher(teacherId);
   return {
-    system: systemProblemTypes,
+    system: allSystemProblemTypes,
     teacher: teacherTemplates,
   };
 }

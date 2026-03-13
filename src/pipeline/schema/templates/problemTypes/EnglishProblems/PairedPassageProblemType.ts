@@ -4,6 +4,7 @@ import { Difficulty } from "../../../enums/Difficulty";
 import { SharedContext } from "../../../enums/SharedContent";
 
 export const PairedPassagesProblemType = {
+  subject: "English Language Arts",
   id: "ela_paired_passages",
   label: "Paired Passages",
   itemType: ItemType.ShortAnswer,

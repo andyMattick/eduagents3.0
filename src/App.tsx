@@ -16,7 +16,7 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
 import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
 import { loadTeacherProfile } from './services_new/teacherProfileService';
-import { TemplatesPage, TemplateWizardPage } from './components_new/templates';
+import { TemplatesPage, TemplateSummaryPage, TemplateWizardPage } from './components_new/templates';
 import type { TemplateOption } from './components_new/templates';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
@@ -81,6 +81,9 @@ function TeacherAppContent() {
     }
     setPathname(path);
   };
+
+  const summaryPathMatch = pathname.match(/^\/templates\/([^/]+)\/summary$/);
+  const summaryTemplateId = summaryPathMatch?.[1] ?? null;
 
   const onUseTemplateInBuilder = (template: TemplateOption) => {
     setBuilderTemplateToApply(template);
@@ -202,6 +205,15 @@ function TeacherAppContent() {
         {pathname === '/templates' && user?.id && (
           <TemplatesPage
             teacherId={user.id}
+            onNavigate={navigate}
+            onUseTemplateInBuilder={onUseTemplateInBuilder}
+          />
+        )}
+
+        {summaryTemplateId && user?.id && (
+          <TemplateSummaryPage
+            teacherId={user.id}
+            templateId={summaryTemplateId}
             onNavigate={navigate}
             onUseTemplateInBuilder={onUseTemplateInBuilder}
           />
