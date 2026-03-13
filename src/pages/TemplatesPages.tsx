@@ -2,6 +2,13 @@ import { useEffect, useState } from "react";
 import { getTemplates } from "../api/templates";
 import TemplateCard from "../components/templates/TemplateCard";
 
+function resolveTeacherId(): string | null {
+  const fromGlobal = (window as any).__teacherId as string | undefined;
+  const fromStorage = window.localStorage.getItem("teacher_id") ?? undefined;
+  const candidate = (fromGlobal ?? fromStorage ?? "").trim();
+  return candidate || null;
+}
+
 export default function TemplatesPage() {
   const [systemTemplates, setSystemTemplates] = useState([]);
   const [teacherTemplates, setTeacherTemplates] = useState([]);
@@ -11,7 +18,10 @@ export default function TemplatesPage() {
   useEffect(() => {
     async function load() {
       try {
-        const teacherId = "demo-teacher"; // replace with real auth context
+        const teacherId = resolveTeacherId();
+        if (!teacherId) {
+          throw new Error("No teacher id available. Please sign in and retry.");
+        }
         const data = await getTemplates(teacherId);
         setSystemTemplates(data.system || []);
         setTeacherTemplates(data.teacher || []);

@@ -149,6 +149,9 @@ export async function deriveTemplate(
   }
   console.log("ANALYSIS >>>", JSON.stringify(analysis, null, 2));
 
+  if (process.env.NODE_ENV !== "production") {
+    return { template, analysis };
+  }
 
   return { template };
 }

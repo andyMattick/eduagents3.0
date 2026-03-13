@@ -1,12 +1,13 @@
 import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
 import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
+import { TemplateAnalysis } from "@/pipeline/agents/templateDeriver/types";
 
 export interface TemplatesListing {
 	system: Array<Record<string, unknown>>;
 	teacher: DerivedTemplate[];
 }
 
-export async function deriveTemplate(request: DeriveTemplateRequest): Promise<{ template: DerivedTemplate }> {
+export async function deriveTemplate(request: DeriveTemplateRequest): Promise<{ template: DerivedTemplate; analysis?: TemplateAnalysis }> {
 	const response = await fetch("/api/derive-template", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },

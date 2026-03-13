@@ -367,3 +367,39 @@ CREATE POLICY "pr: own rows insert"
 CREATE POLICY "pr: own rows select"
   ON public.pipeline_reports FOR SELECT
   USING (user_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────
+-- 11. TEACHER TEMPLATES
+--     Stores teacher-authored derived templates keyed by
+--     (path, teacher_id) and loaded by the template registry.
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.teacher_templates (
+  path        text        NOT NULL,
+  teacher_id  uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  data        jsonb       NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT teacher_templates_pkey PRIMARY KEY (path, teacher_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_templates_teacher_id
+  ON public.teacher_templates (teacher_id);
+
+ALTER TABLE public.teacher_templates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "teacher_templates: own rows select"
+  ON public.teacher_templates FOR SELECT
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows insert"
+  ON public.teacher_templates FOR INSERT
+  WITH CHECK (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows update"
+  ON public.teacher_templates FOR UPDATE
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows delete"
+  ON public.teacher_templates FOR DELETE
+  USING (auth.uid() = teacher_id);

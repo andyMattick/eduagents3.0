@@ -17,4 +17,5 @@ export interface TemplateAnalysis {
 
 export interface DeriveTemplateResult {
   template: DerivedTemplate;
+  analysis?: TemplateAnalysis;
 }

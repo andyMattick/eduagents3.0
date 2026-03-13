@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { deriveTemplate, saveTemplate } from "@/services_new/pipelineClient";
 import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
+import { TemplateAnalysis } from "@/pipeline/agents/templateDeriver/types";
 
 interface TemplateWizardPageProps {
   teacherId: string;
@@ -20,6 +21,7 @@ export function TemplateWizardPage({ teacherId, onNavigate }: TemplateWizardPage
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [derivedTemplate, setDerivedTemplate] = useState<DerivedTemplate | null>(null);
+  const [debugAnalysis, setDebugAnalysis] = useState<TemplateAnalysis | null>(null);
 
   const cleanedExamples = useMemo(() => examples.map((e) => e.trim()).filter(Boolean), [examples]);
 
@@ -39,6 +41,7 @@ export function TemplateWizardPage({ teacherId, onNavigate }: TemplateWizardPage
         teacherId,
       });
       setDerivedTemplate(response.template);
+      setDebugAnalysis(response.analysis ?? null);
       setStep(3);
     } catch (err: any) {
       setError(err?.message ?? "Failed to derive template");
@@ -132,6 +135,15 @@ export function TemplateWizardPage({ teacherId, onNavigate }: TemplateWizardPage
           <pre style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "0.6rem", fontSize: "0.8rem", overflowX: "auto" }}>
 {JSON.stringify(derivedTemplate.inferred, null, 2)}
           </pre>
+
+          {debugAnalysis && (
+            <>
+              <h4 style={{ marginBottom: "0.4rem", marginTop: "0.75rem" }}>Analysis (debug)</h4>
+              <pre style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: "8px", padding: "0.6rem", fontSize: "0.8rem", overflowX: "auto" }}>
+{JSON.stringify(debugAnalysis, null, 2)}
+              </pre>
+            </>
+          )}
 
           <h4 style={{ marginBottom: "0.4rem" }}>Preview Items</h4>
           {(derivedTemplate.previewItems ?? []).length === 0 && <p style={{ color: "#6b7280" }}>No preview items returned.</p>}
