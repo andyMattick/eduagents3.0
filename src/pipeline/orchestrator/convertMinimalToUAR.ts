@@ -26,14 +26,55 @@ function mapSingleFormat(
   assessmentType: string
 ): string[] | undefined {
   switch (format) {
+    // ── Legacy chip IDs (backward compat) ────────────────────────────────
     case "mcqOnly":           return ["multipleChoice"];
     case "saOnly":            return ["shortAnswer"];
     case "essayOnly":         return ["essay"];
     case "frqOnly":           return ["freeResponse"];
     case "fitbOnly":          return ["fillInTheBlank"];
     case "trueFalseOnly":     return ["trueFalse"];
+
+    // ── Canonical UI_PROBLEM_TYPES IDs (Select) ──────────────────────────
+    case "multipleChoice":    return ["multipleChoice"];
+    case "trueFalse":         return ["trueFalse"];
+    case "multiSelect":       return ["multiSelect"];
+    case "hotspot":           return ["hotspot"];
+    case "dragDrop":          return ["dragDrop"];
+
+    // ── Canonical UI_PROBLEM_TYPES IDs (Produce) ─────────────────────────
+    case "shortAnswer":       return ["shortAnswer"];
+    case "fillBlank":         return ["fillInTheBlank"];
+    case "numericEntry":      return ["numericEntry"];
+    case "tableCompletion":   return ["tableCompletion"];
+    case "equationConstruction": return ["equationConstruction"];
+
+    // ── Canonical UI_PROBLEM_TYPES IDs (Analyze) ─────────────────────────
+    case "errorAnalysis":     return ["errorAnalysis"];
+    case "dataInterpretation": return ["dataInterpretation"];
+    case "graphInterpretation": return ["graphInterpretation"];
+    case "sequencing":        return ["sequencing"];
+    case "classification":    return ["classification"];
+    case "causeEffect":       return ["causeEffect"];
+    case "sourceComparison":  return ["sourceComparison"];
+
+    // ── Canonical UI_PROBLEM_TYPES IDs (Create) ──────────────────────────
+    case "extendedResponse":  return ["constructedResponse"];
+    case "essay":             return ["essay"];
+    case "passageExtendedResponse": return ["passageBased"];
+    case "cer":               return ["cer"];
+    case "experimentalDesign": return ["experimentalDesign"];
+    case "roleWriting":       return ["roleWriting"];
+    case "designTask":        return ["designTask"];
+
+    // ── Canonical UI_PROBLEM_TYPES IDs (Perform) ─────────────────────────
+    case "performanceTask":   return ["performanceTask"];
+    case "scenarioDecision":  return ["scenarioDecision"];
+    case "simulation":        return ["simulation"];
+
+    // ── Special shared IDs ────────────────────────────────────────────────
     case "arithmeticFluency": return ["arithmeticFluency"];
-    case "passageBased":       return ["passageBased"];
+    case "passageBased":      return ["passageBased"];
+
     case "mixed":
       // freeResponse is AP-exam special — never included in generic "mixed".
       // Teachers who want FRQ must explicitly select "Free Response" (frqOnly).

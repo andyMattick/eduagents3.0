@@ -150,6 +150,17 @@ export interface ProblemPlugin {
   /** Topics this plugin can handle (empty = all topics) */
   supportedTopics: string[];
 
+  /** Optional schema template metadata used by supports-based routing. */
+  template?: {
+    supports?: Record<string, boolean>;
+    sharedContext?: string;
+    itemType?: string;
+    defaultIntent?: string;
+    defaultDifficulty?: string;
+    label?: string;
+    [key: string]: any;
+  };
+
   /** Generate a problem for the given slot */
   generate(slot: ProblemSlot, context: GenerationContext): Promise<TemplateGeneratedProblem>;
 

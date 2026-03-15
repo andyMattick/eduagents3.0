@@ -11,6 +11,10 @@ export const STEMEngineeringDesignProblemType = {
   defaultIntent: CognitiveIntent.Plan,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    engineeringDesign: true,
+    extendedResponse: true
+  },
 
   configurableFields: {
     focus: ["constraints", "criteria", "tradeoffs", "optimization"],

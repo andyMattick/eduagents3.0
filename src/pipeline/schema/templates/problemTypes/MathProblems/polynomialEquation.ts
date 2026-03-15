@@ -11,6 +11,11 @@ export const PolynomialOperationsProblemType = {
 
   defaultIntent: CognitiveIntent.Compute,
   defaultDifficulty: Difficulty.Medium,
+    supports: {
+    numericEntry: true,
+    shortAnswer: true,
+    multiStep: true
+  },
 
   configurableFields: {
     operation: ["add", "subtract", "multiply", "divide"],

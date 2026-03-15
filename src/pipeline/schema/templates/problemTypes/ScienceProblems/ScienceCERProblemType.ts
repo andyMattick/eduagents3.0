@@ -11,6 +11,11 @@ export const ScienceCERProblemType = {
   defaultIntent: CognitiveIntent.Justify,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    evidence: true,
+    extendedResponse: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     evidenceCount: [1, 2, 3],

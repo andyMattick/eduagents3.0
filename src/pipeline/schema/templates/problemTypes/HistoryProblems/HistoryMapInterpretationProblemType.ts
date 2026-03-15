@@ -11,6 +11,11 @@ export const HistoryMapInterpretationProblemType = {
   defaultIntent: CognitiveIntent.Interpret,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Map,
+    supports: {
+    mapInterpretation: true,
+    dataInterpretation: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     mapType: ["political", "physical", "thematic", "historical_event"],

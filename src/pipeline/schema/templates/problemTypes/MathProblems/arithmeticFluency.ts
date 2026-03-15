@@ -14,6 +14,9 @@ export const ArithmeticFluencyProblemType = {
 
   // Plugin routing
   pluginId: "arithmetic_fluency_template",
+    supports: {
+    numericEntry: true
+  },
 
   // Optional: teacher-editable fields
   configurableFields: {

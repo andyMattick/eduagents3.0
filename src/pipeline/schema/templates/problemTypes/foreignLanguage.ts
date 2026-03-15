@@ -11,6 +11,11 @@ export const ForeignLanguageProblemType = {
 
   defaultIntent: CognitiveIntent.Apply,
   defaultDifficulty: Difficulty.Medium,
+    supports: {
+    shortAnswer: true,
+    vocabulary: true,
+    translation: true
+  },
 
   configurableFields: {
     task: ["vocabulary", "grammar", "translation"],

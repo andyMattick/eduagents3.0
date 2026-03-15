@@ -11,7 +11,11 @@ export const HistoryCauseEffectProblemType = {
   defaultIntent: CognitiveIntent.Explain,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Scenario,
-
+  supports: {
+    causeEffect: true,
+    shortAnswer: true,
+    extendedResponse: true
+  },
   configurableFields: {
     focus: ["cause", "effect", "both"],
     responseLength: ["short", "extended"],

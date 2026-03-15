@@ -11,6 +11,12 @@ export const LiteraryAnalysisProblemType = {
   defaultIntent: CognitiveIntent.Analyze,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
+    supports: {
+    passageBased: true,
+    shortAnswer: true,
+    extendedResponse: true,
+    analysis: true
+  },
 
   configurableFields: {
     focus: ["theme", "character", "structure", "tone", "figurative_language"],

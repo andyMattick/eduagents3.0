@@ -5,6 +5,9 @@ import { ScienceDiagramLabelingProblemType } from "./ScienceDiagramLabelingProbl
 import { ScienceExperimentalDesignProblemType } from "./ScienceExperimentalDesignProblemType";
 import { ScienceGraphInterpretationProblemType } from "./ScienceGraphInterpretationProblemType";
 import { SciencePhenomenaProblemType } from "./SciencePhenomenaProblemType";
+import { ScienceSequencingProblemType } from "./ScienceSequencingProblemType";
+import { ScienceClassificationProblemType } from "./ScienceClassificationProblemType";
+import { ScienceTableCompletionProblemType } from "./ScienceTableCompletionProblemType";
 
 const rawScienceProblemTypes = [
   ScienceCERProblemType,
@@ -13,6 +16,9 @@ const rawScienceProblemTypes = [
   ScienceExperimentalDesignProblemType,
   ScienceGraphInterpretationProblemType,
   SciencePhenomenaProblemType,
+  ScienceSequencingProblemType,
+  ScienceClassificationProblemType,
+  ScienceTableCompletionProblemType,
 ] as const;
 
 export const scienceProblemTypes = rawScienceProblemTypes.map((problemType) =>

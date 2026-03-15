@@ -8,6 +8,7 @@ export interface DeriveTemplateRequest {
   itemType?: ItemType;
   cognitiveIntent?: CognitiveIntent;
   difficulty?: Difficulty;
+  sharedContext?: SharedContext;
   teacherPreferences: TeacherPreferences;
   studentProfile: StudentProfile;
   teacherId: string;

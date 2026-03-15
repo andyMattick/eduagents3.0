@@ -503,6 +503,7 @@ const problemSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
     s.diagramType ? "diagram" :
     s.imageReferenceId ? "image_analysis" :
     "llm",
+  questionType: s.questionType,
   problem_type: s.questionType,
   template_id: s.templateId ?? null,
   diagram_type: s.diagramType ?? null,
@@ -513,6 +514,8 @@ const problemSlots = (blueprint.plan?.slots ?? []).map((s: any) => ({
   pacing_seconds: s.pacingSeconds ?? null,
   question_format: s.questionType,
   cognitive_demand: s.cognitiveDemand ?? null,
+  sharedContext: s.sharedContext ?? null,
+  itemType: s.itemType ?? null,
 }));
 blueprint.problemSlots = problemSlots; // Attach to blueprint for downstream agents
 

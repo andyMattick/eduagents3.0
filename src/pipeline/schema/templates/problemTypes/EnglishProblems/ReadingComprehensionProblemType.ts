@@ -11,6 +11,10 @@ export const ReadingComprehensionProblemType = {
   defaultIntent: CognitiveIntent.Analyze,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
+    supports: {
+    passageBased: true,
+    mcq: true
+  },
 
   configurableFields: {
     genre: ["informational", "narrative", "argumentative", "poetry"],

@@ -11,6 +11,11 @@ export const HistoryPrimarySourceProblemType = {
   defaultIntent: CognitiveIntent.Analyze,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Primary_Source,
+    supports: {
+    primarySource: true,
+    analysis: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     sourceType: ["text", "image", "political_cartoon", "speech", "letter"],

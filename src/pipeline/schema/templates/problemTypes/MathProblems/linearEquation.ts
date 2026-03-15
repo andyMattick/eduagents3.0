@@ -11,6 +11,11 @@ export const LinearEquationProblemType = {
 
   defaultIntent: CognitiveIntent.Solve,
   defaultDifficulty: Difficulty.Medium,
+    supports: {
+    numericEntry: true,
+    shortAnswer: true,
+    multiStep: true
+  },
 
   configurableFields: {
     form: ["one-step", "two-step", "multi-step"],

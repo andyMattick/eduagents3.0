@@ -11,6 +11,9 @@ export const ShortConstructedResponseProblemType = {
   defaultIntent: CognitiveIntent.Explain,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
+    supports: {
+    shortAnswer: true
+  },
 
   configurableFields: {
     promptType: ["analysis", "explanation", "summary"],

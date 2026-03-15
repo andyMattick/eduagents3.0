@@ -1027,6 +1027,45 @@ textarea {
   color: #6b7280;
 }
 
+.templates-page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.templates-page__debug {
+  margin-bottom: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 0.75rem;
+}
+
+.templates-page__debug-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.templates-page__debug-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.templates-page__debug-code {
+  margin: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.75rem;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .templates-page__content {
   display: grid;
   grid-template-columns: 1fr;
@@ -1194,6 +1233,11 @@ textarea {
   .templates-page__header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .templates-page__header-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .template-drawer {

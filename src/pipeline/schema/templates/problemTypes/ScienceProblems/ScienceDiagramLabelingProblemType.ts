@@ -11,6 +11,9 @@ export const ScienceDiagramLabelingProblemType = {
   defaultIntent: CognitiveIntent.Identify,
   defaultDifficulty: Difficulty.Easy,
   sharedContext: SharedContext.Diagram,
+    supports: {
+    diagramLabeling: true
+  },
 
   configurableFields: {
     diagramType: ["cell", "body_system", "circuit", "ecosystem", "earth_layers"],

@@ -13,6 +13,13 @@
 // ── Bootstrap: Import triggers plugin auto-registration ──────────────────
 import "./services/problemPlugins";
 
+// ── Template Registration (system, teacher, full-exam) ────────────────────
+export {
+  registerAllSystemTemplates,
+  registerTeacherTemplates,
+  registerFullExamTemplate,
+} from "./registerSystemTemplates";
+
 // ── Interfaces ───────────────────────────────────────────────────────────
 export type {
   ProblemSlot,

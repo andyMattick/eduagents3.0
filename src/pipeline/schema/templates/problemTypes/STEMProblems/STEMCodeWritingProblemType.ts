@@ -11,6 +11,10 @@ export const STEMCodeWritingProblemType = {
   defaultIntent: CognitiveIntent.Create,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.CodeSnippet,
+   supports: {
+    codeWriting: true,
+    extendedResponse: true
+  },
 
   configurableFields: {
     language: ["python", "javascript", "java", "c++"],

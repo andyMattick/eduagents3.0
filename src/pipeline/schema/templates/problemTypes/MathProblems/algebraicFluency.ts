@@ -8,6 +8,9 @@ export const AlgebraicFluencyProblemType = {
   label: "Algebraic Fluency",
   itemType: ItemType.Plugin,
   pluginId: "algebraic_fluency_template",
+    supports: {
+    numericEntry: true
+  },
 
   defaultIntent: CognitiveIntent.Compute,
   defaultDifficulty: Difficulty.Medium,

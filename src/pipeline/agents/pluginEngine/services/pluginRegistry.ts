@@ -10,14 +10,32 @@
 
 // internal registry
 import type { ProblemPlugin } from "../interfaces/problemPlugin";
-// Explicitly import all plugins to trigger their registration
-import "./problemPlugins/templates";
+import { allSystemProblemTypes } from "../../../schema/templates/problemTypes";
+import { GeneralProblemPlugins } from "../../../schema/templates/problemTypes/GeneralProblems";
+import { wrapSchemaTemplate } from "../wrapSchemaTemplate";
+
 
 // ─── Registry Store ────────────────────────────────────────────────────────
 
 const _plugins = new Map<string, ProblemPlugin>();
 
 // ─── Public API ────────────────────────────────────────────────────────────
+
+function registerSchemaTemplates() {
+  for (const template of allSystemProblemTypes) {
+    registerPlugin(wrapSchemaTemplate(template));
+  }
+}
+
+function registerGeneralProblemPlugins() {
+  for (const plugin of GeneralProblemPlugins) {
+    registerPlugin(plugin);
+  }
+}
+
+registerSchemaTemplates();
+registerGeneralProblemPlugins();
+
 
 /**
  * Register a plugin. Duplicate IDs overwrite silently (hot-reload friendly).
@@ -35,6 +53,11 @@ export function getPlugin(pluginId: string | undefined): ProblemPlugin | undefin
   if (!pluginId) return undefined;
   return _plugins.get(pluginId);
 }
+
+export function getPlugins(): ProblemPlugin[] {
+  return Array.from(_plugins.values());
+}
+
 import { algebraic_fluency_template } from "./problemPlugins/templates/algebraic_fluency_template";
 import { arithmetic_fluency_template } from "./problemPlugins/templates/arithmetic_fluency_template";
 import { FractionsPlugin } from "./problemPlugins/templates/fractions";

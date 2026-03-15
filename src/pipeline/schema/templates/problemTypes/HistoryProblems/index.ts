@@ -6,14 +6,14 @@ import { HistoryMapInterpretationProblemType } from "./HistoryMapInterpretationP
 import { HistoryPrimarySourceProblemType } from "./HistoryPrimarySourceProblemType";
 import { HistoryTimelineProblemType } from "./HistoryTimelineProblemType";
 
-const rawHistoryProblemTypes = [
+const rawHistoryProblemTypes: Array<Parameters<typeof withTemplate>[0]> = [
   HistoryCauseEffectProblemType,
   HistoryClaimEvidenceProblemType,
   HistoryDBQProblemType,
   HistoryMapInterpretationProblemType,
   HistoryPrimarySourceProblemType,
   HistoryTimelineProblemType,
-] as const;
+];
 
 export const historyProblemTypes = rawHistoryProblemTypes.map((problemType) =>
   withTemplate(problemType, "Social Studies")

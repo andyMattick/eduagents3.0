@@ -11,6 +11,13 @@ export const PairedPassagesProblemType = {
   defaultIntent: CognitiveIntent.Compare,
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Passage,
+    supports: {
+    passageBased: true,
+    pairedPassage: true,
+    mcq: true,
+    shortAnswer: true
+  },
+  
 
   configurableFields: {
     pairingType: ["same_topic", "opposing_claims", "different_genres"],

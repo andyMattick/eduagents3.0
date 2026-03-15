@@ -11,6 +11,10 @@ export const STEMComputationalThinkingProblemType = {
   defaultIntent: CognitiveIntent.Analyze,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    computationalThinking: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     focus: ["pattern_recognition", "decomposition", "abstraction", "algorithm_design"],

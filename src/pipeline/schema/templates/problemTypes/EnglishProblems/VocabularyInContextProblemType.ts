@@ -11,6 +11,11 @@ export const VocabularyInContextProblemType = {
   defaultIntent: CognitiveIntent.Interpret,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
+    supports: {
+    passageBased: true,
+    mcq: true,
+    vocabulary: true
+  },
 
   configurableFields: {
     wordSelection: ["teacher_provided", "auto_select"],

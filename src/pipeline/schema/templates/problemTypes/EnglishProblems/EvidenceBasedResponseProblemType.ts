@@ -11,6 +11,11 @@ export const EvidenceBasedResponseProblemType = {
   defaultIntent: CognitiveIntent.Justify,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
+  supports: {
+  numericEntry: true,
+  shortAnswer: true,
+  multiStep: true
+},
 
   configurableFields: {
     responseLength: ["short", "medium", "long"],

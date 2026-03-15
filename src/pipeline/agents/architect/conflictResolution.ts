@@ -11,6 +11,8 @@
 
 import type { TeacherProfile, PacingConflict } from "@/types/teacherProfile";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { getProblemTypesForSubjectAndGrade } from "@/pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
+import { inferGradeBand } from "@/pipeline/problemTypes/inferGradeBand";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pacing conflict
@@ -111,6 +113,55 @@ export function resolvePacingConflict(
 // UAR injection helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+function normalizeCourseToGovernedSubject(course: string): string | null {
+  const normalized = String(course ?? "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (["biology"].includes(normalized)) return "biology";
+  if (["science", "chemistry", "physics", "envscience", "earthscience"].includes(normalized)) return "science";
+  if (["math", "arithmetic", "algebra1", "algebra2", "geometry", "precalculus", "calculus", "statistics"].includes(normalized)) return "math";
+  if (["english", "readingwriting", "literature", "composition", "grammar", "esl"].includes(normalized)) return "english";
+  if (["history", "socialstudies", "ushistory", "worldhistory", "civics", "government", "economics"].includes(normalized)) return "history";
+
+  return normalized;
+}
+
+function normalizeQuestionTypeToUIId(questionType: string): string {
+  switch (questionType) {
+    case "fillInTheBlank":
+      return "fillBlank";
+    case "constructedResponse":
+    case "freeResponse":
+      return "extendedResponse";
+    case "passageBased":
+      return "passageExtendedResponse";
+    case "ordering":
+      return "sequencing";
+    default:
+      return questionType;
+  }
+}
+
+function sanitizeQuestionTypesForContext(
+  uar: UnifiedAssessmentRequest,
+  questionTypes: string[]
+): string[] {
+  const governedSubject = normalizeCourseToGovernedSubject(uar.course);
+  if (!governedSubject) return questionTypes;
+
+  const gradeBand = inferGradeBand(governedSubject, uar.gradeLevels ?? []);
+  if (!gradeBand) return questionTypes;
+
+  const allowedUiIds = new Set(
+    getProblemTypesForSubjectAndGrade(governedSubject, gradeBand).map((pt) => pt.id)
+  );
+  if (allowedUiIds.size === 0) return questionTypes;
+
+  return questionTypes.filter((questionType) =>
+    allowedUiIds.has(normalizeQuestionTypeToUIId(questionType))
+  );
+}
+
 /**
  * Merge teacher profile defaults INTO the UAR for any field the teacher left
  * unspecified.  Returns a new UAR; never mutates the original.
@@ -125,6 +176,10 @@ export function injectProfileIntoUAR(
   profile: TeacherProfile
 ): UnifiedAssessmentRequest {
   let patched = { ...uar };
+  const safeProfileQuestionTypes = sanitizeQuestionTypesForContext(
+    patched,
+    profile.questionDefaults.questionTypes as string[]
+  );
 
   // 1. Assessment type default
   if (!patched.assessmentType && profile.assessmentDefaults.assessmentTypes.length > 0) {
@@ -135,10 +190,10 @@ export function injectProfileIntoUAR(
   }
 
   // 2. Question type defaults
-  if (!patched.questionTypes?.length && profile.questionDefaults.questionTypes.length > 0) {
+  if (!patched.questionTypes?.length && safeProfileQuestionTypes.length > 0) {
     patched = {
       ...patched,
-      questionTypes: profile.questionDefaults.questionTypes as string[],
+      questionTypes: safeProfileQuestionTypes,
     };
   }
 
@@ -146,14 +201,15 @@ export function injectProfileIntoUAR(
   if (!patched.questionCount && patched.time && patched.assessmentType) {
     const types = patched.questionTypes?.length
       ? patched.questionTypes
-      : (profile.questionDefaults.questionTypes as string[]);
+      : safeProfileQuestionTypes;
 
     const avgSeconds =
-      types.reduce(
-        (sum, t) =>
-          sum + (profile.pacingDefaults.questionTypeSeconds[t] ?? 60),
-        0
-      ) / Math.max(types.length, 1);
+      (types.length
+        ? types.reduce(
+            (sum, t) => sum + (profile.pacingDefaults.questionTypeSeconds[t] ?? 60),
+            0
+          ) / types.length
+        : 60);
 
     const derived = Math.max(1, Math.floor((patched.time * 60) / avgSeconds));
     patched = { ...patched, questionCount: derived };

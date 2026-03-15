@@ -11,6 +11,11 @@ export const HistoryDBQProblemType = {
   defaultIntent: CognitiveIntent.Synthesize,
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Multi_Source,
+    supports: {
+    dbq: true,
+    extendedResponse: true,
+    evidence: true
+  },
 
   configurableFields: {
     documentCount: [2, 3, 4, 5],

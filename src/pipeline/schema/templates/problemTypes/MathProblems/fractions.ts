@@ -11,6 +11,9 @@ export const FractionsProblemType = {
 
   defaultIntent: CognitiveIntent.Compute,
   defaultDifficulty: Difficulty.Medium,
+    supports: {
+    numericEntry: true
+  },
 
   configurableFields: {
     operation: ["add", "subtract", "multiply", "divide"],

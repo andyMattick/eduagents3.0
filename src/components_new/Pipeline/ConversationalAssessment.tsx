@@ -10,6 +10,9 @@ import type { TeacherProfile, ResolvedCourseDefaults } from "@/types/teacherProf
 import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
 import { resolveCourseDefaults } from "@/services_new/teacherProfileService";
 import { evaluateFeasibility } from "@/pipeline/agents/architect/feasibility";
+import { UI_PROBLEM_TYPES } from "@/pipeline/problemTypes/uiProblemTypes";
+import { getProblemTypesForSubjectAndGrade } from "@/pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
+import { inferGradeBand } from "@/pipeline/problemTypes/inferGradeBand";
 
 // ── Chip option data ──────────────────────────────────────────────────────────
 
@@ -104,48 +107,141 @@ const GRADE_LEVEL_CHIPS = [
   { group: "High School (9-12)", label: "12th Grade", value: "12" },
 ];
 
-const QUESTION_FORMAT_CHIPS = [
-  // Math Types
-  { group: "Math Problems", label: "Arithmetic Fluency",     value: "arithmeticFluency" },
-  { group: "Math Problems",   label: "Algebra Fluency",        value: "algebraicFluency"  },
-  { group: "Math Problems",   label: "Fractions",              value: "fractions"         },
-  { group: "Math Problems", label: "Linear Equations",       value: "linearEquation"    },
+const QUESTION_TYPE_CATEGORIES = ["Select", "Produce", "Analyze", "Create", "Perform"] as const;
 
-  // Quick Assessment
-  { group: "Quick Assessment", label: "Multiple Choice",        value: "mcqOnly"           },
-  { group: "Quick Assessment", label: "True / False",           value: "trueFalseOnly"     },
-  
-  
-  // Short Response
-  { group: "Short Response", label: "Fill in the Blank",      value: "fitbOnly"          },
-  { group: "Short Response",   label: "Short Answer",           value: "saOnly"            },
-  
-  
-  // Extended Response
-  { group: "Extended Response", label: "Free Response",          value: "frqOnly"           },
-  { group: "Extended Response", label: "Essay",                  value: "essayOnly"         },
-  
-  { group: "Extended Response", label: "Passage-Based Reading",  value: "passageBased"      },
-  
-  // Standalone options
-  { group: "Standalone", label: "AI Decides Problem Type",           value: "mixed"             },
+const QUESTION_FORMAT_CHIPS = [
+  ...QUESTION_TYPE_CATEGORIES.flatMap((category) =>
+    UI_PROBLEM_TYPES
+      .filter((problemType) => problemType.category === category)
+      .map((problemType) => ({
+        group: category,
+        label: problemType.label,
+        value: problemType.id,
+      }))
+  ),
+  { group: "Perform", label: "AI Decides Problem Type", value: "mixed" },
 ];
+
+/**
+ * Returns format chips filtered to the given subject + grade level(s).
+ * Falls back to the full QUESTION_FORMAT_CHIPS when no governed set exists
+ * for the subject (e.g. Chemistry, Spanish) so teachers always see options.
+ * gradeLevelsRaw is the comma-separated multiSelect answer: "10" or "9,10".
+ */
+function buildFormatChipsForSubjectGrade(
+  course: string,
+  gradeLevelsRaw: string
+): typeof QUESTION_FORMAT_CHIPS {
+  const grades = gradeLevelsRaw.split(",").map(g => g.trim()).filter(Boolean);
+  const band = inferGradeBand(course, grades);
+  if (!band) return QUESTION_FORMAT_CHIPS;
+  const filtered = getProblemTypesForSubjectAndGrade(course, band);
+  if (filtered.length === 0) return QUESTION_FORMAT_CHIPS;
+  return [
+    ...filtered.map(pt => ({ group: pt.category, label: pt.label, value: pt.id })),
+    { group: "Perform", label: "AI Decides Problem Type", value: "mixed" },
+  ];
+}
+
+const QUESTION_FORMAT_COMPAT_MAP: Record<string, string> = {
+  // Legacy chip values
+  mcqOnly: "multipleChoice",
+  saOnly: "shortAnswer",
+  essayOnly: "essay",
+  frqOnly: "extendedResponse",
+  fitbOnly: "fillBlank",
+  trueFalseOnly: "trueFalse",
+
+  // Canonical/default question types
+  fillInTheBlank: "fillBlank",
+  freeResponse: "extendedResponse",
+  constructedResponse: "extendedResponse",
+  passageBased: "passageExtendedResponse",
+};
+
+function normalizeQuestionFormatValue(value: string): string {
+  return QUESTION_FORMAT_COMPAT_MAP[value] ?? value;
+}
 
 // Examples for each problem type
 const PROBLEM_EXAMPLES: Record<string, { title: string; examples: string[] }> = {
-  mcqOnly: { title: "Multiple Choice", examples: ["What is the capital of France? A) London B) Paris C) Berlin D) Madrid", "Which element has the atomic number 6? A) Oxygen B) Carbon C) Nitrogen D) Hydrogen"] },
-  trueFalseOnly: { title: "True / False", examples: ["The Earth orbits around the Sun. (True/False)", "Photosynthesis occurs in animal cells. (True/False)"] },
-  fitbOnly: { title: "Fill in the Blank", examples: ["The process by which plants make their own food is called ________.", "A ________ is a statement believed to be true but unproven."] },
-  arithmeticFluency: { title: "Arithmetic Fluency", examples: ["7 + 8 = ?", "24 ÷ 6 = ?", "12 × 5 = ?"] },
-  saOnly: { title: "Short Answer", examples: ["Explain the role of mitochondria in a cell. (1-3 sentences)", "Describe two ways plants adapt to drought. (2-4 sentences)"] },
-  algebraicFluency: { title: "Algebra Fluency", examples: ["Simplify: 3x + 2x = ?", "Expand: 2(x + 5) = ?", "Factor: x² + 5x + 6 = ?"] },
-  fractions: { title: "Fractions", examples: ["What is 3/4 + 1/2? Simplify your answer.", "Multiply: 2/3 × 5/8 = ?", "Simplify: 12/18 = ?"] },
-  frqOnly: { title: "Free Response", examples: ["Analyze the causes and effects of climate change with evidence.", "Compare and contrast two historical figures and their societal impact."] },
-  essayOnly: { title: "Essay", examples: ["Write a five-paragraph essay on the theme of resilience in literature.", "Discuss the impact of technology on modern communication. (500-750 words)"] },
-  linearEquation: { title: "Linear Equations", examples: ["Solve: 2x + 5 = 13", "Solve for y: 3x + 2y = 12 when x = 2", "Find the slope of the line through (1, 2) and (3, 6)"] },
-  passageBased: { title: "Passage-Based Reading", examples: ["Read the passage and answer: What is the main idea?", "Based on the text, what can you infer about the author's perspective?"] },
+  multipleChoice: { title: "Multiple Choice", examples: ["What is the capital of France? A) London B) Paris C) Berlin D) Madrid", "Which element has the atomic number 6? A) Oxygen B) Carbon C) Nitrogen D) Hydrogen"] },
+  trueFalse: { title: "True / False", examples: ["The Earth orbits around the Sun. (True/False)", "Photosynthesis occurs in animal cells. (True/False)"] },
+  fillBlank: { title: "Fill in the Blank", examples: ["The process by which plants make their own food is called ________.", "A ________ is a statement believed to be true but unproven."] },
+  shortAnswer: { title: "Short Answer", examples: ["Explain the role of mitochondria in a cell. (1-3 sentences)", "Describe two ways plants adapt to drought. (2-4 sentences)"] },
+  numericEntry: { title: "Numeric Entry", examples: ["Calculate: 18 × 7 = ?", "Solve: 3/4 + 1/2 = ?"] },
+  graphInterpretation: { title: "Graph Interpretation", examples: ["Based on the line graph, during which month did sales peak?", "What trend is shown between time and temperature?"] },
+  dataInterpretation: { title: "Data Interpretation", examples: ["Using the data table, which condition produced the highest growth rate?", "What conclusion is supported by the experiment results?"] },
+  extendedResponse: { title: "Extended Response", examples: ["Explain how the water cycle affects local weather patterns.", "Compare two methods for solving systems of equations and justify your preferred method."] },
+  essay: { title: "Essay", examples: ["Write a five-paragraph essay on the theme of resilience in literature.", "Discuss the impact of technology on modern communication. (500-750 words)"] },
+  passageExtendedResponse: { title: "Passage-Based Extended Response", examples: ["Read the passage and explain how the author develops the central idea.", "Using evidence from the text, analyze the speaker's perspective."] },
   mixed: { title: "Mixed Format", examples: ["Combination of multiple question types throughout the assessment.", "Assesses different cognitive levels and varied response modes."] },
 };
+
+function getProblemExamples(formatId: string): { title: string; examples: string[] } | null {
+  const known = PROBLEM_EXAMPLES[formatId];
+  if (known) return known;
+
+  const mapped = UI_PROBLEM_TYPES.find((problemType) => problemType.id === formatId);
+  if (!mapped) return null;
+
+  return {
+    title: mapped.label,
+    examples: [mapped.description],
+  };
+}
+
+function triggerWindowAutoAdjust(): void {
+  if (typeof window === "undefined") return;
+  window.requestAnimationFrame(() => {
+    window.dispatchEvent(new Event("resize"));
+  });
+}
+
+interface ProblemHoverPreview {
+  title: string;
+  example: string;
+  pacing?: string;
+  x: number;
+  y: number;
+}
+
+function ProblemHoverPreviewCard({ preview }: { preview: ProblemHoverPreview }) {
+  const CARD_WIDTH = 320;
+  const OFFSET = 14;
+  const left =
+    typeof window === "undefined"
+      ? preview.x + OFFSET
+      : Math.min(preview.x + OFFSET, Math.max(12, window.innerWidth - CARD_WIDTH - 12));
+  const top = preview.y + OFFSET;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left,
+        top,
+        width: `${CARD_WIDTH}px`,
+        maxWidth: "calc(100vw - 24px)",
+        padding: "0.65rem 0.75rem",
+        borderRadius: "10px",
+        border: "1px solid rgba(99, 102, 241, 0.35)",
+        background: "rgba(17, 24, 39, 0.96)",
+        boxShadow: "0 10px 24px rgba(0, 0, 0, 0.35)",
+        color: "#f9fafb",
+        zIndex: 1200,
+        pointerEvents: "none",
+        lineHeight: 1.45,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: "0.83rem", marginBottom: "0.25rem" }}>{preview.title}</div>
+      <div style={{ fontSize: "0.78rem", color: "#e5e7eb" }}>{preview.example}</div>
+      {preview.pacing && (
+        <div style={{ marginTop: "0.35rem", fontSize: "0.72rem", color: "#c7d2fe" }}>Estimated pacing: {preview.pacing}</div>
+      )}
+    </div>
+  );
+}
 
 const STANDARDS_CHIPS = [
   { label: "Common Core",     value: "commonCore"  },
@@ -161,6 +257,31 @@ const MULTI_PART_CHIPS = [
 
 /** Maps a QUESTION_FORMAT_CHIPS value to the key in DEFAULT_PACING_SECONDS. */
 const FORMAT_PACING_KEY: Record<string, string> = {
+  // Canonical/default question types
+  constructedResponse: "constructedResponse",
+  freeResponse:       "freeResponse",
+  fillInTheBlank:     "fillInTheBlank",
+  passageBased:       "passageBased",
+
+  multipleChoice:    "multipleChoice",
+  trueFalse:         "trueFalse",
+  shortAnswer:       "shortAnswer",
+  fillBlank:         "fillInTheBlank",
+  numericEntry:      "shortAnswer",
+  extendedResponse:  "freeResponse",
+  essay:             "essay",
+  passageExtendedResponse: "passageBased",
+  dataInterpretation: "graphInterpretation",
+  graphInterpretation: "graphInterpretation",
+  tableCompletion:   "shortAnswer",
+  errorAnalysis:     "shortAnswer",
+  sourceComparison:  "shortAnswer",
+  equationConstruction: "shortAnswer",
+  performanceTask:   "freeResponse",
+  scenarioDecision:  "freeResponse",
+  simulation:        "graphInterpretation",
+
+  // Legacy aliases for older saved defaults
   mcqOnly:           "multipleChoice",
   saOnly:            "shortAnswer",
   essayOnly:         "essay",
@@ -170,7 +291,6 @@ const FORMAT_PACING_KEY: Record<string, string> = {
   algebraicFluency:  "algebraicFluency",
   fractions:         "fractions",
   linearEquation:    "linearEquation",
-  passageBased:      "passageBased",
   mixed:             "",
 };
 
@@ -178,6 +298,21 @@ function fmtPacingTime(sec: number): string {
   if (sec < 60) return `${sec} sec each`;
   const m = sec / 60;
   return `${Number.isInteger(m) ? m : m.toFixed(1)} min each`;
+}
+
+const QUESTION_FORMAT_RECOMMENDED_BY_ASSESSMENT: Record<string, string[]> = {
+  bellRinger: ["multipleChoice", "shortAnswer"],
+  exitTicket: ["multipleChoice", "shortAnswer"],
+  quiz: ["multipleChoice", "shortAnswer", "fillBlank"],
+  worksheet: ["multipleChoice", "shortAnswer", "extendedResponse"],
+  testReview: ["multipleChoice", "shortAnswer", "extendedResponse"],
+  test: ["multipleChoice", "shortAnswer", "extendedResponse", "essay"],
+};
+
+function getRecommendedQuestionFormats(assessmentType: string, availableValues: Set<string>): string[] {
+  const recommendation =
+    QUESTION_FORMAT_RECOMMENDED_BY_ASSESSMENT[assessmentType] ?? ["multipleChoice", "shortAnswer"];
+  return recommendation.filter((format) => availableValues.has(format));
 }
 
 // ── Step definitions ──────────────────────────────────────────────────────────
@@ -245,7 +380,7 @@ function buildSteps(
     if (answers.course) {
       // Show each question with the default pre-selected — no separate card step needed
       steps.push({ id: "assessmentType",    kind: "chips", question: "What type of assessment?",      chips: ASSESSMENT_CHIPS });
-      steps.push({ id: "questionFormat",    kind: "chips", question: "Which question formats?",       chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
+      steps.push({ id: "questionFormat",    kind: "chips", question: "Which question formats?",       chips: buildFormatChipsForSubjectGrade(answers.course, answers.gradeLevels ?? ""), multiSelect: true });
       steps.push({ id: "multiPartQuestions",kind: "chips", question: "Multi-part questions?",         chips: MULTI_PART_CHIPS });
       steps.push({ id: "studentLevel",      kind: "chips", question: "Difficulty level for your class?", chips: LEVEL_CHIPS });
     }
@@ -266,12 +401,14 @@ function buildSteps(
     // Adaptive format steps for structured types
     const STRUCTURED = new Set(["test", "quiz", "worksheet", "testReview", "bellRinger", "exitTicket"]);
     if (STRUCTURED.has(answers.assessmentType)) {
-      steps.push({ id: "questionFormat", kind: "chips", question: "What question formats should this include?", chips: QUESTION_FORMAT_CHIPS, multiSelect: true });
+      steps.push({ id: "questionFormat", kind: "chips", question: "What question formats should this include?", chips: buildFormatChipsForSubjectGrade(answers.course, answers.gradeLevels ?? ""), multiSelect: true });
 
-      const fmts = answers.questionFormat ? answers.questionFormat.split(",").map(s => s.trim()) : [];
+      const fmts = answers.questionFormat
+        ? answers.questionFormat.split(",").map(s => normalizeQuestionFormatValue(s.trim()))
+        : [];
       
       // Passage-based sub-steps
-      if (fmts.includes("passageBased")) {
+      if (fmts.includes("passageBased") || fmts.includes("passageExtendedResponse")) {
         steps.push({ id: "passageSource", kind: "chips", question: "Should AI write the passage, or will you provide one?", chips: [
           { label: "AI writes the passage",    value: "ai"      },
           { label: "I\u2019ll provide the passage", value: "teacher" },
@@ -372,7 +509,8 @@ function DefaultsCard({
   const guessFormat = (): string => {
     const t = defaults.questionTypes;
     if (t.length === 1) {
-      const found = QUESTION_FORMAT_CHIPS.find(c => c.value === t[0]);
+      const normalized = normalizeQuestionFormatValue(t[0]);
+      const found = QUESTION_FORMAT_CHIPS.find(c => c.value === normalized);
       if (found) return found.value;
     }
     return t.length > 1 ? "mixed" : (QUESTION_FORMAT_CHIPS[0]?.value ?? "mixed");
@@ -396,6 +534,34 @@ function DefaultsCard({
   const [difficulty,      setDifficulty]      = useState(origDifficulty);
   const [standards,       setStandards]       = useState(origStandards);
   const [stateCode,       setStateCode]       = useState("");
+  const [hoverPreview, setHoverPreview] = useState<ProblemHoverPreview | null>(null);
+
+  useEffect(() => {
+    triggerWindowAutoAdjust();
+  }, [selectedFormats]);
+
+  // Chips filtered to subject + current grade; reacts to grade changes inside card
+  const activeFormatChips = buildFormatChipsForSubjectGrade(courseName, grade);
+
+  function showHoverPreview(
+    formatId: string,
+    event: React.MouseEvent<HTMLButtonElement>,
+    pacingText?: string
+  ) {
+    const details = getProblemExamples(normalizeQuestionFormatValue(formatId));
+    if (!details || details.examples.length === 0) return;
+    setHoverPreview({
+      title: details.title,
+      example: details.examples[0],
+      pacing: pacingText,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  function hideHoverPreview() {
+    setHoverPreview(null);
+  }
 
   function handleUse() {
     const overrides: DefaultsInlineOverride = {};
@@ -466,11 +632,41 @@ function DefaultsCard({
 
         <div className="ca-inline-field">
           <span className="ca-inline-field__label">Question formats <span style={{ fontWeight: 400, color: "var(--text-secondary, #9ca3af)" }}>(pick all that apply)</span></span>
+          <div style={{ marginTop: "0.35rem", marginBottom: "0.55rem", fontSize: "0.78rem", color: "var(--text-secondary, #6b7280)" }}>
+            Tip: hover any format to preview a sample question.
+          </div>
+          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+            <button
+              type="button"
+              className="ca-chip ca-chip--sm"
+              onClick={() => {
+                if (disabled) return;
+                const available = new Set(activeFormatChips.map((chip) => chip.value));
+                setSelectedFormats(getRecommendedQuestionFormats(assessmentType, available));
+                triggerWindowAutoAdjust();
+              }}
+              disabled={disabled}
+            >
+              Use Recommended Mix
+            </button>
+            <button
+              type="button"
+              className="ca-chip ca-chip--sm"
+              onClick={() => {
+                if (disabled) return;
+                setSelectedFormats([]);
+                triggerWindowAutoAdjust();
+              }}
+              disabled={disabled}
+            >
+              Clear Formats
+            </button>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {((): React.ReactNode[] => {
-              const grouped = new Map<string, typeof QUESTION_FORMAT_CHIPS>();
+              const grouped = new Map<string, typeof activeFormatChips>();
               const groupNames: string[] = [];
-              for (const chip of QUESTION_FORMAT_CHIPS) {
+              for (const chip of activeFormatChips) {
                 const g = chip.group || "Standalone";
                 if (!grouped.has(g)) {
                   grouped.set(g, []);
@@ -516,16 +712,23 @@ function DefaultsCard({
                           const pacingKey = FORMAT_PACING_KEY[o.value];
                           const sec = pacingKey ? DEFAULT_PACING_SECONDS[pacingKey] : null;
                           const isSelected = selectedFormats.includes(o.value);
+                          const pacingText = sec ? fmtPacingTime(sec) : undefined;
                           return (
                             <button
                               key={o.value}
                               type="button"
                               className={`ca-chip ca-chip--sm${isSelected ? " ca-chip--selected" : ""}`}
-                              onClick={() => !disabled && setSelectedFormats(prev =>
-                                prev.includes(o.value) ? prev.filter(v => v !== o.value) : [...prev, o.value]
-                              )}
+                              onClick={() => {
+                                if (disabled) return;
+                                setSelectedFormats(prev =>
+                                  prev.includes(o.value) ? prev.filter(v => v !== o.value) : [...prev, o.value]
+                                );
+                                triggerWindowAutoAdjust();
+                              }}
+                              onMouseEnter={(event) => showHoverPreview(o.value, event, pacingText)}
+                              onMouseMove={(event) => showHoverPreview(o.value, event, pacingText)}
+                              onMouseLeave={hideHoverPreview}
                               disabled={disabled}
-                              title={sec ? fmtPacingTime(sec) : undefined}
                             >
                               {o.label}{sec ? <span style={{ opacity: 0.7, fontSize: "0.7rem", marginLeft: "0.3rem" }}>({fmtPacingTime(sec)})</span> : null}
                             </button>
@@ -545,7 +748,7 @@ function DefaultsCard({
             <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.75rem", color: "#374151" }}>Examples of selected types:</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {selectedFormats.map(fmt => {
-                const examples = PROBLEM_EXAMPLES[fmt];
+                const examples = getProblemExamples(fmt);
                 if (!examples) return null;
                 return (
                   <div key={fmt}>
@@ -623,6 +826,8 @@ function DefaultsCard({
       <div className="ca-defaults-card__actions">
         <button className="ca-btn-primary" onClick={handleUse} disabled={disabled}>Use these defaults &rarr;</button>
       </div>
+
+      {hoverPreview && <ProblemHoverPreviewCard preview={hoverPreview} />}
     </div>
   );
 }
@@ -675,8 +880,9 @@ function FeasibilityWarning({
 }) {
   const topic    = answers.topic?.trim()    || "";
   const details  = [answers.subtopics, answers.additionalDetails].filter(Boolean).join(" ");
-  const formats  = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "mcqOnly")
+  const formats  = (answers.questionFormat || courseDefaults?.questionTypes.join(",") || "multipleChoice")
     .split(",").map(s => s.trim()).filter(Boolean)
+    .map(normalizeQuestionFormatValue)
     .filter(f => f !== "mixed"); // Exclude "mixed" for realistic count
 
   // Skip feasibility check for arithmetic fluency (not topically dense)
@@ -806,6 +1012,7 @@ function QuestionMixPreview({
     .split(",")
     .map(s => s.trim())
     .filter(Boolean)
+    .map(normalizeQuestionFormatValue)
     .filter(f => f !== "mixed"); // Exclude "mixed" — it means AI chooses
   
   const isMixedFormat = (answers.questionFormat || "").includes("mixed");
@@ -1216,6 +1423,7 @@ export function ConversationalAssessment({
   const [multiSelectBuffer, setMultiSelectBuffer] = useState<string[]>([]);
   const [timeAdjustments, setTimeAdjustments] = useState<Record<string, number>>({});
   const [timeAdjustmentScopes, setTimeAdjustmentScopes] = useState<Record<string, "assessment" | "default">>({});
+  const [hoverPreview, setHoverPreview] = useState<ProblemHoverPreview | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
 
@@ -1466,7 +1674,37 @@ export function ConversationalAssessment({
     } else {
       commitAnswer(value);
     }
+
+    if (currentStep?.id === "questionFormat") {
+      triggerWindowAutoAdjust();
+    }
   };
+
+  const showHoverPreview = useCallback(
+    (formatId: string, event: React.MouseEvent<HTMLButtonElement>) => {
+      if (currentStep?.id !== "questionFormat") return;
+
+      const normalized = normalizeQuestionFormatValue(formatId);
+      const details = getProblemExamples(normalized);
+      if (!details || details.examples.length === 0) return;
+
+      const pacingKey = FORMAT_PACING_KEY[normalized] || FORMAT_PACING_KEY[formatId];
+      const pacingSeconds = pacingKey ? DEFAULT_PACING_SECONDS[pacingKey] : null;
+
+      setHoverPreview({
+        title: details.title,
+        example: details.examples[0],
+        pacing: pacingSeconds ? fmtPacingTime(pacingSeconds) : undefined,
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [currentStep?.id]
+  );
+
+  const hideHoverPreview = useCallback(() => {
+    setHoverPreview(null);
+  }, []);
 
   const handleMultiSelectConfirm = () => {
     if (multiSelectBuffer.length > 0) commitAnswer(multiSelectBuffer.join(","));
@@ -1551,9 +1789,13 @@ export function ConversationalAssessment({
                       ? `${uploadedDocs.length} file${uploadedDocs.length !== 1 ? "s" : ""} uploaded`
                       : answers[step.id] || null)
                   : step.chips && step.multiSelect
-                    ? answers[step.id].split(",").map(v => step.chips!.find(c => c.value === v.trim())?.label ?? v.trim()).join(", ")
+                    ? answers[step.id]
+                        .split(",")
+                        .map(v => normalizeQuestionFormatValue(v.trim()))
+                        .map(v => step.chips!.find(c => c.value === v)?.label ?? v)
+                        .join(", ")
                     : step.chips
-                      ? (step.chips.find(c => c.value === answers[step.id])?.label ?? answers[step.id])
+                      ? (step.chips.find(c => c.value === normalizeQuestionFormatValue(answers[step.id]))?.label ?? answers[step.id])
                       : answers[step.id];
               if (!label) return null;
               return (
@@ -1703,6 +1945,9 @@ export function ConversationalAssessment({
                                     }`}
                                     onClick={() => handleChipClick(chip.value)}
                                     disabled={isBlocked}
+                                    onMouseEnter={(event) => showHoverPreview(chip.value, event)}
+                                    onMouseMove={(event) => showHoverPreview(chip.value, event)}
+                                    onMouseLeave={hideHoverPreview}
                                   >
                                     {chip.label}
                                   </button>
@@ -1726,6 +1971,9 @@ export function ConversationalAssessment({
                         }`}
                         onClick={() => handleChipClick(chip.value)}
                         disabled={isBlocked}
+                        onMouseEnter={(event) => showHoverPreview(chip.value, event)}
+                        onMouseMove={(event) => showHoverPreview(chip.value, event)}
+                        onMouseLeave={hideHoverPreview}
                       >
                         {chip.label}
                       </button>
@@ -1764,14 +2012,17 @@ export function ConversationalAssessment({
                   const selectedFormats = step.multiSelect
                     ? multiSelectBuffer
                     : answers[step.id]
-                    ? answers[step.id].split(",").map(s => s.trim()).filter(Boolean)
+                    ? answers[step.id]
+                        .split(",")
+                        .map(s => normalizeQuestionFormatValue(s.trim()))
+                        .filter(Boolean)
                     : [];
                   return selectedFormats.length > 0 ? (
                     <div style={{ marginTop: "1rem", backgroundColor: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: "0.375rem", padding: "1rem" }}>
                       <div style={{ fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.75rem", color: "#374151" }}>Examples of selected types:</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                         {selectedFormats.map(fmt => {
-                          const examples = PROBLEM_EXAMPLES[fmt];
+                          const examples = getProblemExamples(fmt);
                           if (!examples) return null;
                           return (
                             <div key={fmt}>
@@ -1788,8 +2039,35 @@ export function ConversationalAssessment({
                     </div>
                   ) : null;
                 })()}
+
+                {step.id === "questionFormat" && step.multiSelect && (
+                  <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.45rem", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="ca-chip ca-chip--sm"
+                      onClick={() => {
+                        const availableValues = new Set((step.chips ?? []).map((chip) => chip.value));
+                        const recommended = getRecommendedQuestionFormats(answers.assessmentType, availableValues);
+                        setMultiSelectBuffer(recommended);
+                      }}
+                      disabled={isBlocked}
+                    >
+                      Use Recommended Mix
+                    </button>
+                    <button
+                      type="button"
+                      className="ca-chip ca-chip--sm"
+                      onClick={() => setMultiSelectBuffer([])}
+                      disabled={isBlocked}
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                )}
               </div>
             )}
+
+            {hoverPreview && <ProblemHoverPreviewCard preview={hoverPreview} />}
           </div>
         ))}
 

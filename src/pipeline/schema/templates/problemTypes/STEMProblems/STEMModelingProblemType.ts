@@ -11,6 +11,10 @@ export const STEMModelingProblemType = {
   defaultIntent: CognitiveIntent.Explain,
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    modeling: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     modelType: ["population", "physics", "ecosystem", "financial"],

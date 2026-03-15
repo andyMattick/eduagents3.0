@@ -11,6 +11,11 @@ export const HistoryClaimEvidenceProblemType = {
   defaultIntent: CognitiveIntent.Justify,
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Primary_Source,
+    supports: {
+    evidence: true,
+    extendedResponse: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     evidenceCount: [1, 2, 3],

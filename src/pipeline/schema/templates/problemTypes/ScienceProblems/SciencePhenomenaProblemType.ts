@@ -11,6 +11,10 @@ export const SciencePhenomenaProblemType = {
   defaultIntent: CognitiveIntent.Explain,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    shortAnswer: true,
+    extendedResponse: true
+  },
 
   configurableFields: {
     phenomenonType: ["physical", "chemical", "biological", "earth_science"],

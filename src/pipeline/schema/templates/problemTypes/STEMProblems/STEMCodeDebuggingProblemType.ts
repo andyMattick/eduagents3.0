@@ -11,6 +11,10 @@ export const STEMCodeDebuggingProblemType = {
   defaultIntent: CognitiveIntent.Evaluate,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.CodeSnippet,
+    supports: {
+    codeDebugging: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     language: ["python", "javascript", "java", "c++"],

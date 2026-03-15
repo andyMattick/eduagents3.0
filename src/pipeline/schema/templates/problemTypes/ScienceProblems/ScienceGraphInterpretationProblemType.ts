@@ -11,6 +11,11 @@ export const ScienceGraphInterpretationProblemType = {
   defaultIntent: CognitiveIntent.Analyze,
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Graph,
+    supports: {
+    graphInterpretation: true,
+    dataInterpretation: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     graphType: ["line", "bar", "scatter", "multi_series"],

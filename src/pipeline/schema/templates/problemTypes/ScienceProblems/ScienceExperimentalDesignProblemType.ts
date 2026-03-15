@@ -11,6 +11,11 @@ export const ScienceExperimentalDesignProblemType = {
   defaultIntent: CognitiveIntent.Plan,
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Scenario,
+    supports: {
+    experimentalDesign: true,
+    extendedResponse: true,
+    shortAnswer: true
+  },
 
   configurableFields: {
     focus: ["variables", "controls", "procedure", "prediction"],

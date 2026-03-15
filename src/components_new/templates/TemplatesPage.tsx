@@ -14,6 +14,7 @@ export function TemplatesPage({ teacherId, onNavigate, onUseTemplateInBuilder }:
   const [error, setError] = useState<string | null>(null);
   const [systemTemplates, setSystemTemplates] = useState<TemplateRecord[]>([]);
   const [teacherTemplates, setTeacherTemplates] = useState<TemplateRecord[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
   const [openSubjects, setOpenSubjects] = useState<Record<string, boolean>>({});
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateRecord | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -105,6 +106,39 @@ export function TemplatesPage({ teacherId, onNavigate, onUseTemplateInBuilder }:
   const groupedTemplates = useMemo(() => groupBySubject(allTemplates), [allTemplates]);
   const groupedEntries = useMemo(() => Object.entries(groupedTemplates).sort((a, b) => a[0].localeCompare(b[0])), [groupedTemplates]);
 
+  const debugPayload = useMemo(
+    () => ({
+      teacherId,
+      isLoading,
+      error,
+      counts: {
+        systemTemplates: systemTemplates.length,
+        teacherTemplates: teacherTemplates.length,
+        totalTemplates: allTemplates.length,
+        groupedSubjects: groupedEntries.length,
+      },
+      openSubjects,
+      selectedTemplateId: selectedTemplate?.id ?? null,
+      selectedTemplateLabel: selectedTemplate?.label ?? null,
+      selectedTemplateIsTeacherTemplate: Boolean(selectedTemplate?.isTeacherTemplate),
+      drawerOpen,
+      systemTemplateIds: systemTemplates.map((t) => t.id),
+      teacherTemplateIds: teacherTemplates.map((t) => t.id),
+    }),
+    [
+      allTemplates.length,
+      drawerOpen,
+      error,
+      groupedEntries.length,
+      isLoading,
+      openSubjects,
+      selectedTemplate,
+      systemTemplates,
+      teacherId,
+      teacherTemplates,
+    ]
+  );
+
   async function duplicateTemplate() {
     if (!selectedTemplate || !selectedTemplate.isTeacherTemplate) return;
     setIsDuplicating(true);
@@ -163,8 +197,27 @@ export function TemplatesPage({ teacherId, onNavigate, onUseTemplateInBuilder }:
           <h2 className="templates-page__title">Templates</h2>
           <p className="templates-page__subtitle">System templates and your saved templates.</p>
         </div>
-        <button className="ca-btn-primary" onClick={() => onNavigate("/templates/new")}>+ New Template</button>
+        <div className="templates-page__header-actions">
+          <button className="ca-btn-ghost" onClick={() => setShowDebug((prev) => !prev)}>
+            {showDebug ? "Hide Debug" : "Show Debug"}
+          </button>
+          <button className="ca-btn-primary" onClick={() => onNavigate("/templates/new")}>+ New Template</button>
+        </div>
       </div>
+
+      {showDebug && (
+        <section className="templates-page__debug" aria-label="Templates debug panel">
+          <div className="templates-page__debug-header">
+            <h3 className="templates-page__debug-title">Templates Debug</h3>
+            <button className="ca-btn-ghost" onClick={() => void loadTemplates()}>
+              Refresh Templates
+            </button>
+          </div>
+          <pre className="templates-page__debug-code">
+            {JSON.stringify(debugPayload, null, 2)}
+          </pre>
+        </section>
+      )}
 
       {isLoading && <p>Loading templates...</p>}
       {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
