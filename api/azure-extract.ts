@@ -21,6 +21,9 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+// Azure polling can take up to 60s — tell Vercel to allow a longer timeout
+export const config = { maxDuration: 60 };
+
 function setCors(res: VercelResponse) {
   
   for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v);

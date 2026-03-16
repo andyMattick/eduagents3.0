@@ -196,7 +196,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       teacher,
     });
   } catch (error: any) {
-    console.error("[api/templates] Failed:", error);
+    console.error("[api/templates] Failed:", error?.message ?? error);
+    console.error("[api/templates] SUPABASE_URL:", process.env.SUPABASE_URL ? "set" : "MISSING");
+    console.error("[api/templates] SUPABASE_ANON_KEY:", process.env.SUPABASE_ANON_KEY ? "set" : "MISSING");
     return res.status(500).json({
       error: "templates listing failed",
       message: error?.message ?? "Unknown error",
