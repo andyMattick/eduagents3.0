@@ -4,7 +4,7 @@ import { mathProblemTypes } from "./MathProblems";
 import { scienceProblemTypes } from "./ScienceProblems";
 import { stemProblemTypes } from "./STEMProblems";
 import { ForeignLanguageProblemType } from "./foreignLanguage";
-import { loadTemplatesForTeacher } from "@/pipeline/persistence/loadTemplate";
+import { loadTemplatesForTeacher } from "../../../persistence/loadTemplate";
 
 import { withTemplate } from "./templateCarrier";
 
