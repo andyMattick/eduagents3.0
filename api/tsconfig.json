@@ -1,7 +1,17 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "CommonJS",
-    "moduleResolution": "Node"
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "baseUrl": "../src",
+    "paths": {
+      "@/*": ["./*"],
+      "pipeline/*": ["./pipeline/*"],
+      "types/*": ["./types/*"],
+      "utils/*": ["./utils/*"],
+      "config/*": ["./config/*"],
+      "services/*": ["./services/*"],
+      "hooks/*": ["./hooks/*"]
+    }
   }
 }
