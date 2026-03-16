@@ -7,6 +7,7 @@ import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentReq
 import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import { runSummarizer } from "../agents/document/summarizer";
+import { buildDocumentInsightsFromInput } from "@/pipeline/agents/document/insights";
 // DIL Comparator + Analyzer available via:
 //   import { runComparator } from "../agents/document/comparator";
 //   import { runAnalyzer } from "../agents/document/analyzer";
@@ -478,6 +479,13 @@ export async function runCreatePipeline(
     }
   }
 
+  const documentInsights = buildDocumentInsightsFromInput({
+    sourceDocuments: uarWithDefaults.sourceDocuments,
+    topic: uarWithDefaults.topic ?? uarWithDefaults.unitName,
+    course: uarWithDefaults.course,
+    additionalDetails: uarWithDefaults.additionalDetails,
+  });
+
   console.log(`[Pipeline] Version 2.2.0 — mode: ${uarWithDefaults.mode}, depth: ${_depth}`);
 
   const trace: PipelineTrace = createTrace(
@@ -923,6 +931,7 @@ const gatekeeperFinal = Gatekeeper.validate(
     astro1: null, spaceCampResult: null, astro2: null,
     philosopherWrite, rewritten, gatekeeperFinal, finalAssessment, scribe: scribeResult, trace,
     writerContract: getContract(),
+    documentInsights,
   };
 }
 
@@ -1036,6 +1045,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     philosopherWrite, philosopherPlaytest, rewritten, gatekeeperFinal,
     finalAssessment, scribe: scribeResult, trace,
     writerContract: getContract(),
+    documentInsights,
   };
 }
 
@@ -1089,5 +1099,6 @@ return {
   philosopherWrite, philosopherPlaytest,
   finalAssessment, scribe: scribeResult, trace,
   writerContract: getContract(),
+  documentInsights,
 };
 }

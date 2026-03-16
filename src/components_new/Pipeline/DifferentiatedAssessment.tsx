@@ -27,7 +27,13 @@ const TRANSFORM_STYLE_CHIPS: Array<{ label: string; value: string }> = [
   { label: "Add real-world contexts", value: "addRealWorldContexts" },
 ];
 
-function readAsText(file: File): Promise<string> {
+async function readFileText(file: File): Promise<string> {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".doc")) {
+    const { analyzeDocument } = await import("@/pipeline/agents/documentAnalyzer");
+    const insights = await analyzeDocument(file);
+    return insights.rawText;
+  }
   return file.text().catch(() => "");
 }
 
@@ -67,7 +73,7 @@ export function DifferentiatedAssessmentPanel() {
       };
 
       if (sourceMode === "upload") {
-        const text = await readAsText(file as File);
+        const text = await readFileText(file as File);
         input.fileName = (file as File).name;
         input.text = text;
       } else {

@@ -13,6 +13,7 @@ import { evaluateFeasibility } from "@/pipeline/agents/architect/feasibility";
 import { UI_PROBLEM_TYPES } from "@/pipeline/problemTypes/uiProblemTypes";
 import { getProblemTypesForSubjectAndGrade } from "@/pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
 import { inferGradeBand } from "@/pipeline/problemTypes/inferGradeBand";
+import { analyzeDocument, analyzeDocumentText } from "@/pipeline/agents/documentAnalyzer";
 
 // ── Chip option data ──────────────────────────────────────────────────────────
 
@@ -206,6 +207,13 @@ interface ProblemHoverPreview {
   y: number;
 }
 
+interface UploadedDoc {
+  id: string;
+  name: string;
+  content: string;
+  unreadable?: boolean;
+}
+
 function ProblemHoverPreviewCard({ preview }: { preview: ProblemHoverPreview }) {
   const CARD_WIDTH = 320;
   const OFFSET = 14;
@@ -361,8 +369,11 @@ function buildSteps(
   hasProfile: boolean,
   answers: Record<StepId, string>,
   hasDocs: boolean,
+  docInferenceHighConfidence: boolean,
 ): Step[] {
   const steps: Step[] = [];
+  const shouldAskTopic = !(hasDocs && docInferenceHighConfidence && !!answers.topic);
+  const shouldAskSubtopics = !(hasDocs && docInferenceHighConfidence && !!answers.subtopics);
 
   if (hasProfile) {
     // ── Profile-driven flow ──────────────────────────────────────────────
@@ -374,8 +385,16 @@ function buildSteps(
     }
     
     steps.push({ id: "gradeLevels", kind: "chips", question: "What grade level(s)?", chips: GRADE_LEVEL_CHIPS, multiSelect: true });
-    steps.push({ id: "topic",       kind: "text", question: "What topic or lesson should the assessment cover?", placeholder: "e.g., Chi-square tests" });
-    steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., goodness-of-fit, independence", optional: true });
+    steps.push({ id: "sourceDocuments", kind: "fileUpload", question: "Upload source documents? (optional \u2014 skip to continue)", optional: true });
+    if (hasDocs) {
+      steps.push({ id: "summarizerConfirm", kind: "summarizerConfirm", question: "I\u2019ve reviewed your documents." });
+    }
+    if (shouldAskTopic) {
+      steps.push({ id: "topic", kind: "text", question: "What topic or lesson should the assessment cover?", placeholder: "e.g., Chi-square tests" });
+    }
+    if (shouldAskSubtopics) {
+      steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., goodness-of-fit, independence", optional: true });
+    }
 
     if (answers.course) {
       // Show each question with the default pre-selected — no separate card step needed
@@ -394,8 +413,16 @@ function buildSteps(
     }
     
     steps.push({ id: "gradeLevels", kind: "chips",  question: "What grade level(s)?", chips: GRADE_LEVEL_CHIPS, multiSelect: true });
-    steps.push({ id: "topic",       kind: "text",  question: "What topic or lesson should this cover?", placeholder: "e.g., The French Revolution" });
-    steps.push({ id: "subtopics",   kind: "text",  question: "Any subtopics to focus on? (optional)", placeholder: "e.g., causes, effects, timeline", optional: true });
+    steps.push({ id: "sourceDocuments", kind: "fileUpload", question: "Upload source documents? (optional \u2014 skip to continue)", optional: true });
+    if (hasDocs) {
+      steps.push({ id: "summarizerConfirm", kind: "summarizerConfirm", question: "I\u2019ve reviewed your documents." });
+    }
+    if (shouldAskTopic) {
+      steps.push({ id: "topic", kind: "text", question: "What topic or lesson should this cover?", placeholder: "e.g., The French Revolution" });
+    }
+    if (shouldAskSubtopics) {
+      steps.push({ id: "subtopics", kind: "text", question: "Any subtopics to focus on? (optional)", placeholder: "e.g., causes, effects, timeline", optional: true });
+    }
     steps.push({ id: "assessmentType", kind: "chips", question: "What type of assessment?", chips: ASSESSMENT_CHIPS });
 
     // Adaptive format steps for structured types
@@ -438,10 +465,6 @@ function buildSteps(
   // ── Common tail (both flows) ──────────────────────────────────────────────
   steps.push({ id: "assignmentDuration", kind: "text", question: "How long should the assignment be? (in minutes)", placeholder: "e.g., 30", optional: false });
   steps.push({ id: "additionalDetails", kind: "text", question: "Any specific instructions? (optional)", placeholder: "e.g., Include vocabulary, focus on application", optional: true });
-  steps.push({ id: "sourceDocuments", kind: "fileUpload", question: "Upload source documents? (optional \u2014 skip to continue)", optional: true });
-  if (hasDocs) {
-    steps.push({ id: "summarizerConfirm", kind: "summarizerConfirm", question: "I\u2019ve reviewed your documents." });
-  }
   steps.push({ id: "finalConfirm", kind: "finalConfirm", question: "Review & generate" });
 
   return steps;
@@ -450,21 +473,83 @@ function buildSteps(
 // ── Document inference heuristic ──────────────────────────────────────────────
 
 function inferFromDocuments(
-  docs: Array<{ id: string; name: string; content: string }>,
-): { inferred: Partial<Record<StepId, string>>; found: string[] } {
+  docs: UploadedDoc[],
+): {
+  inferred: Partial<Record<StepId, string>>;
+  found: string[];
+  highConfidence: boolean;
+  status: "inferred" | "partial" | "unreadable" | "none";
+} {
   const inferred: Partial<Record<StepId, string>> = {};
   const found: string[] = [];
+  const unreadableDocs = docs.filter((doc) => doc.unreadable).length;
+  const readableDocs = docs.length - unreadableDocs;
+
+  if (docs.length > 0 && readableDocs === 0) {
+    return {
+      inferred,
+      found,
+      highConfidence: false,
+      status: "unreadable",
+    };
+  }
 
   const raw = docs.map(d => d.content).join("\n").substring(0, 4000);
+  const insights = analyzeDocumentText(raw);
+
+  if (insights.flags.unreadable) {
+    return {
+      inferred,
+      found,
+      highConfidence: false,
+      status: "unreadable",
+    };
+  }
+
+  const inferredTopic = insights.metadata.topicCandidates[0]?.trim();
+  const inferredSubtopics = insights.concepts.slice(0, 4).join(", ");
+  const inferredKeywords = insights.vocab.slice(0, 6);
+  const inferredFormulas = insights.formulas.slice(0, 3);
+
+  if (inferredTopic && !inferred.topic) {
+    inferred.topic = inferredTopic;
+    found.push(`Topic: ${inferredTopic}`);
+  }
+  if (inferredSubtopics) {
+    inferred.subtopics = inferredSubtopics;
+    found.push(`Concepts: ${inferredSubtopics}`);
+  }
+  if (inferredKeywords.length > 0) {
+    found.push(`Vocabulary: ${inferredKeywords.join(", ")}`);
+  }
+  if (inferredFormulas.length > 0) {
+    found.push(`Formulas: ${inferredFormulas.join(", ")}`);
+  }
+
+  if (insights.metadata.gradeEstimate) {
+    inferred.gradeLevels = insights.metadata.gradeEstimate;
+    found.push(`Grade ${insights.metadata.gradeEstimate}`);
+  }
+
+  const courseFromSubject: Record<string, string> = {
+    math: "math",
+    science: "science",
+    history: "socialStudies",
+    english: "english",
+  };
+  if (insights.metadata.subjectEstimate && courseFromSubject[insights.metadata.subjectEstimate]) {
+    inferred.course = courseFromSubject[insights.metadata.subjectEstimate];
+    found.push(`Subject: ${insights.metadata.subjectEstimate}`);
+  }
 
   // Grade level
   const gradeMatch = raw.match(/\b(?:grade|gr\.?)\s*(\d{1,2})\b/i);
-  if (gradeMatch) { inferred.gradeLevels = gradeMatch[1]; found.push(`Grade ${gradeMatch[1]}`); }
+  if (gradeMatch && !inferred.gradeLevels) { inferred.gradeLevels = gradeMatch[1]; found.push(`Grade ${gradeMatch[1]}`); }
 
   // Subject
   const subjects = ["Math", "English", "Science", "History", "Social Studies", "Biology", "Chemistry", "Physics", "Algebra", "Geometry", "Calculus"];
   for (const subj of subjects) {
-    if (new RegExp(`\\b${subj}\\b`, "i").test(raw)) { inferred.course = subj; found.push(subj); break; }
+    if (!inferred.course && new RegExp(`\\b${subj}\\b`, "i").test(raw)) { inferred.course = subj; found.push(subj); break; }
   }
 
   // Assessment type
@@ -475,14 +560,32 @@ function inferFromDocuments(
 
   // Topic — first non-empty line
   const firstLine = raw.split("\n").map(l => l.trim()).filter(l => l.length > 3 && l.length < 90)[0] ?? "";
-  if (firstLine) { inferred.topic = firstLine; found.push(`"${firstLine}"`); }
+  if (!inferred.topic && firstLine) { inferred.topic = firstLine; found.push(`"${firstLine}"`); }
 
   // Student level
   if (/\b(advanced\s*placement|\bAP\b)/i.test(raw))  { inferred.studentLevel = "AP";       found.push("AP level"); }
   else if (/\bhonors\b/i.test(raw))                    { inferred.studentLevel = "Honors";   found.push("Honors level"); }
   else if (/\bremedial\b/i.test(raw))                  { inferred.studentLevel = "Remedial"; found.push("Remedial level"); }
 
-  return { inferred, found };
+  const topicConfidence = Number(insights.confidence?.metadata ?? 0);
+  const semanticConfidence = Number(insights.confidence?.semantics ?? 0);
+  const highConfidence =
+    unreadableDocs === 0 &&
+    topicConfidence >= 0.6 &&
+    semanticConfidence >= 0.6 &&
+    Boolean(inferred.topic) &&
+    (insights.concepts.length >= 2 || insights.metadata.topicCandidates.length >= 2);
+
+  const hasInferredValues = Object.keys(inferred).length > 0;
+  const status = hasInferredValues
+    ? unreadableDocs > 0
+      ? "partial"
+      : "inferred"
+    : unreadableDocs > 0
+      ? "partial"
+      : "none";
+
+  return { inferred, found, highConfidence, status };
 }
 
 // ── DefaultsCard ─────────────────────────────────────────────────────────────
@@ -1387,10 +1490,11 @@ export function ConversationalAssessment({
   useEffect(() => { commitRef.current = commitAnswer; });
   const isBlocked = isLoading || disabled;
 
-  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; name: string; content: string }>>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDoc[]>([]);
   const docInferredRef = useRef<Partial<Record<StepId, string>>>({});
   const [defaultsUpdateApplied, setDefaultsUpdateApplied] = useState(false);
   const [docSummaryMessage, setDocSummaryMessage] = useState<string | null>(null);
+  const [docInferenceHighConfidence, setDocInferenceHighConfidence] = useState(false);
   const [expandedChipGroups, setExpandedChipGroups] = useState<Set<string>>(() => new Set());
   const commitRef = useRef<(value: string) => void>(() => {});
 
@@ -1411,7 +1515,7 @@ export function ConversationalAssessment({
     if (initialAnswers) {
       const merged = { ...DEFAULT_ANSWERS, ...(initialAnswers ?? {}) };
       const hasP = Boolean(teacherProfile);
-      const allSteps = buildSteps(hasP, merged, false);
+      const allSteps = buildSteps(hasP, merged, false, false);
       return Math.max(0, allSteps.length - 1);
     }
     // If a course is pre-filled from the profile, start at the topic step
@@ -1453,11 +1557,11 @@ export function ConversationalAssessment({
 
   // ── Dynamic step list ─────────────────────────────────────────────────────
   const steps: Step[] = useMemo(
-    () => buildSteps(hasProfile, answers, uploadedDocs.length > 0),
+    () => buildSteps(hasProfile, answers, uploadedDocs.length > 0, docInferenceHighConfidence),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [hasProfile, answers.course, answers.assessmentType, answers.standards,
      answers.questionFormat, answers.passageSource, answers.defaultsCard,
-     answers.overrideField, uploadedDocs.length],
+      answers.overrideField, uploadedDocs.length, docInferenceHighConfidence],
   );
 
   const currentStep   = steps[stepIndex];
@@ -1632,15 +1736,25 @@ export function ConversationalAssessment({
 
     let next: Record<StepId, string> = { ...answers, [currentStep.id]: trimmed, ...(extraOverrides ?? {}) };
 
+    let nextDocInferenceHighConfidence = docInferenceHighConfidence;
+
     // Document inference
     if (currentStep.id === "sourceDocuments" && uploadedDocs.length > 0) {
-      const { inferred, found } = inferFromDocuments(uploadedDocs);
+      const { inferred, found, highConfidence, status } = inferFromDocuments(uploadedDocs);
       docInferredRef.current = inferred;
+      setDocInferenceHighConfidence(highConfidence);
+      nextDocInferenceHighConfidence = highConfidence;
       next = { ...next, ...inferred };
       setDocSummaryMessage(
-        found.length > 0
-          ? `\ud83d\udcc4 From your document${uploadedDocs.length !== 1 ? "s" : ""} I found: ${found.join(" \u00b7 ")}. I\u2019ve pre-filled those \u2014 I\u2019ll only ask what\u2019s still missing.`
-          : `\ud83d\udcc4 I couldn\u2019t pull specifics from the file${uploadedDocs.length !== 1 ? "s" : ""}, but I\u2019ll use their content when writing questions.`,
+        status === "unreadable"
+          ? "I couldn't extract readable text from your document - it may be scanned or encoded. I'll continue without auto-filling topic or subtopics."
+          : status === "partial"
+            ? found.length > 0
+              ? `\ud83d\udcc4 I extracted some readable text, but parts of your document${uploadedDocs.length !== 1 ? "s" : ""} appear scanned or encoded. I pre-filled what I could: ${found.join(" \u00b7 ")}.`
+              : "I extracted some readable text, but parts of your document appear scanned or encoded. I'll continue by asking for anything still missing."
+            : found.length > 0
+              ? `\ud83d\udcc4 From your document${uploadedDocs.length !== 1 ? "s" : ""} I found: ${found.join(" \u00b7 ")}. I've pre-filled those - I'll only ask what's still missing.`
+              : `\ud83d\udcc4 I couldn't pull specifics from the file${uploadedDocs.length !== 1 ? "s" : ""}, but I'll use its content when writing questions.`,
       );
     }
 
@@ -1648,7 +1762,7 @@ export function ConversationalAssessment({
     setInputValue("");
 
     // Recompute steps with updated answers to find the right next index.
-    const newSteps = buildSteps(hasProfile, next, uploadedDocs.length > 0);
+    const newSteps = buildSteps(hasProfile, next, uploadedDocs.length > 0, nextDocInferenceHighConfidence);
 
     // finalConfirm step \u2014 build intent and call onComplete
     if (currentStep.kind === "finalConfirm" || stepIndex >= newSteps.length - 1) {
@@ -1745,8 +1859,18 @@ export function ConversationalAssessment({
     const files = Array.from(e.target.files ?? []);
     const docs = await Promise.all(
       files.map(async (file) => {
-        const content = await file.text().catch(() => "");
-        return { id: crypto.randomUUID(), name: file.name, content };
+        try {
+          const insights = await analyzeDocument(file);
+          return {
+            id: crypto.randomUUID(),
+            name: file.name,
+            content: insights.rawText,
+            unreadable: insights.flags.unreadable,
+          };
+        } catch {
+          const content = await file.text().catch(() => "");
+          return { id: crypto.randomUUID(), name: file.name, content, unreadable: !content.trim() };
+        }
       })
     );
     setUploadedDocs(docs);

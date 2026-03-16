@@ -1,5 +1,6 @@
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
 import { runCreatePipeline } from "./create";
+import { buildDocumentInsights } from "@/pipeline/agents/document/insights";
 
 type DifferentiationProfile =
   | "standard"
@@ -210,6 +211,24 @@ export async function runDifferentiatePipeline(internal: any) {
   const transformStyle = normalizeStyles(internal?.transformStyle);
 
   const base = sourceMode === "scratch" ? buildBaseFromScratch(internal) : buildBaseFromUpload(internal);
+  const sourceInsights = buildDocumentInsights(
+    sourceMode === "upload"
+      ? String(internal?.text ?? "")
+      : `${internal?.scratch?.topic ?? ""}\n${internal?.scratch?.course ?? ""}`
+  );
+
+  if (sourceInsights.flags.unreadable) {
+    return {
+      type: "differentiate" as const,
+      sourceMode,
+      sourceInsights,
+      transformStyle,
+      versions: [],
+      generatedAt: new Date().toISOString(),
+      status: "skipped",
+      reason: "Document unreadable. Differentiation was skipped.",
+    };
+  }
 
   const versions: Array<{
     profile: DifferentiationProfile;
@@ -234,6 +253,7 @@ export async function runDifferentiatePipeline(internal: any) {
   return {
     type: "differentiate" as const,
     sourceMode,
+    sourceInsights,
     transformStyle,
     versions,
     generatedAt: new Date().toISOString(),

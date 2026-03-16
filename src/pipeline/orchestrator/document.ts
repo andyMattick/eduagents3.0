@@ -5,6 +5,8 @@ import {
   UnifiedTeacherStyleProfile,
   UnifiedTemplateProfile
 } from "../schema/unifiedSchema";
+import type { DocumentInsights } from "@/pipeline/contracts";
+import { buildDocumentInsightsFromInput } from "@/pipeline/agents/document/insights";
 
 import { mapToUnifiedSchema } from "../mapper/mapToUnifiedSchema";
 import { mapToDifficultyProfile } from "../mapper/mapToDifficultyProfile";
@@ -31,6 +33,7 @@ export interface DocumentViewOutput {
   view: DocumentIntent;
   schema: UnifiedAnalyzerOutput;
   viewData: any;
+  documentInsights: DocumentInsights;
   teacherProfile: UnifiedTeacherStyleProfile;
   courseProfile: UnifiedTemplateProfile;
 }
@@ -40,12 +43,28 @@ export function runDocumentView(
   internal: any
 ): DocumentViewOutput {
   const schema = mapToUnifiedSchema(internal);
+  const documentInsights = buildDocumentInsightsFromInput(internal);
+  if (documentInsights.flags.unreadable) {
+    return {
+      view: intent,
+      schema,
+      viewData: {
+        status: "unreadable",
+        message: "Document unreadable. View extraction was skipped.",
+      },
+      documentInsights,
+      teacherProfile: schema.style,
+      courseProfile: schema.template,
+    };
+  }
+
   const viewData = viewMappers[intent](internal);
 
   return {
     view: intent,
     schema,
     viewData,
+    documentInsights,
     teacherProfile: schema.style,
     courseProfile: schema.template
   };

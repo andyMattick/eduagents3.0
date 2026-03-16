@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { runOrchestrator, type OrchestratorIntent } from "@/pipeline/orchestrator";
+import { analyzeDocument } from "@/pipeline/agents/documentAnalyzer";
 import "./AssessmentIntentSelector.css";
 
 type IntentOption = {
@@ -76,7 +77,12 @@ export function AssessmentIntentSelector({
   );
 }
 
-function readAsText(file: File): Promise<string> {
+async function readFileText(file: File): Promise<string> {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".doc")) {
+    const insights = await analyzeDocument(file);
+    return insights.rawText;
+  }
   return file.text().catch(() => "");
 }
 
@@ -158,6 +164,90 @@ function SmartInsights({
   );
 }
 
+function toInsightsRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function readInsightsMetric(insights: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let current: unknown = insights;
+  for (const part of parts) {
+    if (!isRecord(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function DocumentInsightsSummary({
+  insights,
+  title,
+  specs,
+}: {
+  insights: unknown;
+  title: string;
+  specs: Array<{ label: string; path: string }>;
+}) {
+  const record = toInsightsRecord(insights);
+  if (!record) return null;
+
+  const items = specs
+    .map((spec) => ({ label: spec.label, value: readInsightsMetric(record, spec.path) }))
+    .filter((item) => item.value !== undefined && item.value !== null)
+    .slice(0, 8);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="workflow-result-section">
+      <h4>{title}</h4>
+      <div className="workflow-smart-insights">
+        {items.map((item) => (
+          <div key={item.label} className="workflow-smart-insight">
+            <span>{item.label}</span>
+            <strong>{formatInsightValue(item.value)}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CompareDocumentInsights({ data }: { data: Record<string, unknown> }) {
+  const insightsA = toInsightsRecord(data.insightsA);
+  const insightsB = toInsightsRecord(data.insightsB);
+  if (!insightsA && !insightsB) return null;
+
+  return (
+    <div className="workflow-result-section">
+      <h4>Source Insights (A vs B)</h4>
+      <div className="workflow-smart-insights" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        {insightsA && (
+          <div className="workflow-smart-insight">
+            <span>Document A</span>
+            <strong>{formatInsightValue(readInsightsMetric(insightsA, "metadata.subjectEstimate")) || "Unknown subject"}</strong>
+            <span>Grade: {formatInsightValue(readInsightsMetric(insightsA, "metadata.gradeEstimate")) || "Unknown"}</span>
+            <span>Difficulty: {formatInsightValue(readInsightsMetric(insightsA, "metadata.difficulty")) || "Unknown"}</span>
+            <span>Concepts: {formatInsightValue(readInsightsMetric(insightsA, "concepts"))}</span>
+            <span>Formulas: {formatInsightValue(readInsightsMetric(insightsA, "formulas"))}</span>
+            <span>Low confidence: {formatInsightValue(readInsightsMetric(insightsA, "flags.lowConfidence"))}</span>
+          </div>
+        )}
+        {insightsB && (
+          <div className="workflow-smart-insight">
+            <span>Document B</span>
+            <strong>{formatInsightValue(readInsightsMetric(insightsB, "metadata.subjectEstimate")) || "Unknown subject"}</strong>
+            <span>Grade: {formatInsightValue(readInsightsMetric(insightsB, "metadata.gradeEstimate")) || "Unknown"}</span>
+            <span>Difficulty: {formatInsightValue(readInsightsMetric(insightsB, "metadata.difficulty")) || "Unknown"}</span>
+            <span>Concepts: {formatInsightValue(readInsightsMetric(insightsB, "concepts"))}</span>
+            <span>Formulas: {formatInsightValue(readInsightsMetric(insightsB, "formulas"))}</span>
+            <span>Low confidence: {formatInsightValue(readInsightsMetric(insightsB, "flags.lowConfidence"))}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function JsonBlock({ data }: { data: unknown }) {
   return (
     <pre className="workflow-result-preview">
@@ -180,6 +270,8 @@ function ResultSection({ title, value }: { title: string; value: unknown }) {
 function AnalyzeResultCard({ data }: { data: unknown }) {
   const record = isRecord(data) ? data : {};
   const analysis = record.analysis;
+  const documentInsights = record.documentInsights;
+  const unreadable = isRecord(documentInsights) && isRecord(documentInsights.flags) ? Boolean(documentInsights.flags.unreadable) : false;
   const philosopher = isRecord(record.philosopher) ? record.philosopher : null;
   const notes = philosopher?.teacherFeedback ?? philosopher?.analysis ?? philosopher?.notes;
   return (
@@ -202,6 +294,26 @@ function AnalyzeResultCard({ data }: { data: unknown }) {
         ]}
       />
       <ResultSection title="Instructional Insight" value={notes} />
+      {unreadable && (
+        <ResultSection
+          title="Fallback"
+          value="Document unreadable. Analysis pipeline was safely skipped."
+        />
+      )}
+      <DocumentInsightsSummary
+        insights={documentInsights}
+        title="Document Ingestion Signals"
+        specs={[
+          { label: "Subject", path: "metadata.subjectEstimate" },
+          { label: "Grade", path: "metadata.gradeEstimate" },
+          { label: "Difficulty", path: "metadata.difficulty" },
+          { label: "Reading Level", path: "metadata.readingLevel" },
+          { label: "Concepts", path: "concepts" },
+          { label: "Examples", path: "examples" },
+          { label: "Sections", path: "sections" },
+          { label: "Low Confidence", path: "flags.lowConfidence" },
+        ]}
+      />
       <ResultSection title="Analysis Data" value={analysis} />
     </div>
   );
@@ -210,6 +322,10 @@ function AnalyzeResultCard({ data }: { data: unknown }) {
 function CompareResultCard({ data }: { data: unknown }) {
   const record = isRecord(data) ? data : {};
   const comparison = record.comparison;
+  const mode = safeString(record.mode) || "general";
+  const unreadableA = isRecord(record.insightsA) && isRecord(record.insightsA.flags) ? Boolean(record.insightsA.flags.unreadable) : false;
+  const unreadableB = isRecord(record.insightsB) && isRecord(record.insightsB.flags) ? Boolean(record.insightsB.flags.unreadable) : false;
+  const prep = isRecord(comparison) && isRecord(comparison.preparation) ? comparison.preparation : null;
   const philosopher = isRecord(record.philosopher) ? record.philosopher : null;
   const notes = philosopher?.teacherFeedback ?? philosopher?.analysis ?? philosopher?.notes;
   return (
@@ -217,6 +333,7 @@ function CompareResultCard({ data }: { data: unknown }) {
       <div className="workflow-result-head">Comparison Complete</div>
       <div className="workflow-result-metrics">
         <div><span>Type</span><strong>{safeString(record.type) || "compare"}</strong></div>
+        <div><span>Mode</span><strong>{mode}</strong></div>
         <div><span>Comparison profile</span><strong>{comparison ? "ready" : "empty"}</strong></div>
         <div><span>Summary insight</span><strong>{notes ? "ready" : "none"}</strong></div>
       </div>
@@ -229,8 +346,29 @@ function CompareResultCard({ data }: { data: unknown }) {
           { label: "Time Delta", aliases: ["timeDelta", "durationDelta"] },
           { label: "Improvement", aliases: ["improvement", "improvementScore"] },
           { label: "Novelty Delta", aliases: ["noveltyDelta"] },
+          { label: "A prepares B", aliases: ["preparesScore"] },
+          { label: "Missing Concepts", aliases: ["missingConcepts"] },
         ]}
       />
+      {prep && (
+        <ResultSection
+          title="A Prepares B Report"
+          value={{
+            preparesScore: prep.preparesScore,
+            rigorProgression: prep.rigorProgression,
+            missingConcepts: prep.missingConcepts,
+            suggestedAdditions: prep.suggestedAdditions,
+            suggestedScaffolds: prep.suggestedScaffolds,
+          }}
+        />
+      )}
+      {(unreadableA || unreadableB) && (
+        <ResultSection
+          title="Fallback"
+          value="One or both documents were unreadable. Comparison and preparation scoring were skipped."
+        />
+      )}
+      <CompareDocumentInsights data={record} />
       <ResultSection title="Comparison Insight" value={notes} />
       <ResultSection title="Comparison Data" value={comparison} />
     </div>
@@ -240,6 +378,8 @@ function CompareResultCard({ data }: { data: unknown }) {
 function TestResultCard({ data }: { data: unknown }) {
   const record = isRecord(data) ? data : {};
   const simulation = record.simulation;
+  const documentInsights = record.documentInsights;
+  const unreadable = isRecord(documentInsights) && isRecord(documentInsights.flags) ? Boolean(documentInsights.flags.unreadable) : false;
   const philosopher = isRecord(record.philosopher) ? record.philosopher : null;
   const notes = philosopher?.teacherFeedback ?? philosopher?.analysis ?? philosopher?.notes;
   return (
@@ -262,6 +402,26 @@ function TestResultCard({ data }: { data: unknown }) {
         ]}
       />
       <ResultSection title="Simulation Insight" value={notes} />
+      {unreadable && (
+        <ResultSection
+          title="Fallback"
+          value="Document unreadable. Playtest simulation was skipped."
+        />
+      )}
+      <DocumentInsightsSummary
+        insights={documentInsights}
+        title="Playtest Input Signals"
+        specs={[
+          { label: "Subject", path: "metadata.subjectEstimate" },
+          { label: "Difficulty", path: "metadata.difficulty" },
+          { label: "Reading Level", path: "metadata.readingLevel" },
+          { label: "Concept Vocabulary", path: "vocab" },
+          { label: "Formulas", path: "formulas" },
+          { label: "Question Examples", path: "examples" },
+          { label: "Scanned Flag", path: "flags.scanned" },
+          { label: "Unreadable Flag", path: "flags.unreadable" },
+        ]}
+      />
       <ResultSection title="Simulation Data" value={simulation} />
     </div>
   );
@@ -269,6 +429,8 @@ function TestResultCard({ data }: { data: unknown }) {
 
 function DocumentResultCard({ data }: { data: unknown }) {
   const record = isRecord(data) ? data : {};
+  const documentInsights = record.documentInsights;
+  const unreadable = isRecord(documentInsights) && isRecord(documentInsights.flags) ? Boolean(documentInsights.flags.unreadable) : false;
   return (
     <div className="workflow-result-card">
       <div className="workflow-result-head">Document View Ready</div>
@@ -288,6 +450,26 @@ function DocumentResultCard({ data }: { data: unknown }) {
           { label: "Course", aliases: ["course", "subject"] },
         ]}
       />
+      <DocumentInsightsSummary
+        insights={documentInsights}
+        title="Document Extraction Snapshot"
+        specs={[
+          { label: "Subject", path: "metadata.subjectEstimate" },
+          { label: "Grade", path: "metadata.gradeEstimate" },
+          { label: "Topic Candidates", path: "metadata.topicCandidates" },
+          { label: "Sections", path: "sections" },
+          { label: "Tables", path: "tables" },
+          { label: "Diagrams", path: "diagrams" },
+          { label: "Metadata Confidence", path: "confidence.metadata" },
+          { label: "Low Confidence", path: "flags.lowConfidence" },
+        ]}
+      />
+      {unreadable && (
+        <ResultSection
+          title="Fallback"
+          value="Document unreadable. Document view extraction was skipped."
+        />
+      )}
       <ResultSection title="Selected View Output" value={record.viewData} />
       <ResultSection title="Teacher Profile" value={record.teacherProfile} />
       <ResultSection title="Course Profile" value={record.courseProfile} />
@@ -356,7 +538,7 @@ export function AnalyzeDocumentPanel() {
     setError(null);
     setIsLoading(true);
     try {
-      const text = await readAsText(file);
+      const text = await readFileText(file);
       const output = await runOrchestrator({
         intent: "analyze",
         input: {
@@ -417,7 +599,7 @@ export function CompareDocumentsPanel() {
     setError(null);
     setIsLoading(true);
     try {
-      const [textA, textB] = await Promise.all([readAsText(fileA), readAsText(fileB)]);
+      const [textA, textB] = await Promise.all([readFileText(fileA), readFileText(fileB)]);
       const output = await runOrchestrator({
         intent: "compare",
         input: {
@@ -450,6 +632,7 @@ export function CompareDocumentsPanel() {
           <option value="general">General comparison</option>
           <option value="difficulty">Difficulty-focused</option>
           <option value="coverage">Coverage-focused</option>
+          <option value="preparation">Does A prepare students for B?</option>
         </select>
       </div>
       <div className="workflow-actions">
@@ -482,7 +665,7 @@ export function PlaytestAssessmentPanel() {
     setError(null);
     setIsLoading(true);
     try {
-      const text = await readAsText(file);
+      const text = await readFileText(file);
       const output = await runOrchestrator({
         intent: "test",
         input: {
@@ -555,7 +738,7 @@ export function DocumentViewPanel({ initialIntent }: { initialIntent: Orchestrat
     setError(null);
     setIsLoading(true);
     try {
-      const text = await readAsText(file);
+      const text = await readFileText(file);
       const output = await runOrchestrator({
         intent: view,
         input: {

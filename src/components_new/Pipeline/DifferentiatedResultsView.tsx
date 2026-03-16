@@ -11,6 +11,22 @@ type DifferentiatedVersion = {
 export interface DifferentiatedWorkflowResult {
   type: "differentiate";
   sourceMode: "upload" | "scratch";
+  sourceInsights?: {
+    metadata?: {
+      subjectEstimate?: string | null;
+      gradeEstimate?: string | null;
+      difficulty?: string | null;
+      readingLevel?: number | null;
+    };
+    concepts?: unknown[];
+    vocab?: unknown[];
+    formulas?: unknown[];
+    flags?: {
+      lowConfidence?: boolean;
+      scanned?: boolean;
+      unreadable?: boolean;
+    };
+  };
   transformStyle: string[];
   versions: DifferentiatedVersion[];
   generatedAt: string;
@@ -179,6 +195,49 @@ export function DifferentiatedResultsView({ data }: { data: DifferentiatedWorkfl
               Download Bundle
             </button>
           </div>
+          {data.sourceInsights && (
+            <div className="workflow-result-section" style={{ marginBottom: "0.75rem" }}>
+              <h4>Shared Source Insights</h4>
+              <div className="workflow-smart-insights" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+                <div className="workflow-smart-insight">
+                  <span>Source mode</span>
+                  <strong>{data.sourceMode}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Subject estimate</span>
+                  <strong>{data.sourceInsights.metadata?.subjectEstimate ?? "unknown"}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Grade estimate</span>
+                  <strong>{data.sourceInsights.metadata?.gradeEstimate ?? "unknown"}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Difficulty</span>
+                  <strong>{data.sourceInsights.metadata?.difficulty ?? "unknown"}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Reading level</span>
+                  <strong>{data.sourceInsights.metadata?.readingLevel ?? "n/a"}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Low confidence</span>
+                  <strong>{data.sourceInsights.flags?.lowConfidence ? "Yes" : "No"}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Concepts</span>
+                  <strong>{Array.isArray(data.sourceInsights.concepts) ? data.sourceInsights.concepts.length : 0}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Vocabulary terms</span>
+                  <strong>{Array.isArray(data.sourceInsights.vocab) ? data.sourceInsights.vocab.length : 0}</strong>
+                </div>
+                <div className="workflow-smart-insight">
+                  <span>Formulas</span>
+                  <strong>{Array.isArray(data.sourceInsights.formulas) ? data.sourceInsights.formulas.length : 0}</strong>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="workflow-smart-insights" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
             {data.versions.map((version) => {
               const summary = summaryForVersion(version);
