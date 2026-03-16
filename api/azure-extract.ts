@@ -22,6 +22,9 @@ const CORS_HEADERS = {
 };
 
 function setCors(res: VercelResponse) {
+  console.log("AZURE_ENDPOINT:", process.env.AZURE_DOCUMENT_ENDPOINT);
+  console.log("AZURE_KEY:", process.env.AZURE_DOCUMENT_KEY ? "present" : "missing");
+
   for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v);
 }
 
