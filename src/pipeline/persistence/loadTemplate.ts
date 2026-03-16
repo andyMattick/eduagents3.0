@@ -17,7 +17,7 @@ export async function loadTemplate(teacherId: string, templateId: string) {
   const saved = await readJSON<any>(teacherId, `teacher/${teacherId}/${templateId}`);
 
   // Lazy import to avoid circular dependency (index.ts → loadTemplate.ts → index.ts)
-  const { systemProblemTypes } = await import("@/pipeline/schema/templates/problemTypes");
+  const { systemProblemTypes } = await import("../../pipeline/schema/templates/problemTypes");
 
   // Find the original system template (full metadata)
   const original = systemProblemTypes[templateId];

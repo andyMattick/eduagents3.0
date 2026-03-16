@@ -1,4 +1,4 @@
-import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
+import { DerivedTemplate } from "../..//pipeline/contracts/deriveTemplate";
 import { writeJSON } from "./storage";
 
 /**
