@@ -23,28 +23,28 @@
  *   - Telemetry: fully tracked, same interface as before.
  */
 
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import type { GeneratedItem } from "../types";
 
-import { callGeminiStreaming } from "@/pipeline/llm/gemini";
+import { callGeminiStreaming } from "pipeline/llm/gemini";
 import { buildChunkPrompt } from "./writerChunkPrompt";
-import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
-import { withConcurrencyLimit } from "@/pipeline/utils/concurrency";
-import { rewriteSingle, generateArithmeticItem } from "@/pipeline/agents/rewriter/rewriteSingle";
+import { Gatekeeper } from "pipeline/agents/gatekeeper/Gatekeeper";
+import { withConcurrencyLimit } from "pipeline/utils/concurrency";
+import { rewriteSingle, generateArithmeticItem } from "pipeline/agents/rewriter/rewriteSingle";
 import { createTelemetry, type WriterTelemetry } from "../telemetry";
-import { computeBloomAlignment, type BloomAlignmentLog } from "@/pipeline/agents/gatekeeper/bloomClassifier";
+import { computeBloomAlignment, type BloomAlignmentLog } from "pipeline/agents/gatekeeper/bloomClassifier";
 import {
   runBloomHintBudget,
   applyAdaptiveDriftBoost,
   type HintMode,
 } from "../bloomHintBudget";
-import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
+import { SCRIBE } from "pipeline/agents/scribe/SCRIBE";
 import {
   buildContractGuidelines,
   setFinalWriterGuidelines,
-} from "@/pipeline/agents/scribe/WriterContractStore";
+} from "pipeline/agents/scribe/WriterContractStore";
 import { internalLogger } from "../../shared/internalLogging";
 
 // Module-level bloom alignment log — reset each run, read by SCRIBE post-run

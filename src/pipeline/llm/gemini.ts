@@ -4,7 +4,7 @@
 //     The Gemini API key NEVER reaches the browser.
 //     The proxy validates the Supabase JWT and enforces daily usage limits.
 
-import { END_SENTINEL } from "@/pipeline/agents/writer/chunk/parseChunk";
+import { END_SENTINEL } from "pipeline/agents/writer/chunk/parseChunk";
 import { supabase } from "@/supabase/client";
 
 /**

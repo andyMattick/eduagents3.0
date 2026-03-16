@@ -1,4 +1,4 @@
-import { TASK_TYPES } from "@/pipeline/contracts/taskTypes";
+import { TASK_TYPES } from "pipeline/contracts/taskTypes";
 
 export function chooseTaskType(
   domain: string,

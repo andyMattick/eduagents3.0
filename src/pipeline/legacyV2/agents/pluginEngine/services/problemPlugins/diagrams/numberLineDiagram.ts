@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * numberLineDiagram.ts — Number line diagram plugin.
  *

@@ -6,7 +6,7 @@ import {
   getAnswer,
   getOptions,
   getPassage,
-} from '@/pipeline/utils/itemNormalizer';
+} from '../pipeline/utils/itemNormalizer';
 
 describe('pipeline regression hardening', () => {
   it('normalizes legacy item fields in non-strict mode', () => {

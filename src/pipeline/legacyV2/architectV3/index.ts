@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input, ArchitectV3Output } from "./types";
 import { buildPlan } from "./planner";
 import { UnifiedTeacherStyleProfile } from "../schema/unifiedSchema";

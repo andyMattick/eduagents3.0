@@ -1,8 +1,8 @@
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { buildArchitectUAR } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { Blueprint } from "@/pipeline/contracts/Blueprint";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
+import { buildArchitectUAR } from "pipeline/contracts/UnifiedAssessmentRequest";
+import { Blueprint } from "pipeline/contracts/Blueprint";
 import { buildArchitectPrompt } from "./architectPrompt";
-import { callGemini } from "@/pipeline/llm/gemini";
+import { callGemini } from "pipeline/llm/gemini";
 import { runConstraintEngine } from "./constraintEngine";
 import { resolveRigorProfile } from "./rigorProfile";
 import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
@@ -34,7 +34,7 @@ import {
   DifficultyProfile,
   DifficultyModifier,
   OrderingStrategy
-} from "@/pipeline/contracts/BlueprintPlanV3_2";
+} from "pipeline/contracts/BlueprintPlanV3_2";
 
 export const QUESTION_TYPE_PLUGIN_MAP: Record<string, string> = {
   arithmeticFluency: "template",

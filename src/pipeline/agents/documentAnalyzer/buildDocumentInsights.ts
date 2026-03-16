@@ -1,4 +1,4 @@
-import type { DocumentInsights } from "@/pipeline/contracts";
+import type { DocumentInsights } from "pipeline/contracts";
 import { extractConcepts } from "./extractConcepts";
 import { extractEntities } from "./extractEntities";
 import { extractExamples } from "./extractExamples";

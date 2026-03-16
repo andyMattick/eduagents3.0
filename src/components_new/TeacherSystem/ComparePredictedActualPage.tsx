@@ -1,4 +1,4 @@
-export function ComparePredictedActualPage({ assignmentId }) {
+export function ComparePredictedActualPage({ assignmentId }: { assignmentId: string }) {
   return (
     <div className="page-container">
       <h1 className="page-title">Predicted vs Actual Performance</h1>

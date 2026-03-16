@@ -7,7 +7,7 @@
  * No arrays, no wrappers, no commentary — just sequential delimited objects.
  */
 
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
 import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import { END_SENTINEL } from "./parseChunk";
 import { buildBloomHintDirectives, type HintMode } from "../bloomHints";

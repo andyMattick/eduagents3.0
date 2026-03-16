@@ -15,8 +15,8 @@
  */
 
 import { useState } from "react";
-import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
-import type { FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import { groupItemsBySection, formatSectionHeader } from "../../pipeline/agents/builder/sectionGrouper";
+import type { FinalAssessmentItem } from "../../pipeline/agents/builder/FinalAssessment";
 import "./GenerationPreview.css";
 
 // ── Types ────────────────────────────────────────────────────────────────────

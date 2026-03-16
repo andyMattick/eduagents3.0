@@ -13,7 +13,7 @@
  */
 
 import { useState } from "react";
-import type { WriterContract } from "@/pipeline/contracts/WriterContract";
+import type { WriterContract } from "../../pipeline/contracts/WriterContract";
 import "./WriterGuidelinesPanel.css";
 
 type Tab = "overview" | "gatekeeper" | "guidelines" | "history";

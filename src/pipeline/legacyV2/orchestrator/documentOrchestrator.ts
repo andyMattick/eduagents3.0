@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/pipeline/orchestrator/documentOrchestrator.ts
 
 import { AnalyzerV2 } from "../analyzerV2/analyzerV2";

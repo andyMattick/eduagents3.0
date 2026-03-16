@@ -7,7 +7,7 @@
  */
 
 import jsPDF from "jspdf";
-import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import type { FinalAssessment, FinalAssessmentItem } from "../pipeline/agents/builder/FinalAssessment";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
 

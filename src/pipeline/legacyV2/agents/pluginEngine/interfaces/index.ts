@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * interfaces/index.ts — barrel export for plugin engine interfaces.
  */

@@ -1,8 +1,8 @@
 console.log("[AIConfig] Loaded — Pipeline Version 2.0.0");
 
-import { runCreatePipeline, getLastPipelineBlueprint } from "@/pipeline/orchestrator/create";
-import { callGemini } from "@/pipeline/llm/gemini";
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import { runCreatePipeline, getLastPipelineBlueprint } from "pipeline/orchestrator/create";
+import { callGemini } from "pipeline/llm/gemini";
+import { UnifiedAssessmentRequest } from "pipeline/contracts";
 
 export { getLastPipelineBlueprint };
 

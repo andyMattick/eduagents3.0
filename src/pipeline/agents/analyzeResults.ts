@@ -10,7 +10,7 @@
 //    any internal system labels in prompts or outputs.
 // ⚠️ Do NOT run automatically — only called on explicit teacher submit.
 
-import { callGemini } from "@/pipeline/llm/gemini";
+import { callGemini } from "pipeline/llm/gemini";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types (exported — used by AssessmentDetailPage and Supabase row types)

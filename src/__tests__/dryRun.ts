@@ -9,12 +9,12 @@
  * Run with: npx ts-node src/__tests__/dryRun.ts
  */
 
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import type { GeneratedItem, WriterItemMetadata } from "@/pipeline/agents/writer/types";
-import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
-import { runBuilder } from "@/pipeline/agents/builder";
-import { internalLogger } from "@/pipeline/agents/shared/internalLogging";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
+import type { GeneratedItem, WriterItemMetadata } from "pipeline/agents/writer/types";
+import { Gatekeeper } from "pipeline/agents/gatekeeper/Gatekeeper";
+import { runBuilder } from "pipeline/agents/builder";
+import { internalLogger } from "pipeline/agents/shared/internalLogging";
 
 // Enable internal logging for dry run
 if (typeof window === "undefined") {

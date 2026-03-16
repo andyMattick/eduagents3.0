@@ -1,4 +1,4 @@
-import type { ViolationType } from "@/pipeline/agents/gatekeeper/ViolationCatalog";
+import type { ViolationType } from "pipeline/agents/gatekeeper/ViolationCatalog";
 
 export interface WriterDossier {
   agentType: "writer";

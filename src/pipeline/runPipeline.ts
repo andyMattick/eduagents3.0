@@ -1,4 +1,4 @@
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import { UnifiedAssessmentRequest } from "pipeline/contracts";
 import { runOrchestrator } from "./orchestrator";
 
 export async function runPipeline(

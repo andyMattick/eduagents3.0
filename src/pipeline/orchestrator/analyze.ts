@@ -1,10 +1,10 @@
 // src/pipeline/orchestrator/analyze.ts
 
-import { runAstronomerPhase1 } from "@/pipeline/agents/astronomer/phase1";
-import { runAstronomerPhase2 } from "@/pipeline/agents/astronomer/phase2";
-import { runSpaceCamp } from "@/pipeline/agents/spacecamp";
-import { runPhilosopher } from "@/pipeline/agents/philosopher";
-import { buildDocumentInsightsFromInput } from "@/pipeline/agents/document/insights";
+import { runAstronomerPhase1 } from "pipeline/agents/astronomer/phase1";
+import { runAstronomerPhase2 } from "pipeline/agents/astronomer/phase2";
+import { runSpaceCamp } from "pipeline/agents/spacecamp";
+import { runPhilosopher } from "pipeline/agents/philosopher";
+import { buildDocumentInsightsFromInput } from "pipeline/agents/document/insights";
 
 export async function runAnalyzePipeline(internal: any) {
   const documentInsights = buildDocumentInsightsFromInput(internal);

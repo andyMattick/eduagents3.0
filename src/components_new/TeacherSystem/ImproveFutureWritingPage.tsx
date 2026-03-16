@@ -1,4 +1,4 @@
-export function ImproveFutureWritingPage({ assignmentId }) {
+export function ImproveFutureWritingPage({ assignmentId }: { assignmentId: string }) {
   return (
     <div className="page-container">
       <h1 className="page-title">Improve Future Writing</h1>

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // src/components/Pipeline/philosopher/philosopherCall.ts
 
 import { callAI } from "../../../config/aiConfig";

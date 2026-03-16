@@ -15,8 +15,8 @@
  * changing getArchitectPlanFromCache / setArchitectPlanInCache only.
  */
 
-import type { Blueprint } from "@/pipeline/contracts/Blueprint";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import type { Blueprint } from "pipeline/contracts/Blueprint";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 import type { TeacherProfile } from "@/types/teacherProfile";
 import { runArchitect } from "./index";
 

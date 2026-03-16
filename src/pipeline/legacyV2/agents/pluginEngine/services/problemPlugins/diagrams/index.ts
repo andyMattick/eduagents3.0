@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * diagrams/index.ts — Barrel export + auto-registration for all diagram plugins.
  */

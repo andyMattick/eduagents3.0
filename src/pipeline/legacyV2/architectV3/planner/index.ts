@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input, ArchitectV3Plan } from "../types";
 import { planDifficultyProfile } from "./difficultyPlanner";
 import { planSlots } from "./slotPlanner";

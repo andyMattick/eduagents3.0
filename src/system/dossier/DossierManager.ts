@@ -10,8 +10,8 @@
 // SCRIBE pulls the domain-specific dossier so each subject gets its own
 // agent team with independent trust/weakness tracking.
 // ───────────────────────────────────────────────────────────────────
-import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
-import type { Violation } from "@/pipeline/agents/gatekeeper/ViolationCatalog";
+import type { GatekeeperReport } from "pipeline/agents/gatekeeper/GatekeeperReport";
+import type { Violation } from "pipeline/agents/gatekeeper/ViolationCatalog";
 import { supabase } from "../../supabase/client";
 
 /** Canonical agent type keys (prefix before the colon in "writer:Math"). */

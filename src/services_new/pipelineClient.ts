@@ -1,6 +1,6 @@
-import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
-import { TemplateAnalysis } from "@/pipeline/agents/templateDeriver/types";
+import { DeriveTemplateRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
+import { DerivedTemplate } from "pipeline/contracts/deriveTemplate";
+import { TemplateAnalysis } from "pipeline/agents/templateDeriver/types";
 
 export interface TemplateListEntry {
 	id: string;

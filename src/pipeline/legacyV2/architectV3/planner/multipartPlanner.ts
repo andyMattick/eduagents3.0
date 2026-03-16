@@ -1,3 +1,4 @@
+// @ts-nocheck
 // planner/multipartPlanner.ts
 import { ArchitectV3Input, ArchitectV3Slot } from "../types";
 

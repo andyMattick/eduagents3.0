@@ -1,15 +1,25 @@
 import { useState, useCallback } from 'react';
-import { Tag, PipelineStep, PipelineState, DocumentMetadata } from '../types/pipeline';
-import { analyzeTags } from '../agents/analysis/analyzeTags';
-import { simulateStudents } from '../agents/simulation/simulateStudents';
-import { generateAllAccessibilityFeedback } from '../agents/simulation/accessibilityProfiles';
-import { rewriteAssignment } from '../agents/rewrite/rewriteAssignment';
-import { analyzeVersions, VersionAnalysis } from '../agents/analytics/analyzeVersions';
-import { extractAsteroidsFromText } from '../agents/pipelineIntegration';
-import { inferDocumentMetadata } from '../agents/analysis/inferDocumentMetadata';
-import { callPhilosopherWithVisualizations, PhilosopherPayload } from '../agents/analysis/philosophers';
+import { Tag, PipelineStep, PipelineState, DocumentMetadata, StudentFeedback, TagChange, VersionAnalysis } from '../types/pipeline';
 import { UniversalProblem } from '../types/universalPayloads';
 import { Asteroid } from '../types/simulation';
+
+// ── Stubs for legacy V2 modules that no longer exist ────────────────────────
+// usePipeline is not currently used by the app (superseded by the new pipeline
+// orchestrator). These stubs keep it compilable without importing deleted files.
+type PhilosopherPayload = { problems: unknown[]; generationContext: unknown };
+type PhilosopherResult = PipelineState['philosopherAnalysis'];
+const simulateStudents = async (..._args: unknown[]) => [] as StudentFeedback[];
+const generateAllAccessibilityFeedback = (_text: string) => [] as StudentFeedback[];
+const rewriteAssignment = async (..._args: unknown[]) =>
+  ({ rewrittenText: '', summaryOfChanges: '', appliedTags: [] as Tag[] });
+const analyzeVersions = async (_a: unknown, _b: unknown): Promise<VersionAnalysis> =>
+  ({ tagChanges: [] as TagChange[], engagementScoreDelta: 0, timeToReadDelta: 0, originalEngagementScore: 0, rewrittenEngagementScore: 0, originalTimeToRead: 0, rewrittenTimeToRead: 0 });
+const extractAsteroidsFromText = async (..._args: unknown[]) => [] as Asteroid[];
+const inferDocumentMetadata = async (..._args: unknown[]) =>
+  ({} as DocumentMetadata);
+const callPhilosopherWithVisualizations = async (_p: PhilosopherPayload): Promise<PhilosopherResult> =>
+  ({ analysisContent: '', recommendations: [], acceptedByTeacher: false });
+// ─────────────────────────────────────────────────────────────────────────────
 
 const initialState: PipelineState = {
   originalText: '',
@@ -52,33 +62,39 @@ function asteroidToUniversalProblem(asteroid: Asteroid, documentId: string, subj
 
     // Cognitive layer
     cognitive: {
-      bloomLevel: asteroid.BloomLevel,
+      bloomsLevel: asteroid.BloomLevel as unknown as import('../types/universalPayloads').BloomsLevel,
+      bloomsConfidence: 0.85,
+      bloomsReasoning: 'extracted',
+      bloomsContextDependent: false,
+      complexityLevel: 'medium' as unknown as import('../types/universalPayloads').ComplexityLevel,
+      estimatedTimeMinutes: Math.max(1, Math.round((asteroid.EstimatedTimeSeconds || asteroid.ProblemLength * 3) / 60)),
+      timeBreakdown: { readingMinutes: 0, comprehensionMinutes: 0, computationMinutes: 0, reasoningMinutes: 0, writingMinutes: 0 } as import('../types/universalPayloads').TimeBreakdown,
       linguisticComplexity: asteroid.LinguisticComplexity,
-      noveltyScore: asteroid.NoveltyScore,
-      priorKnowledge: asteroid.PriorKnowledge || 0,
+      reasoningStepsRequired: 1,
+      proceduralWeight: 0.5,
     },
 
     // Classification layer
     classification: {
-      primaryCategory: asteroid.Subject || 'general',
-      secondaryCategories: asteroid.Topics || [],
-      testType: asteroid.TestType || 'short_answer',
-      reasoning: 'extracted',
+      problemType: asteroid.Subject || 'general',
+      topics: asteroid.Topics || [],
+      requiresCalculator: false,
+      requiresInterpretation: false,
     },
 
     // Structure
     structure: {
-      multiPart: asteroid.MultiPart,
-      problemLength: asteroid.ProblemLength,
-      estimatedTimeSeconds: asteroid.EstimatedTimeSeconds || Math.max(30, asteroid.ProblemLength * 3),
-      sequenceIndex: asteroid.SequenceIndex,
-      subparts: [],
+      isSubpart: false,
+      numberingStyle: 'inferred' as import('../types/universalPayloads').NumberingStyle,
+      multiPartCount: asteroid.MultiPart ? 2 : 1,
+      sourceLineStart: 0,
+      sourceLineEnd: 0,
     },
 
     // Meta
     analysis: {
-      confidence: 0.85,
-      source: 'asteroid_conversion',
+      confidenceScore: 0.85,
+      processedAt: new Date().toISOString(),
     },
 
     version: '1.0',
@@ -496,7 +512,9 @@ export function usePipeline() {
       setState(prev => ({
         ...prev,
         philosopherAnalysis: {
-          ...(prev.philosopherAnalysis || {}),
+          analysisContent: prev.philosopherAnalysis?.analysisContent ?? '',
+          recommendations: prev.philosopherAnalysis?.recommendations ?? [],
+          bloomDistribution: prev.philosopherAnalysis?.bloomDistribution,
           acceptedByTeacher: true,
         },
         currentStep: PipelineStep.REWRITE_RESULTS,
@@ -506,7 +524,9 @@ export function usePipeline() {
       setState(prev => ({
         ...prev,
         philosopherAnalysis: {
-          ...(prev.philosopherAnalysis || {}),
+          analysisContent: prev.philosopherAnalysis?.analysisContent ?? '',
+          recommendations: prev.philosopherAnalysis?.recommendations ?? [],
+          bloomDistribution: prev.philosopherAnalysis?.bloomDistribution,
           acceptedByTeacher: false,
         },
         currentStep: PipelineStep.EXPORT,
@@ -521,7 +541,7 @@ export function usePipeline() {
       ...prev,
       originalText: prev.rewrittenText, // Use the rewritten version as the new baseline
       studentFeedback: [], // Clear feedback for fresh simulation
-      currentStep: PipelineStep.CLASS_BUILDER, // Go back to class selection
+      currentStep: PipelineStep.STUDENT_SIMULATIONS, // Go back to student simulation step
     }));
   }, []);
 

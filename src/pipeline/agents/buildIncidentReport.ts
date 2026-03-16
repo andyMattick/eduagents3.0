@@ -12,7 +12,7 @@
 
 import { classifyTrace } from "./classifyTrace";
 import type { TraceClassification } from "./classifyTrace";
-import { getPrompt, getAnswer } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getAnswer } from "pipeline/utils/itemNormalizer";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Output types

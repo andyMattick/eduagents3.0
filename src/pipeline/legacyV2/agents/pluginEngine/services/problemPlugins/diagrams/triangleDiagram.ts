@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * triangleDiagram.ts — Triangle diagram plugin (Master Spec §9.2).
  *

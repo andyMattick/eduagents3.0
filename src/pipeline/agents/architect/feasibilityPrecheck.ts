@@ -14,7 +14,7 @@
 
 import { evaluateFeasibility, type FeasibilityReport } from "./feasibility";
 import { resolveRigorProfile } from "./rigorProfile";
-import { inferQuestionCount } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { inferQuestionCount } from "pipeline/contracts/UnifiedAssessmentRequest";
 
 // ── Minimal input shape (matches ConversationalIntent fields) ────────────────
 

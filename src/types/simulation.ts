@@ -6,7 +6,7 @@
  * StudentProblemInput = modeling a single student's interaction with a problem
  */
 
-import { BloomLevel } from '../agents/analysis/types';
+type BloomLevel = "Remember" | "Understand" | "Apply" | "Analyze" | "Evaluate" | "Create";
 
 /**
  * Asteroid: A problem decomposed into discrete components with pedagogical metadata

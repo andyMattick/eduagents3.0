@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { runOrchestrator } from "@/pipeline/orchestrator";
+import { runOrchestrator } from "../../pipeline/orchestrator";
 import { DifferentiatedResultsView, type DifferentiatedWorkflowResult } from "./DifferentiatedResultsView";
 import "./AssessmentIntentSelector.css";
 
@@ -30,7 +30,7 @@ const TRANSFORM_STYLE_CHIPS: Array<{ label: string; value: string }> = [
 async function readFileText(file: File): Promise<string> {
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".doc")) {
-    const { analyzeDocument } = await import("@/pipeline/agents/documentAnalyzer");
+    const { analyzeDocument } = await import("../../pipeline/agents/documentAnalyzer");
     const insights = await analyzeDocument(file);
     return insights.rawText;
   }

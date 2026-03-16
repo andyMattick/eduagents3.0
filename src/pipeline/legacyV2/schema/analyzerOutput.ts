@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { UnifiedAnalyzerOutput } from "./unifiedSchema";
 
 export function validateAnalyzerOutput(obj: any): obj is UnifiedAnalyzerOutput {

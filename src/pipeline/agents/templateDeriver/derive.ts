@@ -1,8 +1,8 @@
-import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { DeriveTemplateRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 import { DeriveTemplateResult, TemplateAnalysis } from "./types";
 import { buildDerivedTemplate } from "./builder";
-import { AnalyzerV2, AnalyzerV2Output } from "@/pipeline/analyzerV2/analyzerV2";
-import { create } from "@/pipeline/orchestrator/create";
+import { AnalyzerV2, AnalyzerV2Output } from "pipeline/analyzerV2/analyzerV2";
+import { create } from "pipeline/orchestrator/create";
 
 function inferAnalysisFromExamples(request: DeriveTemplateRequest): TemplateAnalysis {
   const joined = request.examples.join("\n").toLowerCase();

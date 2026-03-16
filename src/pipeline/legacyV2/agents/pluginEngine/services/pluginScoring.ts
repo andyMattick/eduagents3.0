@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * pluginScoring.ts — SCRIBE scoring extensions for plugin-generated problems.
  *

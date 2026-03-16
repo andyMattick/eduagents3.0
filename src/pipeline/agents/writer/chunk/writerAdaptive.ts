@@ -14,15 +14,15 @@
  *   - Emits telemetry; never surfaces chunking internals to the caller.
  */
 
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import type { GeneratedItem } from "../types";
 
-import { callGeminiStreaming } from "@/pipeline/llm/gemini";
+import { callGeminiStreaming } from "pipeline/llm/gemini";
 import { buildChunkPrompt } from "./writerChunkPrompt";
-import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
-import { rewriteSingle } from "@/pipeline/agents/rewriter/rewriteSingle";
+import { Gatekeeper } from "pipeline/agents/gatekeeper/Gatekeeper";
+import { rewriteSingle } from "pipeline/agents/rewriter/rewriteSingle";
 import { createTelemetry, type WriterTelemetry } from "../telemetry";
 
 // ── Tunables ─────────────────────────────────────────────────────────────────

@@ -1,11 +1,8 @@
 import { useState, useEffect } from "react";
 import { MinimalTeacherIntent } from "pipeline/contracts";
 
-import { ASSESSMENT_TYPES, AssessmentTypeKey } from "@/pipeline/contracts/assessmentTypes";
+import { ASSESSMENT_TYPES, AssessmentTypeKey } from "../../pipeline/contracts/assessmentTypes";
 
-import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
-import { PipelineDebugPanel } from "@/components_new/PipelineDebugPanel";
-import { runArchitectWriterDebug } from "@/pipeline/devTools/runArchitectWriterDebug";
 import { MathFormatSelector } from "@/components_new/Pipeline/MathFormatSelector";
 import type { MathFormat } from "@/utils/mathFormatters";
 

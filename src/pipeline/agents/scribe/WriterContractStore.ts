@@ -8,7 +8,7 @@
  * the pipeline response object.
  */
 
-import type { WriterContract } from "@/pipeline/contracts/WriterContract";
+import type { WriterContract } from "pipeline/contracts/WriterContract";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Singleton

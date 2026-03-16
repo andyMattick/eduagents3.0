@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ResourceLimitStatus, SUBSCRIPTION_TIERS } from '../types/teacherSystem';
+import { ResourceLimitStatus, SUBSCRIPTION_TIERS } from '../../types/teacherSystem';
 import './ApiUsageBanner.css';
 
 interface ApiUsageBannerProps {

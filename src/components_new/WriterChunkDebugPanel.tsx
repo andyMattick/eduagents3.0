@@ -14,11 +14,11 @@
  */
 
 import { useState } from "react";
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { UnifiedAssessmentRequest } from "../pipeline/contracts/UnifiedAssessmentRequest";
 import {
   runWriterChunkDebug,
   runParseChunkSmoke,
-} from "@/pipeline/devTools/runWriterChunkDebug";
+} from "../pipeline/devTools/runWriterChunkDebug";
 
 interface Props {
   uar: UnifiedAssessmentRequest;

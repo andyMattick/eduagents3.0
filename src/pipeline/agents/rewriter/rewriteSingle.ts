@@ -7,10 +7,10 @@
  * what the Gatekeeper flagged — nothing else changes.
  */
 
-import { callGemini } from "@/pipeline/llm/gemini";
+import { callGemini } from "pipeline/llm/gemini";
 import type { GeneratedItem } from "../writer/types";
 import type { RewriteMode } from "../gatekeeper/Gatekeeper";
-import { getPrompt } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt } from "pipeline/utils/itemNormalizer";
 
 const MODE_INSTRUCTIONS: Record<RewriteMode, string> = {
   formatFix:

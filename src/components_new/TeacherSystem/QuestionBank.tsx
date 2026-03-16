@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import {
-  searchProblemBank,
-  saveToProblemBank,
-  getProblemBankEntry,
-} from '../../services/teacherSystemService';
+// Stubs — teacherSystemService not yet implemented
+const searchProblemBank = async (_teacherId: string) => [] as ProblemBankEntry[];
+const saveToProblemBank = async (..._args: unknown[]) => {};
+const getProblemBankEntry = async (..._args: unknown[]) => null;
 import { UniversalProblem } from '../../types/universalPayloads';
 import './QuestionBank.css';
 
@@ -124,7 +123,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
 
     if (filters.grades?.length) {
       result = result.filter(q =>
-        filters.grades?.includes(String(q.problem.cognitive.estimatedGradeLevel))
+        filters.grades?.includes(String((q.problem.cognitive as any).estimatedGradeLevel))
       );
     }
 
@@ -132,7 +131,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
       const searchLower = filters.searchText.toLowerCase();
       result = result.filter(q =>
         q.problem.content.toLowerCase().includes(searchLower) ||
-        (q.problem.classification?.keywords || []).some(k =>
+        (q.problem.classification?.topics || []).some(k =>
           k.toLowerCase().includes(searchLower)
         )
       );
@@ -160,7 +159,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
     if (filters.estimatedTimeRange) {
       const [min, max] = filters.estimatedTimeRange;
       result = result.filter(q => {
-        const time = q.problem.cognitive.timeBreakdown?.estimatedTimeMinutes || 0;
+        const time = q.problem.cognitive.estimatedTimeMinutes || 0;
         return time >= min && time <= max;
       });
     }
@@ -543,7 +542,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
               {Array.from(groupQuestionsBySection(filteredQuestions).entries()).map(
                 ([sectionId, sectionQuestions]) => {
                   const isExpanded = expandedSections.has(sectionId);
-                  const bloomLevelsInSection = [...new Set(sectionQuestions.map(q => q.problem.cognitive.bloomLevel))];
+                  const bloomLevelsInSection = [...new Set(sectionQuestions.map(q => q.problem.cognitive.bloomsLevel))];
 
                   return (
                     <div key={sectionId} className="section-group">
@@ -576,13 +575,13 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                               <div className="question-item-header">
                                 <div className="question-title">
                                   <span className="bloom-badge" title="Reasoning Level">
-                                    {entry.problem.cognitive.bloomLevel}
+                                    {entry.problem.cognitive.bloomsLevel}
                                   </span>
                                   <span className="subject-badge" title="Subject">
                                     {entry.problem.subject}
                                   </span>
                                   <span className="grade-badge" title="Grade Level">
-                                    Grade {entry.problem.cognitive.estimatedGradeLevel}
+                                    Grade {(entry.problem.cognitive as any).estimatedGradeLevel ?? 'N/A'}
                                   </span>
                                   {entry.problem.cognitive.complexityLevel && (
                                     <span className="math-complexity-badge" title="Mathematical Complexity (1-5)">
@@ -594,9 +593,9 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                                       L: {(entry.problem.cognitive.linguisticComplexity * 100).toFixed(0)}%
                                     </span>
                                   )}
-                                  {entry.problem.cognitive.timeBreakdown?.estimatedTimeMinutes && (
+                                  {entry.problem.cognitive.estimatedTimeMinutes && (
                                     <span className="time-badge" title="Estimated Time">
-                                      ⏱ {entry.problem.cognitive.timeBreakdown.estimatedTimeMinutes} min
+                                      ⏱ {entry.problem.cognitive.estimatedTimeMinutes} min
                                     </span>
                                   )}
                                 </div>
@@ -630,7 +629,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                               </div>
 
                               <div className="question-tags">
-                                {(entry.problem.classification?.keywords || []).map(tag => (
+                                {(entry.problem.classification?.topics || []).map(tag => (
                                   <span key={tag} className="tag">
                                     {tag}
                                   </span>
@@ -666,7 +665,7 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
               <div className="preview-metadata">
                 <div className="meta-row">
                   <strong>Bloom Level:</strong>
-                  <span>{selectedQuestion.problem.cognitive.bloomLevel}</span>
+                  <span>{selectedQuestion.problem.cognitive.bloomsLevel}</span>
                 </div>
                 <div className="meta-row">
                   <strong>Subject:</strong>
@@ -674,16 +673,16 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                 </div>
                 <div className="meta-row">
                   <strong>Grade:</strong>
-                  <span>{selectedQuestion.problem.cognitive.estimatedGradeLevel}</span>
+                  <span>{(selectedQuestion.problem.cognitive as any).estimatedGradeLevel ?? 'N/A'}</span>
                 </div>
                 <div className="meta-row">
                   <strong>Type:</strong>
-                  <span>{selectedQuestion.problem.structure?.type || 'unknown'}</span>
+                  <span>{'unknown'}</span>
                 </div>
-                {selectedQuestion.problem.cognitive.timeBreakdown?.estimatedTimeMinutes && (
+                {selectedQuestion.problem.cognitive.estimatedTimeMinutes && (
                   <div className="meta-row">
                     <strong>Est. Time:</strong>
-                    <span>{selectedQuestion.problem.cognitive.timeBreakdown.estimatedTimeMinutes} min</span>
+                    <span>{selectedQuestion.problem.cognitive.estimatedTimeMinutes} min</span>
                   </div>
                 )}
                 {selectedQuestion.problem.cognitive.linguisticComplexity !== undefined && (
@@ -692,10 +691,10 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                     <span>{(selectedQuestion.problem.cognitive.linguisticComplexity * 100).toFixed(0)}%</span>
                   </div>
                 )}
-                {selectedQuestion.problem.cognitive.noveltyScore !== undefined && (
+                {(selectedQuestion.problem.cognitive as any).noveltyScore !== undefined && (
                   <div className="meta-row">
                     <strong>Novelty:</strong>
-                    <span>{(selectedQuestion.problem.cognitive.noveltyScore * 100).toFixed(0)}%</span>
+                    <span>{((selectedQuestion.problem.cognitive as any).noveltyScore * 100).toFixed(0)}%</span>
                   </div>
                 )}
                 <div className="meta-row">
@@ -745,14 +744,14 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                 <p>{selectedQuestion.problem.content}</p>
               </div>
 
-              {selectedQuestion.problem.structure?.options && (
+              {(selectedQuestion.problem.structure as any)?.options && (
                 <div className="preview-options">
                   <h4>Options:</h4>
                   <ul>
-                    {selectedQuestion.problem.structure.options.map((opt, idx) => (
+                    {(selectedQuestion.problem.structure as any).options.map((opt: string, idx: number) => (
                       <li
                         key={idx}
-                        className={opt === selectedQuestion.problem.structure?.correctAnswer ? 'correct' : ''}
+                        className={opt === (selectedQuestion.problem.structure as any)?.correctAnswer ? 'correct' : ''}
                       >
                         {opt}
                       </li>
@@ -761,10 +760,10 @@ export const QuestionBank: React.FC<QuestionBankProps> = ({
                 </div>
               )}
 
-              {selectedQuestion.problem.structure?.notes && (
+              {(selectedQuestion.problem.structure as any)?.notes && (
                 <div className="preview-notes">
                   <h4>Notes:</h4>
-                  <p>{selectedQuestion.problem.structure.notes}</p>
+                  <p>{(selectedQuestion.problem.structure as any).notes}</p>
                 </div>
               )}
 

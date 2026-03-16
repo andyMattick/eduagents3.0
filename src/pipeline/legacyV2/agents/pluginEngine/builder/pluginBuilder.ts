@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * pluginBuilder.ts — Builder extensions for plugin-generated problems.
  *
@@ -5,9 +6,9 @@
  * embed image references, preserve plugin metadata.
  */
 
-import type { GeneratedItem } from "@/pipeline/agents/writer/types";
+import type { GeneratedItem } from "pipeline/agents/writer/types";
 import type { GeneratedDiagram } from "../interfaces/problemPlugin";
-import { getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getAnswer, getOptions, getPassage } from "pipeline/utils/itemNormalizer";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 

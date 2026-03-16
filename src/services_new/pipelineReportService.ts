@@ -9,8 +9,8 @@
  */
 
 import { supabase } from "@/supabase/client";
-import type { TraceClassification } from "@/pipeline/agents/classifyTrace";
-import { buildIncidentReport } from "@/pipeline/agents/buildIncidentReport";
+import type { TraceClassification } from "pipeline/agents/classifyTrace";
+import { buildIncidentReport } from "pipeline/agents/buildIncidentReport";
 
 /** Source type stored in signals so the admin dashboard can filter by intent. */
 export type ReportSource = "flagged" | "voluntary" | "recommended";

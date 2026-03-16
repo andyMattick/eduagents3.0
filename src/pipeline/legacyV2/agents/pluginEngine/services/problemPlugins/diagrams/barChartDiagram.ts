@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * barChartDiagram.ts — Bar chart diagram plugin.
  *

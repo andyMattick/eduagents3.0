@@ -1,4 +1,4 @@
-import type { DocumentInsights } from "@/pipeline/contracts";
+import type { DocumentInsights } from "pipeline/contracts";
 
 const SUBJECT_KEYWORDS: Array<{ subject: string; terms: string[] }> = [
   { subject: "math", terms: ["equation", "algebra", "geometry", "calculus", "fraction", "solve"] },

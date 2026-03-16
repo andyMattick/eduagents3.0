@@ -10,9 +10,9 @@
  */
 
 import type { TeacherProfile, PacingConflict } from "@/types/teacherProfile";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { getProblemTypesForSubjectAndGrade } from "@/pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
-import { inferGradeBand } from "@/pipeline/problemTypes/inferGradeBand";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
+import { getProblemTypesForSubjectAndGrade } from "pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
+import { inferGradeBand } from "pipeline/problemTypes/inferGradeBand";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pacing conflict

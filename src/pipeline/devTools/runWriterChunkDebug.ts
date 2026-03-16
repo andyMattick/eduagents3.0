@@ -5,7 +5,7 @@
  *
  * Usage (browser console or component):
  *
- *   import { runWriterChunkDebug, testParseChunk } from "@/pipeline/devTools/runWriterChunkDebug";
+ *   import { runWriterChunkDebug, testParseChunk } from "pipeline/devTools/runWriterChunkDebug";
  *
  *   // 1. Full adaptive writer run against a real UAR:
  *   const result = await runWriterChunkDebug(myUAR);
@@ -21,13 +21,13 @@
  *   console.log(parsed);
  */
 
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { runArchitect } from "@/pipeline/agents/architect";
-import { writerAdaptive } from "@/pipeline/agents/writer/chunk/writerAdaptive";
-import { parseChunk, END_SENTINEL } from "@/pipeline/agents/writer/chunk/parseChunk";
-import { SCRIBE } from "@/pipeline/agents/scribe";
-import { Gatekeeper } from "@/pipeline/agents/gatekeeper/Gatekeeper";
-import { runBuilder } from "@/pipeline/agents/builder";
+import { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
+import { runArchitect } from "pipeline/agents/architect";
+import { writerAdaptive } from "pipeline/agents/writer/chunk/writerAdaptive";
+import { parseChunk, END_SENTINEL } from "pipeline/agents/writer/chunk/parseChunk";
+import { SCRIBE } from "pipeline/agents/scribe";
+import { Gatekeeper } from "pipeline/agents/gatekeeper/Gatekeeper";
+import { runBuilder } from "pipeline/agents/builder";
 
 // ---------------------------------------------------------------------------
 // 1. Full adaptive writer debug run

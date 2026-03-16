@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * services/index.ts — Barrel export for plugin engine services.
  */

@@ -1,4 +1,4 @@
-import { ItemType, CognitiveIntent, Difficulty, SharedContext } from "@/pipeline/contracts/Blueprint";
+import { ItemType, CognitiveIntent, Difficulty, SharedContext } from "pipeline/contracts/Blueprint";
 import { TemplateAnalysis } from "./types";
 
 export function inferItemType(reqItemType: ItemType | undefined, analysis: TemplateAnalysis): ItemType {

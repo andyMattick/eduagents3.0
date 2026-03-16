@@ -1065,7 +1065,7 @@ private extractSectionStructure(
         id: `section_template_${section.id}`,
         taskType: inferredTaskType,
         secondaryTaskTypes,
-        dominantSurfaceForm,
+        dominantSurfaceForm: dominantSurfaceForm ?? '',
         secondarySurfaceForms,
         itemCount: items.length,
         conceptCount: concepts.length,

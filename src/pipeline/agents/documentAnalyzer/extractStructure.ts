@@ -1,4 +1,4 @@
-import type { DocumentDiagram, DocumentSection, DocumentTable } from "@/pipeline/contracts";
+import type { DocumentDiagram, DocumentSection, DocumentTable } from "pipeline/contracts";
 
 export interface StructureResult {
   sections: DocumentSection[];

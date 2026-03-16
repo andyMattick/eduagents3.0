@@ -1,4 +1,4 @@
-import type { DocumentPage } from "@/pipeline/contracts";
+import type { DocumentPage } from "pipeline/contracts";
 
 export interface ExtractedText {
   rawText: string;

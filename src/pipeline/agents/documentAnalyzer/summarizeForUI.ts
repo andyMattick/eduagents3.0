@@ -1,4 +1,4 @@
-import type { DocumentInsights } from "@/pipeline/contracts";
+import type { DocumentInsights } from "pipeline/contracts";
 
 export interface UISummary {
   sections: string[];

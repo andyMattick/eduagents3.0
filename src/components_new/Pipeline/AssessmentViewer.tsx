@@ -6,13 +6,13 @@
  */
 
 import { useState, useRef } from "react";
-import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import type { FinalAssessment, FinalAssessmentItem } from "../../pipeline/agents/builder/FinalAssessment";
 import { downloadFinalAssessmentPDF, downloadFinalAssessmentWord, assessmentContainsMath } from "@/utils/exportFinalAssessment";
-import { groupItemsBySection, formatSectionHeader } from "@/pipeline/agents/builder/sectionGrouper";
-import { useDeveloperMode } from "@/hooks/useDeveloperMode";
-import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
+import { groupItemsBySection, formatSectionHeader } from "../../pipeline/agents/builder/sectionGrouper";
+
+import { DEFAULT_PACING_SECONDS } from "../../types/teacherProfile";
 import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
-import type { WriterContract } from "@/pipeline/contracts/WriterContract";
+import type { WriterContract } from "../../pipeline/contracts/WriterContract";
 import { PlaytesterPayloadPanel } from "./PlaytesterPayloadPanel";
 import "./AssessmentViewer.css";
 

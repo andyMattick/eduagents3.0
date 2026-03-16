@@ -6,10 +6,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  logApiCall,
-  getResourceLimitStatus,
-} from '../services/teacherSystemService';
+// Stub — teacherSystemService not yet implemented
+const getResourceLimitStatus = async (_teacherId: string): Promise<ResourceLimitStatus | null> => null;
 import { ResourceLimitStatus, ApiLimitError } from '../types/teacherSystem';
 
 export interface ApiUsageTrackingState {
@@ -47,12 +45,12 @@ export function useApiUsageTracking(options: ApiTrackingOptions): ApiUsageTracki
       setError(null);
 
       // Trigger warning if approaching limit
-      if (onWarning && newLimits.apiCallLimit.percentageUsed > 70) {
+      if (newLimits && onWarning && newLimits.apiCallLimit.percentageUsed > 70) {
         onWarning(newLimits.apiCallLimit.percentageUsed);
       }
 
       // Trigger limit exceeded if quota exhausted
-      if (onLimitExceeded && !newLimits.apiCallLimit.canCall) {
+      if (newLimits && onLimitExceeded && !newLimits.apiCallLimit.canCall) {
         onLimitExceeded();
       }
     } catch (err) {
@@ -136,15 +134,14 @@ export function useTrackedAsyncOperation(teacherId: string) {
 
 // Import logApiCall function here if needed
 async function logApiCall(
-  teacherId: string,
-  action: string,
-  cost: number,
-  assignmentId: string | undefined,
-  status: string,
-  errorMessage: string
+  _teacherId: string,
+  _action: string,
+  _cost: number,
+  _assignmentId: string | undefined,
+  _status: string,
+  _errorMessage?: string
 ) {
-  const { logApiCall } = await import('../services/teacherSystemService');
-  return logApiCall(teacherId, action, cost, assignmentId, status, errorMessage);
+  // Stub — teacherSystemService not yet implemented
 }
 
 export default useApiUsageTracking;

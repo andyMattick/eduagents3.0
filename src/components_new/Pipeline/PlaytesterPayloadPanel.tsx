@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import type { FinalAssessment, FinalAssessmentItem } from "../../pipeline/agents/builder/FinalAssessment";
 import type { Asteroid, Astronaut, StudentProblemInput } from "@/types/simulation";
 import "./PlaytesterPayloadPanel.css";
 

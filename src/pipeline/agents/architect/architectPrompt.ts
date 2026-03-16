@@ -1,5 +1,5 @@
-import type { ArchitectUAR } from "@/pipeline/agents/architect/buildArchitectUAR";
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { ArchitectUAR } from "pipeline/agents/architect/buildArchitectUAR";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
 import type { ClassifiedConstraint, DerivedStructuralConstraints } from "./constraintEngine";
 
 export const buildArchitectPrompt = (

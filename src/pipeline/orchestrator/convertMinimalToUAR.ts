@@ -1,4 +1,4 @@
-import { MinimalTeacherIntent, UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import { MinimalTeacherIntent, UnifiedAssessmentRequest } from "pipeline/contracts";
 
 /** Sentinel values a user might type to mean "nothing" */
 const EMPTY_SENTINELS = new Set([

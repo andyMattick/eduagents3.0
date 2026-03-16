@@ -1,4 +1,4 @@
-import type { DocumentInsights } from "@/pipeline/contracts";
+import type { DocumentInsights } from "pipeline/contracts";
 import { buildDocumentInsights } from "./buildDocumentInsights";
 import { buildInsightsFromAzure } from "./buildInsightsFromAzure";
 import { detectFileType, type DetectedFileTypeResult } from "./detectFileType";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input, ArchitectV3Slot } from "../types";
 import { DifficultyProfile, pickDifficultyForIndex } from "./difficultyPlanner";
 

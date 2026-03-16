@@ -1,7 +1,7 @@
 // aiCall.ts — Thin wrapper around the secure /api/llm proxy.
 // No API keys in client code.
 
-import { callGemini } from "@/pipeline/llm/gemini";
+import { callGemini } from "pipeline/llm/gemini";
 
 export async function callAI(prompt: string): Promise<string> {
   if (!prompt.trim()) {

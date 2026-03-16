@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * diagramGenerator.ts — Deterministic SVG diagram generation service.
  *

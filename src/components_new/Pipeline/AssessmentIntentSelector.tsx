@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { runOrchestrator, type OrchestratorIntent } from "@/pipeline/orchestrator";
-import { analyzeDocument } from "@/pipeline/agents/documentAnalyzer";
+import { runOrchestrator, type OrchestratorIntent } from "../../pipeline/orchestrator";
+import { analyzeDocument } from "../../pipeline/agents/documentAnalyzer";
 import "./AssessmentIntentSelector.css";
 
 type IntentOption = {

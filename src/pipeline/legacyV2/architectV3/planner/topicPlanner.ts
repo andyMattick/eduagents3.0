@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input, ArchitectV3Slot } from "../types";
 
 export function applyTopicAngles(

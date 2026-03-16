@@ -18,7 +18,7 @@
  *    A cap always wins over a raise — safety over ambition.
  */
 
-import type { CognitiveProcess } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { CognitiveProcess } from "pipeline/contracts/BlueprintPlanV3_2";
 import type { DerivedStructuralConstraints } from "./constraintEngine";
 
 // ─────────────────────────────────────────────────────────────────────────────

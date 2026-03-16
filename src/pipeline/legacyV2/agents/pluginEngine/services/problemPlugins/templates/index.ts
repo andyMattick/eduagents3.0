@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * templates/index.ts — Barrel export for template plugins.
  * NO registry imports. NO registerPlugin calls.

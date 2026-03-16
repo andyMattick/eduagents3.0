@@ -31,7 +31,7 @@ function updateSlot(slot: any, updates: Partial<any>): any {
 }
 
 import type { BlueprintSlot } from "@/types/Blueprint";
-import type { CognitiveProcess } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { CognitiveProcess } from "pipeline/contracts/BlueprintPlanV3_2";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants

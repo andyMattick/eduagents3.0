@@ -1,9 +1,31 @@
 import { callAI } from "@/config/aiConfig";
-import { buildRewriterPrompt } from "./rewriterPrompt";
 import { PipelineTrace } from "@/types/Trace";
 import { applyMathFormat } from "@/utils/mathFormatters";
 import type { MathFormat } from "@/utils/mathFormatters";
-import { getPrompt, getAnswer } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getAnswer } from "pipeline/utils/itemNormalizer";
+
+/**
+ * Build a bulk rewrite prompt for the philosopher-requested rewrite pass.
+ * This is separate from buildRewriterPrompt (rewriterPrompt.ts) which is for
+ * per-slot surgical rewrites after Gatekeeper validation.
+ */
+function buildBulkRewritePrompt({
+  writerDraft,
+  rewriteInstructions,
+}: {
+  writerDraft: any;
+  rewriteInstructions: any[];
+}): string {
+  return `You are REWRITER. Apply the following instructions to the writer draft and return the corrected JSON array.
+
+REWRITE INSTRUCTIONS:
+${JSON.stringify(rewriteInstructions, null, 2)}
+
+WRITER DRAFT:
+${JSON.stringify(writerDraft, null, 2)}
+
+Return ONLY a valid JSON array of the corrected items. No explanation text.`;
+}
 
 /**
  * Validate that a value is strict JSON-serialisable (no undefined, no circular refs).
@@ -44,7 +66,7 @@ export async function runRewriter({
   const startedAt = Date.now();
   const fmt: MathFormat = mathFormat ?? "unicode";
 
-  const prompt = buildRewriterPrompt({
+  const prompt = buildBulkRewritePrompt({
     writerDraft,
     rewriteInstructions,
   });
@@ -63,7 +85,7 @@ export async function runRewriter({
     const jsonCheck = validateStrictJSON(parsed);
     if (!jsonCheck.ok) {
       console.warn(`[Rewriter] Strict JSON validation failed: ${jsonCheck.error}. Triggering repair rewrite.`);
-      const repairPrompt = buildRewriterPrompt({
+      const repairPrompt = buildBulkRewritePrompt({
         writerDraft: parsed,
         rewriteInstructions: [{ problemId: "ALL", issues: ["invalid JSON structure"], instructions: "Return the full draft as clean, valid JSON with no undefined values or circular references." }],
       });

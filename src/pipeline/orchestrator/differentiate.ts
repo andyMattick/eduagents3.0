@@ -1,6 +1,6 @@
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts";
 import { runCreatePipeline } from "./create";
-import { buildDocumentInsights } from "@/pipeline/agents/document/insights";
+import { buildDocumentInsights } from "pipeline/agents/document/insights";
 
 type DifferentiationProfile =
   | "standard"

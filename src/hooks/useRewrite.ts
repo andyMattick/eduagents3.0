@@ -1,7 +1,10 @@
 import { useCallback, useState } from 'react';
 import { GeneratedAssignment } from './useUserFlow';
 import { StudentFeedback } from '../types/pipeline';
-import { rewriteAssignment } from '../agents/rewrite/rewriteAssignmentWithFeedback';
+
+// Stub: rewriteAssignmentWithFeedback was removed; useRewrite is not active
+const rewriteAssignment = async (_args: unknown) =>
+  ({ rewrittenAssignment: null as unknown as GeneratedAssignment, summaryOfChanges: '', method: 'stub' });
 
 interface RewriteState {
   isRewriting: boolean;
@@ -56,7 +59,8 @@ export function useRewrite(): UseRewriteReturn {
 
         // Calculate completion stats from feedback
         const allProblems = originalAssignment.sections.flatMap(s => s.problems);
-        const avgComplexity = allProblems.reduce((sum, p) => sum + (p.rawComplexity || 0.5), 0) / allProblems.length;
+        const complexityMap: Record<string, number> = { low: 0.25, medium: 0.5, high: 0.75 };
+        const avgComplexity = allProblems.reduce((sum, p) => sum + (complexityMap[p.complexity] ?? 0.5), 0) / allProblems.length;
         
         const weaknessFeedback = feedback.filter(f => f.feedbackType === 'weakness');
         const confusionLevel = weaknessFeedback.length > 0 ? 0.7 : 0.3;

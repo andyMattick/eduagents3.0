@@ -1,5 +1,5 @@
-import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
-import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { DerivedTemplate } from "pipeline/contracts/deriveTemplate";
+import { DeriveTemplateRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 import { TemplateAnalysis } from "./types";
 import {
   inferItemType,
@@ -8,7 +8,7 @@ import {
   normalizeSharedContext,
   mapStructureToConfig,
   autoLabelFromExamples,
-} from "@/pipeline/agents/templateDeriver/infer";
+} from "pipeline/agents/templateDeriver/infer";
 
 export function buildDerivedTemplate(
   request: DeriveTemplateRequest,

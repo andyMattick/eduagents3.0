@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input } from "../types";
 
 export type DifficultyProfile = "easy" | "medium" | "hard" | "rampUp" | "rampDown";

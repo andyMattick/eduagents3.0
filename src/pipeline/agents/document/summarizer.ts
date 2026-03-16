@@ -1,4 +1,4 @@
-import { callGemini } from "@/pipeline/llm/gemini";
+import { callGemini } from "pipeline/llm/gemini";
 
 export interface DocumentSummary {
   summary: string;

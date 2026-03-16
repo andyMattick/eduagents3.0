@@ -1,4 +1,4 @@
-export function GenerateNewVersionPage({ assignmentId }) {
+export function GenerateNewVersionPage({ assignmentId }: { assignmentId: string }) {
   return (
     <div className="page-container">
       <h1 className="page-title">Generate a New Version</h1>

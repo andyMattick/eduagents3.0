@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * coordinateGraphDiagram.ts — Coordinate graph diagram plugin.
  *

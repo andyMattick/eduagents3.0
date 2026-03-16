@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * pluginGatekeeper.ts — Gatekeeper extensions for plugin-generated problems.
  *

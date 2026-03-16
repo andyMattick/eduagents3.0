@@ -5,8 +5,8 @@ import {
   UnifiedTeacherStyleProfile,
   UnifiedTemplateProfile
 } from "../schema/unifiedSchema";
-import type { DocumentInsights } from "@/pipeline/contracts";
-import { buildDocumentInsightsFromInput } from "@/pipeline/agents/document/insights";
+import type { DocumentInsights } from "pipeline/contracts";
+import { buildDocumentInsightsFromInput } from "pipeline/agents/document/insights";
 
 import { mapToUnifiedSchema } from "../mapper/mapToUnifiedSchema";
 import { mapToDifficultyProfile } from "../mapper/mapToDifficultyProfile";

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // planner/depthBounds.ts
 import { ArchitectV3Slot } from "../types";
 

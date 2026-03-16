@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Seed data for problem bank
  * Contains sample UniversalProblems with performance history

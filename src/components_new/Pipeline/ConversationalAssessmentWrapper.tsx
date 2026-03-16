@@ -6,15 +6,15 @@ import { TraceViewer } from "./TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
 import { PromptEngineerPanel } from "./PromptEngineerPanel";
 import { TeacherFeedbackPanel } from "./TeacherFeedbackPanel";
-import { convertMinimalToUAR } from "@/pipeline/orchestrator/convertMinimalToUAR";
+import { convertMinimalToUAR } from "../../pipeline/orchestrator/convertMinimalToUAR";
 import { generateAssessment } from "@/config/aiConfig";
-import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
-import { runFeasibilityPrecheck } from "@/pipeline/agents/architect/feasibilityPrecheck";
-import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
-import { evaluateTopicRefinement, type TopicRefinementResult } from "@/pipeline/agents/architect/topicRefiner";
-import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
-import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
-import type { MinimalTeacherIntent } from "@/pipeline/contracts";
+import { runPromptEngineer, type PromptEngineerResult } from "../../pipeline/agents/promptEngineer";
+import { runFeasibilityPrecheck } from "../../pipeline/agents/architect/feasibilityPrecheck";
+import type { FeasibilityReport } from "../../pipeline/agents/architect/feasibility";
+import { evaluateTopicRefinement, type TopicRefinementResult } from "../../pipeline/agents/architect/topicRefiner";
+import { runTeacherRewrite } from "../../pipeline/agents/rewriter/teacherRewrite";
+import { SCRIBE } from "../../pipeline/agents/scribe/SCRIBE";
+import type { MinimalTeacherIntent } from "../../pipeline/contracts";
 import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
 import type { TeacherProfile } from "@/types/teacherProfile";
 import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
@@ -28,7 +28,7 @@ import {
   DocumentViewPanel,
 } from "./AssessmentIntentSelector";
 import { DifferentiatedAssessmentPanel } from "./DifferentiatedAssessment";
-import type { OrchestratorIntent } from "@/pipeline/orchestrator";
+import type { OrchestratorIntent } from "../../pipeline/orchestrator";
 
 interface ConversationalAssessmentWrapperProps {
   userId: string | null;

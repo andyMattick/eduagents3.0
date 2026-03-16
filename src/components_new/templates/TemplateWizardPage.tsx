@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { deriveTemplate, listTemplates, saveTemplate, TemplateListEntry } from "@/services_new/pipelineClient";
-import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
-import { TemplateAnalysis } from "@/pipeline/agents/templateDeriver/types";
+import { DerivedTemplate } from "pipeline/contracts/deriveTemplate";
+import { TemplateAnalysis } from "pipeline/agents/templateDeriver/types";
 
 interface TemplateWizardPageProps {
   teacherId: string;

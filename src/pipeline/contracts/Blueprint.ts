@@ -3,8 +3,8 @@ import { BlueprintPlanV3_2 } from "./BlueprintPlanV3_2";
 import type {
   ClassifiedConstraint,
   DerivedStructuralConstraints,
-} from "@/pipeline/agents/architect/constraintEngine";
-import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
+} from "pipeline/agents/architect/constraintEngine";
+import type { FeasibilityReport } from "pipeline/agents/architect/feasibility";
 import { ProblemSlot } from "../agents/pluginEngine";
 
 // Template-derivation taxonomy aliases.

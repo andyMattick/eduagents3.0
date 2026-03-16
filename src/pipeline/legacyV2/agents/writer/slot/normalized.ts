@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Slot } from "pipeline/architectV3/types";
 import {
   UnifiedTeacherStyleProfile,

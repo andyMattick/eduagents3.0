@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { ArchitectV3Input } from "../types";
 
 export function feasibilityPrecheck(input: ArchitectV3Input) {

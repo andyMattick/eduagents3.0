@@ -1,7 +1,7 @@
 // src/components_new/TeacherSystem/MyAssessmentsPage.tsx
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/supabase/client";
-import { classifyTrace } from "@/pipeline/agents/classifyTrace";
+import { classifyTrace } from "pipeline/agents/classifyTrace";
 import { sendPipelineReport } from "@/services_new/pipelineReportService";
 import type { ReportSource } from "@/services_new/pipelineReportService";
 import "./MyAssessmentsPage.css";

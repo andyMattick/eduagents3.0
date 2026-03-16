@@ -9,7 +9,7 @@
  *   3. Translate — map meta-language phrases into explicit structural knobs
  */
 
-import type { CognitiveProcess } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { CognitiveProcess } from "pipeline/contracts/BlueprintPlanV3_2";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

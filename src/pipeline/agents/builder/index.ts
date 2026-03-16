@@ -1,6 +1,6 @@
-import type { GeneratedItem } from "@/pipeline/agents/writer/types";
+import type { GeneratedItem } from "pipeline/agents/writer/types";
 import type { FinalAssessment, FinalAssessmentItem } from "./FinalAssessment";
-import { normalizeItem, getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
+import { normalizeItem, getPrompt, getAnswer, getOptions, getPassage } from "pipeline/utils/itemNormalizer";
 import { normalizeMath } from "../../../utils/normalizeMath";
 import { applyMathFormat } from "../../../utils/mathFormatters";
 import type { MathFormat } from "../../../utils/mathFormatters";

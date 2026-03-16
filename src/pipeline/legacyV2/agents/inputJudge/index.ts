@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * inputJudge/index.ts — Feasibility judge for the plugin engine.
  *

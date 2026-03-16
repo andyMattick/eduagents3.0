@@ -1,40 +1,40 @@
-import { problemGeneratorRouter } from "@/pipeline/agents/pluginEngine/services/problemGeneratorRouter";
-import { runDeriveTemplate } from "@/pipeline/agents/templateDeriver/index";
-import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { problemGeneratorRouter } from "pipeline/agents/pluginEngine/services/problemGeneratorRouter";
+import { runDeriveTemplate } from "pipeline/agents/templateDeriver/index";
+import { DeriveTemplateRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 
 
 
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import { UnifiedAssessmentRequest } from "pipeline/contracts";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import { runSummarizer } from "../agents/document/summarizer";
-import { buildDocumentInsightsFromInput } from "@/pipeline/agents/document/insights";
+import { buildDocumentInsightsFromInput } from "pipeline/agents/document/insights";
 // DIL Comparator + Analyzer available via:
 //   import { runComparator } from "../agents/document/comparator";
 //   import { runAnalyzer } from "../agents/document/analyzer";
 // Agent imports (you will fill these in as you build each agent)
-import { runArchitectCached } from "@/pipeline/agents/architect/planCache";
-import { runWriter, getLastWriterTelemetry } from "@/pipeline/agents/writer";
-import { getLastBloomAlignmentLog } from "@/pipeline/agents/writer/chunk/writerParallel";
+import { runArchitectCached } from "pipeline/agents/architect/planCache";
+import { runWriter, getLastWriterTelemetry } from "pipeline/agents/writer";
+import { getLastBloomAlignmentLog } from "pipeline/agents/writer/chunk/writerParallel";
 
 /** Dispatch flag: 'build' runs Phase 1 only; 'playtest' continues to Phase 2. */
 export type PipelineMode = "build" | "playtest";
-// import { runGatekeeper } from "@/pipeline/agents/gatekeeper";
-import { runAstronomerPhase1 } from "@/pipeline/agents/astronomer/phase1";
-import { runSpaceCamp } from "@/pipeline/agents/spacecamp";
-import { runAstronomerPhase2 } from "@/pipeline/agents/astronomer/phase2";
-import { runPhilosopher } from "@/pipeline/agents/philosopher";
-import { runRewriter } from "@/pipeline/agents/rewriter";
-import { runBuilder } from "@/pipeline/agents/builder";
-import { SCRIBE } from "@/pipeline/agents/scribe";
+// import { runGatekeeper } from "pipeline/agents/gatekeeper";
+import { runAstronomerPhase1 } from "pipeline/agents/astronomer/phase1";
+import { runSpaceCamp } from "pipeline/agents/spacecamp";
+import { runAstronomerPhase2 } from "pipeline/agents/astronomer/phase2";
+import { runPhilosopher } from "pipeline/agents/philosopher";
+import { runRewriter } from "pipeline/agents/rewriter";
+import { runBuilder } from "pipeline/agents/builder";
+import { SCRIBE } from "pipeline/agents/scribe";
 import { Gatekeeper } from "../agents/gatekeeper/Gatekeeper";
 import { createTrace, logAgentStep } from "@/utils/trace";
 import { runAgent } from "@/utils/runAgent";
 import { PipelineTrace } from "@/types/Trace";
 import { supabase } from "@/supabase/client";
-import { resetLLMGate } from "@/pipeline/llm/gemini";
-import { normalizeItems } from "@/pipeline/utils/itemNormalizer";
-import "@/pipeline/agents/pluginEngine/services/problemPlugins";
-import { loadPlugins, listPlugins } from "@/pipeline/agents/pluginEngine/services/pluginRegistry";
+import { resetLLMGate } from "pipeline/llm/gemini";
+import { normalizeItems } from "pipeline/utils/itemNormalizer";
+import "pipeline/agents/pluginEngine/services/problemPlugins";
+import { loadPlugins, listPlugins } from "pipeline/agents/pluginEngine/services/pluginRegistry";
 
 import {
   initContract,
@@ -42,16 +42,16 @@ import {
   clearContract,
   appendGatekeeperPrescription,
   setStyleConstraints,
-} from "@/pipeline/agents/scribe/WriterContractStore";
+} from "pipeline/agents/scribe/WriterContractStore";
 import { loadOrDefaultTeacherProfile } from "@/services_new/teacherProfileService";
-import { injectProfileIntoUAR } from "@/pipeline/agents/architect/conflictResolution";
-import { withConcurrencyLimit } from "@/pipeline/utils/concurrency";
+import { injectProfileIntoUAR } from "pipeline/agents/architect/conflictResolution";
+import { withConcurrencyLimit } from "pipeline/utils/concurrency";
 
 // ── Plugin-Based Instruction Engine imports ─────────────────────────────────
 import {
   getConceptGraph,
   resetConceptGraph,
-} from "@/pipeline/agents/pluginEngine/conceptGraph";
+} from "pipeline/agents/pluginEngine/conceptGraph";
 // Bootstrap plugin registration (templates, diagrams, LLM fallback)
 // (problemPlugins barrel already imported above; InputJudge is dynamically imported in the pipeline body)
 
@@ -366,7 +366,7 @@ export async function create(request: UnifiedAssessmentRequest) {
 export async function runCreatePipeline(
   uar: UnifiedAssessmentRequest,
   _depth = 0,
-  onItemsProgress?: (partialItems: import("@/pipeline/agents/writer/types").GeneratedItem[]) => void
+  onItemsProgress?: (partialItems: import("pipeline/agents/writer/types").GeneratedItem[]) => void
 ) {
   // ── Recursion guard ────────────────────────────────────────────────────────
   if (_depth >= 2) {

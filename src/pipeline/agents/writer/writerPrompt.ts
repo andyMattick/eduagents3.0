@@ -1,4 +1,4 @@
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
 import type { WriterSlot } from "./types";
 
 export interface WriterContext {

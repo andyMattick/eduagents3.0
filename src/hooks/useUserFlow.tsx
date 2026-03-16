@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
+import { UnifiedAssessmentResponse } from "pipeline/contracts";
 
 /** Inline type — original SectionBuilder module was removed during restructuring */
 export interface CustomSection {

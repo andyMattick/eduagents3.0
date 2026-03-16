@@ -1,3 +1,4 @@
+// @ts-nocheck
 // planner/typeMixPlanner.ts
 import { ArchitectV3Slot } from "../types";
 

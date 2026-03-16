@@ -1,5 +1,5 @@
 // pipeline/agents/architect/buildArchitectUAR.ts
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 
 export interface ArchitectUAR {
   version: "3.2";
@@ -42,4 +42,4 @@ export function buildArchitectUAR(uar: UnifiedAssessmentRequest): ArchitectUAR {
   };
 }
 
-import { inferQuestionCount } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { inferQuestionCount } from "pipeline/contracts/UnifiedAssessmentRequest";

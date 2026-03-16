@@ -1,6 +1,6 @@
-import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { BlueprintPlanV3_2 } from "pipeline/contracts/BlueprintPlanV3_2";
 import { WriterContext, ScribePrescriptions } from "../writer/writerPrompt";
-import { getPrompt, getAnswer, getOptions } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getAnswer, getOptions } from "pipeline/utils/itemNormalizer";
 export function buildRewriterPrompt(
   slot: BlueprintPlanV3_2["slots"][number],
   context: WriterContext,

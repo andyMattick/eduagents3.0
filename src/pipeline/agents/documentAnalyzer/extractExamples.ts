@@ -1,4 +1,4 @@
-import type { DocumentExample } from "@/pipeline/contracts";
+import type { DocumentExample } from "pipeline/contracts";
 
 export function extractExamples(text: string): DocumentExample[] {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);

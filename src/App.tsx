@@ -20,7 +20,7 @@ import { TemplatesPage, TemplateSummaryPage, TemplateWizardPage } from './compon
 import type { TemplateOption } from './components_new/templates';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
-import { AnalyzerV2 } from "@/pipeline/analyzerV2/analyzerV2";
+import { AnalyzerV2 } from "./pipeline/analyzerV2/analyzerV2";
 (window as any).AnalyzerV2 = AnalyzerV2;
 
 import { saveAnalyzerOutput } from "./pipeline/persistence/saveAnalyzerOutput";

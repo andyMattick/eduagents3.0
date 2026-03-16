@@ -1,4 +1,4 @@
-import { getPrompt } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt } from "pipeline/utils/itemNormalizer";
 
 /**
  * trueFalseFormatter.ts

@@ -1,6 +1,6 @@
-import { DerivedTemplate } from "@/pipeline/contracts/deriveTemplate";
-import { ItemType, CognitiveIntent, Difficulty, SharedContext } from "@/pipeline/contracts/Blueprint";
-import { DeriveTemplateRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
+import { DerivedTemplate } from "pipeline/contracts/deriveTemplate";
+import { ItemType, CognitiveIntent, Difficulty, SharedContext } from "pipeline/contracts/Blueprint";
+import { DeriveTemplateRequest } from "pipeline/contracts/UnifiedAssessmentRequest";
 
 export interface TemplateDeriverContext {
   request: DeriveTemplateRequest;

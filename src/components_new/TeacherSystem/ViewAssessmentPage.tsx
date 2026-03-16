@@ -1,4 +1,4 @@
-export function ViewAssessmentPage({ assignmentId }) {
+export function ViewAssessmentPage({ assignmentId }: { assignmentId: string }) {
   return (
     <div className="page-container">
       <h1 className="page-title">Assessment #{assignmentId}</h1>

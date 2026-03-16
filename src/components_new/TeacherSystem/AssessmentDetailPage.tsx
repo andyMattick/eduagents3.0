@@ -7,20 +7,20 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/supabase/client";
-import type { FinalAssessment } from "@/pipeline/agents/builder/FinalAssessment";
-import type { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import type { FinalAssessment } from "pipeline/agents/builder/FinalAssessment";
+import type { UnifiedAssessmentRequest } from "pipeline/contracts";
 import { generateAssessment } from "@/config/aiConfig";
 import { AssessmentViewer } from "../Pipeline/AssessmentViewer";
 import { ReportResultsPage } from "./ReportResultsPage";
-import { analyzeResults } from "@/pipeline/agents/analyzeResults";
-import type { PerformanceEntry, AnalysisResult } from "@/pipeline/agents/analyzeResults";
+import { analyzeResults } from "pipeline/agents/analyzeResults";
+import type { PerformanceEntry, AnalysisResult } from "pipeline/agents/analyzeResults";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import type { AgentDossierData } from "@/system/dossier/DossierManager";
 import {
   adjustPacingFromFeedback,
   type PacingFeedback,
 } from "@/services_new/teacherProfileService";
-import { classifyTrace } from "@/pipeline/agents/classifyTrace";
+import { classifyTrace } from "pipeline/agents/classifyTrace";
 import { sendPipelineReport } from "@/services_new/pipelineReportService";
 import type { ReportSource } from "@/services_new/pipelineReportService";
 import "./AssessmentDetailPage.css";

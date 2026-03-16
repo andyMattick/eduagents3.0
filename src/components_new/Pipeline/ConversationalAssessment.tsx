@@ -9,11 +9,11 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import type { TeacherProfile, ResolvedCourseDefaults } from "@/types/teacherProfile";
 import { DEFAULT_PACING_SECONDS } from "@/types/teacherProfile";
 import { resolveCourseDefaults } from "@/services_new/teacherProfileService";
-import { evaluateFeasibility } from "@/pipeline/agents/architect/feasibility";
-import { UI_PROBLEM_TYPES } from "@/pipeline/problemTypes/uiProblemTypes";
-import { getProblemTypesForSubjectAndGrade } from "@/pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
-import { inferGradeBand } from "@/pipeline/problemTypes/inferGradeBand";
-import { analyzeDocument, analyzeDocumentText } from "@/pipeline/agents/documentAnalyzer";
+import { evaluateFeasibility } from "../../pipeline/agents/architect/feasibility";
+import { UI_PROBLEM_TYPES } from "../../pipeline/problemTypes/uiProblemTypes";
+import { getProblemTypesForSubjectAndGrade } from "../../pipeline/problemTypes/getProblemTypesForSubjectAndGrade";
+import { inferGradeBand } from "../../pipeline/problemTypes/inferGradeBand";
+import { analyzeDocument, analyzeDocumentText } from "../../pipeline/agents/documentAnalyzer";
 
 // ── Chip option data ──────────────────────────────────────────────────────────
 

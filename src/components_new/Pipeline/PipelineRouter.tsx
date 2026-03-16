@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { ConversationalAssessmentWrapper } from "./ConversationalAssessmentWrapper";
-import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
+import { UnifiedAssessmentResponse } from "../../pipeline/contracts";
 import { TraceViewer } from "@/components_new/TraceViewer";
 import { AssessmentViewer } from "./AssessmentViewer";
 import { GenerationPreview } from "./GenerationPreview";
@@ -25,9 +25,9 @@ export function PipelineRouter({
   const [partialItems, setPartialItems] = useState<any[]>([]);
   const [previewBlueprint, setPreviewBlueprint] = useState<any>(null);
 
-  const handlePipelineResult = useCallback((result: UnifiedAssessmentResponse) => {
+  const handlePipelineResult = useCallback((result: unknown) => {
     console.log("Pipeline result:", result);
-    setAssessment(result);
+    setAssessment(result as UnifiedAssessmentResponse);
     setShowForm(false);
   }, []);
 

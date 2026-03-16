@@ -8,9 +8,9 @@
  */
 
 import { useState } from "react";
-import type { PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
-import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
-import type { TopicRefinementResult } from "@/pipeline/agents/architect/topicRefiner";
+import type { PromptEngineerResult } from "../../pipeline/agents/promptEngineer";
+import type { FeasibilityReport } from "../../pipeline/agents/architect/feasibility";
+import type { TopicRefinementResult } from "../../pipeline/agents/architect/topicRefiner";
 
 function getEstimateMessage(seconds: number): string {
   if (seconds < 90) return "Estimated time: ~1 minute";

@@ -12,7 +12,7 @@
  *   - No Math.round, no silent pad/trim
  */
 
-import type { CognitiveProcess } from "@/pipeline/contracts/BlueprintPlanV3_2";
+import type { CognitiveProcess } from "pipeline/contracts/BlueprintPlanV3_2";
 
 export class FatalDistributionError extends Error {
   constructor(message: string) {

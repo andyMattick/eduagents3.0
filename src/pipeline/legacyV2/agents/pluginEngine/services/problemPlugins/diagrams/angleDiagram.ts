@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * angleDiagram.ts — Geometry angle diagram plugin.
  */

@@ -2,7 +2,7 @@ import type { BlueprintPlanV3_2 } from "@/types/Blueprint";
 import type { BlueprintSlot } from "@/types/Blueprint";
 import type { GeneratedItem } from "../writer/types";
 import { internalLogger } from "../shared/internalLogging";
-import { getPrompt, getPassage, getAnswer, getOptions } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getPassage, getAnswer, getOptions } from "pipeline/utils/itemNormalizer";
 
 export interface GatekeeperViolation {
   slotId: string;

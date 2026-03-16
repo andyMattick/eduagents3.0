@@ -1,9 +1,9 @@
 // src/pipeline/orchestrator/compare.ts
 
 import { mapToComparisonProfile } from "../mapper/mapToComparisonProfile";
-import { runPhilosopher } from "@/pipeline/agents/philosopher";
-import { runComparator } from "@/pipeline/agents/document/comparator";
-import { buildDocumentInsights } from "@/pipeline/agents/document/insights";
+import { runPhilosopher } from "pipeline/agents/philosopher";
+import { runComparator } from "pipeline/agents/document/comparator";
+import { buildDocumentInsights } from "pipeline/agents/document/insights";
 
 type CompareMode = "general" | "difficulty" | "coverage" | "preparation";
 

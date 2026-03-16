@@ -4,8 +4,8 @@ import { supabase } from "@/supabase/client";
 import { DossierManager } from "@/system/dossier/DossierManager";
 import { updateWriterAgentDossier } from "@/system/dossier/updateWriterAgentDossier";
 import type { WriterRunSummary } from "@/system/dossier/types/WriterRunSummary";
-import type { GatekeeperReport } from "@/pipeline/agents/gatekeeper/GatekeeperReport";
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts";
+import type { GatekeeperReport } from "pipeline/agents/gatekeeper/GatekeeperReport";
+import { UnifiedAssessmentRequest } from "pipeline/contracts";
 import {
   GuardrailRule,
   mergeGuardrails,
@@ -13,7 +13,7 @@ import {
   getInjectableGuardrails
 } from "./GuardrailEngine";
 import { internalLogger } from "../shared/internalLogging";
-import { getPrompt, getAnswer, getOptions, getPassage } from "@/pipeline/utils/itemNormalizer";
+import { getPrompt, getAnswer, getOptions, getPassage } from "pipeline/utils/itemNormalizer";
 
 export class SCRIBE {
 

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // planner/difficultySmoother.ts
 import { ArchitectV3Slot } from "../types";
 

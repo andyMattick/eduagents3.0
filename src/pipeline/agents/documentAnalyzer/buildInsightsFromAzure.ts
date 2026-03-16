@@ -13,7 +13,7 @@
  * step, not the analysis step.
  */
 
-import type { DocumentInsights, DocumentPage, DocumentSection, DocumentTable } from "@/pipeline/contracts";
+import type { DocumentInsights, DocumentPage, DocumentSection, DocumentTable } from "pipeline/contracts";
 import { buildDocumentInsights } from "./buildDocumentInsights";
 import type { AzureExtractResult } from "./extractAzureText";
 

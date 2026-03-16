@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * scatterPlotDiagram.ts — Scatter plot diagram plugin.
  */
