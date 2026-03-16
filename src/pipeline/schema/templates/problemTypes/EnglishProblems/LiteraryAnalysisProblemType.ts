@@ -12,7 +12,7 @@ export const LiteraryAnalysisProblemType = {
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
     supports: {
-    passageBased: true,
+    requiresPassage: true,
     shortAnswer: true,
     extendedResponse: true,
     analysis: true

@@ -1,45 +1,28 @@
-import { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import { Blueprint } from "@/pipeline/contracts/Blueprint";
-import { callGemini } from "@/pipeline/llm/gemini"; // your wrapper
-import { WriterOutput } from "@/pipeline/contracts/writerModels"; // optional but recommended
+import { loadTemplate } from "./templates/registry";
+import { ensureMetadata, type WriterSlot } from "./types";
+import { buildWriterPrompt } from "./writerPrompt";
 
-/** Build a monolithic writer prompt from the full UAR + plan + constraints */
-function buildWriterCallPrompt(
-  uar: UnifiedAssessmentRequest,
-  plan: Blueprint["plan"],
-  constraints: Blueprint["constraints"]
-): string {
-  return `Generate an assessment for ${uar.topic} (${uar.assessmentType}, grade ${uar.gradeLevels.join(", ")}).
-Plan: ${JSON.stringify(plan, null, 2)}
-Constraints: ${JSON.stringify(constraints, null, 2)}
-Output valid JSON matching the WriterOutput schema.`;
-}
+export async function writerCall(slot: WriterSlot, model: any) {
+  let prompt: string;
+  let metadata: Record<string, unknown> = {};
 
-export async function writerCall(
-  uar: UnifiedAssessmentRequest,
-  plan: Blueprint["plan"],
-  constraints: Blueprint["constraints"]
-): Promise<WriterOutput> {
-  // 1. Build the prompt
-  const prompt = buildWriterCallPrompt(uar, plan, constraints);
-  console.log("[Writer] WriterPrompt:", prompt);   // ← PUT IT HERE
-
-  // 2. Call the model
-  const raw = await callGemini({
-    model: "gemini-2.5-flash",
-    prompt,
-    temperature: 0.2,
-    maxOutputTokens: 4096
-  });
-
-  // 3. Parse JSON safely
-  let parsed: WriterOutput;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new Error("WriterCall: Model did not return valid JSON.");
+  if (slot.generationMethod === "template") {
+    const template = loadTemplate(slot);
+    prompt = template.prompt;
+    metadata = template.metadata ?? {};
+  } else {
+    prompt = buildWriterPrompt(slot);
   }
 
-  // 4. Return the parsed Writer output
-  return parsed;// 4. Validate shape (optional but recommended) if (!parsed.assessment || !parsed.writerSelfCheck) { throw new Error("WriterCall: Missing assessment or writerSelfCheck."); } // 5. Return both assessment + self-check to SCRIBE return { assessment: parsed.assessment, writerSelfCheck: parsed.writerSelfCheck };
+  const llmResponse = await model.generate(prompt);
+
+  return {
+    slotId: slot.slotId,
+    questionType: slot.questionType,
+    prompt,
+    answer: llmResponse?.answer ?? "",
+    options: llmResponse?.options ?? null,
+    rationale: llmResponse?.rationale ?? null,
+    metadata: ensureMetadata({ metadata }, slot),
+  };
 }

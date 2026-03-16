@@ -12,7 +12,7 @@ export const ReadingComprehensionProblemType = {
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
     supports: {
-    passageBased: true,
+    requiresPassage: true,
     mcq: true
   },
 

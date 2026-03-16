@@ -30,40 +30,31 @@ export type {
   ValidationResult,
   GenerationType,
   ProblemPlugin,
-} from "./interfaces";
+  TemplateGeneratedProblem,
+} from "./interfaces/problemPlugin";
 
 // ── Services ─────────────────────────────────────────────────────────────
 export {
   registerPlugin,
   getPlugin,
+  getPlugins,
   getPluginsForTopic,
   listPlugins,
   clearPlugins,
   pluginCount,
-  generateProblem,
-  generateAllProblems,
-  generateDiagram,
-  scoreProblem,
-  scoreAllProblems,
-  analyzeImage,
-  analyzeImageBatch,
-} from "./services";
-export type { PluginScoreEntry, ImageSchema, AnalyzeImageInput } from "./services";
+  loadPlugins,
+} from "./services/pluginRegistry";
+export { problemGeneratorRouter } from "./services/problemGeneratorRouter";
 
-// ── Writer Bridge ────────────────────────────────────────────────────────
-export { wrapPluginOutput, wrapAllPluginOutputs } from "./writer/writerBridge";
-export type { WriterWrapOptions } from "./writer/writerBridge";
-
-// ── Gatekeeper ───────────────────────────────────────────────────────────
-export {
-  validatePluginOutput,
-  validateAllPluginOutputs,
-} from "./gatekeeper/pluginGatekeeper";
-export type { PluginViolation, PluginGatekeeperResult } from "./gatekeeper/pluginGatekeeper";
-
-// ── Builder ──────────────────────────────────────────────────────────────
-export { enrichItemWithPluginData, enrichAllItems } from "./builder/pluginBuilder";
-export type { BuiltAssessmentItem } from "./builder/pluginBuilder";
+// Backward-compatible aliases used by older call sites.
+export { problemGeneratorRouter as generateProblem } from "./services/problemGeneratorRouter";
+export async function generateAllProblems(
+  slots: import("./interfaces/problemPlugin").ProblemSlot[],
+  context: import("./interfaces/problemPlugin").GenerationContext
+) {
+  const { problemGeneratorRouter } = await import("./services/problemGeneratorRouter");
+  return Promise.all(slots.map((slot) => problemGeneratorRouter(slot, context)));
+}
 
 // ── Concept Graph ────────────────────────────────────────────────────────
 export {

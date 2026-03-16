@@ -25,7 +25,7 @@
 
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import type { WriterContext, ScribePrescriptions } from "../writerPrompt";
+import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import type { GeneratedItem } from "../types";
 
 import { callGeminiStreaming } from "@/pipeline/llm/gemini";
@@ -314,7 +314,18 @@ export async function writerParallel(
 
   // Only send non-arithmetic slots to the LLM
   const llmSlots = allSlots.filter(s => !preGeneratedIds.has(s.id));
-  const groups = chunkArray(llmSlots, GROUP_SIZE);
+
+const subject = context.domain?.toLowerCase() ?? "general";
+
+let groups;
+if (["math", "stem"].includes(subject)) {
+  // Force single-slot batches
+  groups = llmSlots.map(s => [s]);
+} else {
+  // Use normal batching for high-surface subjects
+  groups = chunkArray(llmSlots, GROUP_SIZE);
+}
+
 
   console.log(
     `[writerParallel] Dispatching ${groups.length} group(s) of up to ${GROUP_SIZE} slots in parallel` +
@@ -588,8 +599,15 @@ export async function writerParallel(
   finalItems = finalItems.map((item) => {
     const slot = allSlots.find((s) => s.id === item.slotId);
     if (slot) {
+      const routedMethod = slot.templateId
+        ? "template"
+        : slot.diagramType
+        ? "diagram"
+        : slot.imageReferenceId
+        ? "image"
+        : "llm";
       item.metadata = {
-        generationMethod: (item.metadata?.generationMethod ?? slot.generationMethod ?? "llm") as any,
+        generationMethod: (item.metadata?.generationMethod ?? slot.generationMethod ?? routedMethod) as any,
         templateId: item.metadata?.templateId ?? slot.templateId ?? null,
         diagramType: item.metadata?.diagramType ?? slot.diagramType ?? null,
         imageReferenceId: item.metadata?.imageReferenceId ?? slot.imageReferenceId ?? null,

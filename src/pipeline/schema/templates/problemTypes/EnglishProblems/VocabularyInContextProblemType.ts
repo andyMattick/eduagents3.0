@@ -12,7 +12,7 @@ export const VocabularyInContextProblemType = {
   defaultDifficulty: Difficulty.Medium,
   sharedContext: SharedContext.Passage,
     supports: {
-    passageBased: true,
+    requiresPassage: true,
     mcq: true,
     vocabulary: true
   },

@@ -15,6 +15,6 @@ const rawEnglishProblemTypes = [
   VocabularyInContextProblemType,
 ] as const;
 
-export const englishProblemTypes = rawEnglishProblemTypes.map((problemType) =>
-  withTemplate(problemType, "ELA")
+export const englishProblemTypes = rawEnglishProblemTypes.map((templateEntry) =>
+  withTemplate(templateEntry, "ELA")
 );

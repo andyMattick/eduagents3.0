@@ -12,18 +12,18 @@ const foreignLanguageProblemType = withTemplate(ForeignLanguageProblemType, "Wor
 
 // Canonical source for all built-in templates.
 export const allSystemProblemTypes = [
-  ...mathProblemTypes.map((problemType) => problemType.template),
-  ...englishProblemTypes.map((problemType) => problemType.template),
-  ...historyProblemTypes.map((problemType) => problemType.template),
-  ...scienceProblemTypes.map((problemType) => problemType.template),
-  ...stemProblemTypes.map((problemType) => problemType.template),
+  ...mathProblemTypes.map((templateEntry) => templateEntry.template),
+  ...englishProblemTypes.map((templateEntry) => templateEntry.template),
+  ...historyProblemTypes.map((templateEntry) => templateEntry.template),
+  ...scienceProblemTypes.map((templateEntry) => templateEntry.template),
+  ...stemProblemTypes.map((templateEntry) => templateEntry.template),
   foreignLanguageProblemType.template,
 ] as const;
 
 type SystemProblemType = (typeof allSystemProblemTypes)[number];
 
 export const ProblemTypesRegistry = Object.fromEntries(
-  allSystemProblemTypes.map((problemType) => [problemType.id, problemType])
+  allSystemProblemTypes.map((templateEntry) => [templateEntry.id, templateEntry])
 ) as Record<SystemProblemType["id"], SystemProblemType>;
 
 export const systemProblemTypes = ProblemTypesRegistry;

@@ -75,6 +75,8 @@ const patterns = {
   legacySchemaFields: /\b(problemText|correctAnswer|problemType|problemOptions)\b/g,
   legacyMutations: /\bitem\.(prompt|answer|options|passage)\s*=(?!=)/g,
   slotMutations: /\bslot\.(questionType|difficulty|cognitiveDemand)\s*=(?!=)/g,
+  legacyPassagePatterns:
+    /\b(?:slot\.(?:text|sourceText|context|longContext)|raw\.(?:text|source|document|contextText|stimulus|topicText|longContext|passageBased)|passageBased\s*:\s*true|longContext\s*: )\b/g,
 };
 
 const report = {
@@ -82,6 +84,7 @@ const report = {
   legacySchemaFields: {},
   legacyMutations: {},
   slotMutations: {},
+  legacyPassagePatterns: {},
 };
 
 const addHit = (bucketName, relPath, line, pattern) => {
@@ -120,6 +123,8 @@ for (const file of files) {
 // ──────────────────────────────────────────────────────────────────────────────
 
 const importPattern = /import\s+(?:{[^}]*}|[^;]+?)\s+from\s+['"]([^'"]+)['"]/g;
+const sideEffectImportPattern = /import\s+['"]([^'"]+)['"]/g;
+const exportFromPattern = /export\s+(?:type\s+)?(?:\*|{[^}]*})\s+from\s+['"]([^'"]+)['"]/g;
 const requirePattern = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 const importGraph = new Map();
@@ -135,6 +140,18 @@ for (const file of files) {
   importPattern.lastIndex = 0;
   let match;
   while ((match = importPattern.exec(text)) !== null) {
+    const importPath = match[1];
+    imports.add(importPath);
+  }
+
+  sideEffectImportPattern.lastIndex = 0;
+  while ((match = sideEffectImportPattern.exec(text)) !== null) {
+    const importPath = match[1];
+    imports.add(importPath);
+  }
+
+  exportFromPattern.lastIndex = 0;
+  while ((match = exportFromPattern.exec(text)) !== null) {
     const importPath = match[1];
     imports.add(importPath);
   }
@@ -194,6 +211,7 @@ const candidateEntryPoints = [
   'src/pipeline/orchestrator/create.ts',
   'src/pipeline/runPipeline.ts',
   'src/pipeline/orchestrator/runPipeline.ts',
+  'src/pipeline/agents/pluginEngine/index.ts',
   'src/pipeline/architectV3/planner/cognitivePlanner.ts',
   'src/pipeline/architectV3/planner/pacingPlanner.ts',
   'src/pipeline/agents/writer/index.ts',
@@ -215,6 +233,16 @@ for (const file of workspaceFiles) {
   importPattern.lastIndex = 0;
   let match;
   while ((match = importPattern.exec(text)) !== null) {
+    imports.add(match[1]);
+  }
+
+  sideEffectImportPattern.lastIndex = 0;
+  while ((match = sideEffectImportPattern.exec(text)) !== null) {
+    imports.add(match[1]);
+  }
+
+  exportFromPattern.lastIndex = 0;
+  while ((match = exportFromPattern.exec(text)) !== null) {
     imports.add(match[1]);
   }
 

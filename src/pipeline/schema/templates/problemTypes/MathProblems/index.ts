@@ -15,6 +15,6 @@ const rawMathProblemTypes = [
   GraphInterpretationProblemType,
 ] as const;
 
-export const mathProblemTypes = rawMathProblemTypes.map((problemType) =>
-  withTemplate(problemType, "Math")
+export const mathProblemTypes = rawMathProblemTypes.map((templateEntry) =>
+  withTemplate(templateEntry, "Math")
 );

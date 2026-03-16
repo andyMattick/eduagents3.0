@@ -10,11 +10,20 @@
 import { useState } from "react";
 import type { PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
 import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
+import type { TopicRefinementResult } from "@/pipeline/agents/architect/topicRefiner";
+
+function getEstimateMessage(seconds: number): string {
+  if (seconds < 90) return "Estimated time: ~1 minute";
+  if (seconds <= 150) return "This run may take longer than usual.";
+  if (seconds <= 240) return "This run may take 2-4 minutes.";
+  return "Consider narrowing the topic or reducing question count.";
+}
 
 interface PromptEngineerPanelProps {
   result: PromptEngineerResult;
   /** Pre-generation feasibility report — shown as contextual warning before pipeline fires. */
   feasibility?: FeasibilityReport;
+  topicRefinement?: TopicRefinementResult;
   onProceed: () => void;
   onEdit: () => void;
   /** Allow teacher to override a blocked result and generate anyway */
@@ -24,6 +33,7 @@ interface PromptEngineerPanelProps {
 export function PromptEngineerPanel({
   result,
   feasibility,
+  topicRefinement,
   onProceed,
   onEdit,
   onOverride,
@@ -36,6 +46,9 @@ export function PromptEngineerPanel({
   // Generation is blocked until the teacher confirms the grade-text mismatch
   // (or until there is no such warning).
   const isGradeTextBlocked = !!gradeTextWarning && !gradeTextConfirmed;
+  // Hard block only when the topic is definitely broad by latency signal.
+  const isRefinementBlocked =
+    !!topicRefinement?.needsRefinement && topicRefinement.reason === "high_estimated_time";
 
   return (
     <div className="pe-panel" style={{
@@ -84,11 +97,7 @@ export function PromptEngineerPanel({
       }}>
         <span style={{ fontSize: "1rem", flexShrink: 0 }}>⏱</span>
         <span>
-          <strong style={{ color: "#1f2937" }}>Estimated creation time:</strong>{" "}
-          {result.estimatedCreationSeconds < 60
-            ? `~${result.estimatedCreationSeconds} seconds`
-            : `~${Math.round(result.estimatedCreationSeconds / 60 * 10) / 10} minutes`
-          }
+          <strong style={{ color: "#1f2937" }}>{getEstimateMessage(result.estimatedCreationSeconds)}</strong>
         </span>
         <span style={{
           marginLeft: "auto",
@@ -118,6 +127,32 @@ export function PromptEngineerPanel({
           <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
             {result.contradictions.map((c, i) => (
               <li key={i} style={{ color: "#991b1b", marginBottom: "0.25rem" }}>{c}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Topic refinement guardrail */}
+      {topicRefinement?.needsRefinement && (
+        <div style={{
+          marginTop: "0.75rem",
+          marginBottom: "0.25rem",
+          padding: "0.75rem 1rem",
+          background: "var(--adp-warn-bg, rgba(255, 251, 235, 0.92))",
+          border: "1px solid var(--adp-warn-border, #f59e0b)",
+          borderRadius: "8px",
+          fontSize: "0.85rem",
+          lineHeight: 1.5,
+          color: "var(--adp-warn-fg, #78350f)",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: "0.35rem", color: "var(--adp-warn-heading, #92400e)", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+            <span>🎯</span>
+            <span>Topic Refinement Recommended</span>
+          </div>
+          <p style={{ margin: "0 0 0.4rem" }}>{topicRefinement.prompt}</p>
+          <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+            {topicRefinement.suggestions.map((suggestion, index) => (
+              <li key={index} style={{ marginBottom: "0.2rem" }}>{suggestion}</li>
             ))}
           </ul>
         </div>
@@ -208,24 +243,60 @@ export function PromptEngineerPanel({
             ← Edit Inputs
           </button>
 
-          {!result.shouldBlock && (
-            <button
-              onClick={onProceed}
-              style={{
-                padding: "0.5rem 1.25rem",
-                borderRadius: "6px",
-                border: "none",
-                background: "#4f46e5",
-                color: "#fff",
-                cursor: "pointer",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-              }}
-            >
-              {feasibility?.adjustedQuestionCount != null
-                ? `Generate Assessment (adjusted to ${feasibility.adjustedQuestionCount} questions) →`
-                : "Generate Assessment →"}
-            </button>
+          {!result.shouldBlock && !isRefinementBlocked && (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+              <button
+                onClick={onProceed}
+                style={{
+                  padding: "0.5rem 1.25rem",
+                  borderRadius: "6px",
+                  border: "none",
+                  background: "#4f46e5",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                }}
+              >
+                {feasibility?.adjustedQuestionCount != null
+                  ? `Generate Assessment (adjusted to ${feasibility.adjustedQuestionCount} questions) →`
+                  : "Generate Assessment →"}
+              </button>
+              <span style={{ fontSize: "0.8rem", color: "var(--text-secondary, #4b5563)" }}>
+                {getEstimateMessage(result.estimatedCreationSeconds)}
+              </span>
+              {topicRefinement?.needsRefinement && (
+                <span style={{ fontSize: "0.8rem", color: "var(--adp-warn-heading, #92400e)", fontWeight: 600 }}>
+                  Narrowing this topic first will improve quality and speed.
+                </span>
+              )}
+            </div>
+          )}
+
+          {!result.shouldBlock && isRefinementBlocked && (
+            <>
+              <span style={{ fontSize: "0.82rem", color: "var(--adp-warn-heading, #92400e)", alignSelf: "center" }}>
+                Topic is too broad for the current run size. Edit topic, or generate anyway.
+              </span>
+              {onOverride && (
+                <button
+                  onClick={onOverride}
+                  style={{
+                    padding: "0.5rem 1.1rem",
+                    borderRadius: "6px",
+                    border: "1.5px solid var(--adp-warn-border, #d97706)",
+                    background: "var(--adp-warn-bg-soft, rgba(217,119,6,0.08))",
+                    color: "var(--adp-warn-heading, #92400e)",
+                    cursor: "pointer",
+                    fontSize: "0.82rem",
+                    fontWeight: 600,
+                  }}
+                  title="Generate anyway — quality and latency may degrade for broad topics"
+                >
+                  ⚠️ Generate Anyway
+                </button>
+              )}
+            </>
           )}
 
           {result.shouldBlock && (

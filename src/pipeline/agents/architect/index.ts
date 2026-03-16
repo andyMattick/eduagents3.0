@@ -7,10 +7,25 @@ import { runConstraintEngine } from "./constraintEngine";
 import { resolveRigorProfile } from "./rigorProfile";
 import { adjustPlanForTime, TIME_TOLERANCE_MINUTES } from "./adjustPlanForTime";
 import { allocateBloomCounts } from "./allocateBloomCounts";
+import { estimateGenerationTime } from "./estimateTime";
+import { computeSlotComplexity } from "./complexity/computeSlotComplexity";
+import { enforceComplexityCap } from "./complexity/enforceComplexityCap";
+import { getComplexityCapForAssessmentType } from "./complexity/complexityCaps";
 import { evaluateFeasibility, type FeasibilityReport } from "./feasibility";
 import type { TeacherProfile } from "@/types/teacherProfile";
 import { ProblemSlot } from "../../agents/pluginEngine";
-import { assignPluginFields } from "./assignPluginFields";
+import { chooseTaskType } from "./chooseTaskType";
+import { applyNarrowing } from "./planners/narrowing/narrowingPlanner";
+import { extractFromDocument } from "./extractors/passageExtractor";
+import {
+  buildELASlot,
+  buildHistorySlot,
+  buildScienceSlot,
+  buildMathSlot,
+  buildSTEMSlot,
+  buildGeneralSlot,
+} from "./slotBuilders";
+
 
 
 import {
@@ -37,7 +52,6 @@ export const QUESTION_TYPE_TEMPLATE_MAP: Record<string, string> = {
   shortAnswer: "linear_equation_template",
 };
 
-
 export async function runArchitect({
   uar,
   agentId: _agentId,
@@ -55,6 +69,40 @@ export async function runArchitect({
   // 0. Normalize to ArchitectUAR before any planning
   //
   const architectUAR = buildArchitectUAR(uar);
+
+  // 0a. Narrow broad teacher topics before slot construction.
+  const narrowedContext = applyNarrowing({
+    courseSubject: architectUAR.domain,
+    topic: architectUAR.topic ?? architectUAR.unitName,
+  });
+  const governedTopic = narrowedContext.topic ?? architectUAR.topic ?? "the topic";
+  const governedMicroTopic =
+    (narrowedContext.narrowedTopic as { microTopic?: string } | undefined)?.microTopic ?? null;
+  const narrowedTextAnchor = governedMicroTopic ?? governedTopic;
+  const sourceDocumentText = (uar.sourceDocuments ?? [])
+    .map((document) => document.content?.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  const fallbackDocumentText = [
+    architectUAR.topic,
+    architectUAR.lessonName,
+    architectUAR.unitName,
+    architectUAR.additionalDetails,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const extractedText = extractFromDocument(
+    sourceDocumentText || fallbackDocumentText,
+    architectUAR.domain,
+    narrowedTextAnchor
+  );
+
+  if (extractedText.passage) {
+    console.info(
+      `[Architect] Extracted text anchor for ${architectUAR.domain}: ` +
+      `${Math.min(extractedText.passage.split(/\s+/).length, 250)} passage words`
+    );
+  }
 
   //
   // 0b. Constraint engine — classify, arbitrate, and translate teacher notes
@@ -389,6 +437,12 @@ export async function runArchitect({
       id: `slot_${i + 1}`,
       questionType,
       cognitiveDemand: cp,
+      topic: governedTopic,
+      sharedContext: governedMicroTopic,
+      passage: extractedText.passage || undefined,
+      paragraph: extractedText.paragraph || undefined,
+      excerpt: extractedText.excerpt || undefined,
+      passageId: extractedText.passage ? "source-passage-1" : null,
       difficulty: difficultyModifier === "low" ? "easy" :
                   difficultyModifier === "medium" ? "medium" : "hard",
       pacing: "normal",
@@ -396,6 +450,16 @@ export async function runArchitect({
       media: questionType === "image"
         ? { type: "image", url: undefined, alt: undefined }
         : undefined,
+    };
+
+    // NEW: subject‑specific taskType
+    slot.constraints = {
+      ...(slot.constraints ?? {}),
+      taskType: chooseTaskType(
+        architectUAR.domain ?? "",
+        questionType,
+        governedTopic
+      ),
     };
 
     // ── Arithmetic slot: inject operation + range + pacing override ──────────────
@@ -455,6 +519,9 @@ export async function runArchitect({
         ...slots[passageIdx],
         questionType: "passageBased",
         requiresPassage: true,
+        passage: slots[passageIdx].passage ?? extractedText.passage,
+        paragraph: slots[passageIdx].paragraph ?? extractedText.paragraph,
+        excerpt: slots[passageIdx].excerpt ?? extractedText.excerpt,
         constraints: {
           ...slots[passageIdx].constraints,
           passageBased: { passageLength: "medium", questionCount: 3 },
@@ -662,9 +729,20 @@ export async function runArchitect({
 
   // Propagate all mutations back into finalPlan
   const adjustedSlots          = timeAdjResult.slots;
-  const realisticTotalSeconds  = timeAdjResult.realisticTotalSeconds;
   const realisticTotalMinutes  = timeAdjResult.realisticTotalMinutes;
   const adjustedDepthCeiling   = timeAdjResult.effectiveDepthCeiling;
+  const complexityCap = getComplexityCapForAssessmentType(architectUAR.assessmentType);
+  const complexityAdjustedSlots = enforceComplexityCap(adjustedSlots, complexityCap);
+  const totalComplexity = complexityAdjustedSlots.reduce(
+    (sum: number, slot: any) => sum + computeSlotComplexity(slot),
+    0
+  );
+  const complexityTrimmedCount = adjustedSlots.length - complexityAdjustedSlots.length;
+  const complexityRealisticTotalSeconds = complexityAdjustedSlots.reduce(
+    (sum: number, slot: any) => sum + estimateSlotSeconds(slot.questionType, slot.cognitiveDemand),
+    0
+  );
+  const complexityRealisticTotalMinutes = Math.round(complexityRealisticTotalSeconds / 60);
 
   if (timeAdjResult.adjustments.length > 0) {
     console.info(
@@ -679,16 +757,16 @@ export async function runArchitect({
   const adjustedCognitiveDist: BlueprintPlanV3_2["cognitiveDistribution"] = {
     remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0,
   };
-  for (const slot of adjustedSlots) {
+  for (const slot of complexityAdjustedSlots) {
     const cp = (slot.cognitiveDemand ?? "understand") as CognitiveProcess;
     if (cp in adjustedCognitiveDist) {
-      adjustedCognitiveDist[cp] += 1 / adjustedSlots.length;
+      adjustedCognitiveDist[cp] += 1 / complexityAdjustedSlots.length;
     }
   }
 
   // Post-adjustment slot count assertion — must have at least 1 slot and
   // must not exceed the originally requested questionCount.
-  const adjustedQuestionCount = adjustedSlots.length;
+  const adjustedQuestionCount = complexityAdjustedSlots.length;
   if (adjustedQuestionCount < 1) {
     throw new Error(
       `[Architect] Post-time-adjustment produced 0 slots for a ${architectUAR.timeMinutes}-min window.`
@@ -721,17 +799,22 @@ export async function runArchitect({
     "transfer to a new context",
     "evaluation of an approach or solution",
   ];
-  const topicBase = architectUAR.topic ?? architectUAR.unitName ?? "the topic";
-  for (let angleIdx = 0; angleIdx < adjustedSlots.length; angleIdx++) {
-    (adjustedSlots[angleIdx] as any).topicAngle =
+  const topicBase = extractedText.excerpt || architectUAR.topic || architectUAR.unitName || "the topic";
+  for (let angleIdx = 0; angleIdx < complexityAdjustedSlots.length; angleIdx++) {
+    (complexityAdjustedSlots[angleIdx] as any).topicAngle =
       `${topicBase} — ${TOPIC_ANGLE_BANK[angleIdx % TOPIC_ANGLE_BANK.length]}`;
   }
 
   // Update the plan in-place with time-adjusted values
-  (finalPlan as any).slots              = adjustedSlots;
+  (finalPlan as any).slots              = complexityAdjustedSlots;
   (finalPlan as any).questionCount      = adjustedQuestionCount;
   (finalPlan as any).depthCeiling       = adjustedDepthCeiling;
   (finalPlan as any).cognitiveDistribution = adjustedCognitiveDist;
+
+  const estimatedSeconds = estimateGenerationTime(
+    complexityAdjustedSlots,
+    architectUAR.domain ?? "general"
+  );
 
   //
   // 11. Constraints + writerPrompt + Blueprint
@@ -761,54 +844,51 @@ export async function runArchitect({
     );
   }
 
+  if (complexityTrimmedCount > 0) {
+    warnings.push(
+      `Complexity cap enforced: removed ${complexityTrimmedCount} high-complexity slot${complexityTrimmedCount === 1 ? "" : "s"} ` +
+      `to keep the ${architectUAR.assessmentType} within the complexity budget of ${complexityCap}.`
+    );
+  }
 
-function buildProblemSlot(s: any, context: any): ProblemSlot {
-  const normalizedType = String(s.questionType).trim();
-  const rawTopic = s.topicAngle ?? context.topic ?? "";
-  const normalizedTopic = String(rawTopic)
-    .toLowerCase()
-    .replace(/—/g, "-")            // normalize em-dash
-    .replace(/[^a-z0-9\s-]/g, "")   // remove punctuation
-    .replace(/\s+/g, " ")           // collapse spaces
-    .trim()
-    .split("-")[0]                  // keep only the part before the dash
-    .trim();
+  warnings.push(
+    `Complexity summary: total slot complexity ${totalComplexity.toFixed(2)} / ${complexityCap.toFixed(2)} after enforcement.`
+  );
 
+  if (teacherWantsPassage && !extractedText.passage) {
+    warnings.push(
+      "Passage extraction warning: no usable source text was found, so passage-based items may fall back to topic-only generation."
+    );
+  }
 
-  // NEW: topic-based plugin assignment
-  const plugin = assignPluginFields(normalizedTopic, normalizedType);
+const domain = String(uar.course ?? architectUAR.domain ?? "").toLowerCase();
 
-  console.log("[SlotBuilder] Built slot:", {
-    slot_id: s.id,
-    questionType: normalizedType,
-    topic: normalizedTopic,
-
-  });
-
-
-  return {
-    questionType: normalizedType,   // or request.questionTypes[i]
-
-    slot_id: s.id,
-    problem_source: plugin.problem_source as "template" | "diagram" | "image_analysis" | "llm",
-
-
-    problem_type: normalizedType,
-    template_id: plugin.template_id,
-    diagram_type: plugin.diagram_type,
-    image_reference_id: plugin.image_reference_id,
-    topic: normalizedTopic,
-    subtopic: null,
-    difficulty: s.difficulty ?? "medium",
-    pacing_seconds: s.pacingSeconds ?? null,
-    question_format: normalizedType,
-    cognitive_demand: s.cognitiveDemand ?? null,
-  };
+function buildSlotByDomain(domainValue: string, rawSlot: any, context: any): ProblemSlot {
+  switch (domainValue) {
+    case "ela":
+      return buildELASlot(rawSlot, context);
+    case "history":
+    case "socialstudies":
+    case "social studies":
+    case "civics":
+    case "government":
+      return buildHistorySlot(rawSlot, context);
+    case "science":
+      return buildScienceSlot(rawSlot, context);
+    case "math":
+    case "mathematics":
+      return buildMathSlot(rawSlot, context);
+    case "stem":
+    case "computer science":
+    case "cs":
+      return buildSTEMSlot(rawSlot, context);
+    default:
+      return buildGeneralSlot(rawSlot, context);
+  }
 }
 
-
-const problemSlots = (finalPlan.slots ?? []).map(s =>
-  buildProblemSlot(s, architectUAR)
+const problemSlots = (finalPlan.slots ?? []).map((rawSlot) =>
+  buildSlotByDomain(domain, rawSlot, architectUAR)
 );
 
 
@@ -817,8 +897,9 @@ const problemSlots = (finalPlan.slots ?? []).map(s =>
     writerPrompt: "",
     plan: {
       ...finalPlan,
-      realisticTotalSeconds,
-      realisticTotalMinutes,
+      realisticTotalSeconds: complexityRealisticTotalSeconds,
+      realisticTotalMinutes: complexityRealisticTotalMinutes,
+      estimatedSeconds,
     },
     problemSlots,
     constraints: {

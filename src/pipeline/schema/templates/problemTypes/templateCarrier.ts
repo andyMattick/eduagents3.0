@@ -68,13 +68,13 @@ function fallbackPreviewItems(template: Omit<SystemTemplate, "previewItems">): A
   ];
 }
 
-function normalizePreviewItems(problemType: LegacyProblemType, templateBase: Omit<SystemTemplate, "previewItems">): unknown[] {
-  if (Array.isArray(problemType.previewItems) && problemType.previewItems.length > 0) {
-    return problemType.previewItems;
+function normalizePreviewItems(legacyShape: LegacyProblemType, templateBase: Omit<SystemTemplate, "previewItems">): unknown[] {
+  if (Array.isArray(legacyShape.previewItems) && legacyShape.previewItems.length > 0) {
+    return legacyShape.previewItems;
   }
 
-  if (Array.isArray(problemType.examples) && problemType.examples.length > 0) {
-    return problemType.examples.slice(0, 2).map((example, idx) => ({
+  if (Array.isArray(legacyShape.examples) && legacyShape.examples.length > 0) {
+    return legacyShape.examples.slice(0, 2).map((example, idx) => ({
       prompt: String(example),
       answer: `Sample answer outline ${idx + 1}`,
     }));
@@ -83,26 +83,26 @@ function normalizePreviewItems(problemType: LegacyProblemType, templateBase: Omi
   return fallbackPreviewItems(templateBase);
 }
 
-export function withTemplate<T extends LegacyProblemType>(problemType: T, fallbackSubject: string): ProblemTypeWithTemplate<T> {
+export function withTemplate<T extends LegacyProblemType>(legacyShape: T, fallbackSubject: string): ProblemTypeWithTemplate<T> {
   const templateBase: Omit<SystemTemplate, "previewItems"> = {
-    id: normalizeString(problemType.id, "unknown_template"),
-    label: normalizeString(problemType.label, problemType.id),
-    subject: normalizeString(problemType.subject ?? problemType.Subject, fallbackSubject),
-    itemType: normalizeString(problemType.itemType, "short_answer"),
-    cognitiveIntent: normalizeString(problemType.defaultIntent ?? problemType.cognitiveIntent, "analyze"),
-    difficulty: normalizeString(problemType.defaultDifficulty ?? problemType.difficulty, "medium"),
-    sharedContext: normalizeString(problemType.sharedContext, "none"),
-    configurableFields: problemType.configurableFields ?? {},
-    examples: Array.isArray(problemType.examples) ? problemType.examples : undefined,
+    id: normalizeString(legacyShape.id, "unknown_template"),
+    label: normalizeString(legacyShape.label, legacyShape.id),
+    subject: normalizeString(legacyShape.subject ?? legacyShape.Subject, fallbackSubject),
+    itemType: normalizeString(legacyShape.itemType, "short_answer"),
+    cognitiveIntent: normalizeString(legacyShape.defaultIntent ?? legacyShape.cognitiveIntent, "analyze"),
+    difficulty: normalizeString(legacyShape.defaultDifficulty ?? legacyShape.difficulty, "medium"),
+    sharedContext: normalizeString(legacyShape.sharedContext, "none"),
+    configurableFields: legacyShape.configurableFields ?? {},
+    examples: Array.isArray(legacyShape.examples) ? legacyShape.examples : undefined,
   };
 
   const template: SystemTemplate = {
     ...templateBase,
-    previewItems: normalizePreviewItems(problemType, templateBase),
+    previewItems: normalizePreviewItems(legacyShape, templateBase),
   };
 
   return {
-    ...problemType,
+    ...legacyShape,
     subject: template.subject,
     template,
   };

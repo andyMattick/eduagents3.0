@@ -11,6 +11,7 @@ import { generateAssessment } from "@/config/aiConfig";
 import { runPromptEngineer, type PromptEngineerResult } from "@/pipeline/agents/promptEngineer";
 import { runFeasibilityPrecheck } from "@/pipeline/agents/architect/feasibilityPrecheck";
 import type { FeasibilityReport } from "@/pipeline/agents/architect/feasibility";
+import { evaluateTopicRefinement, type TopicRefinementResult } from "@/pipeline/agents/architect/topicRefiner";
 import { runTeacherRewrite } from "@/pipeline/agents/rewriter/teacherRewrite";
 import { SCRIBE } from "@/pipeline/agents/scribe/SCRIBE";
 import type { MinimalTeacherIntent } from "@/pipeline/contracts";
@@ -34,6 +35,13 @@ interface ConversationalAssessmentWrapperProps {
   /** Soft defaults pre-filled on a fresh form (e.g. most-used course / grade). */
   defaultAnswers?: Partial<Record<StepId, string>>;
   builderTemplateToApply?: TemplateOption | null;
+}
+
+function getEstimateMessage(seconds: number): string {
+  if (seconds < 90) return "Estimated time: ~1 minute";
+  if (seconds <= 150) return "This run may take longer than usual.";
+  if (seconds <= 240) return "This run may take 2-4 minutes.";
+  return "Consider narrowing the topic or reducing question count.";
 }
 
 function getTitle(result: any): string {
@@ -73,6 +81,7 @@ export function ConversationalAssessmentWrapper({
   const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
   const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
   const [preflightFeasibility, setPreflightFeasibility] = useState<FeasibilityReport | null>(null);
+  const [topicRefinement, setTopicRefinement] = useState<TopicRefinementResult | null>(null);
 
   // ── Post-Builder teacher feedback state ────────────────────────────────
   const [isRewriting, setIsRewriting] = useState(false);
@@ -153,9 +162,16 @@ export function ConversationalAssessmentWrapper({
         bloomPreference: intent.bloomPreference,
         gradeLevels: intent.gradeLevels,
       });
+      const refinement = evaluateTopicRefinement(
+        intent.topic || intent.unitName || "",
+        intent.course || "general",
+        validation.estimatedCreationSeconds,
+        undefined
+      );
       setPendingIntent(intent);
       setPeResult(validation);
       setPreflightFeasibility(preflight);
+      setTopicRefinement(refinement.needsRefinement ? refinement : null);
     },
     []
   );
@@ -187,6 +203,7 @@ export function ConversationalAssessmentWrapper({
     setPendingIntent(null);
     setPeResult(null);
     setPreflightFeasibility(null);
+    setTopicRefinement(null);
   }, [pendingIntent]);
 
   // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
@@ -198,6 +215,7 @@ export function ConversationalAssessmentWrapper({
       // Stash estimated time before clearing the panel so loading card can display it
       setPendingEstimatedSeconds(peResult?.estimatedCreationSeconds ?? null);
       setPeResult(null); // hide the panel
+      setTopicRefinement(null);
       try {
         setIsLoading(true);
         setResult(null);
@@ -417,9 +435,7 @@ export function ConversationalAssessmentWrapper({
             </p>
             {pendingEstimatedSeconds != null && pendingEstimatedSeconds > 0 && (
               <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-secondary, #555)" }}>
-                Estimated time: ~{pendingEstimatedSeconds < 60
-                  ? `${pendingEstimatedSeconds}s`
-                  : `${Math.round(pendingEstimatedSeconds / 60)} min`}
+                {getEstimateMessage(pendingEstimatedSeconds)}
               </p>
             )}
           </div>
@@ -551,6 +567,7 @@ export function ConversationalAssessmentWrapper({
         <PromptEngineerPanel
           result={peResult}
           feasibility={preflightFeasibility ?? undefined}
+          topicRefinement={topicRefinement ?? undefined}
           onProceed={handleProceed}
           onEdit={handleEditInputs}
           onOverride={handleProceed}

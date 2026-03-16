@@ -21,6 +21,6 @@ const rawScienceProblemTypes = [
   ScienceTableCompletionProblemType,
 ] as const;
 
-export const scienceProblemTypes = rawScienceProblemTypes.map((problemType) =>
-  withTemplate(problemType, "Science")
+export const scienceProblemTypes = rawScienceProblemTypes.map((templateEntry) =>
+  withTemplate(templateEntry, "Science")
 );

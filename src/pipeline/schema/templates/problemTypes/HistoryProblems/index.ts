@@ -15,6 +15,6 @@ const rawHistoryProblemTypes: Array<Parameters<typeof withTemplate>[0]> = [
   HistoryTimelineProblemType,
 ];
 
-export const historyProblemTypes = rawHistoryProblemTypes.map((problemType) =>
-  withTemplate(problemType, "Social Studies")
+export const historyProblemTypes = rawHistoryProblemTypes.map((templateEntry) =>
+  withTemplate(templateEntry, "Social Studies")
 );

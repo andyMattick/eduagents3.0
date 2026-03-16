@@ -8,9 +8,10 @@
  */
 
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
-import type { WriterContext, ScribePrescriptions } from "../writerPrompt";
+import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import { END_SENTINEL } from "./parseChunk";
 import { buildBloomHintDirectives, type HintMode } from "../bloomHints";
+import { loadTemplate } from "../templates/registry";
 
 export function buildChunkPrompt(
   slots: BlueprintPlanV3_2["slots"],
@@ -62,8 +63,12 @@ export function buildChunkPrompt(
         const hint = hintMap.get(slot.id) ?? "";
         const slotOp    = (slot as any).operation;
         const slotRange = (slot as any).range;
+        const templatePrompt = buildTemplatePromptForSlot(slot, context);
 
         let extra = "";
+        if (templatePrompt) {
+          extra += `\n  TEMPLATE CONTRACT (mandatory): Generate the item using this template instruction as the primary stem specification: ${JSON.stringify(templatePrompt)}`;
+        }
         if (slot.questionType === "arithmeticFluency" && slotOp && slotRange) {
           extra += `\n  ARITHMETIC CONSTRAINT: Operation MUST be "${slotOp}". Both operands MUST be between ${slotRange.min} and ${slotRange.max}. Write as a bare expression only (e.g. "7 × 4").`;
         }
@@ -225,4 +230,33 @@ OUTPUT FORMAT (STRICT)
 ${mcqRule}EXAMPLE OUTPUT SHAPE
 ${outputExamples}
 `;
+}
+
+function buildTemplatePromptForSlot(
+  slot: BlueprintPlanV3_2["slots"][number],
+  context: WriterContext
+): string | null {
+  if (!(slot as any).templateId) return null;
+
+  const template = loadTemplate({
+    slotId: slot.id,
+    questionType: slot.questionType,
+    difficulty: (slot.difficulty ?? "medium") as "easy" | "medium" | "hard",
+    cognitiveDemand: slot.cognitiveDemand ?? null,
+    pacingSeconds: slot.pacingSeconds ?? null,
+    topicAngle: (slot as any).topicAngle ?? context.topic,
+    generationMethod: "template",
+    templateId: (slot as any).templateId ?? null,
+    diagramType: null,
+    imageReferenceId: null,
+    teacherProfile: {
+      gradeLevel: context.grade,
+    } as any,
+    courseProfile: {
+      subject: context.domain,
+      taskType: (slot.constraints as any)?.taskType ?? null,
+    } as any,
+  });
+
+  return template.prompt;
 }

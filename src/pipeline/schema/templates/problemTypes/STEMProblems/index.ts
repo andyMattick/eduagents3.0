@@ -15,6 +15,6 @@ const rawStemProblemTypes = [
   STEMModelingProblemType,
 ] as const;
 
-export const stemProblemTypes = rawStemProblemTypes.map((problemType) =>
-  withTemplate(problemType, "STEM")
+export const stemProblemTypes = rawStemProblemTypes.map((templateEntry) =>
+  withTemplate(templateEntry, "STEM")
 );

@@ -16,7 +16,7 @@
 
 import type { BlueprintPlanV3_2 } from "@/pipeline/contracts/BlueprintPlanV3_2";
 import type { UnifiedAssessmentRequest } from "@/pipeline/contracts/UnifiedAssessmentRequest";
-import type { WriterContext, ScribePrescriptions } from "../writerPrompt";
+import type { WriterContext, ScribePrescriptions } from "../writerPrompt.ts";
 import type { GeneratedItem } from "../types";
 
 import { callGeminiStreaming } from "@/pipeline/llm/gemini";

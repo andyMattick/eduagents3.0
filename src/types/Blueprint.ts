@@ -87,6 +87,7 @@ export interface BlueprintSlot {
   constraints?: {
     /** Passage-based length + sub-question count */
     passageBased?: PassageBasedConstraints;
+    taskTypes?: string[]; // e.g. from TASK_TYPES
     [key: string]: any;
   };
 

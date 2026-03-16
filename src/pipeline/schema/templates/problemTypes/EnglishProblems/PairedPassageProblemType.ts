@@ -12,7 +12,7 @@ export const PairedPassagesProblemType = {
   defaultDifficulty: Difficulty.Hard,
   sharedContext: SharedContext.Passage,
     supports: {
-    passageBased: true,
+    requiresPassage: true,
     pairedPassage: true,
     mcq: true,
     shortAnswer: true
