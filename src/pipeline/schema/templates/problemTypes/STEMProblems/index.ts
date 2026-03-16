@@ -1,7 +1,7 @@
 import { withTemplate } from "../templateCarrier";
 import { STEMCodeDebuggingProblemType } from "./STEMCodeDebuggingProblemType";
 import { STEMCodeWritingProblemType } from "./STEMCodeWritingProblemType";
-import { STEMComputationalThinkingProblemType } from "./STEMComputationalThinkingProblemType .ts";
+import { STEMComputationalThinkingProblemType } from "./STEMComputationalThinkingProblemType.ts";
 import { STEMDataAnalysisProblemType } from "./STEMDataAnalysisProblemType";
 import { STEMEngineeringDesignProblemType } from "./STEMEngineeringDesignProblemType";
 import { STEMModelingProblemType } from "./STEMModelingProblemType";
