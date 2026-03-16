@@ -2,6 +2,7 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import type { Plugin } from 'vite'
+import tsconfigPaths from 'vite-tsconfig-paths'
 
 /**
  * Local dev middleware — serves /api/llm so `npm run dev` works without
@@ -428,7 +429,7 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
-  plugins: [react(), localLLMProxy(geminiApiKey), localTemplateProxy()],
+  plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy()],
   server: {
     port: 3000,
     open: true
