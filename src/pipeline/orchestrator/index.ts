@@ -3,12 +3,14 @@ import { runDocumentView } from "./document";
 import { runAnalyzePipeline } from "./analyze";
 import { runComparePipeline } from "./compare";
 import { runTestPipeline } from "./test";
+import { runDifferentiatePipeline } from "./differentiate";
 
 export type OrchestratorIntent =
   | "create"
   | "analyze"
   | "compare"
   | "test"
+  | "differentiate"
   | "summary"
   | "concepts"
   | "difficulty"
@@ -35,6 +37,9 @@ export async function runOrchestrator(options: {
 
     case "test":
       return runTestPipeline(input);
+
+    case "differentiate":
+      return runDifferentiatePipeline(input);
 
     case "summary":
     case "concepts":

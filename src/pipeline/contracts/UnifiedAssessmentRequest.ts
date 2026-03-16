@@ -107,6 +107,12 @@ export interface UnifiedAssessmentRequest {
     content: string;
   }>;
 
+  // ── Differentiation orchestration ───────────────────────────────────
+  differentiation?: {
+    profiles: string[];
+    transformStyle: string[];
+  };
+
   // ── Summarizer output (populated by runPipeline when sourceDocuments present) ──
   /** Key concepts extracted from uploaded source documents. */
   extractedConcepts?: string[];

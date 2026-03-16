@@ -40,6 +40,12 @@ const INTENT_OPTIONS: IntentOption[] = [
     description: "Upload a document and choose a view mode for focused inspection.",
     icon: "📄",
   },
+  {
+    intent: "differentiate",
+    title: "Create differentiated versions",
+    description: "Generate multiple versions of an assessment for different learning profiles.",
+    icon: "🧩",
+  },
 ];
 
 export function AssessmentIntentSelector({

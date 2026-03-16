@@ -110,26 +110,29 @@
   font-weight: 700;
   color: var(--text);
   line-height: 1.35;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ma-card-field {
   display: flex;
-  align-items: center;
-  gap: 0.3rem;
+  align-items: baseline;
+  gap: 0.45rem;
   flex-wrap: wrap;
 }
 
-.ma-card-course {
+.ma-card-field-label {
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text);
-}
-
-.ma-card-sep {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-secondary, #9ca3af);
-  font-weight: 400;
-  margin: 0 0.1rem;
 }
 
-.ma-card-topic {
+.ma-card-field-value {
+  font-size: 0.95rem;
   color: var(--text);
-  font-weight: 400;
+  font-weight: 600;
 }
 
 .ma-card-meta {

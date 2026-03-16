@@ -315,7 +315,9 @@ function AssignmentCard({
   onView?: (id: string) => void;
 }) {
   const uar = (tmpl.uar_json ?? {}) as any;
-  const course = getCourseName(tmpl);
+  const className =
+    String(uar.className ?? uar.class ?? uar.course ?? tmpl.domain ?? "").trim() ||
+    getCourseName(tmpl);
   const topic = (uar.topic ?? uar.lessonName ?? uar.unitName ?? "").trim() || "—";
   const assessmentType = uar.assessmentType ?? "—";
   const grade = getGradeLabel(tmpl);
@@ -333,9 +335,14 @@ function AssignmentCard({
   return (
     <div className="ma-card">
       <div className="ma-card-headline">
-        <span className="ma-card-course">{course}</span>
-        <span className="ma-card-sep">:</span>
-        <span className="ma-card-topic">{topic}</span>
+        <div className="ma-card-field">
+          <span className="ma-card-field-label">Class</span>
+          <span className="ma-card-field-value">{className}</span>
+        </div>
+        <div className="ma-card-field">
+          <span className="ma-card-field-label">Topic</span>
+          <span className="ma-card-field-value">{topic}</span>
+        </div>
       </div>
 
       {problemTypes.length > 0 && (

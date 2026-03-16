@@ -424,7 +424,7 @@ function buildSteps(
       }
 
       // Standards
-      if (answers.assessmentType === "test" || answers.assessmentType === "quiz") {
+      if (answers.assessmentType === "test" || answers.assessmentType === "quiz" || answers.assessmentType === "worksheet")  {
         steps.push({ id: "standards", kind: "chips", question: "Standards alignment?", chips: STANDARDS_CHIPS });
         if (answers.standards === "state") {
           steps.push({ id: "stateCode", kind: "text", question: "Which state\u2019s standards?", placeholder: "e.g. GA" });

@@ -27,6 +27,7 @@ import {
   PlaytestAssessmentPanel,
   DocumentViewPanel,
 } from "./AssessmentIntentSelector";
+import { DifferentiatedAssessmentPanel } from "./DifferentiatedAssessment";
 import type { OrchestratorIntent } from "@/pipeline/orchestrator";
 
 interface ConversationalAssessmentWrapperProps {
@@ -558,6 +559,7 @@ export function ConversationalAssessmentWrapper({
           {selectedIntent === "analyze" && <AnalyzeDocumentPanel />}
           {selectedIntent === "compare" && <CompareDocumentsPanel />}
           {selectedIntent === "test" && <PlaytestAssessmentPanel />}
+          {selectedIntent === "differentiate" && <DifferentiatedAssessmentPanel />}
           {(selectedIntent === "summary" || selectedIntent === "concepts" || selectedIntent === "difficulty" || selectedIntent === "raw") && (
             <DocumentViewPanel initialIntent={selectedIntent} />
           )}
