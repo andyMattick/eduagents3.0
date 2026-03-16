@@ -9,7 +9,7 @@
  * Called automatically by Vercel via buildCommand.
  */
 import { build } from "esbuild";
-import { readdirSync, unlinkSync } from "fs";
+import { readdirSync, renameSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 const apiDir = "api";
@@ -41,7 +41,7 @@ const tsFiles = readdirSync(apiDir).filter(
 
 for (const file of tsFiles) {
   const entry = join(apiDir, file);
-  const outfile = join(apiDir, file.replace(/\.ts$/, ".mjs"));
+  const tmpFile = join(apiDir, file.replace(/\.ts$/, ".bundled.mjs"));
 
   // Plugin to resolve @/ alias → src/ (since esbuild 0.14 doesn't have `alias`)
   // Also handles resolving to .ts/.tsx extensions and directory index files.
@@ -61,7 +61,7 @@ for (const file of tsFiles) {
   await build({
     entryPoints: [entry],
     bundle: true,
-    outfile,
+    outfile: tmpFile,
     format: "esm",
     platform: "node",
     target: "node18",
@@ -81,9 +81,12 @@ for (const file of tsFiles) {
     logLevel: "info",
   });
 
-  // Remove the .ts source so Vercel doesn't also compile it as a separate function
+  // Overwrite the original .ts with the bundled output.
+  // Vercel pre-indexes api/*.ts files BEFORE the build command runs, so
+  // they must still exist at their original paths when Vercel processes them.
   unlinkSync(entry);
-  console.log(`  ${file} → ${file.replace(/\.ts$/, ".mjs")}`);
+  renameSync(tmpFile, entry);
+  console.log(`  ${file} → bundled in-place`);
 }
 
 console.log(`\n✓ Bundled ${tsFiles.length} API functions\n`);
