@@ -22,9 +22,7 @@ const CORS_HEADERS = {
 };
 
 function setCors(res: VercelResponse) {
-  console.log("AZURE_ENDPOINT:", process.env.AZURE_DOCUMENT_ENDPOINT);
-  console.log("AZURE_KEY:", process.env.AZURE_DOCUMENT_KEY ? "present" : "missing");
-
+  
   for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v);
 }
 
@@ -112,6 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Map Azure output to a compact, typed shape for the client
     return res.status(200).json(mapAzureResult(result, body.fileName ?? "document"));
   } catch (err: any) {
+    console.error("[api/azure-extract] endpoint:", process.env.AZURE_DOCUMENT_ENDPOINT ? "set" : "MISSING");
+    console.error("[api/azure-extract] key:", process.env.AZURE_DOCUMENT_KEY ? "set" : "MISSING");
     console.error("[api/azure-extract]", err);
     return res.status(502).json({ error: "Azure extraction failed", message: err.message });
   }
