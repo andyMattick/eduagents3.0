@@ -2,10 +2,5 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite",
-  "routes": [
-    { "src": "/api/rewrite", "dest": "/server/rewrite.ts" },
-    { "src": "/api/llm", "dest": "/server/llm.ts" },
-    { "src": "/api/generate-assessment", "dest": "/server/generate-assessment.ts" }
-  ]
+  "framework": "vite"
 }
