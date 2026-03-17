@@ -6,6 +6,7 @@ import { extractAzureText } from "./extractAzureText";
 import { extractDocxText } from "./extractDocxText";
 import { extractOcrText } from "./extractOcrText";
 import { extractPdfText } from "./extractPdfText";
+import { storeDocumentForRAG } from "./storeDocumentForRAG";
 
 export { buildDocumentInsights } from "./buildDocumentInsights";
 export { summarizeForUI } from "./summarizeForUI";
@@ -66,6 +67,8 @@ export async function analyzeDocument(file: File): Promise<DocumentInsights> {
         unreadable: insights.flags.unreadable,
         confidence: insights.confidence,
       });
+      // Fire-and-forget: store extracted text for RAG
+      storeDocumentForRAG(file.name, azureResult.content);
       return insights;
     } catch (azureErr) {
       console.warn("[DocumentAnalyzer] Azure extraction failed, falling back to local pipeline:", azureErr);
@@ -128,6 +131,10 @@ export async function analyzeDocument(file: File): Promise<DocumentInsights> {
     unreadable: insights.flags.unreadable,
     confidence: insights.confidence,
   });
+  // Fire-and-forget: store extracted text for RAG
+  if (rawText.length > 50) {
+    storeDocumentForRAG(file.name, rawText);
+  }
   return insights;
 }
 

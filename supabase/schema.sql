@@ -403,3 +403,160 @@ CREATE POLICY "teacher_templates: own rows update"
 CREATE POLICY "teacher_templates: own rows delete"
   ON public.teacher_templates FOR DELETE
   USING (auth.uid() = teacher_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 12. JOBS
+--     Async job queue for long-running pipeline operations.
+--     Status lifecycle: pending → running → succeeded | failed
+--     The UI creates a job, polls for status, and reads output
+--     once succeeded.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.jobs (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  type        text        NOT NULL,
+  status      text        NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending','running','succeeded','failed')),
+  input       jsonb       NOT NULL DEFAULT '{}',
+  output      jsonb,
+  error       text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_user_status
+  ON public.jobs (user_id, status, created_at DESC);
+
+ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "jobs: own rows select"
+  ON public.jobs FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "jobs: own rows insert"
+  ON public.jobs FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "jobs: own rows update"
+  ON public.jobs FOR UPDATE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 13. DOCUMENTS
+--     Stores extracted document text for reuse across pipeline
+--     runs (document memory).  Linked to the owning teacher.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.documents (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  title       text,
+  content     text        NOT NULL,
+  content_hash text,
+  metadata    jsonb       NOT NULL DEFAULT '{}',
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_user_hash
+  ON public.documents (user_id, content_hash)
+  WHERE content_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_documents_user
+  ON public.documents (user_id, created_at DESC);
+
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "documents: own rows select"
+  ON public.documents FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows insert"
+  ON public.documents FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows update"
+  ON public.documents FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows delete"
+  ON public.documents FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 14. DOCUMENT_CHUNKS
+--     Chunked + embedded text for vector search (RAG).
+--     embedding column stored as a vector(768) for pgvector
+--     compatibility — enable the extension first:
+--       CREATE EXTENSION IF NOT EXISTS vector;
+-- ────────────────────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS public.document_chunks (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id   uuid        NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  user_id       uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  content       text        NOT NULL,
+  embedding     vector(768),
+  metadata      jsonb       NOT NULL DEFAULT '{}',
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document
+  ON public.document_chunks (document_id);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_user
+  ON public.document_chunks (user_id);
+
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chunks: own rows select"
+  ON public.document_chunks FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "chunks: own rows insert"
+  ON public.document_chunks FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "chunks: own rows delete"
+  ON public.document_chunks FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 15. MATCH_CHUNKS — pgvector cosine similarity search
+--     Called via Supabase RPC: supabase.rpc('match_chunks', { ... })
+--     Returns the top N most similar chunks for a given user.
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.match_chunks(
+  query_embedding vector(768),
+  p_user_id uuid,
+  match_count int DEFAULT 5,
+  similarity_threshold float DEFAULT 0.3
+)
+RETURNS TABLE (
+  id uuid,
+  document_id uuid,
+  content text,
+  similarity float
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    dc.id,
+    dc.document_id,
+    dc.content,
+    1 - (dc.embedding <=> query_embedding) AS similarity
+  FROM public.document_chunks dc
+  WHERE dc.user_id = p_user_id
+    AND dc.embedding IS NOT NULL
+    AND (dc.embedding <=> query_embedding) < (1 - similarity_threshold)
+  ORDER BY dc.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
