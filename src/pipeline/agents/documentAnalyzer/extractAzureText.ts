@@ -21,12 +21,20 @@ export interface AzureExtractResult {
  * Throws if the server returns an error or the response is malformed.
  */
 export async function extractAzureText(file: File): Promise<AzureExtractResult> {
+  const arrayBuffer = await file.arrayBuffer();
+  const fileBase64 = btoa(
+    String.fromCharCode(...new Uint8Array(arrayBuffer))
+  );
+
   const response = await fetch("/api/azure-extract", {
     method: "POST",
     headers: {
-      "Content-Type": file.type || "application/pdf"
+      "Content-Type": "application/json",
     },
-    body: file
+    body: JSON.stringify({
+      fileBase64,
+      mimeType: file.type || "application/pdf",
+    }),
   });
 
   if (!response.ok) {

@@ -1,6 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "http";
-import Busboy from "busboy";
-
 export const runtime = "nodejs";
 
 export const config = {
@@ -9,40 +6,40 @@ export const config = {
       sizeLimit: "15mb",
     },
   },
-  maxDuration: 60
+  maxDuration: 60,
 };
+
 /**
  * AZURE DOCUMENT INTELLIGENCE EXTRACTION PROXY
  *
- * Accepts a multipart/form-data POST with a single `file` field,
- * forwards it to Azure Document Intelligence (prebuilt-layout model),
- * and returns a structured AzureExtractResult JSON object.
+ * Accepts a JSON POST with { fileBase64, mimeType }, forwards the decoded
+ * buffer to Azure Document Intelligence (prebuilt-layout model), and
+ * returns the raw Azure response.
  *
  * Required environment variables:
  *   AZURE_DOCUMENT_ENDPOINT  — e.g. https://<resource>.cognitiveservices.azure.com/
  *   AZURE_DOCUMENT_KEY       — your Azure API key
- *
- * The browser must not call Azure directly — this server-side proxy keeps
- * the API key out of the client bundle and avoids CORS issues.
  */
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
-
-function setCors(res: ServerResponse) {
-  
-  for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v);
-}
-
 export default async function handler(req: any, res: any) {
-  console.log("METHOD:", req.method);
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method not allowed" });
     }
+
+    // Vercel bodyParser may deliver a string or already-parsed object
+    let body = req.body;
+    if (typeof body === "string") {
+      body = JSON.parse(body);
+    }
+
+    const { fileBase64, mimeType } = body || {};
+
+    if (!fileBase64) {
+      return res.status(400).json({ error: "Missing fileBase64" });
+    }
+
+    const fileBuffer = Buffer.from(fileBase64, "base64");
 
     const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
     const key = process.env.AZURE_DOCUMENT_KEY;
@@ -51,13 +48,7 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: "Azure not configured" });
     }
 
-    // Read raw body
-    const arrayBuffer = await req.arrayBuffer();
-    const fileBuffer = Buffer.from(arrayBuffer);
-
-    const mimeType = req.headers["content-type"] || "application/octet-stream";
-
-    console.log("File received:", fileBuffer.length, "bytes");
+    console.log("File received:", fileBuffer.length, "bytes, mime:", mimeType);
 
     const analyzeUrl =
       `${endpoint.replace(/\/$/, "")}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
@@ -66,17 +57,16 @@ export default async function handler(req: any, res: any) {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": key,
-        "Content-Type": mimeType
+        "Content-Type": mimeType || "application/pdf",
       },
-      body: fileBuffer
+      body: fileBuffer,
     });
 
     const text = await submitRes.text();
 
     res.status(submitRes.status).send(text);
-
   } catch (err: any) {
-    console.error("Function crash:", err);
+    console.error("ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 }
