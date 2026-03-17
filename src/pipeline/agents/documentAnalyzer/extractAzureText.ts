@@ -24,10 +24,13 @@ export async function extractAzureText(file: File): Promise<AzureExtractResult> 
   const formData = new FormData();
   formData.append("file", file);
 
-  const response = await fetch("/api/azure-extract", {
-    method: "POST",
-    body: formData
-  });
+const response = await fetch("/api/azure-extract", {
+  method: "POST",
+  headers: {
+    "Content-Type": file.type || "application/pdf"
+  },
+  body: file
+});
 
   if (!response.ok) {
     const text = await response.text();

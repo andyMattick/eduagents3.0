@@ -38,61 +38,46 @@ function setCors(res: ServerResponse) {
 }
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+  try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "Method not allowed" });
+    }
 
-  const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
-  const key = process.env.AZURE_DOCUMENT_KEY;
+    const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
+    const key = process.env.AZURE_DOCUMENT_KEY;
 
-  if (!endpoint || !key) {
-    return res.status(500).json({ error: "Azure not configured" });
-  }
+    if (!endpoint || !key) {
+      return res.status(500).json({ error: "Azure not configured" });
+    }
 
-  const busboy = Busboy({ headers: req.headers });
+    // Read raw body
+    const arrayBuffer = await req.arrayBuffer();
+    const fileBuffer = Buffer.from(arrayBuffer);
 
-  let fileBuffer: Buffer | null = null;
-  let mimeType = "application/octet-stream";
+    const mimeType = req.headers["content-type"] || "application/octet-stream";
 
-  busboy.on("file", (_name, file, info) => {
-    mimeType = info.mimeType;
+    console.log("File received:", fileBuffer.length, "bytes");
 
-    const chunks: Buffer[] = [];
-    file.on("data", (data) => chunks.push(data));
-    file.on("end", () => {
-      fileBuffer = Buffer.concat(chunks);
+    const analyzeUrl =
+      `${endpoint.replace(/\/$/, "")}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+
+    const submitRes = await fetch(analyzeUrl, {
+      method: "POST",
+      headers: {
+        "Ocp-Apim-Subscription-Key": key,
+        "Content-Type": mimeType
+      },
+      body: fileBuffer
     });
-  });
 
-  busboy.on("finish", async () => {
-    if (!fileBuffer) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    const text = await submitRes.text();
 
-    try {
-      const analyzeUrl =
-        `${endpoint.replace(/\/$/, "")}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-09-30` +
-        `&includeTextDetails=true`;
+    res.status(submitRes.status).send(text);
 
-      const submitRes = await fetch(analyzeUrl, {
-        method: "POST",
-        headers: {
-          "Ocp-Apim-Subscription-Key": key,
-          "Content-Type": mimeType
-        },
-        body: fileBuffer as unknown as BodyInit
-      });
-
-      const text = await submitRes.text();
-
-      res.status(200).json({ content: text });
-    } catch (err: any) {
-      console.error(err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  req.pipe(busboy);
+  } catch (err: any) {
+    console.error("Function crash:", err);
+    res.status(500).json({ error: err.message });
+  }
 }
 
 // ── Sleep helper ──────────────────────────────────────────────────────────────
