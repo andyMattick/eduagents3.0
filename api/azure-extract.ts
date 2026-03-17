@@ -3,12 +3,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 export const runtime = "nodejs";
 
 export const config = {
-  maxDuration: 60,
   api: {
     bodyParser: {
       sizeLimit: "15mb",
     },
   },
+  maxDuration: 60
 };
 /**
  * AZURE DOCUMENT INTELLIGENCE EXTRACTION PROXY
@@ -64,11 +64,23 @@ console.log("body type:", typeof req.body);
   }
 
   // Accept { fileBase64, fileName, mimeType } JSON body
-  const body = req.body as { fileBase64?: string; fileName?: string; mimeType?: string } | undefined;
-  if (!body?.fileBase64) {
-    return res.status(400).json({ error: "Missing fileBase64 in request body." });
-  }
+  let body: any = req.body;
 
+if (typeof body === "string") {
+  try {
+    body = JSON.parse(body);
+  } catch (err) {
+    console.error("Failed to parse JSON body:", err);
+    return res.status(400).json({ error: "Invalid JSON body." });
+  }
+}
+
+if (!body || !body.fileBase64) {
+  console.error("Body received:", body);
+  return res.status(400).json({ error: "Missing fileBase64 in request body." });
+}
+console.log("Body keys:", Object.keys(body || {}));
+console.log("Base64 length:", body.fileBase64?.length);
   try {
     const fileBytes = Buffer.from(body.fileBase64, "base64");
 

@@ -22,13 +22,9 @@ export interface AzureExtractResult {
  */
 export async function extractAzureText(file: File): Promise<AzureExtractResult> {
   // Convert file to base64 without a FileReader (works in all modern browsers)
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8 = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (let i = 0; i < uint8.length; i++) {
-    binary += String.fromCharCode(uint8[i]);
-  }
-  const fileBase64 = btoa(binary);
+  const fileBase64 = btoa(
+    String.fromCharCode(...new Uint8Array(await file.arrayBuffer()))
+  );
 
   const response = await fetch("/api/azure-extract", {
     method: "POST",
