@@ -1,5 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+export const runtime = "nodejs";
+
+export const config = {
+  maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: "15mb",
+    },
+  },
+};
 /**
  * AZURE DOCUMENT INTELLIGENCE EXTRACTION PROXY
  *
@@ -21,15 +31,25 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-// Azure polling can take up to 60s — tell Vercel to allow a longer timeout
-export const config = { maxDuration: 60 };
-
 function setCors(res: VercelResponse) {
   
   for (const [k, v] of Object.entries(CORS_HEADERS)) res.setHeader(k, v);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log("API route invoked");
+
+console.log(
+  "endpoint exists:",
+  process.env.AZURE_DOCUMENT_ENDPOINT ? "YES" : "NO"
+);
+
+console.log(
+  "key exists:",
+  process.env.AZURE_DOCUMENT_KEY ? "YES" : "NO"
+);
+
+console.log("body type:", typeof req.body);
   setCors(res);
   if (req.method === "OPTIONS") return res.status(200).json({});
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
