@@ -34,16 +34,17 @@ async function fetchAzureCredentials(): Promise<{ endpoint: string; key: string 
 
 async function extractDirect(file: File): Promise<AzureExtractResult> {
   const { endpoint, key } = await fetchAzureCredentials();
+  const cleanEndpoint = endpoint.replace(/\/$/, "");
 
   // Submit document
   const analyzeUrl =
-    `${endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    `${cleanEndpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
 
   const submitRes = await fetch(analyzeUrl, {
     method: "POST",
     headers: {
       "Ocp-Apim-Subscription-Key": key,
-      "Content-Type": file.type || "application/pdf",
+      "Content-Type": normalizeMimeType(file),
     },
     body: file,
   });
@@ -61,7 +62,13 @@ async function extractDirect(file: File): Promise<AzureExtractResult> {
   // Poll until complete
   const MAX_POLLS = 30;
   const POLL_INTERVAL_MS = 1500;
-
+    console.log("[Azure Direct] Request:", {
+      endpoint,
+      analyzeUrl,
+      fileType: file.type,
+      fileName: file.name,
+      size: file.size,
+    });
   for (let i = 0; i < MAX_POLLS; i++) {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
 
@@ -87,9 +94,12 @@ async function extractDirect(file: File): Promise<AzureExtractResult> {
 
 async function extractViaProxy(file: File): Promise<AzureExtractResult> {
   const arrayBuffer = await file.arrayBuffer();
-  const fileBase64 = btoa(
-    String.fromCharCode(...new Uint8Array(arrayBuffer))
-  );
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const fileBase64 = btoa(binary);
 
   const response = await fetch("/api/azure-extract", {
     method: "POST",
@@ -179,4 +189,17 @@ function mapClientResult(az: AzureAnalyzeResult, fileName: string): AzureExtract
   });
 
   return { fileName, content: az.content ?? "", pages, paragraphs, tables };
+}
+function normalizeMimeType(file: File) {
+  if (!file.type) return "application/pdf";
+
+  if (file.type.includes("word") || file.name.endsWith(".docx")) {
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+
+  if (file.type.includes("pdf")) {
+    return "application/pdf";
+  }
+
+  return file.type;
 }

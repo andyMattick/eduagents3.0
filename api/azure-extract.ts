@@ -53,12 +53,14 @@ export default async function handler(req: any, res: any) {
     console.log("[azure-extract] ENDPOINT:", config.endpoint);
     console.log("[azure-extract] URL:", analyzeUrl);
 
+    const finalMime = mimeType || "application/pdf";
+
     // ── Step 1: Submit document for analysis ──────────────────────────────
     const submitRes = await fetch(analyzeUrl, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": config.key,
-        "Content-Type": mimeType || "application/pdf",
+        "Content-Type": finalMime,
       },
       body: fileBuffer,
     });
