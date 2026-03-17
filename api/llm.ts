@@ -1,17 +1,22 @@
 /**
- * /api/llm — Secure LLM Proxy (Vercel Serverless Function)
+ * /api/llm — Semantic Intelligence Pipeline (Vercel Serverless)
  *
- * Delegates to shared lib modules:
- *   lib/auth.ts   — authenticateUser()
- *   lib/gemini.ts — callGemini()
+ * Flow: query understanding → hybrid retrieval → ranking →
+ *       context selection → structured prompt → LLM
  *
- * Usage checking is inline (Supabase REST) and stays here since it's
- * specific to the LLM gate-call flow.
+ * When useRAG=true, ALL calls go through the semantic pipeline.
+ * When useRAG=false, direct prompt → LLM (backwards-compatible).
  */
 
 import { authenticateUser } from "../lib/auth";
 import { callGemini } from "../lib/gemini";
-import { retrieveRelevantChunks, selectTopChunks, buildRAGPrompt } from "../lib/rag";
+import {
+  retrieveRelevantChunks,
+  rankChunks,
+  selectTopChunks,
+  buildRAGPrompt,
+} from "../lib/rag";
+import { parseQuery } from "../lib/semantic/parseQuery";
 
 export const runtime = "nodejs";
 
@@ -119,19 +124,49 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. RAG retrieval (opt-in via useRAG flag)
+    // 3. Semantic RAG pipeline (opt-in via useRAG flag)
     let finalPrompt = prompt;
+    let ragLog: Record<string, unknown> | null = null;
+
     if (useRAG) {
       try {
-        const rankedChunks = await retrieveRelevantChunks({
+        // Step 1 — Parse query semantics
+        const querySem = await parseQuery(prompt);
+
+        // Step 2 — Vector retrieval
+        const chunks = await retrieveRelevantChunks({
           query: prompt,
           userId: auth.userId,
-          matchCount: 5,
+          matchCount: 10,
         });
-        const selected = selectTopChunks(rankedChunks);
-        finalPrompt = buildRAGPrompt(selected, prompt);
+
+        // Step 3 — Hybrid ranking (semantic filter + concept boost)
+        const ranked = rankChunks(chunks, querySem);
+
+        // Step 4 — Context selection (token control)
+        const selected = selectTopChunks(ranked);
+
+        // Step 5 — Structured prompt
+        finalPrompt = buildRAGPrompt(selected, prompt, querySem);
+
+        // Mandatory logging
+        ragLog = {
+          query: prompt.slice(0, 200),
+          querySemantics: querySem,
+          retrievedChunks: chunks.length,
+          filteredChunks: ranked.length,
+          finalChunks: selected.length,
+          scores: ranked.slice(0, 5).map((c) => ({
+            score: Math.round(c.score * 1000) / 1000,
+            similarity: Math.round(c.similarity * 1000) / 1000,
+            conceptMatches: c.conceptMatches,
+          })),
+          finalPromptLength: finalPrompt.length,
+        };
+        console.info("[RAG]", JSON.stringify(ragLog));
       } catch (ragErr) {
-        console.warn("RAG retrieval failed, using original prompt:", ragErr);
+        console.warn("[RAG] Pipeline failed, falling back to direct prompt:", ragErr);
+        // Graceful degradation: use original prompt
       }
     }
 
@@ -143,7 +178,10 @@ export default async function handler(req: any, res: any) {
       maxOutputTokens,
     });
 
-    return res.status(200).json({ text });
+    return res.status(200).json({
+      text,
+      ...(ragLog ? { _rag: ragLog } : {}),
+    });
 
   } catch (err: any) {
     console.error("LLM API crash:", err);

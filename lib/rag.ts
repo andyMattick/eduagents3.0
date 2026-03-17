@@ -1,13 +1,17 @@
 /**
  * lib/rag.ts — Server-side RAG utilities
  *
- * Chunking, embedding (Gemini), storage, and retrieval for the
- * document memory system.  All functions use process.env for secrets
- * and the Supabase REST API — safe to call from any Vercel API route.
+ * Chunking, embedding (Gemini), storage, hybrid retrieval,
+ * semantic filtering, ranking, context control, and structured
+ * prompt building for the document memory system.
+ *
+ * All functions use process.env for secrets and the Supabase REST
+ * API — safe to call from any Vercel API route.
  */
 
 import { supabaseAdmin } from "./supabase";
 import { createHash } from "crypto";
+import type { QuerySemantics } from "./semantic/parseQuery";
 
 // ── Chunking ────────────────────────────────────────────────────────────────
 
@@ -147,12 +151,14 @@ export async function storeDocument({
 export interface RankedChunk {
   content: string;
   similarity: number;
+  score: number;
+  conceptMatches: string[];
 }
 
 export async function retrieveRelevantChunks({
   query,
   userId,
-  matchCount = 5,
+  matchCount = 10,
 }: {
   query: string;
   userId: string;
@@ -161,8 +167,7 @@ export async function retrieveRelevantChunks({
   const embedding = await embedText(query);
   const { url, key } = supabaseAdmin();
 
-  // Call the match_chunks RPC (pgvector cosine similarity)
-  // Threshold filtering is handled server-side by match_chunks
+  // Step 1 — vector retrieval (pgvector cosine similarity, server-side threshold)
   const rpcRes = await fetch(`${url}/rest/v1/rpc/match_chunks`, {
     method: "POST",
     headers: {
@@ -182,22 +187,66 @@ export async function retrieveRelevantChunks({
     return [];
   }
 
-  const data: RankedChunk[] = await rpcRes.json();
+  const data: Array<{ content: string; similarity: number }> =
+    (await rpcRes.json()) ?? [];
 
-  // Return sorted by similarity (best first)
-  return (data ?? []).sort((a, b) => b.similarity - a.similarity);
+  // Convert to RankedChunk with default scores
+  return data.map((d) => ({
+    content: d.content,
+    similarity: d.similarity,
+    score: d.similarity,
+    conceptMatches: [],
+  }));
+}
+
+// ── Hybrid filtering + ranking ──────────────────────────────────────────────
+
+const CONCEPT_BOOST = 0.15;
+
+export function rankChunks(
+  chunks: RankedChunk[],
+  semantics: QuerySemantics
+): RankedChunk[] {
+  if (chunks.length === 0) return [];
+
+  const concepts = semantics.concepts;
+
+  // Score each chunk: similarity + concept match boost
+  const scored = chunks.map((chunk) => {
+    const lower = chunk.content.toLowerCase();
+    const matches = concepts.filter((c) => lower.includes(c.toLowerCase()));
+    const boost = matches.length > 0 ? CONCEPT_BOOST * matches.length : 0;
+
+    return {
+      ...chunk,
+      score: chunk.similarity + boost,
+      conceptMatches: matches,
+    };
+  });
+
+  // Step 2 — semantic filter: keep chunks that match at least one concept
+  const filtered = scored.filter((c) => c.conceptMatches.length > 0);
+
+  // Step 3 — fallback: if filter killed everything, use all chunks
+  const final = filtered.length > 0 ? filtered : scored;
+
+  // Step 4 — sort by composite score (best first)
+  return final.sort((a, b) => b.score - a.score);
 }
 
 // ── Context window control ──────────────────────────────────────────────────
 
 const MAX_CONTEXT_CHARS = 3000;
 
-export function selectTopChunks(chunks: RankedChunk[]): string[] {
+export function selectTopChunks(
+  chunks: RankedChunk[],
+  maxChars: number = MAX_CONTEXT_CHARS
+): string[] {
   let total = 0;
   const selected: string[] = [];
 
   for (const chunk of chunks) {
-    if (total + chunk.content.length > MAX_CONTEXT_CHARS) break;
+    if (total + chunk.content.length > maxChars) break;
     selected.push(chunk.content);
     total += chunk.content.length;
   }
@@ -205,22 +254,34 @@ export function selectTopChunks(chunks: RankedChunk[]): string[] {
   return selected;
 }
 
-// ── Build RAG-enhanced prompt ───────────────────────────────────────────────
+// ── Structured prompt builder ───────────────────────────────────────────────
 
-export function buildRAGPrompt(chunks: string[], userPrompt: string): string {
+export function buildRAGPrompt(
+  chunks: string[],
+  userPrompt: string,
+  semantics?: QuerySemantics
+): string {
   if (chunks.length === 0) return userPrompt;
+
+  const contextBlock = chunks
+    .map((c, i) => `[${i + 1}] ${c}`)
+    .join("\n\n");
+
+  const conceptsBlock =
+    semantics && semantics.concepts.length > 0
+      ? `\n--- KNOWN CONCEPTS ---\n${semantics.concepts.join(", ")}\n`
+      : "";
 
   return `You are an expert educational assistant.
 
-Use ONLY the context below to answer the task.
-
+--- CONTEXT ---
+${contextBlock}
+${conceptsBlock}
+--- INSTRUCTIONS ---
+Use ONLY the context above to answer the task.
 If the answer is not clearly in the context, say:
 "I don't have enough information from the document."
-
-Do NOT make up information.
-
---- CONTEXT ---
-${chunks.map((c, i) => `[${i + 1}] ${c}`).join("\n\n")}
+Do NOT make up information. Do NOT go beyond what the context states.
 
 --- TASK ---
 ${userPrompt}`;
