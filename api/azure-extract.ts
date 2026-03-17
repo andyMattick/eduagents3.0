@@ -49,8 +49,12 @@ export default async function handler(req: any, res: any) {
 
     console.log("File received:", fileBuffer.length, "bytes, mime:", mimeType);
 
+    const analyzeUrl = azureAnalyzeUrl(config.endpoint);
+    console.log("[azure-extract] ENDPOINT:", config.endpoint);
+    console.log("[azure-extract] URL:", analyzeUrl);
+
     // ── Step 1: Submit document for analysis ──────────────────────────────
-    const submitRes = await fetch(azureAnalyzeUrl(config.endpoint), {
+    const submitRes = await fetch(analyzeUrl, {
       method: "POST",
       headers: {
         "Ocp-Apim-Subscription-Key": config.key,

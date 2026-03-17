@@ -1,11 +1,14 @@
 /**
- * /api/llm — Semantic Intelligence Pipeline (Vercel Serverless)
+ * /api/llm — Controlled Intelligence Pipeline (Vercel Serverless)
  *
- * Flow: query understanding → hybrid retrieval → ranking →
- *       context selection → structured prompt → LLM
+ * Three modes:
+ *   1. Direct: prompt → LLM (useRAG=false, useBlueprint=false)
+ *   2. RAG:    prompt → semantics → retrieval → ranking → LLM (useRAG=true)
+ *   3. Blueprint: prompt → semantics → retrieval → blueprint → LLM → validate (useBlueprint=true)
  *
- * When useRAG=true, ALL calls go through the semantic pipeline.
- * When useRAG=false, direct prompt → LLM (backwards-compatible).
+ * Blueprint mode is the full intelligence system:
+ *   query understanding → hybrid retrieval → blueprint planning →
+ *   controlled generation → output verification → optional retry
  */
 
 import { authenticateUser } from "../lib/auth";
@@ -17,6 +20,8 @@ import {
   buildRAGPrompt,
 } from "../lib/rag";
 import { parseQuery } from "../lib/semantic/parseQuery";
+import { buildBlueprint, buildBlueprintPrompt } from "../lib/blueprint/buildBlueprint";
+import { validateOutput, buildCorrectionPrompt } from "../lib/blueprint/validateOutput";
 
 export const runtime = "nodejs";
 
@@ -101,7 +106,7 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    const { model, prompt, temperature, maxOutputTokens, isGateCall, useRAG } =
+    const { model, prompt, temperature, maxOutputTokens, isGateCall, useRAG, useBlueprint } =
       body || {};
 
     if (!model || !prompt) {
@@ -124,11 +129,13 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 3. Semantic RAG pipeline (opt-in via useRAG flag)
+    // 3. Intelligence pipeline
     let finalPrompt = prompt;
-    let ragLog: Record<string, unknown> | null = null;
+    let pipelineLog: Record<string, unknown> | null = null;
 
-    if (useRAG) {
+    const shouldUseRAG = useRAG || useBlueprint;
+
+    if (shouldUseRAG) {
       try {
         // Step 1 — Parse query semantics
         const querySem = await parseQuery(prompt);
@@ -146,13 +153,24 @@ export default async function handler(req: any, res: any) {
         // Step 4 — Context selection (token control)
         const selected = selectTopChunks(ranked);
 
-        // Step 5 — Structured prompt
-        finalPrompt = buildRAGPrompt(selected, prompt, querySem);
+        // Step 5 — Build prompt (blueprint or RAG)
+        let blueprint = null;
+        if (useBlueprint) {
+          blueprint = buildBlueprint({
+            semantics: querySem,
+            intent: prompt,
+          });
+          finalPrompt = buildBlueprintPrompt(blueprint, selected, prompt);
+        } else {
+          finalPrompt = buildRAGPrompt(selected, prompt, querySem);
+        }
 
         // Mandatory logging
-        ragLog = {
+        pipelineLog = {
+          mode: useBlueprint ? "blueprint" : "rag",
           query: prompt.slice(0, 200),
           querySemantics: querySem,
+          ...(blueprint ? { blueprint } : {}),
           retrievedChunks: chunks.length,
           filteredChunks: ranked.length,
           finalChunks: selected.length,
@@ -163,24 +181,55 @@ export default async function handler(req: any, res: any) {
           })),
           finalPromptLength: finalPrompt.length,
         };
-        console.info("[RAG]", JSON.stringify(ragLog));
-      } catch (ragErr) {
-        console.warn("[RAG] Pipeline failed, falling back to direct prompt:", ragErr);
+        console.info("[PIPELINE]", JSON.stringify(pipelineLog));
+      } catch (pipeErr) {
+        console.warn("[PIPELINE] Failed, falling back to direct prompt:", pipeErr);
         // Graceful degradation: use original prompt
       }
     }
 
     // 4. Gemini call
-    const text = await callGemini({
+    let text = await callGemini({
       model,
       prompt: finalPrompt,
       temperature,
       maxOutputTokens,
     });
 
+    // 5. Blueprint validation + retry (only in blueprint mode)
+    let validation = null;
+    if (useBlueprint && pipelineLog?.blueprint) {
+      const bp = pipelineLog.blueprint as import("../lib/blueprint/buildBlueprint").Blueprint;
+      validation = validateOutput(text, bp);
+
+      if (!validation.valid) {
+        console.info("[BLUEPRINT] Validation failed, retrying:", {
+          missingConcepts: validation.missingConcepts,
+          missingTypes: validation.missingTypes,
+          score: validation.score,
+        });
+
+        try {
+          const correctionPrompt = buildCorrectionPrompt(text, validation, bp);
+          text = await callGemini({
+            model,
+            prompt: correctionPrompt,
+            temperature,
+            maxOutputTokens,
+          });
+
+          // Re-validate after correction
+          validation = validateOutput(text, bp);
+        } catch (retryErr) {
+          console.warn("[BLUEPRINT] Retry failed, using original output:", retryErr);
+        }
+      }
+    }
+
     return res.status(200).json({
       text,
-      ...(ragLog ? { _rag: ragLog } : {}),
+      ...(pipelineLog ? { _pipeline: pipelineLog } : {}),
+      ...(validation ? { _validation: validation } : {}),
     });
 
   } catch (err: any) {

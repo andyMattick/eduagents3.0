@@ -5,6 +5,21 @@
  * so they can be shared between /api/azure-extract and job processors.
  */
 
+/**
+ * Normalize an Azure endpoint — handles common env var corruption:
+ *   - stray "..." prefixes (Vercel copy-paste artifact)
+ *   - missing double-slash after scheme
+ *   - trailing slashes
+ *   - leading/trailing whitespace
+ */
+function normalizeEndpoint(raw: string): string {
+  return raw
+    .trim()
+    .replace(/\.{2,}/g, "")            // kill stray dots (e.g. "...https://")
+    .replace(/^https:\/(?!\/)/, "https://") // fix single-slash scheme
+    .replace(/\/+$/, "");               // strip trailing slashes
+}
+
 export function getAzureConfig() {
   const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
   const key = process.env.AZURE_DOCUMENT_KEY;
@@ -13,14 +28,14 @@ export function getAzureConfig() {
     throw new Error("AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY must be set");
   }
 
-  return {
-    endpoint: endpoint.replace(/\/$/, ""),
-    key,
-  };
+  const clean = normalizeEndpoint(endpoint);
+  console.log("[azure] normalized endpoint:", clean);
+
+  return { endpoint: clean, key };
 }
 
 export function azureAnalyzeUrl(endpoint: string): string {
-  return `${endpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+  return `${endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
 }
 
 // ── Result types ────────────────────────────────────────────────────────────
