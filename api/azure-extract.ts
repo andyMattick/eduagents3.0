@@ -84,14 +84,18 @@ console.log("body type:", typeof req.body);
       body: fileBytes,
     });
 
-    if (!submitRes.ok) {
-      const errText = await submitRes.text().catch(() => "");
-      return res.status(submitRes.status).json({
-        error: `Azure rejected the document (${submitRes.status})`,
-        detail: errText,
-      });
-    }
+      if (!submitRes.ok) {
+        const errText = await submitRes.text().catch(() => "");
 
+        console.error("AZURE SUBMIT FAILED");
+        console.error("status:", submitRes.status);
+        console.error("body:", errText);
+
+        return res.status(submitRes.status).json({
+          error: `Azure rejected the document (${submitRes.status})`,
+          detail: errText,
+        });
+      }
     // Azure returns 202 Accepted with an operation-location header for polling
     const operationLocation = submitRes.headers.get("operation-location");
     if (!operationLocation) {
