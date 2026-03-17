@@ -21,30 +21,18 @@ export interface AzureExtractResult {
  * Throws if the server returns an error or the response is malformed.
  */
 export async function extractAzureText(file: File): Promise<AzureExtractResult> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-const response = await fetch("/api/azure-extract", {
-  method: "POST",
-  headers: {
-    "Content-Type": file.type || "application/pdf"
-  },
-  body: file
-});
+  const response = await fetch("/api/azure-extract", {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type || "application/pdf"
+    },
+    body: file
+  });
 
   if (!response.ok) {
     const text = await response.text();
-      throw new Error(
-        `Azure extraction failed (${response.status}): ${text}`
-      );
-  }
-  
-
-  const result = (await response.json()) as AzureExtractResult;
-
-  if (!result || typeof result.content !== "string") {
-    throw new Error("Azure extraction returned an unexpected response shape.");
+    throw new Error(`Azure extraction failed (${response.status}): ${text}`);
   }
 
-  return result;
+  return response.json();
 }
