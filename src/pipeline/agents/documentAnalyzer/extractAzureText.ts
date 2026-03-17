@@ -21,19 +21,12 @@ export interface AzureExtractResult {
  * Throws if the server returns an error or the response is malformed.
  */
 export async function extractAzureText(file: File): Promise<AzureExtractResult> {
-  // Convert file to base64 without a FileReader (works in all modern browsers)
-  const fileBase64 = btoa(
-    String.fromCharCode(...new Uint8Array(await file.arrayBuffer()))
-  );
+  const formData = new FormData();
+  formData.append("file", file);
 
   const response = await fetch("/api/azure-extract", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      fileBase64,
-      fileName: file.name,
-      mimeType: file.type || "application/octet-stream",
-    }),
+    body: formData
   });
 
   if (!response.ok) {

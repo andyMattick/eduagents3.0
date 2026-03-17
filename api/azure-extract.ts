@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import Busboy from "busboy";
 
 export const runtime = "nodejs";
 
@@ -37,123 +38,60 @@ function setCors(res: ServerResponse) {
 }
 
 export default async function handler(req: any, res: any) {
-  console.log("API route invoked");
-
-console.log(
-  "endpoint exists:",
-  process.env.AZURE_DOCUMENT_ENDPOINT ? "YES" : "NO"
-);
-
-console.log(
-  "key exists:",
-  process.env.AZURE_DOCUMENT_KEY ? "YES" : "NO"
-);
-
-console.log("body type:", typeof req.body);
-  setCors(res);
-  if (req.method === "OPTIONS") return res.status(200).json({});
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
   const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
   const key = process.env.AZURE_DOCUMENT_KEY;
 
   if (!endpoint || !key) {
-    return res.status(500).json({
-      error: "Azure Document Intelligence is not configured. Set AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY.",
-    });
+    return res.status(500).json({ error: "Azure not configured" });
   }
 
-  // Accept { fileBase64, fileName, mimeType } JSON body
-  let body: any = req.body;
+  const busboy = Busboy({ headers: req.headers });
 
-if (typeof body === "string") {
-  try {
-    body = JSON.parse(body);
-  } catch (err) {
-    console.error("Failed to parse JSON body:", err);
-    return res.status(400).json({ error: "Invalid JSON body." });
-  }
-}
+  let fileBuffer: Buffer | null = null;
+  let mimeType = "application/octet-stream";
 
-if (!body || !body.fileBase64) {
-  console.error("Body received:", body);
-  return res.status(400).json({ error: "Missing fileBase64 in request body." });
-}
-console.log("Body keys:", Object.keys(body || {}));
-console.log("Base64 length:", body.fileBase64?.length);
-  try {
-    const fileBytes = Buffer.from(body.fileBase64, "base64");
+  busboy.on("file", (_name, file, info) => {
+    mimeType = info.mimeType;
 
-    // Azure REST API — submit document for analysis
-    const analyzeUrl = `${endpoint.replace(/\/$/, "")}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
-
-    const submitRes = await fetch(analyzeUrl, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": key,
-        "Content-Type": body.mimeType || "application/octet-stream",
-      },
-      body: fileBytes,
+    const chunks: Buffer[] = [];
+    file.on("data", (data) => chunks.push(data));
+    file.on("end", () => {
+      fileBuffer = Buffer.concat(chunks);
     });
+  });
 
-      if (!submitRes.ok) {
-        const errText = await submitRes.text().catch(() => "");
-
-        console.error("AZURE SUBMIT FAILED");
-        console.error("status:", submitRes.status);
-        console.error("body:", errText);
-
-        return res.status(submitRes.status).json({
-          error: `Azure rejected the document (${submitRes.status})`,
-          detail: errText,
-        });
-      }
-    // Azure returns 202 Accepted with an operation-location header for polling
-    const operationLocation = submitRes.headers.get("operation-location");
-    if (!operationLocation) {
-      return res.status(502).json({ error: "Azure did not return an operation-location header." });
+  busboy.on("finish", async () => {
+    if (!fileBuffer) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    // Poll until succeeded (max 60s)
-    const deadline = Date.now() + 60_000;
-    let result: AzureAnalyzeResult | null = null;
+    try {
+      const analyzeUrl =
+        `${endpoint.replace(/\/$/, "")}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
 
-    while (Date.now() < deadline) {
-      await sleep(1500);
-
-      const pollRes = await fetch(operationLocation, {
-        headers: { "Ocp-Apim-Subscription-Key": key },
+      const submitRes = await fetch(analyzeUrl, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": key,
+          "Content-Type": mimeType
+        },
+        body: fileBuffer as unknown as BodyInit
       });
 
-      if (!pollRes.ok) {
-        return res.status(pollRes.status).json({ error: `Azure poll failed (${pollRes.status})` });
-      }
+      const text = await submitRes.text();
 
-      const pollData = (await pollRes.json()) as { status: string; analyzeResult?: AzureAnalyzeResult };
-
-      if (pollData.status === "succeeded") {
-        result = pollData.analyzeResult ?? null;
-        break;
-      }
-
-      if (pollData.status === "failed") {
-        return res.status(422).json({ error: "Azure analysis failed." });
-      }
-      // still running → loop
+      res.status(200).json({ content: text });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
     }
+  });
 
-    if (!result) {
-      return res.status(504).json({ error: "Azure analysis timed out after 60 s." });
-    }
-
-    // Map Azure output to a compact, typed shape for the client
-    return res.status(200).json(mapAzureResult(result, body.fileName ?? "document"));
-  } catch (err: any) {
-    console.error("[api/azure-extract] endpoint:", process.env.AZURE_DOCUMENT_ENDPOINT ? "set" : "MISSING");
-    console.error("[api/azure-extract] key:", process.env.AZURE_DOCUMENT_KEY ? "set" : "MISSING");
-    console.error("[api/azure-extract]", err);
-    return res.status(502).json({ error: "Azure extraction failed", message: err.message });
-  }
+  req.pipe(busboy);
 }
 
 // ── Sleep helper ──────────────────────────────────────────────────────────────
