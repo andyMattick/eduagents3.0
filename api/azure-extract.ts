@@ -71,7 +71,8 @@ export default async function handler(req: any, res: any) {
 
     try {
       const analyzeUrl =
-        `${endpoint.replace(/\/$/, "")}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+        `${endpoint.replace(/\/$/, "")}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-09-30` +
+        `&includeTextDetails=true`;
 
       const submitRes = await fetch(analyzeUrl, {
         method: "POST",

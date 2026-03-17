@@ -30,11 +30,12 @@ export async function extractAzureText(file: File): Promise<AzureExtractResult> 
   });
 
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string };
-    throw new Error(
-      `Azure extraction failed (${response.status}): ${body.error ?? response.statusText}`
-    );
+    const text = await response.text();
+      throw new Error(
+        `Azure extraction failed (${response.status}): ${text}`
+      );
   }
+  
 
   const result = (await response.json()) as AzureExtractResult;
 
