@@ -13,11 +13,18 @@
  *   - leading/trailing whitespace
  */
 function normalizeEndpoint(raw: string): string {
-  return raw
+  let s = raw
     .trim()
     .replace(/\.{2,}/g, "")            // kill stray dots (e.g. "...https://")
     .replace(/^https:\/(?!\/)/, "https://") // fix single-slash scheme
     .replace(/\/+$/, "");               // strip trailing slashes
+
+  // If the scheme is missing entirely, prepend https://
+  if (!/^https?:\/\//.test(s)) {
+    s = `https://${s}`;
+  }
+
+  return s;
 }
 
 export function getAzureConfig() {
@@ -35,7 +42,7 @@ export function getAzureConfig() {
 }
 
 export function azureAnalyzeUrl(endpoint: string): string {
-  return `${endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+  return `${endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`;
 }
 
 // ── Result types ────────────────────────────────────────────────────────────

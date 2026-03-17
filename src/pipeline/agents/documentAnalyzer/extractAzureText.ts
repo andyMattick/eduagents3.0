@@ -34,11 +34,14 @@ async function fetchAzureCredentials(): Promise<{ endpoint: string; key: string 
 
 async function extractDirect(file: File): Promise<AzureExtractResult> {
   const { endpoint, key } = await fetchAzureCredentials();
-  const cleanEndpoint = endpoint.replace(/\/$/, "");
+  let cleanEndpoint = endpoint.replace(/\/$/, "");
+  if (!/^https?:\/\//.test(cleanEndpoint)) {
+    cleanEndpoint = `https://${cleanEndpoint}`;
+  }
 
   // Submit document
   const analyzeUrl =
-    `${cleanEndpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    `${cleanEndpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`;
 
   const submitRes = await fetch(analyzeUrl, {
     method: "POST",
