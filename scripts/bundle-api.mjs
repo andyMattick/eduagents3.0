@@ -9,7 +9,7 @@
  * Called automatically by Vercel via buildCommand.
  */
 import { build } from "esbuild";
-import { readdirSync, renameSync, unlinkSync } from "fs";
+import { readdirSync, renameSync, statSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
 const apiDir = "api";
@@ -35,13 +35,32 @@ const externalPackages = [
   "lucide-react",
 ];
 
-const tsFiles = readdirSync(apiDir).filter(
-  (f) => f.endsWith(".ts") && !f.endsWith(".d.ts")
-);
+function collectApiTsFiles(dir) {
+  const entries = readdirSync(dir);
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = join(dir, entry);
+    const stats = statSync(fullPath);
+
+    if (stats.isDirectory()) {
+      files.push(...collectApiTsFiles(fullPath));
+      continue;
+    }
+
+    if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+const tsFiles = collectApiTsFiles(apiDir);
 
 for (const file of tsFiles) {
-  const entry = join(apiDir, file);
-  const tmpFile = join(apiDir, file.replace(/\.ts$/, ".bundled.mjs"));
+  const entry = file;
+  const tmpFile = file.replace(/\.ts$/, ".bundled.mjs");
 
   // Plugin to resolve @/ alias → src/ (since esbuild 0.14 doesn't have `alias`)
   // Also handles resolving to .ts/.tsx extensions and directory index files.
