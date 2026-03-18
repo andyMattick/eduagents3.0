@@ -6,8 +6,7 @@ import { getPrompt, getAnswer } from "pipeline/utils/itemNormalizer";
 
 /**
  * Build a bulk rewrite prompt for the philosopher-requested rewrite pass.
- * This is separate from buildRewriterPrompt (rewriterPrompt.ts) which is for
- * per-slot surgical rewrites after Gatekeeper validation.
+ * This path handles the active bulk rewrite pass after Gatekeeper validation.
  */
 function buildBulkRewritePrompt({
   writerDraft,

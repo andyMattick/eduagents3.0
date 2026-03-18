@@ -166,6 +166,13 @@ export default async function handler(req: any, res: any) {
         }
 
         // Mandatory logging
+        console.log("[PIPELINE]", {
+          useRAG: shouldUseRAG,
+          useBlueprint: !!useBlueprint,
+          chunksUsed: selected.length,
+          concepts: querySem?.concepts,
+        });
+
         pipelineLog = {
           mode: useBlueprint ? "blueprint" : "rag",
           query: prompt.slice(0, 200),

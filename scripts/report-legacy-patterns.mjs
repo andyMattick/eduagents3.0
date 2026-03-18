@@ -167,12 +167,22 @@ for (const file of files) {
 
 const resolveImportPath = (fromFile, importPath) => {
   // External / node_modules imports — skip
-  const isExternal = !importPath.startsWith('@/') && !importPath.startsWith('/') && !importPath.startsWith('.');
+  const isExternal =
+    !importPath.startsWith('@/') &&
+    !importPath.startsWith('pipeline/') &&
+    !importPath.startsWith('/') &&
+    !importPath.startsWith('.');
   if (isExternal) return null;
   
   // Internal imports: @/ → src/
   if (importPath.startsWith('@/')) {
     const resolved = importPath.replace('@/', 'src/');
+    return tryResolveFile(resolved);
+  }
+
+  // baseUrl imports: pipeline/... → src/pipeline/...
+  if (importPath.startsWith('pipeline/')) {
+    const resolved = path.join('src', importPath).replace(/\\/g, '/');
     return tryResolveFile(resolved);
   }
   
@@ -188,23 +198,27 @@ const resolveImportPath = (fromFile, importPath) => {
 };
 
 const tryResolveFile = (filePath) => {
-  // If it already ends in .ts, return it
-  if (filePath.endsWith('.ts')) {
+  // If it already ends in a supported source extension, return it
+  if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
     return filePath;
   }
   
-  // Try .ts extension
-  if (fs.existsSync(filePath + '.ts')) {
-    return filePath + '.ts';
+  // Try file extensions
+  for (const ext of ['.ts', '.tsx']) {
+    if (fs.existsSync(filePath + ext)) {
+      return filePath + ext;
+    }
   }
   
-  // Try directory/index.ts
-  const indexPath = path.join(filePath, 'index.ts').replace(/\\/g, '/');
-  if (fs.existsSync(indexPath)) {
-    return indexPath;
+  // Try directory index files
+  for (const indexFile of ['index.ts', 'index.tsx']) {
+    const indexPath = path.join(filePath, indexFile).replace(/\\/g, '/');
+    if (fs.existsSync(indexPath)) {
+      return indexPath;
+    }
   }
   
-  return filePath.endsWith('.ts') ? filePath : `${filePath}.ts`;
+  return `${filePath}.ts`;
 };
 
 const candidateEntryPoints = [

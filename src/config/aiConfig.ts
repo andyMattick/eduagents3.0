@@ -1,8 +1,9 @@
 console.log("[AIConfig] Loaded — Pipeline Version 2.0.0");
 
-import { runCreatePipeline, getLastPipelineBlueprint } from "pipeline/orchestrator/create";
+import { getLastPipelineBlueprint } from "pipeline/orchestrator/create";
 import { callGemini } from "pipeline/llm/gemini";
 import { UnifiedAssessmentRequest } from "pipeline/contracts";
+import { runPipeline } from "pipeline/runPipeline";
 
 export { getLastPipelineBlueprint };
 
@@ -10,7 +11,7 @@ export async function generateAssessment(
   uar: UnifiedAssessmentRequest,
   onItemsProgress?: (partialItems: any[]) => void
 ) {
-  return await runCreatePipeline(uar, 0, onItemsProgress);
+  return await runPipeline(uar, 0, onItemsProgress);
 }
 
 /**

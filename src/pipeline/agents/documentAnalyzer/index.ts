@@ -152,6 +152,11 @@ export function analyzeDocumentText(text: string): DocumentInsights {
 export function buildDocumentInsightsFromInput(input: any): DocumentInsights {
   const chunks: string[] = [];
 
+  const getItemText = (item: any): string => {
+    const value = item?.prompt ?? item?.content ?? item?.text ?? item?.source_text ?? "";
+    return typeof value === "string" ? value : "";
+  };
+
   if (typeof input === "string") {
     chunks.push(input);
   } else if (input && typeof input === "object") {
@@ -173,8 +178,8 @@ export function buildDocumentInsightsFromInput(input: any): DocumentInsights {
 
     if (Array.isArray(input.items)) {
       for (const item of input.items) {
-        if (item && typeof item.source_text === "string") chunks.push(item.source_text);
-        if (item && typeof item.prompt === "string") chunks.push(item.prompt);
+        const text = getItemText(item).trim();
+        if (text) chunks.push(text);
       }
     }
   }

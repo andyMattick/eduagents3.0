@@ -105,6 +105,21 @@ function normalizeStringArray(
     .slice(0, maxItems);
 }
 
+function normalizeTopic(value: unknown): string {
+  if (typeof value !== "string") return "";
+
+  let topic = value
+    .replace(/\.$/, "")
+    .split(".")[0]
+    .trim();
+
+  if (topic.length > 80) {
+    topic = topic.split(/\s+/).slice(0, 5).join(" ");
+  }
+
+  return topic.slice(0, 100);
+}
+
 // ── Semantic extractor for documents (storage-time) ─────────────────────────
 
 export interface DocumentSemantics {
@@ -159,7 +174,7 @@ export async function extractSemantics(
     const parsed = JSON.parse(cleaned);
 
     return {
-      topic: typeof parsed.topic === "string" ? parsed.topic.slice(0, 100) : "",
+      topic: normalizeTopic(parsed.topic),
       concepts: normalizeStringArray(parsed.concepts, 10, 5),
       relationships: normalizeStringArray(parsed.relationships, 5, 15),
       misconceptions: normalizeStringArray(parsed.misconceptions, 3, 15),

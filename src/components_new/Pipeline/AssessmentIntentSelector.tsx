@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { runOrchestrator, type OrchestratorIntent } from "../../pipeline/orchestrator";
+import { runPipeline } from "../../pipeline/runPipeline";
+import type { OrchestratorIntent } from "../../pipeline/orchestrator";
 import { analyzeDocument } from "../../pipeline/agents/documentAnalyzer";
 import "./AssessmentIntentSelector.css";
 
@@ -539,7 +540,7 @@ export function AnalyzeDocumentPanel() {
     setIsLoading(true);
     try {
       const text = await readFileText(file);
-      const output = await runOrchestrator({
+      const output = await runPipeline({
         intent: "analyze",
         input: {
           fileName: file.name,
@@ -600,7 +601,7 @@ export function CompareDocumentsPanel() {
     setIsLoading(true);
     try {
       const [textA, textB] = await Promise.all([readFileText(fileA), readFileText(fileB)]);
-      const output = await runOrchestrator({
+      const output = await runPipeline({
         intent: "compare",
         input: {
           a: { fileName: fileA.name, text: textA },
@@ -666,7 +667,7 @@ export function PlaytestAssessmentPanel() {
     setIsLoading(true);
     try {
       const text = await readFileText(file);
-      const output = await runOrchestrator({
+      const output = await runPipeline({
         intent: "test",
         input: {
           fileName: file.name,
@@ -739,7 +740,7 @@ export function DocumentViewPanel({ initialIntent }: { initialIntent: Orchestrat
     setIsLoading(true);
     try {
       const text = await readFileText(file);
-      const output = await runOrchestrator({
+      const output = await runPipeline({
         intent: view,
         input: {
           fileName: file.name,

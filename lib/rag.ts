@@ -113,37 +113,77 @@ export async function storeDocument({
   const docId = Array.isArray(docs) ? docs[0]?.id : docs?.id;
   if (!docId) throw new Error("Document insert returned no id");
 
-  // 2. Chunk + embed + store (parallel in batches)
-  const chunks = chunkText(content);
-  const chunkMeta = { title, ...(metadata ?? {}) };
-
-  for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
-    const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
-
-    await Promise.all(
-      batch.map(async (chunk) => {
-        const embedding = await embedText(chunk);
-
-        const chunkRes = await fetch(`${url}/rest/v1/document_chunks`, {
-          method: "POST",
-          headers: { ...headers, Prefer: "return=minimal" },
-          body: JSON.stringify({
-            document_id: docId,
-            user_id: userId,
-            content: chunk,
-            embedding: `[${embedding.join(",")}]`,
-            metadata: chunkMeta,
-          }),
-        });
-
-        if (!chunkRes.ok) {
-          console.warn(`Failed to store chunk for doc ${docId}:`, await chunkRes.text());
-        }
-      })
+  // 2. Chunk + embed + store (non-blocking — never fails the document insert)
+  setTimeout(() => {
+    void embedAndStoreChunks({ url, headers, docId, userId, title, content, metadata }).catch((err) =>
+      console.error(`[RAG] background embed failed for doc ${docId}:`, err)
     );
-  }
+  }, 0);
 
   return docId;
+}
+
+// ── Background embed + store ────────────────────────────────────────────────
+
+async function embedAndStoreChunks({
+  url,
+  headers,
+  docId,
+  userId,
+  title,
+  content,
+  metadata,
+}: {
+  url: string;
+  headers: Record<string, string>;
+  docId: string;
+  userId: string;
+  title: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.warn("[rag] GEMINI_API_KEY missing — skipping embeddings for doc", docId);
+      return;
+    }
+
+    const chunks = chunkText(content);
+    const chunkMeta = { title, ...(metadata ?? {}) };
+
+    for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+      const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
+
+      await Promise.all(
+        batch.map(async (chunk) => {
+          try {
+            const embedding = await embedText(chunk);
+
+            const chunkRes = await fetch(`${url}/rest/v1/document_chunks`, {
+              method: "POST",
+              headers: { ...headers, Prefer: "return=minimal" },
+              body: JSON.stringify({
+                document_id: docId,
+                user_id: userId,
+                content: chunk,
+                embedding: `[${embedding.join(",")}]`,
+                metadata: chunkMeta,
+              }),
+            });
+
+            if (!chunkRes.ok) {
+              console.warn(`[rag] Failed to store chunk for doc ${docId}:`, await chunkRes.text());
+            }
+          } catch (err) {
+            console.warn(`[rag] Chunk embed failed for doc ${docId}:`, err);
+          }
+        })
+      );
+    }
+  } catch (err) {
+    console.warn(`[rag] embedAndStoreChunks aborted for doc ${docId}:`, err);
+  }
 }
 
 // ── Retrieve relevant chunks ────────────────────────────────────────────────
@@ -164,39 +204,53 @@ export async function retrieveRelevantChunks({
   userId: string;
   matchCount?: number;
 }): Promise<RankedChunk[]> {
-  const embedding = await embedText(query);
-  const { url, key } = supabaseAdmin();
-
-  // Step 1 — vector retrieval (pgvector cosine similarity, server-side threshold)
-  const rpcRes = await fetch(`${url}/rest/v1/rpc/match_chunks`, {
-    method: "POST",
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query_embedding: `[${embedding.join(",")}]`,
-      p_user_id: userId,
-      match_count: matchCount,
-    }),
-  });
-
-  if (!rpcRes.ok) {
-    console.warn("RAG retrieval failed:", await rpcRes.text());
+  if (!process.env.GEMINI_API_KEY) {
+    console.warn("[RAG] GEMINI_API_KEY missing — fallback mode");
     return [];
   }
 
-  const data: Array<{ content: string; similarity: number }> =
-    (await rpcRes.json()) ?? [];
+  try {
+    const embedding = await embedText(query);
+    const { url, key } = supabaseAdmin();
 
-  // Convert to RankedChunk with default scores
-  return data.map((d) => ({
-    content: d.content,
-    similarity: d.similarity,
-    score: d.similarity,
-    conceptMatches: [],
-  }));
+    // Step 1 — vector retrieval (pgvector cosine similarity, server-side threshold)
+    const rpcRes = await fetch(`${url}/rest/v1/rpc/match_chunks`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query_embedding: `[${embedding.join(",")}]`,
+        p_user_id: userId,
+        match_count: matchCount,
+      }),
+    });
+
+    if (!rpcRes.ok) {
+      console.warn("RAG retrieval failed:", await rpcRes.text());
+      return [];
+    }
+
+    const data: Array<{ content: string; similarity: number }> =
+      (await rpcRes.json()) ?? [];
+
+    if (!data.length) {
+      console.warn("[RAG] No chunks found — fallback mode");
+    }
+
+    // Convert to RankedChunk with default scores
+    return data.map((d) => ({
+      content: d.content,
+      similarity: d.similarity,
+      score: d.similarity,
+      conceptMatches: [],
+    }));
+  } catch (err) {
+    console.warn("[RAG] Retrieval fallback mode:", err);
+    return [];
+  }
 }
 
 // ── Hybrid filtering + ranking ──────────────────────────────────────────────

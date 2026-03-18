@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { runOrchestrator } from "../../pipeline/orchestrator";
+import { runPipeline } from "../../pipeline/runPipeline";
 import { DifferentiatedResultsView, type DifferentiatedWorkflowResult } from "./DifferentiatedResultsView";
 import "./AssessmentIntentSelector.css";
 
@@ -87,7 +87,7 @@ export function DifferentiatedAssessmentPanel() {
         };
       }
 
-      const output = await runOrchestrator({
+      const output = await runPipeline({
         intent: "differentiate",
         input,
       });

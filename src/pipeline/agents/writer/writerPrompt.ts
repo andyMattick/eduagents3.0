@@ -32,7 +32,7 @@ export interface ScribePrescriptions {
 }
 
 /**
- * Fallback-only writer prompt. Template slots are handled in writerCall via template registry.
+ * Fallback-only writer prompt for the active writer path.
  */
 export function buildWriterPrompt(slot: WriterSlot): string {
   const topic = slot.topicAngle ?? "the topic";

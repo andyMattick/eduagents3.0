@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 export const config = { maxDuration: 60 };
 
 export default async function handler(req: any, res: any) {
+  console.log("[documents/store] handler invoked");
   try {
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method not allowed" });
