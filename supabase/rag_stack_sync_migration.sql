@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS public.documents (
 );
 
 ALTER TABLE public.documents
+  ADD COLUMN IF NOT EXISTS title text,
+  ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS content_hash text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_user_hash
@@ -85,6 +88,10 @@ CREATE TABLE IF NOT EXISTS public.document_chunks (
   metadata     jsonb       NOT NULL DEFAULT '{}',
   created_at   timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.document_chunks
+  ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document
   ON public.document_chunks (document_id);

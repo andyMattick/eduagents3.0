@@ -13,11 +13,49 @@ import { supabaseAdmin } from "./supabase";
 import { createHash } from "crypto";
 import type { QuerySemantics } from "./semantic/parseQuery";
 
-function isMissingContentHashColumn(errorText: string): boolean {
-  return (
-    errorText.includes("content_hash") &&
-    (errorText.includes("PGRST204") || errorText.includes("schema cache"))
-  );
+function getMissingSchemaColumn(errorText: string): string | null {
+  if (!errorText.includes("PGRST204") && !errorText.includes("schema cache")) {
+    return null;
+  }
+
+  const match = errorText.match(/'([^']+)' column/);
+  return match ? match[1] : null;
+}
+
+async function insertWithSchemaFallback({
+  url,
+  headers,
+  body,
+  label,
+}: {
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+  label: string;
+}) {
+  const requestBody = { ...body };
+
+  while (true) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    if (res.ok) {
+      return res;
+    }
+
+    const err = await res.text();
+    const missingColumn = getMissingSchemaColumn(err);
+    if (missingColumn && missingColumn in requestBody) {
+      delete requestBody[missingColumn];
+      console.warn(`[RAG] ${label} column missing in live schema; retrying without ${missingColumn}`);
+      continue;
+    }
+
+    throw new Error(`Failed to insert ${label}: ${err}`);
+  }
 }
 
 // ── Chunking ────────────────────────────────────────────────────────────────
@@ -100,7 +138,7 @@ export async function storeDocument({
     }
   } else {
     const dedupErr = await dedupRes.text();
-    if (isMissingContentHashColumn(dedupErr)) {
+    if (getMissingSchemaColumn(dedupErr) === "content_hash") {
       canUseContentHash = false;
       console.warn("[RAG] content_hash column missing; skipping document deduplication");
     } else {
@@ -119,36 +157,12 @@ export async function storeDocument({
     documentBody.content_hash = hash;
   }
 
-  let docRes = await fetch(`${url}/rest/v1/documents`, {
-    method: "POST",
+  const docRes = await insertWithSchemaFallback({
+    url: `${url}/rest/v1/documents`,
     headers,
-    body: JSON.stringify(documentBody),
+    body: documentBody,
+    label: "document",
   });
-
-  if (!docRes.ok && canUseContentHash) {
-    const err = await docRes.text();
-    if (isMissingContentHashColumn(err)) {
-      console.warn("[RAG] content_hash column missing during insert; retrying without deduplication");
-      canUseContentHash = false;
-      docRes = await fetch(`${url}/rest/v1/documents`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          user_id: userId,
-          title,
-          content,
-          metadata: metadata ?? {},
-        }),
-      });
-    } else {
-      throw new Error(`Failed to insert document: ${err}`);
-    }
-  }
-
-  if (!docRes.ok) {
-    const err = await docRes.text();
-    throw new Error(`Failed to insert document: ${err}`);
-  }
 
   const docs = await docRes.json();
   const docId = Array.isArray(docs) ? docs[0]?.id : docs?.id;
@@ -201,21 +215,18 @@ async function embedAndStoreChunks({
           try {
             const embedding = await embedText(chunk);
 
-            const chunkRes = await fetch(`${url}/rest/v1/document_chunks`, {
-              method: "POST",
+            await insertWithSchemaFallback({
+              url: `${url}/rest/v1/document_chunks`,
               headers: { ...headers, Prefer: "return=minimal" },
-              body: JSON.stringify({
+              body: {
                 document_id: docId,
                 user_id: userId,
                 content: chunk,
                 embedding: `[${embedding.join(",")}]`,
                 metadata: chunkMeta,
-              }),
+              },
+              label: "document chunk",
             });
-
-            if (!chunkRes.ok) {
-              console.warn(`[rag] Failed to store chunk for doc ${docId}:`, await chunkRes.text());
-            }
           } catch (err) {
             console.warn(`[rag] Chunk embed failed for doc ${docId}:`, err);
           }

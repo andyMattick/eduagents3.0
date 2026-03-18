@@ -20,41 +20,54 @@ function parseErrorText(errorText: string): string {
   }
 }
 
+function getMissingSchemaColumn(errorText: string): string | null {
+  if (!errorText.includes("PGRST204") && !errorText.includes("schema cache")) {
+    return null;
+  }
+
+  const match = errorText.match(/'([^']+)' column/);
+  return match ? match[1] : null;
+}
+
 function zeroVector(dimensions: number): string {
   return `[${Array.from({ length: dimensions }, () => 0).join(",")}]`;
 }
 
 async function probeDocuments(url: string, headers: Record<string, string>): Promise<ProbeResult> {
-  const res = await fetch(`${url}/rest/v1/documents?select=id,content_hash&limit=1`, {
+  const res = await fetch(`${url}/rest/v1/documents?select=id,content_hash,metadata&limit=1`, {
     headers,
   });
 
   if (res.ok) {
-    return { status: "ok", detail: "documents table reachable and content_hash available" };
+    return { status: "ok", detail: "documents table reachable and optional columns available" };
   }
 
   const errorText = await res.text();
   const detail = parseErrorText(errorText);
-  if (detail.includes("content_hash")) {
-    return { status: "error", detail: `documents reachable but content_hash missing: ${detail}` };
+  const missingColumn = getMissingSchemaColumn(errorText);
+  if (missingColumn) {
+    return { status: "error", detail: `documents reachable but ${missingColumn} missing: ${detail}` };
   }
 
   return { status: "error", detail: `documents probe failed: ${detail}` };
 }
 
 async function probeDocumentChunks(url: string, headers: Record<string, string>): Promise<ProbeResult> {
-  const res = await fetch(`${url}/rest/v1/document_chunks?select=id&limit=1`, {
+  const res = await fetch(`${url}/rest/v1/document_chunks?select=id,metadata&limit=1`, {
     headers,
   });
 
   if (res.ok) {
-    return { status: "ok", detail: "document_chunks table reachable" };
+    return { status: "ok", detail: "document_chunks table reachable and metadata available" };
   }
 
   const errorText = await res.text();
+  const missingColumn = getMissingSchemaColumn(errorText);
   return {
     status: "error",
-    detail: `document_chunks probe failed: ${parseErrorText(errorText)}`,
+    detail: missingColumn
+      ? `document_chunks reachable but ${missingColumn} missing: ${parseErrorText(errorText)}`
+      : `document_chunks probe failed: ${parseErrorText(errorText)}`,
   };
 }
 
