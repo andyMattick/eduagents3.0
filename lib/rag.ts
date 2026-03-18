@@ -13,6 +13,13 @@ import { supabaseAdmin } from "./supabase";
 import { createHash } from "crypto";
 import type { QuerySemantics } from "./semantic/parseQuery";
 
+function isMissingContentHashColumn(errorText: string): boolean {
+  return (
+    errorText.includes("content_hash") &&
+    (errorText.includes("PGRST204") || errorText.includes("schema cache"))
+  );
+}
+
 // ── Chunking ────────────────────────────────────────────────────────────────
 
 export function chunkText(text: string, size = 500, overlap = 100): string[] {
@@ -80,6 +87,8 @@ export async function storeDocument({
 
   // 0. Deduplication — skip if identical document already stored
   const hash = contentHash(content);
+  let canUseContentHash = true;
+
   const dedupRes = await fetch(
     `${url}/rest/v1/documents?user_id=eq.${encodeURIComponent(userId)}&content_hash=eq.${encodeURIComponent(hash)}&select=id&limit=1`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } }
@@ -89,20 +98,52 @@ export async function storeDocument({
     if (Array.isArray(existing) && existing.length > 0) {
       return existing[0].id; // already stored
     }
+  } else {
+    const dedupErr = await dedupRes.text();
+    if (isMissingContentHashColumn(dedupErr)) {
+      canUseContentHash = false;
+      console.warn("[RAG] content_hash column missing; skipping document deduplication");
+    } else {
+      console.warn("[RAG] Document deduplication lookup failed:", dedupErr);
+    }
   }
 
   // 1. Insert document
-  const docRes = await fetch(`${url}/rest/v1/documents`, {
+  const documentBody: Record<string, unknown> = {
+    user_id: userId,
+    title,
+    content,
+    metadata: metadata ?? {},
+  };
+  if (canUseContentHash) {
+    documentBody.content_hash = hash;
+  }
+
+  let docRes = await fetch(`${url}/rest/v1/documents`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      user_id: userId,
-      title,
-      content,
-      content_hash: hash,
-      metadata: metadata ?? {},
-    }),
+    body: JSON.stringify(documentBody),
   });
+
+  if (!docRes.ok && canUseContentHash) {
+    const err = await docRes.text();
+    if (isMissingContentHashColumn(err)) {
+      console.warn("[RAG] content_hash column missing during insert; retrying without deduplication");
+      canUseContentHash = false;
+      docRes = await fetch(`${url}/rest/v1/documents`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          user_id: userId,
+          title,
+          content,
+          metadata: metadata ?? {},
+        }),
+      });
+    } else {
+      throw new Error(`Failed to insert document: ${err}`);
+    }
+  }
 
   if (!docRes.ok) {
     const err = await docRes.text();
