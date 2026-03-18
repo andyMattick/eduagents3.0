@@ -1,8 +1,10 @@
 import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
 
 export function mapToDifficultyProfile(internal: any) {
+  const items = Array.isArray(internal?.items) ? internal.items : [];
+
   return {
-    items: internal.items.map((it: any) => ({
+    items: items.map((it: any) => ({
       id: it.id,
       difficulty: it.difficulty ?? 0,
       concepts: it.concepts ?? []

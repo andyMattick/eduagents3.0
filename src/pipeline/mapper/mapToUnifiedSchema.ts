@@ -11,14 +11,17 @@ import {
 import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
 
 export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
-  const structure: UnifiedSectionStructure[] = internal.sectionStructures.map((s: any) => ({
+  const sectionStructures = Array.isArray(internal?.sectionStructures) ? internal.sectionStructures : [];
+  const itemsInput = Array.isArray(internal?.items) ? internal.items : [];
+
+  const structure: UnifiedSectionStructure[] = sectionStructures.map((s: any) => ({
     id: s.id,
     title: s.title ?? null,
     itemIds: s.itemIds ?? [],
     taskType: s.taskType ?? null
   }));
 
-  const items: UnifiedItem[] = internal.items.map((it: any) => ({
+  const items: UnifiedItem[] = itemsInput.map((it: any) => ({
     id: it.id,
     type: it.type ?? "unknown",
     source_text: it.source_text ?? "",
@@ -57,7 +60,7 @@ export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
   };
 
   return {
-    document_type: internal.document_type ?? "assessment",
+    document_type: internal?.document_type ?? "assessment",
     structure,
     items,
     concepts,

@@ -739,12 +739,16 @@ export function DocumentViewPanel({ initialIntent }: { initialIntent: Orchestrat
     setError(null);
     setIsLoading(true);
     try {
-      const text = await readFileText(file);
+      const lower = file.name.toLowerCase();
+      const needsAnalysis = lower.endsWith(".pdf") || lower.endsWith(".docx") || lower.endsWith(".doc");
+      const documentInsights = needsAnalysis ? await analyzeDocument(file) : null;
+      const text = documentInsights?.rawText ?? await file.text().catch(() => "");
       const output = await runPipeline({
         intent: view,
         input: {
           fileName: file.name,
           text,
+          ...(documentInsights ? { documentInsights } : {}),
         },
       });
       setResult(output);

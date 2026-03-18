@@ -38,12 +38,43 @@ export interface DocumentViewOutput {
   courseProfile: UnifiedTemplateProfile;
 }
 
+function normalizeDocumentInsights(value: any): DocumentInsights | null {
+  if (!value || typeof value !== "object") return null;
+
+  return {
+    rawText: typeof value.rawText === "string" ? value.rawText : "",
+    pages: Array.isArray(value.pages) ? value.pages : [],
+    sections: Array.isArray(value.sections) ? value.sections : [],
+    vocab: Array.isArray(value.vocab) ? value.vocab : [],
+    formulas: Array.isArray(value.formulas) ? value.formulas : [],
+    entities: Array.isArray(value.entities) ? value.entities : [],
+    examples: Array.isArray(value.examples) ? value.examples : [],
+    concepts: Array.isArray(value.concepts) ? value.concepts : [],
+    tables: Array.isArray(value.tables) ? value.tables : [],
+    diagrams: Array.isArray(value.diagrams) ? value.diagrams : [],
+    metadata: {
+      gradeEstimate: value.metadata?.gradeEstimate ?? null,
+      subjectEstimate: value.metadata?.subjectEstimate ?? null,
+      topicCandidates: Array.isArray(value.metadata?.topicCandidates) ? value.metadata.topicCandidates : [],
+      difficulty: value.metadata?.difficulty ?? null,
+      readingLevel: value.metadata?.readingLevel ?? null,
+    },
+    confidence: value.confidence && typeof value.confidence === "object" ? value.confidence : {},
+    flags: {
+      unreadable: Boolean(value.flags?.unreadable),
+      partiallyReadable: value.flags?.partiallyReadable,
+      scanned: Boolean(value.flags?.scanned),
+      lowConfidence: Boolean(value.flags?.lowConfidence),
+    },
+  };
+}
+
 export function runDocumentView(
   intent: DocumentIntent,
   internal: any
 ): DocumentViewOutput {
   const schema = mapToUnifiedSchema(internal);
-  const documentInsights = buildDocumentInsightsFromInput(internal);
+  const documentInsights = normalizeDocumentInsights(internal?.documentInsights) ?? buildDocumentInsightsFromInput(internal);
   if (documentInsights.flags.unreadable) {
     return {
       view: intent,
