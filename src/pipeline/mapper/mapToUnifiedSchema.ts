@@ -10,7 +10,35 @@ import {
 
 import { defaultTeacherStyle } from "../schema/defaults/defaultTeacherStyle";
 
+function inferDomainFromConcepts(concepts: any[]): string {
+  const text = concepts
+    .map(c => (typeof c === "string" ? c : c.text ?? ""))
+    .join(" ")
+    .toLowerCase();
+
+  if (text.includes("photosynthesis") || text.includes("chloroplast"))
+    return "science";
+
+  if (text.includes("equation") || text.includes("variable") || text.includes("solve"))
+    return "math";
+
+  if (text.includes("revolution") || text.includes("civil war"))
+    return "history";
+
+  return "unknown";
+}
+
+
 export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
+    // 🔥 NEW: Pull Azure insights if available
+  const insights = internal.insights ?? {};
+
+  const azureConcepts = insights.concepts ?? [];
+  const azureSections = insights.sections ?? [];
+  const azureReadingLevel = insights.readingLevel ?? null;
+  const azureDifficulty = insights.difficulty ?? null;
+  const azureConfidence = insights.metadataConfidence ?? null;
+
   const sectionStructures = Array.isArray(internal?.sectionStructures) ? internal.sectionStructures : [];
   const itemsInput = Array.isArray(internal?.items) ? internal.items : [];
 
@@ -53,10 +81,19 @@ export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
   };
 
   const metadata: UnifiedMetadata = {
-    domain: internal.metadata?.domain ?? "unknown",
-    reading_level: internal.metadata?.reading_level ?? "unknown",
+    domain: internal.metadata?.domain
+      ?? inferDomainFromConcepts(azureConcepts)
+      ?? "unknown",
+
+    reading_level: azureReadingLevel
+      ?? internal.metadata?.reading_level
+      ?? "unknown",
+
     length: internal.metadata?.length ?? 0,
-    confidence: internal.metadata?.confidence ?? 0.0
+
+    confidence: azureConfidence
+      ?? internal.metadata?.confidence
+      ?? 0.0
   };
 
   return {
@@ -66,6 +103,7 @@ export function mapToUnifiedSchema(internal: any): UnifiedAnalyzerOutput {
     concepts,
     style,
     template,
-    metadata
+    metadata,
+
   };
 }

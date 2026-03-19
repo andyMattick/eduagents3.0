@@ -75,6 +75,9 @@ export function runDocumentView(
 ): DocumentViewOutput {
   const schema = mapToUnifiedSchema(internal);
   const documentInsights = normalizeDocumentInsights(internal?.documentInsights) ?? buildDocumentInsightsFromInput(internal);
+    // 🔥 Patch #1: pass insights into the view pipeline
+  internal.insights = documentInsights;
+  
   if (documentInsights.flags.unreadable) {
     return {
       view: intent,
