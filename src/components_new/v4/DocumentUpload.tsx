@@ -48,43 +48,45 @@ export function DocumentUpload() {
   }
 
   return (
-    <div className="v4-shell">
-      <section className="v4-panel v4-hero">
-        <div>
-          <p className="v4-kicker">PRISM v4 Semantic Viewer</p>
-          <h1>Upload a source document and inspect the canonical semantic output.</h1>
-          <p className="v4-subtitle">
-            This route is read-only. It ingests a PDF or DOCX, produces a schema-exact tagging input,
-            and renders the semantic pipeline output without touching simulation or authoring flows.
-          </p>
-        </div>
-
-        <form className="v4-upload-form" onSubmit={handleUpload}>
-          <label className="v4-upload-field" htmlFor="v4-upload-input">
-            <span>Source document</span>
-            <input
-              id="v4-upload-input"
-              type="file"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              onChange={(event) => {
-                setSelectedFile(event.target.files?.[0] ?? null);
-                setError(null);
-              }}
-            />
-          </label>
-
-          <div className="v4-upload-actions">
-            <button className="v4-button" type="submit" disabled={isUploading}>
-              {isUploading ? "Uploading..." : "Run v4 ingestion"}
-            </button>
-            {selectedFile && <span className="v4-upload-name">{selectedFile.name}</span>}
+    <div className="v4-viewer">
+      <div className="v4-shell">
+        <section className="v4-panel v4-hero">
+          <div>
+            <p className="v4-kicker">PRISM v4 Semantic Viewer</p>
+            <h1>Upload a source document and inspect the canonical semantic output.</h1>
+            <p className="v4-subtitle">
+              This route is read-only. It ingests a PDF or DOCX, produces a schema-exact tagging input,
+              and renders the semantic pipeline output without touching simulation or authoring flows.
+            </p>
           </div>
 
-          {error && <p className="v4-error">{error}</p>}
-        </form>
-      </section>
+          <form className="v4-upload-form" onSubmit={handleUpload}>
+            <label className="v4-upload-field" htmlFor="v4-upload-input">
+              <span>Source document</span>
+              <input
+                id="v4-upload-input"
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(event) => {
+                  setSelectedFile(event.target.files?.[0] ?? null);
+                  setError(null);
+                }}
+              />
+            </label>
 
-      {input && <SemanticViewer input={input} />}
+            <div className="v4-upload-actions">
+              <button className="v4-button" type="submit" disabled={isUploading}>
+                {isUploading ? "Uploading..." : "Run v4 ingestion"}
+              </button>
+              {selectedFile && <span className="v4-upload-name">{selectedFile.name}</span>}
+            </div>
+
+            {error && <p className="v4-error">{error}</p>}
+          </form>
+        </section>
+
+        {input && <SemanticViewer input={input} />}
+      </div>
     </div>
   );
 }

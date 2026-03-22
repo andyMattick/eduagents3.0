@@ -112,6 +112,8 @@ export const config = {
 };
 
 export default async function handler(req: IncomingMessage & { method?: string }, res: ServerResponse) {
+  console.log("v4 ingest handler reached");
+
   if (req.method !== "POST") {
     sendJson(res, 405, { error: "Method not allowed" });
     return;

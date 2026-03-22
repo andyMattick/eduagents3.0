@@ -422,34 +422,6 @@ function localTemplateProxy(): Plugin {
   };
 }
 
-function localV4IngestProxy(): Plugin {
-  return {
-    name: 'local-v4-ingest-proxy',
-    configureServer(server) {
-      server.middlewares.use('/api/v4/ingest', async (req, res) => {
-        if (req.method !== 'POST') {
-          res.writeHead(405, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Method not allowed' }));
-          return;
-        }
-
-        try {
-          const ingestModule = await server.ssrLoadModule('/src/pages/api/v4/ingest.ts');
-          await ingestModule.default(req, res);
-        } catch (err: any) {
-          console.error('[local-v4-ingest-proxy] Error:', err?.message ?? err);
-          if (!res.headersSent) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-          }
-          if (!res.writableEnded) {
-            res.end(JSON.stringify({ error: 'Local v4 ingestion failed.' }));
-          }
-        }
-      });
-    },
-  };
-}
-
 export default defineConfig(({ mode }) => {
   // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
   // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
@@ -457,10 +429,16 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
-    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy(), localV4IngestProxy()],
+    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy()],
     server: {
       port: 3000,
-      open: true
+      open: true,
+      proxy: {
+        '/api/v4': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
+      },
     },
     build: {
       outDir: 'dist',
