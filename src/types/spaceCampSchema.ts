@@ -39,7 +39,7 @@ export interface DocumentMetadata {
 }
 
 // ============================================================================
-// ASTRONAUT SCORING RULES (THE KEY!)
+// LEARNER PROFILE SCORING RULES
 // ============================================================================
 
 export interface AstronautRubric {

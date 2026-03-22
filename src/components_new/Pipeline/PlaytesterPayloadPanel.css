@@ -1,4 +1,4 @@
-/* ── PlaytesterPayloadPanel ──────────────────────────────────────────────────── */
+/* ── LearnerReviewPayloadPanel ─────────────────────────────────────────────── */
 
 .ptp-root {
   margin-top: 1.5rem;
@@ -209,16 +209,16 @@
   color: var(--fg, #111);
 }
 
-/* ── Astronaut card ───────────────────────────────────────────────────────── */
+/* ── Learner profile card ─────────────────────────────────────────────────── */
 
-.ptp-astronaut-card {
+.ptp-profile-card {
   border: 1px solid var(--border-color, #e5e7eb);
   border-radius: 6px;
   padding: 0.85rem 1rem;
   background: var(--bg, #fff);
 }
 
-.ptp-astronaut-header {
+.ptp-profile-header {
   display: flex;
   align-items: center;
   flex-wrap: wrap;

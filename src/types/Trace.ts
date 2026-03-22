@@ -13,7 +13,7 @@ export type AgentTrace = {
 
 export type PipelineTrace = {
   runId: string;
-  capability: ("write" | "playtest" | "compare")[];
+  capability: ("write" | "review" | "compare")[];
   steps: AgentTrace[];
   startedAt: number;
   finishedAt?: number;

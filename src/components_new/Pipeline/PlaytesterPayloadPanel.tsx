@@ -1,14 +1,14 @@
 /**
- * PlaytesterPayloadPanel.tsx
+ * LearnerReviewPayloadPanel.tsx
  *
- * Converts a generated FinalAssessment into Asteroid + Astronaut payloads,
- * lets you tune student skill sliders, then runs a lightweight local
- * simulation and displays the per-(student × problem) StudentProblemInput results.
+ * Converts a generated FinalAssessment into Asteroid + learner-profile payloads,
+ * lets you tune learner skill sliders, then runs a lightweight local
+ * review and displays the per-(learner × problem) LearnerProblemInput results.
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { FinalAssessment, FinalAssessmentItem } from "../../pipeline/agents/builder/FinalAssessment";
-import type { Asteroid, Astronaut, StudentProblemInput } from "@/types/simulation";
+import type { Asteroid, LearnerProfile, LearnerProblemInput } from "@/types/simulation";
 import "./PlaytesterPayloadPanel.css";
 
 // ── Bloom helpers ─────────────────────────────────────────────────────────────
@@ -94,25 +94,25 @@ function itemToAsteroid(item: FinalAssessmentItem, index: number, all: FinalAsse
   };
 }
 
-// ── Default Astronaut profiles ────────────────────────────────────────────────
+// ── Default learner profiles ────────────────────────────────────────────────
 
-const DEFAULT_ASTRONAUTS: Astronaut[] = [
+const DEFAULT_LEARNER_PROFILES: LearnerProfile[] = [
   {
-    StudentId: "astronaut-1",
+    StudentId: "learner-1",
     PersonaName: "Focused Learner",
     Overlays: [],
     NarrativeTags: ["focused", "methodical"],
     ProfileTraits: { ReadingLevel: 0.75, MathFluency: 0.70, AttentionSpan: 0.80, Confidence: 0.72 },
   },
   {
-    StudentId: "astronaut-2",
+    StudentId: "learner-2",
     PersonaName: "Struggling Reader",
     Overlays: ["dyslexic"],
     NarrativeTags: ["visual-learner", "effortful"],
     ProfileTraits: { ReadingLevel: 0.40, MathFluency: 0.60, AttentionSpan: 0.55, Confidence: 0.45 },
   },
   {
-    StudentId: "astronaut-3",
+    StudentId: "learner-3",
     PersonaName: "High Achiever",
     Overlays: [],
     NarrativeTags: ["curious", "fast-processor"],
@@ -120,13 +120,13 @@ const DEFAULT_ASTRONAUTS: Astronaut[] = [
   },
 ];
 
-// ── Local simulation engine ───────────────────────────────────────────────────
+// ── Local learner review engine ──────────────────────────────────────────────
 
-function simulate(
+function buildLearnerReview(
   asteroids: Asteroid[],
-  astronauts: Astronaut[],
-): StudentProblemInput[][] {
-  return astronauts.map((student) => {
+  learnerProfiles: LearnerProfile[],
+): LearnerProblemInput[][] {
+  return learnerProfiles.map((student) => {
     let cumulativeFatigue = 0;
 
     return asteroids.map((problem, idx) => {
@@ -169,7 +169,7 @@ function simulate(
 
       const timePressureIndex = 1.0; // no time limit in preview
 
-      const testTypeMap: Record<string, StudentProblemInput["TestType"]> = {
+      const testTypeMap: Record<string, LearnerProblemInput["TestType"]> = {
         multiple_choice: "multiple_choice",
         short_answer:    "short_answer",
         free_response:   "free_response",
@@ -195,7 +195,7 @@ function simulate(
         FatigueIndex:          cumulativeFatigue,
         ConfusionSignals:      confusionSignals,
         EngagementScore:       engagementScore,
-      } satisfies StudentProblemInput;
+      } satisfies LearnerProblemInput;
     });
   });
 }
@@ -278,15 +278,15 @@ function AsteroidCard({ asteroid, idx }: { asteroid: Asteroid; idx: number }) {
   );
 }
 
-// ── Simulation result card ────────────────────────────────────────────────────
+// ── Learner review result card ───────────────────────────────────────────────
 
-function SimulationResultCard({
+function LearnerReviewResultCard({
   student,
   inputs,
   asteroids,
 }: {
-  student: Astronaut;
-  inputs: StudentProblemInput[];
+  student: LearnerProfile;
+  inputs: LearnerProblemInput[];
   asteroids: Asteroid[];
 }) {
   const [open, setOpen] = useState(true);
@@ -373,7 +373,7 @@ function SimulationResultCard({
           </div>
 
           <details className="ptp-json-toggle">
-            <summary>Full StudentProblemInput payloads (JSON)</summary>
+            <summary>Full LearnerProblemInput payloads (JSON)</summary>
             <pre className="ptp-json">{JSON.stringify(inputs, null, 2)}</pre>
           </details>
         </div>
@@ -384,11 +384,11 @@ function SimulationResultCard({
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-interface PlaytesterPayloadPanelProps {
+interface LearnerReviewPayloadPanelProps {
   assessment: FinalAssessment;
 }
 
-export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelProps) {
+export function LearnerReviewPayloadPanel({ assessment }: LearnerReviewPayloadPanelProps) {
   const [open, setOpen] = useState(false);
 
   // Derive asteroids from items
@@ -396,32 +396,32 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
     itemToAsteroid(item, idx, all),
   );
 
-  // Editable astronaut profiles
-  const [astronauts, setAstronauts] = useState<Astronaut[]>(DEFAULT_ASTRONAUTS);
+  // Editable learner profiles
+  const [learnerProfiles, setLearnerProfiles] = useState<LearnerProfile[]>(DEFAULT_LEARNER_PROFILES);
 
-  // Simulation results
-  const [results, setResults] = useState<StudentProblemInput[][] | null>(null);
-  const [activeTab, setActiveTab] = useState<"asteroids" | "students" | "simulation">("asteroids");
+  // Local review results
+  const [results, setResults] = useState<LearnerProblemInput[][] | null>(null);
+  const [activeTab, setActiveTab] = useState<"asteroids" | "learners" | "review">("asteroids");
 
-  const runSimulation = useCallback(() => {
-    const res = simulate(asteroids, astronauts);
+  const runLearnerReview = useCallback(() => {
+    const res = buildLearnerReview(asteroids, learnerProfiles);
     setResults(res);
-    setActiveTab("simulation");
-  }, [asteroids, astronauts]);
+    setActiveTab("review");
+  }, [asteroids, learnerProfiles]);
 
-  // Stable ref so the id-change effect can call runSimulation without
+  // Stable ref so the id-change effect can call runLearnerReview without
   // needing it as a dep (avoids infinite loop).
-  const runSimulationRef = useRef(runSimulation);
-  useEffect(() => { runSimulationRef.current = runSimulation; }, [runSimulation]);
+  const runLearnerReviewRef = useRef(runLearnerReview);
+  useEffect(() => { runLearnerReviewRef.current = runLearnerReview; }, [runLearnerReview]);
 
   // When the assessment changes:
   //  • Fresh generation  → reset to Asteroids tab, clear results
-  //  • Rewritten version (id ends in -rXXX) → auto-run simulation immediately
+  //  • Rewritten version (id ends in -rXXX) → auto-run learner review immediately
   useEffect(() => {
     setResults(null);
     if (assessment.id.includes("-r")) {
       // Small timeout lets state flush before running
-      setTimeout(() => runSimulationRef.current(), 0);
+      setTimeout(() => runLearnerReviewRef.current(), 0);
     } else {
       setActiveTab("asteroids");
     }
@@ -429,10 +429,10 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
 
   function updateTrait(
     studentIdx: number,
-    trait: keyof Astronaut["ProfileTraits"],
+    trait: keyof LearnerProfile["ProfileTraits"],
     value: number,
   ) {
-    setAstronauts((prev) =>
+    setLearnerProfiles((prev) =>
       prev.map((a, i) =>
         i === studentIdx
           ? { ...a, ProfileTraits: { ...a.ProfileTraits, [trait]: value } }
@@ -446,8 +446,8 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
     <div className="ptp-root">
       <button className="ptp-panel-toggle" onClick={() => setOpen((o) => !o)}>
         <span className="ptp-panel-icon">🎮</span>
-        <span className="ptp-panel-label">Playtester Payload</span>
-        <span className="ptp-panel-sub">{asteroids.length} asteroids · {astronauts.length} astronauts</span>
+        <span className="ptp-panel-label">Learner Review Payload</span>
+        <span className="ptp-panel-sub">{asteroids.length} asteroids · {learnerProfiles.length} learner profiles</span>
         <span className="ptp-asteroid-chevron">{open ? "▲" : "▼"}</span>
       </button>
 
@@ -462,19 +462,19 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
               Asteroids ({asteroids.length})
             </button>
             <button
-              className={`ptp-tab ${activeTab === "students" ? "ptp-tab--active" : ""}`}
-              onClick={() => setActiveTab("students")}
+              className={`ptp-tab ${activeTab === "learners" ? "ptp-tab--active" : ""}`}
+              onClick={() => setActiveTab("learners")}
             >
-              Astronauts ({astronauts.length})
+              Learners ({learnerProfiles.length})
             </button>
             <button
-              className={`ptp-tab ${activeTab === "simulation" ? "ptp-tab--active" : ""}`}
-              onClick={() => setActiveTab("simulation")}
+              className={`ptp-tab ${activeTab === "review" ? "ptp-tab--active" : ""}`}
+              onClick={() => setActiveTab("review")}
             >
-              Simulation {results ? "✓" : ""}
+              Review {results ? "✓" : ""}
             </button>
-            <button className="ptp-run-btn" onClick={runSimulation}>
-              ▶ Run Simulation
+            <button className="ptp-run-btn" onClick={runLearnerReview}>
+              ▶ Run Review
             </button>
           </div>
 
@@ -482,7 +482,7 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
           {activeTab === "asteroids" && (
             <div className="ptp-tab-content">
               <p className="ptp-tab-desc">
-                Each problem from the generated assessment, decomposed into Asteroid metadata for the simulation engine.
+                Each problem from the generated assessment, decomposed into Asteroid metadata for the local review engine.
               </p>
               {asteroids.map((a, i) => (
                 <AsteroidCard key={a.ProblemId} asteroid={a} idx={i} />
@@ -490,15 +490,15 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
             </div>
           )}
 
-          {/* ── Astronauts tab ────────────────────────────────────────── */}
-          {activeTab === "students" && (
+          {/* ── Learners tab ────────────────────────────────────────── */}
+          {activeTab === "learners" && (
             <div className="ptp-tab-content">
               <p className="ptp-tab-desc">
-                Adjust each student's skill sliders. Hit <strong>Run Simulation</strong> to see the impact across all problems.
+                Adjust each learner profile's skill sliders. Hit <strong>Run Review</strong> to see the impact across all problems.
               </p>
-              {astronauts.map((student, si) => (
-                <div key={student.StudentId} className="ptp-astronaut-card">
-                  <div className="ptp-astronaut-header">
+              {learnerProfiles.map((student, si) => (
+                <div key={student.StudentId} className="ptp-profile-card">
+                  <div className="ptp-profile-header">
                     <span className="ptp-sim-name">{student.PersonaName}</span>
                     {student.Overlays.length > 0 && (
                       <span className="ptp-overlays">
@@ -530,7 +530,7 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
                     />
                   </div>
                   <details className="ptp-json-toggle" style={{ marginTop: "0.5rem" }}>
-                    <summary>Astronaut JSON payload</summary>
+                    <summary>Learner profile JSON payload</summary>
                     <pre className="ptp-json">{JSON.stringify(student, null, 2)}</pre>
                   </details>
                 </div>
@@ -538,20 +538,20 @@ export function PlaytesterPayloadPanel({ assessment }: PlaytesterPayloadPanelPro
             </div>
           )}
 
-          {/* ── Simulation tab ────────────────────────────────────────── */}
-          {activeTab === "simulation" && (
+          {/* ── Review tab ────────────────────────────────────────── */}
+          {activeTab === "review" && (
             <div className="ptp-tab-content">
               {!results ? (
                 <div className="ptp-no-results">
-                  <p>No simulation run yet. Click <strong>▶ Run Simulation</strong> above to see per-student predictions.</p>
+                  <p>No learner review run yet. Click <strong>▶ Run Review</strong> above to see per-learner predictions.</p>
                 </div>
               ) : (
                 <>
                   <p className="ptp-tab-desc">
-                    Per-student × per-problem <code>StudentProblemInput</code> results. Each card shows how this Astronaut interacts with every Asteroid.
+                    Per-learner × per-problem <code>LearnerProblemInput</code> results. Each card shows how a learner profile interacts with every Asteroid.
                   </p>
-                  {astronauts.map((student, si) => (
-                    <SimulationResultCard
+                  {learnerProfiles.map((student, si) => (
+                    <LearnerReviewResultCard
                       key={student.StudentId}
                       student={student}
                       inputs={results[si]}

@@ -10,11 +10,11 @@
 
 import {
   UniversalProblem,
-  Astronaut,
-  StudentProblemInput,
-  StudentProblemOutput,
-  StudentAssignmentSimulation,
-  AssignmentSimulationBatch,
+  LearnerProfile,
+  LearnerProblemInput,
+  LearnerProblemOutput,
+  LearnerAssignmentReview,
+  AssignmentReviewBatch,
 } from './universalPayloads';
 
 // ============================================================================
@@ -279,27 +279,27 @@ export interface QuestionBankFilter {
 }
 
 // ============================================================================
-// ASTRONAUT MANAGEMENT - Student profiles for simulation
+// LEARNER PROFILE MANAGEMENT - Review personas
 // ============================================================================
 
-export interface TeacherAstronautLibrary {
+export interface TeacherLearnerProfileLibrary {
   teacherId: string;
-  astronauts: Astronaut[];
+  learnerProfiles: LearnerProfile[];
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SavedAstronautProfile {
+export interface SavedLearnerProfile {
   id: string;
   teacherId: string;
-  astronaut: Astronaut;
+  learnerProfile: LearnerProfile;
   isTemplate: boolean; // Can be used as template for other teachers
   createdAt: string;
   updatedAt: string;
   usageCount: number; // How many times used in simulations
 }
 
-export interface AstronautFilter {
+export interface LearnerProfileFilter {
   overlays?: string[]; // Filter by accessibility overlay
   narrativeTags?: string[];
   gradeLevel?: string;
@@ -315,7 +315,7 @@ export interface AssignmentSimulationResult {
   id: string;
   assignmentId: string;
   teacherId: string;
-  simulationBatch: AssignmentSimulationBatch;
+  simulationBatch: AssignmentReviewBatch;
   createdAt: string;
   notes?: string;
 }

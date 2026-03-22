@@ -1,10 +1,12 @@
 	import { StudentPersona } from "./StudentPersona";
-    import { Unit } from "../domain/Unit";
-    import { Assignment } from "../domain/Assignment";
-    import { Assessment } from "../domain/Assessment";
-    import { ProblemGroup } from "../domain/ProblemGroup";
-    import { Problem } from "../domain/Problem";
-    import { ProblemScore } from "../domain/ProblemScore";
+		import {
+			Unit,
+			Assignment,
+			Assessment,
+			ProblemGroup,
+			Problem,
+			ProblemScore,
+		} from "../domain";
     
     export interface ClassInput {
 	  classId: string;

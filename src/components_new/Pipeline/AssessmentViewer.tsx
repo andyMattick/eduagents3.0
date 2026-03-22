@@ -13,20 +13,8 @@ import { groupItemsBySection, formatSectionHeader } from "../../pipeline/agents/
 import { DEFAULT_PACING_SECONDS } from "../../types/teacherProfile";
 import { WriterGuidelinesPanel } from "./WriterGuidelinesPanel";
 import type { WriterContract } from "../../pipeline/contracts/WriterContract";
-import { PlaytesterPayloadPanel } from "./PlaytesterPayloadPanel";
+import { LearnerReviewPayloadPanel } from "./PlaytesterPayloadPanel";
 import "./AssessmentViewer.css";
-
-// ── Philosopher's Report ──────────────────────────────────────────────────────
-
-interface ReportSection { heading: string; body: string; }
-interface ReportData {
-  tagline: string;
-  sections: ReportSection[];
-  strengths: string[];
-  flags: string[];
-}
-
-
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -260,7 +248,7 @@ interface AssessmentViewerProps {
   pacingSeconds?: Record<string, number>;
 }
 
-export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes, philosopherAnalysis, teacherFeedback, writerContract, blueprintWarnings, pacingSeconds }: AssessmentViewerProps) {
+export function AssessmentViewer({ assessment, title, subtitle, uar, philosopherNotes: _philosopherNotes, philosopherAnalysis: _philosopherAnalysis, teacherFeedback: _teacherFeedback, writerContract, blueprintWarnings, pacingSeconds }: AssessmentViewerProps) {
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [wordLoading, setWordLoading] = useState(false);
@@ -334,9 +322,9 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
             <button
               className="av-btn av-btn-ghost"
               disabled
-              title="Playtest lets students attempt this assessment in a simulated session — coming soon"
+              title="Learner review lets you preview how different learner profiles may experience this assessment — coming soon"
             >
-              🎮 Playtest
+              🎮 Learner Review
             </button>
             <button
                 className="av-btn av-btn-outline"
@@ -600,8 +588,8 @@ export function AssessmentViewer({ assessment, title, subtitle, uar, philosopher
         <WriterGuidelinesPanel contract={writerContract} />
       )}
 
-      {/* ── Playtester Payload ──────────────────────────────────── */}
-      <PlaytesterPayloadPanel assessment={assessment} />
+      {/* ── Learner Review Payload ──────────────────────────────── */}
+      <LearnerReviewPayloadPanel assessment={assessment} />
     </div>
   );
 }

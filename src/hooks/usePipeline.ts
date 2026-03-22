@@ -8,7 +8,7 @@ import { Asteroid } from '../types/simulation';
 // orchestrator). These stubs keep it compilable without importing deleted files.
 type PhilosopherPayload = { problems: unknown[]; generationContext: unknown };
 type PhilosopherResult = PipelineState['philosopherAnalysis'];
-const simulateStudents = async (..._args: unknown[]) => [] as StudentFeedback[];
+const buildLearnerFeedback = async (..._args: unknown[]) => [] as StudentFeedback[];
 const generateAllAccessibilityFeedback = (_text: string) => [] as StudentFeedback[];
 const rewriteAssignment = async (..._args: unknown[]) =>
   ({ rewrittenText: '', summaryOfChanges: '', appliedTags: [] as Tag[] });
@@ -165,12 +165,8 @@ export function usePipeline() {
 
     setLoading(true);
     try {
-      // Use structured asteroid data if available (Phase 2 simulation)
-      // Otherwise fall back to text analysis (Phase 1)
-
-      // For now, use text-based simulation with metadata
-      // TODO: When ready, implement proper Asteroid × Astronaut simulation
-      const feedback = await simulateStudents(
+      // Use the compatibility learner-feedback adapter for this legacy hook.
+      const feedback = await buildLearnerFeedback(
         state.originalText,
         [],
         {
@@ -205,7 +201,7 @@ export function usePipeline() {
         ...prev,
         studentFeedback: filteredFeedback,
         selectedStudentTags: selectedStudentTags,
-        currentStep: PipelineStep.STUDENT_SIMULATIONS,
+        currentStep: PipelineStep.LEARNER_FEEDBACK,
         error: undefined,
       }));
     } catch (err) {
@@ -306,8 +302,7 @@ export function usePipeline() {
         state.assignmentMetadata?.subject || 'General'
       );
 
-      // Generate feedback using same personas
-      // For now, use empty feedback (will be populated by simulateStudents if called)
+      // This legacy hook preserves the rewrite loop without invoking local inference.
       const newFeedback: any[] = [];
 
       // Store rewrite iteration in history
@@ -365,7 +360,7 @@ export function usePipeline() {
    * Save the assignment to Supabase
    * This is called when exiting the pipeline after rewrites are complete
    */
-  const saveToSupabase = useCallback(async (userId: string, documentId: string, assignmentId: string) => {
+  const saveToSupabase = useCallback(async (_userId: string, _documentId: string, _assignmentId: string) => {
     // This will be called from PipelineShell when user exports
     // The actual save will happen in Step8FinalReview's onCompleteSaveProblems callback
     // which calls saveAsteroidsToProblemBank
@@ -535,13 +530,12 @@ export function usePipeline() {
   }, [rewriteTextAndTags]);
 
   const retestWithRewrite = useCallback(() => {
-    // When user clicks "Edit & Re-test", use rewritten text for next simulation
-    // This allows them to verify the rewritten version works better with students
+    // Use the rewritten version as the next review baseline.
     setState(prev => ({
       ...prev,
       originalText: prev.rewrittenText, // Use the rewritten version as the new baseline
       studentFeedback: [], // Clear feedback for fresh simulation
-      currentStep: PipelineStep.STUDENT_SIMULATIONS, // Go back to student simulation step
+      currentStep: PipelineStep.LEARNER_FEEDBACK, // Return to learner feedback step
     }));
   }, []);
 
@@ -575,6 +569,7 @@ export function usePipeline() {
     getFeedback,
     nextStep,
     handlePhilosopherReviewOutcome,
+    compareVersions,
     reset,
     toggleProblemMetadataView,
     retestWithRewrite,

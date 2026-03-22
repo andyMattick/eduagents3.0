@@ -16,7 +16,7 @@ export interface DeriveTemplateRequest {
 
 export interface UnifiedAssessmentRequest {
   subscriptionTier: "free" | "tier1" | "tier2" | "admin";
-  mode: "create" | "write" | "compare" | "playtest" | "deriveTemplate";
+  mode: "create" | "write" | "compare" | "review" | "deriveTemplate";
 
   // Derive-template mode fields
   examples?: string[];

@@ -22,7 +22,7 @@ export interface PhilosopherResult {
 // --------------------------------------------------
 
 export async function runPhilosopher(input: {
-  mode: "write" | "playtest" | "compare";
+  mode: "write" | "review" | "compare";
   blueprint?: any;
   writerDraft?: any[];
   gatekeeperReport?: any;

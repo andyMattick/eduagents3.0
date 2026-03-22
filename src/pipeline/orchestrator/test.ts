@@ -15,7 +15,7 @@ export async function runTestPipeline(internal: any) {
       documentInsights,
       philosopher: {
         status: "skipped",
-        notes: "Document unreadable. Simulation was skipped.",
+        notes: "Document unreadable. Learner review was skipped.",
       },
     };
   }
@@ -25,7 +25,7 @@ export async function runTestPipeline(internal: any) {
   const astro2 = await runAstronomerPhase2(space);
 
   const philosopher = await runPhilosopher({
-    mode: "playtest",
+    mode: "review",
     payload: astro2
   });
 

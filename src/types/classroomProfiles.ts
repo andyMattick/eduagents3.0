@@ -1,8 +1,8 @@
 /**
- * Classroom Simulation Profiles
+ * Classroom Review Profiles
  * 
- * Defines ProblemProfile and StudentProfile schemas for simulating
- * classroom scenarios (e.g., "astronauts in space")
+ * Defines ProblemProfile and StudentProfile schemas for modeling
+ * classroom review scenarios.
  */
 
 // ============================================

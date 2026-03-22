@@ -24,7 +24,7 @@ import {
   AssessmentIntentSelector,
   AnalyzeDocumentPanel,
   CompareDocumentsPanel,
-  PlaytestAssessmentPanel,
+  LearnerReviewAssessmentPanel,
   DocumentViewPanel,
 } from "./AssessmentIntentSelector";
 import { DifferentiatedAssessmentPanel } from "./DifferentiatedAssessment";
@@ -313,9 +313,9 @@ export function ConversationalAssessmentWrapper({
         }
 
         // Merge rewritten assessment + updated scribe ref back into result.
-        // Assigning a new id triggers PlaytesterPayloadPanel to reset its
-        // simulation state so teachers don't see stale results from before
-        // the rewrite. The panel will prompt them to ▶ Run Simulation again.
+        // Assigning a new id triggers the learner review panel to reset its
+        // local review state so teachers don't see stale results from before
+        // the rewrite. The panel will prompt them to run review again.
         const rewrittenWithNewId = {
           ...rewritten,
           id: `${rewritten.id}-r${Date.now()}`,
@@ -558,7 +558,7 @@ export function ConversationalAssessmentWrapper({
 
           {selectedIntent === "analyze" && <AnalyzeDocumentPanel />}
           {selectedIntent === "compare" && <CompareDocumentsPanel />}
-          {selectedIntent === "test" && <PlaytestAssessmentPanel />}
+          {selectedIntent === "test" && <LearnerReviewAssessmentPanel />}
           {selectedIntent === "differentiate" && <DifferentiatedAssessmentPanel />}
           {(selectedIntent === "summary" || selectedIntent === "concepts" || selectedIntent === "difficulty" || selectedIntent === "raw") && (
             <DocumentViewPanel initialIntent={selectedIntent} />

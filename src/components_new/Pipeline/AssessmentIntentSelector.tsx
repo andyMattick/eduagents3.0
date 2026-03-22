@@ -32,8 +32,8 @@ const INTENT_OPTIONS: IntentOption[] = [
   },
   {
     intent: "test",
-    title: "Playtest a test with simulated students",
-    description: "Upload an assessment and run a quick simulation by student level.",
+    title: "Run learner review on an assessment",
+    description: "Upload an assessment and preview learner-level response patterns.",
     icon: "🧪",
   },
   {
@@ -385,11 +385,11 @@ function TestResultCard({ data }: { data: unknown }) {
   const notes = philosopher?.teacherFeedback ?? philosopher?.analysis ?? philosopher?.notes;
   return (
     <div className="workflow-result-card">
-      <div className="workflow-result-head">Playtest Complete</div>
+      <div className="workflow-result-head">Learner Review Complete</div>
       <div className="workflow-result-metrics">
         <div><span>Type</span><strong>{safeString(record.type) || "test"}</strong></div>
-        <div><span>Simulation payload</span><strong>{simulation ? "ready" : "empty"}</strong></div>
-        <div><span>Playtest insight</span><strong>{notes ? "ready" : "none"}</strong></div>
+        <div><span>Review payload</span><strong>{simulation ? "ready" : "empty"}</strong></div>
+        <div><span>Learner insight</span><strong>{notes ? "ready" : "none"}</strong></div>
       </div>
       <SmartInsights
         data={record}
@@ -406,12 +406,12 @@ function TestResultCard({ data }: { data: unknown }) {
       {unreadable && (
         <ResultSection
           title="Fallback"
-          value="Document unreadable. Playtest simulation was skipped."
+          value="Document unreadable. Learner review was skipped."
         />
       )}
       <DocumentInsightsSummary
         insights={documentInsights}
-        title="Playtest Input Signals"
+        title="Learner Review Input Signals"
         specs={[
           { label: "Subject", path: "metadata.subjectEstimate" },
           { label: "Difficulty", path: "metadata.difficulty" },
@@ -654,7 +654,7 @@ export function CompareDocumentsPanel() {
   );
 }
 
-export function PlaytestAssessmentPanel() {
+export function LearnerReviewAssessmentPanel() {
   const [file, setFile] = useState<File | null>(null);
   const [level, setLevel] = useState("standard");
   const [result, setResult] = useState<unknown>(null);
@@ -677,7 +677,7 @@ export function PlaytestAssessmentPanel() {
       });
       setResult(output);
     } catch (e: any) {
-      setError(e?.message ?? "Playtest failed");
+      setError(e?.message ?? "Learner review failed");
     } finally {
       setIsLoading(false);
     }
@@ -685,8 +685,8 @@ export function PlaytestAssessmentPanel() {
 
   return (
     <WorkflowShell
-      title="Playtest with Simulated Students"
-      description="Upload an assessment and choose student level for simulation."
+      title="Learner Review by Student Level"
+      description="Upload an assessment and choose a learner level for preview review."
     >
       <div className="workflow-stack">
         <input className="workflow-input" type="file" accept=".pdf,.doc,.docx,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
@@ -703,7 +703,7 @@ export function PlaytestAssessmentPanel() {
       </div>
       <div className="workflow-actions">
         <button className="ca-btn-primary" type="button" onClick={run} disabled={!file || isLoading}>
-          {isLoading ? "Running simulation..." : "Run Playtest"}
+          {isLoading ? "Running learner review..." : "Run Learner Review"}
         </button>
       </div>
       {error && <p className="workflow-error">{error}</p>}

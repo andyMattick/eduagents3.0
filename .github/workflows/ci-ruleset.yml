@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   guardrails:
-    name: Guardrails (legacy strict)
+    name: Guardrails (legacy strict + phase1)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -32,6 +32,9 @@ jobs:
 
       - name: Enforce legacy guardrails
         run: npm run ci:legacy-check
+
+      - name: Enforce PRISM Phase 1 guardrails
+        run: npm run phase1:check
 
   tests:
     name: Tests (Vitest)

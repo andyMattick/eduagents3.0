@@ -16,8 +16,8 @@ import { runArchitectCached } from "pipeline/agents/architect/planCache";
 import { runWriter, getLastWriterTelemetry } from "pipeline/agents/writer";
 import { getLastBloomAlignmentLog } from "pipeline/agents/writer/chunk/writerParallel";
 
-/** Dispatch flag: 'build' runs Phase 1 only; 'playtest' continues to Phase 2. */
-export type PipelineMode = "build" | "playtest";
+/** Dispatch flag: 'build' runs Phase 1 only; 'review' continues to Phase 2. */
+export type PipelineMode = "build" | "review";
 // import { runGatekeeper } from "pipeline/agents/gatekeeper";
 import { runAstronomerPhase1 } from "pipeline/agents/astronomer/phase1";
 import { runSpaceCamp } from "pipeline/agents/spacecamp";
@@ -354,7 +354,7 @@ export async function create(request: UnifiedAssessmentRequest) {
       return runCreatePipeline({ ...request, mode: "write" } as UnifiedAssessmentRequest);
     case "write":
     case "compare":
-    case "playtest":
+    case "review":
       return runCreatePipeline(request);
     case "deriveTemplate":
       return runDeriveTemplate(request as DeriveTemplateRequest);
@@ -406,8 +406,8 @@ export async function runCreatePipeline(
   }
 
   // ── Tier gate (before any DB/LLM calls) ───────────────────────────────────
-  if (safeUar.mode === "playtest" && safeUar.subscriptionTier !== "tier2" && safeUar.subscriptionTier !== "admin") {
-    throw new Error("Playtesting is only available for Tier 2 users.");
+  if (safeUar.mode === "review" && safeUar.subscriptionTier !== "tier2" && safeUar.subscriptionTier !== "admin") {
+    throw new Error("Learner review is only available for Tier 2 users.");
   }
 
   // ── Step 0a: load predictive teacher defaults ────────────────────────────
@@ -489,7 +489,7 @@ export async function runCreatePipeline(
   console.log(`[Pipeline] Version 2.2.0 — mode: ${uarWithDefaults.mode}, depth: ${_depth}`);
 
   const trace: PipelineTrace = createTrace(
-    ["write", "playtest", "compare"] // capabilities for this run
+    ["write", "review", "compare"] // capabilities for this run
   );
   // ── Step 1: SCRIBE selects best agents for this run ──────────────────────
   const selected = await runAgent( trace, "SCRIBE.selectAgents", SCRIBE.selectAgents, uarWithDefaults );
@@ -801,7 +801,7 @@ const { gatekeeperResult, philosopherWrite } = await validateAndScore(
   }
 }
 if (philosopherWrite.status === "complete" && philosopherWrite.severity <= 2) {
-  // Skip playtest, skip compare → go straight to Builder
+  // Skip learner review, skip compare -> go straight to Builder
   validateSlotIntegrity(blueprint.plan?.slots ?? [], mergedDraft);
   const finalAssessment = await runAgent(trace, "Builder", runBuilder,
     { items: mergedDraft, blueprint: blueprintForBuilder(blueprint) });
@@ -969,24 +969,24 @@ const astro2 = await runAgent(
 );
 
 // ===============================
-// 8. PHILOSOPHER — PLAYTEST MODE
+// 8. PHILOSOPHER — REVIEW MODE
 // ===============================
 
-const philosopherPlaytest = await runAgent(
+const philosopherReview = await runAgent(
   trace,
-  "Philosopher (playtest)",
+  "Philosopher (review)",
   runPhilosopher,
   {
-    mode: "playtest",
+    mode: "review",
     payload: astro2,
   }
 );
 
-// PLAYTEST BRANCHING
-if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 6) {
+// REVIEW BRANCHING
+if (philosopherReview.status === "rewrite" && philosopherReview.severity <= 6) {
   const rewritten = await runAgent(trace, "Rewriter", runRewriter, {
     writerDraft: mergedDraft,
-    rewriteInstructions: philosopherPlaytest.rewriteInstructions,
+    rewriteInstructions: philosopherReview.rewriteInstructions,
     mathFormat: (uarWithDefaults as any).mathFormat,
   });
 
@@ -1008,7 +1008,7 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
     domain: selected.domain,
     finalAssessment,
     blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperFinal),
-    qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
+    qualityScore: philosopherReview.analysis?.qualityScore ?? undefined,
     tokenUsage: actualTokenCount ?? null,
 
     previousVersionId: uar.previousVersionId ?? null,
@@ -1042,14 +1042,14 @@ if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity <= 
   return {
     selected, blueprint, writerDraft, gatekeeperResult,
     astro1, spaceCampResult, astro2,
-    philosopherWrite, philosopherPlaytest, rewritten, gatekeeperFinal,
+    philosopherWrite, philosopherReview, rewritten, gatekeeperFinal,
     finalAssessment, scribe: scribeResult, trace,
     writerContract: getContract(),
     documentInsights,
   };
 }
 
-if (philosopherPlaytest.status === "rewrite" && philosopherPlaytest.severity >= 7) {
+if (philosopherReview.status === "rewrite" && philosopherReview.severity >= 7) {
   return await runCreatePipeline(uar, _depth + 1, onItemsProgress);
 }
 
@@ -1070,7 +1070,7 @@ await SCRIBE.saveAssessmentVersion({
   domain: selected.domain,
   finalAssessment,
   blueprint: blueprintForStorage(blueprint, writerTelemetry, gatekeeperResult),
-  qualityScore: philosopherPlaytest.analysis?.qualityScore ?? undefined,
+  qualityScore: philosopherReview.analysis?.qualityScore ?? undefined,
   tokenUsage: actualTokenCount ?? null,
 
   previousVersionId: uar.previousVersionId ?? null,
@@ -1096,7 +1096,7 @@ trace.finishedAt = Date.now();
 return {
   selected, blueprint, writerDraft, gatekeeperResult,
   astro1, spaceCampResult, astro2,
-  philosopherWrite, philosopherPlaytest,
+  philosopherWrite, philosopherReview,
   finalAssessment, scribe: scribeResult, trace,
   writerContract: getContract(),
   documentInsights,

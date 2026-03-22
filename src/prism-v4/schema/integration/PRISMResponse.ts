@@ -1,12 +1,14 @@
 import { StudentPersona } from "./StudentPersona";
 import { ClassProfile } from "./ClassProfile";
-import { AssignmentAggregate } from "./AssignmentAggregate";
-import { UnitAggregate } from "./UnitAggregate";
-import { ClassAggregate } from "./ClassAggregate";
-import { JourneySummary } from "./JourneySummary";
-import { Insight } from "./Insight";
-import { Recommendation } from "./Recommendation";
-import { ReteachTarget } from "./ReteachTarget";
+import {
+	AssignmentAggregate,
+	UnitAggregate,
+	ClassAggregate,
+	JourneySummary,
+	Insight,
+	Recommendation,
+	ReteachTarget,
+} from "../view";
 import { DifficultyInference } from "./DifficultyInference";
 
 

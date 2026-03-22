@@ -71,7 +71,7 @@ export interface ClassDefinition {
 }
 
 /**
- * Represents feedback from a simulated student persona
+ * Represents learner-centered feedback about assignment accessibility and clarity
  * Includes both basic feedback and optional detailed commentary
  */
 export interface StudentFeedback {
@@ -134,7 +134,7 @@ export enum PipelineStep {
   PROBLEM_ANALYSIS = 2,   // Show metadata per problem (Foundry)
   DOCUMENT_NOTES = 3,     // Document-level notes before simulation
   WRITER_OUTPUT = 4,      // Show raw generated assignment before atomization (NEW)
-  STUDENT_SIMULATIONS = 5, // Detailed simulation feedback per persona
+  LEARNER_FEEDBACK = 5,   // Detailed learner feedback per persona
   OBSERVATORY = 6,        // Summary-only view of simulation results (NEW)
   PHILOSOPHER_REVIEW = 7, // Ranked feedback + visual analytics
   REWRITE_RESULTS = 8,    // Side-by-side original vs rewritten
@@ -178,14 +178,14 @@ export interface PipelineState {
       atRiskProfiles: string[];
     }>;
   };
-  // New: Student completion simulations
+  // New: Learner completion modeling
   completionSimulations?: {
     studentSimulations: any[]; // StudentCompletionSimulation[]
     classSummary: any; // ClassCompletionSummary
   };
-  // New: Asteroid/Astronaut simulation data
+  // New: Learner review data
   asteroids?: any[]; // Asteroid[]
-  astronauts?: any[]; // Astronaut[]
+  learnerProfiles?: any[];
   simulationResults?: any; // AssignmentSimulationResults
   // New: Problem metadata visibility toggle
   showProblemMetadata?: boolean;
@@ -201,7 +201,7 @@ export interface PipelineState {
   };
   // Rewrite Tracking
   studentFeedbackNotes?: string; // Accumulated notes about what to change
-  activeStudentPersonas?: string[]; // Personas used in current simulation (for re-analysis)
+  activeStudentPersonas?: string[]; // Personas used in current learner review pass
   rewriteHistory?: Array<{
     iteration: number;
     timestamp: string;
@@ -267,16 +267,16 @@ export function getEffectiveClassLevel(metadata: DocumentMetadata): "standard" |
 }
 
 /**
- * Payload sent to Space Camp (backend astronaut generation & simulation)
+ * Payload sent to Space Camp for backend learner-review processing
  */
 export interface SpaceCampPayload {
   documentId: string;
   problems: any[]; // UniversalProblem[]
-  scoringRules: any; // AstronautRubric
+  scoringRules: any;
   documentMetadata: {
     gradeBand: "3-5" | "6-8" | "9-12";
     subject: "math" | "english" | "science" | "history" | "general";
     classLevel: "standard" | "honors" | "AP";
   };
-  // NOT included: Pre-generated astronauts, student previews, etc.
+  // NOT included: pre-generated learner profiles or preview-only client state.
 }

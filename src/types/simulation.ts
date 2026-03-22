@@ -1,9 +1,9 @@
 /**
- * Core types for the Asteroid/Astronaut simulation system
- * 
- * Asteroids = tagged problems with pedagogical metadata
- * Astronauts = student profiles with learning traits and accessibility needs
- * StudentProblemInput = modeling a single student's interaction with a problem
+ * Core types for local learner-review modeling.
+ *
+ * Asteroids = tagged problems with pedagogical metadata.
+ * Learner profiles = review personas with learning traits and accessibility needs.
+ * LearnerProblemInput = a modeled learner interaction with a problem.
  */
 
 type BloomLevel = "Remember" | "Understand" | "Apply" | "Analyze" | "Evaluate" | "Create";
@@ -86,9 +86,9 @@ export interface Asteroid {
 }
 
 /**
- * Astronaut: A student profile with learning traits, accessibility needs, and performance characteristics
+ * LearnerProfile: A review persona with learning traits, accessibility needs, and performance characteristics.
  */
-export interface Astronaut {
+export interface LearnerProfile {
   /** Unique student identifier */
   StudentId: string;
 
@@ -124,11 +124,11 @@ export interface Astronaut {
 }
 
 /**
- * StudentProblemInput: Models a single student's interaction with a single problem
- * Generated for every (Student, Problem) pair in a simulation
+ * LearnerProblemInput: Models a single learner interaction with a single problem.
+ * Generated for every (Learner, Problem) pair in local review mode.
  */
-export interface StudentProblemInput {
-  /** Reference to the student (Astronaut) */
+export interface LearnerProblemInput {
+  /** Reference to the learner profile */
   StudentId: string;
 
   /** Reference to the problem (Asteroid) */
@@ -145,11 +145,11 @@ export interface StudentProblemInput {
   SimilarityToPrevious: number;
   NoveltyScore: number;
 
-  /** Student characteristics (from Astronaut) */
+  /** Learner characteristics (from the learner profile) */
   NarrativeTags: string[];
   Overlays: string[];
 
-  /** Interaction simulation metrics */
+  /** Interaction review metrics */
 
   /** 0.0-1.0: likelihood student will perceive themselves as successful on this problem */
   PerceivedSuccess: number;
@@ -174,9 +174,9 @@ export interface StudentProblemInput {
 }
 
 /**
- * StudentProblemOutput: Results from simulating a student-problem interaction
+ * LearnerProblemOutput: Results from modeling a learner-problem interaction.
  */
-export interface StudentProblemOutput {
+export interface LearnerProblemOutput {
   studentId: string;
   problemId: string;
 
@@ -199,9 +199,9 @@ export interface StudentProblemOutput {
 }
 
 /**
- * StudentAssignmentSimulation: Aggregated results for one student across the entire assignment
+ * LearnerAssignmentReview: Aggregated results for one learner across the entire assignment.
  */
-export interface StudentAssignmentSimulation {
+export interface LearnerAssignmentReview {
   studentId: string;
   personaName: string;
 
@@ -211,7 +211,7 @@ export interface StudentAssignmentSimulation {
   estimatedGrade: 'A' | 'B' | 'C' | 'D' | 'F' | 'Incomplete';
 
   /** Per-problem results */
-  problemResults: StudentProblemOutput[];
+  problemResults: LearnerProblemOutput[];
 
   /** Engagement trajectory */
   engagement: {
@@ -240,20 +240,20 @@ export interface StudentAssignmentSimulation {
 }
 
 /**
- * AssignmentSimulationResults: Complete simulation results for all students on an assignment
+ * AssignmentReviewResults: Complete local learner-review results for an assignment.
  */
-export interface AssignmentSimulationResults {
+export interface AssignmentReviewResults {
   assignmentId: string;
   timestamp: string;
 
   /** All problems in the assignment */
   asteroids: Asteroid[];
 
-  /** All student profiles tested */
-  astronauts: Astronaut[];
+  /** All learner profiles reviewed */
+  learnerProfiles: LearnerProfile[];
 
-  /** Per-student results */
-  studentResults: StudentAssignmentSimulation[];
+  /** Per-learner results */
+  learnerResults: LearnerAssignmentReview[];
 
   /** Aggregated analytics */
   aggregatedAnalytics: {
