@@ -24,12 +24,15 @@ export function DocumentUpload() {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
+      const fileBuffer = await selectedFile.arrayBuffer();
 
       const response = await fetch("/api/v4/ingest", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": selectedFile.type || "application/octet-stream",
+          "x-file-name": selectedFile.name,
+        },
+        body: fileBuffer,
       });
 
       const payload = await response.json();

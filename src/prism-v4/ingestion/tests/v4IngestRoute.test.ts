@@ -40,10 +40,9 @@ describe("v4 ingest route", () => {
     const app = createTestApp();
     const response = await request(app)
       .post("/api/v4/ingest")
-      .attach("file", Buffer.from("%PDF-1.4 sample"), {
-        filename: "sample.pdf",
-        contentType: "application/pdf",
-      });
+      .set("Content-Type", "application/pdf")
+      .set("x-file-name", "sample.pdf")
+      .send(Buffer.from("%PDF-1.4 sample"));
 
     expect(response.status).toBe(200);
     expect(Object.keys(response.body).sort()).toEqual(["azureExtract", "documentId", "fileName"]);

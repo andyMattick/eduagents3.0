@@ -1,6 +1,5 @@
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "http";
-import Busboy from "busboy";
 
 import { runIngestionPipeline } from "../../../prism-v4/ingestion/runIngestionPipeline";
 import type { TaggingPipelineInput } from "../../../prism-v4/schema/semantic";
@@ -34,68 +33,76 @@ function createDocumentId(fileName: string) {
   return `${stem || "document"}-${suffix}`;
 }
 
-async function readUploadedFile(req: IncomingMessage): Promise<{ fileBuffer: Buffer; fileName: string; mimeType: string; }> {
-  return new Promise((resolve, reject) => {
-    const uploadSizeLimit = getUploadSizeLimit();
-    const busboy = Busboy({
-      headers: req.headers,
-      limits: {
-        files: 1,
-        fileSize: uploadSizeLimit,
-      },
-    });
+function getSingleHeaderValue(header: string | string[] | undefined) {
+  if (Array.isArray(header)) {
+    return header[0];
+  }
 
-    let fileBuffer: Buffer | null = null;
-    let fileName = "";
-    let mimeType = "application/octet-stream";
-    let fileFound = false;
-    let fileRejected = false;
+  return header;
+}
 
-    busboy.on("file", (_fieldName, file, info) => {
-      fileFound = true;
-      fileName = info.filename;
-      mimeType = info.mimeType || "application/octet-stream";
+async function readRequestBody(req: IncomingMessage & { arrayBuffer?: () => Promise<ArrayBuffer> }) {
+  const uploadSizeLimit = getUploadSizeLimit();
 
-      if (!fileName || !isAllowedUpload(fileName, mimeType)) {
-        fileRejected = true;
-        file.resume();
-        reject(new Error("Unsupported file type. Allowed types: PDF, DOC, DOCX."));
+  if (typeof req.arrayBuffer === "function") {
+    const buffer = Buffer.from(await req.arrayBuffer());
+
+    if (buffer.byteLength === 0) {
+      throw new Error("Request body is empty.");
+    }
+
+    if (buffer.byteLength > uploadSizeLimit) {
+      throw new Error(`File exceeds the ${uploadSizeLimit} byte upload limit.`);
+    }
+
+    return buffer;
+  }
+
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+
+    req.on("data", (chunk: Buffer | string) => {
+      if (settled) {
         return;
       }
 
-      const chunks: Buffer[] = [];
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      size += buffer.byteLength;
 
-      file.on("data", (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      file.on("limit", () => {
-        fileRejected = true;
+      if (size > uploadSizeLimit) {
+        settled = true;
         reject(new Error(`File exceeds the ${uploadSizeLimit} byte upload limit.`));
-      });
-
-      file.on("end", () => {
-        if (!fileRejected) {
-          fileBuffer = Buffer.concat(chunks);
-        }
-      });
-    });
-
-    busboy.on("finish", () => {
-      if (fileRejected) {
+        req.destroy();
         return;
       }
 
-      if (!fileFound || !fileBuffer || !fileName) {
-        reject(new Error("A single PDF, DOC, or DOCX file is required."));
+      chunks.push(buffer);
+    });
+
+    req.on("end", () => {
+      if (settled) {
         return;
       }
 
-      resolve({ fileBuffer, fileName, mimeType });
+      settled = true;
+      const body = Buffer.concat(chunks);
+
+      if (body.byteLength === 0) {
+        reject(new Error("Request body is empty."));
+        return;
+      }
+
+      resolve(body);
     });
 
-    busboy.on("error", reject);
-    req.pipe(busboy);
+    req.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    });
   });
 }
 
@@ -111,7 +118,7 @@ export const config = {
   },
 };
 
-export default async function handler(req: IncomingMessage & { method?: string }, res: ServerResponse) {
+export default async function handler(req: IncomingMessage & { method?: string; arrayBuffer?: () => Promise<ArrayBuffer> }, res: ServerResponse) {
   console.log("v4 ingest handler reached");
 
   if (req.method !== "POST") {
@@ -120,7 +127,18 @@ export default async function handler(req: IncomingMessage & { method?: string }
   }
 
   try {
-    const { fileBuffer, fileName } = await readUploadedFile(req);
+    const fileName = getSingleHeaderValue(req.headers["x-file-name"]);
+    const mimeType = getSingleHeaderValue(req.headers["content-type"]);
+
+    if (!fileName) {
+      throw new Error("Missing x-file-name header.");
+    }
+
+    if (!isAllowedUpload(fileName, mimeType || "application/octet-stream")) {
+      throw new Error("Unsupported file type. Allowed types: PDF, DOC, DOCX.");
+    }
+
+    const fileBuffer = await readRequestBody(req);
     const { canonical } = await runIngestionPipeline(fileBuffer, fileName);
 
     const response: TaggingPipelineInput = {
@@ -132,7 +150,7 @@ export default async function handler(req: IncomingMessage & { method?: string }
     sendJson(res, 200, response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Document ingestion failed";
-    const statusCode = message.includes("Unsupported file type") || message.includes("required") || message.includes("upload limit")
+    const statusCode = message.includes("Unsupported file type") || message.includes("Missing x-file-name") || message.includes("empty") || message.includes("upload limit")
       ? 400
       : message.toLowerCase().includes("azure")
         ? 502

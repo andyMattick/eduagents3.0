@@ -75,7 +75,17 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run v4 ingestion" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
-    expect(fetchMock).toHaveBeenCalledWith("/api/v4/ingest", expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v4/ingest",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/pdf",
+          "x-file-name": "sample.pdf",
+        }),
+        body: expect.any(ArrayBuffer),
+      }),
+    );
 
     expect(await screen.findByText("Sample semantic title")).toBeInTheDocument();
     expect(screen.getByText("Problem semantic vectors")).toBeInTheDocument();
