@@ -5,6 +5,16 @@
 	    pageNumber: number;
 	    text: string;
 	  }[];
-	  paragraphs?: { text: string; pageNumber: number }[];
-	  tables?: any[];
+	  paragraphs?: { text: string; pageNumber: number; role?: string }[];
+	  tables?: {
+	    rowCount: number;
+	    columnCount: number;
+	    pageNumber?: number;
+	    cells: {
+	      rowIndex: number;
+	      columnIndex: number;
+	      text: string;
+	    }[];
+	  }[];
+	  readingOrder?: string[];
 	}

@@ -1,48 +1,50 @@
+import type { Problem } from "../domain";
+
 export interface DocumentSemanticInsights {
-  id: string;           // semanticId
   documentId: string;
+  title?: string;
+  subject?: string;
+  gradeLevel?: number;
 
-  summary: string;      // teacher-facing summary
-  keyConcepts: {
-    id: string;
-    text: string;
-    role: "core" | "supporting";
-  }[];
-
-  prereqs: string[];    // prerequisite ideas/skills
-  misconceptions: string[];
-
-  vocabulary: {
-    term: string;
-    tier: "basic" | "academic" | "domain";
-    note?: string;
-  }[];
-
-  difficultyProfile: {
-    overall: "very_easy" | "easy" | "medium" | "hard" | "very_hard";
-    readingLevel: number | null;
-    spikes: {
-      sectionId?: string;
-      reason: string;
-    }[];
-  };
-
-  studentTraps: {
-    pattern: string;
-    whoStruggles: string;
-    why: string;
-  }[];
+  rawText: string;
 
   sections: {
-    id: string;
+    sectionId: string;
     title?: string;
-    summary: string;
-    difficulty?: "easy" | "medium" | "hard";
+    text: string;
+    concepts?: Record<string, number>;
+    standards?: Record<string, number>;
+    difficulty?: number;
+    linguisticLoad?: number;
   }[];
 
-  metadata: {
-    lengthTokens: number;
-    domain: string;
-    confidence: number;
+  problems: Problem[];
+
+  documentConcepts?: Record<string, number>;
+  documentStandards?: Record<string, number>;
+  overallDifficulty?: number;
+  overallLinguisticLoad?: number;
+
+  conceptGraph?: {
+    nodes: { id: string; label: string; weight?: number }[];
+    edges: { from: string; to: string; weight?: number }[];
+  };
+
+  semantics?: {
+    topic?: string;
+    concepts?: string[];
+    relationships?: string[];
+    misconceptions?: string[];
+  };
+
+  confidence?: {
+    extractionQuality?: number;
+    taggingQuality?: number;
+  };
+
+  flags?: {
+    unreadable?: boolean;
+    lowQualityScan?: boolean;
+    missingPages?: boolean;
   };
 }

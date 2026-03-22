@@ -57,4 +57,41 @@ Examples include:
 ### Validation
 
 - `npm run phase1:check` validates PRISM Phase 1 structure, ownership docs, and forbidden schema drift.
+- `npm run phase3:check` runs the Phase 3 semantic test suite and validates semantic-only boundaries.
+- `npm run v4:heatmap` reports repo-wide v3-era drift signals outside canonical allowlists.
 - `npm run legacy:report:strict` reports legacy pipeline drift outside PRISM v4.
+
+## Phase 2 → Phase 3 Handoff Contract
+
+Phase 2 produces the following canonical structure:
+
+### AzureExtractResult
+{
+  fileName: string;
+  content: string;
+  pages: { pageNumber: number; text: string }[];
+  paragraphs: { text: string; pageNumber: number }[];
+  tables: any[];
+}
+
+### Segmented Sections
+[
+  {
+    sectionId: string;
+    title?: string;
+    text: string;
+  }
+]
+
+### Phase 3 Input
+Phase 3 receives:
+
+{
+  documentId: string;
+  fileName: string;
+  azureExtract: AzureExtractResult;
+  sections: Section[];
+}
+
+Phase 3 must not call Azure or modify ingestion logic.
+Phase 2 must not perform semantic tagging or problem extraction.

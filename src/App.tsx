@@ -18,6 +18,7 @@ import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentD
 import { loadTeacherProfile } from './services_new/teacherProfileService';
 import { TemplatesPage, TemplateSummaryPage, TemplateWizardPage } from './components_new/templates';
 import type { TemplateOption } from './components_new/templates';
+import { DocumentUpload } from './components_new/v4/DocumentUpload';
 import './App.css';
 import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
 import { AnalyzerV2 } from "./pipeline/analyzerV2/analyzerV2";
@@ -163,6 +164,14 @@ function TeacherAppContent() {
               Templates
             </button>
 
+            <button
+              className={`app-tab ${pathname === '/v4/semantic' ? 'active' : ''}`}
+              onClick={() => navigate('/v4/semantic')}
+            >
+              <span className="app-tab-icon">🧭</span>
+              V4 Semantic
+            </button>
+
             {/* My Agents tab hidden from teacher nav — component kept for internal use */}
 
             
@@ -217,6 +226,10 @@ function TeacherAppContent() {
             onNavigate={navigate}
             onUseTemplateInBuilder={onUseTemplateInBuilder}
           />
+        )}
+
+        {pathname === '/v4/semantic' && (
+          <DocumentUpload />
         )}
 
         {pathname === '/' && (
