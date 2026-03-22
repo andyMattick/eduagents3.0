@@ -127,7 +127,9 @@ export default async function handler(req: IncomingMessage & { method?: string; 
   }
 
   try {
+    console.log("STEP 1: handler start");
     const fileName = getSingleHeaderValue(req.headers["x-file-name"]);
+    console.log("STEP 2: filename", fileName);
     const mimeType = getSingleHeaderValue(req.headers["content-type"]);
 
     if (!fileName) {
@@ -139,7 +141,9 @@ export default async function handler(req: IncomingMessage & { method?: string; 
     }
 
     const fileBuffer = await readRequestBody(req);
+    console.log("STEP 3: buffer length", fileBuffer.length);
     const { canonical } = await runIngestionPipeline(fileBuffer, fileName);
+    console.log("STEP 4: azure done");
 
     const response: TaggingPipelineInput = {
       documentId: createDocumentId(fileName),
