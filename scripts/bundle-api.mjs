@@ -35,9 +35,7 @@ const externalPackages = [
   "lucide-react",
 ];
 
-const unbundledApiEntries = new Set([
-  join("api", "v4-ingest.ts"),
-]);
+const unbundledApiEntries = new Set();
 
 function collectApiTsFiles(dir) {
   const entries = readdirSync(dir);
