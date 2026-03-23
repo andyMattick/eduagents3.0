@@ -35,6 +35,10 @@ const externalPackages = [
   "lucide-react",
 ];
 
+const unbundledApiEntries = new Set([
+  join("api", "v4", "ingest.ts"),
+]);
+
 function collectApiTsFiles(dir) {
   const entries = readdirSync(dir);
   const files = [];
@@ -59,6 +63,11 @@ function collectApiTsFiles(dir) {
 const tsFiles = collectApiTsFiles(apiDir);
 
 for (const file of tsFiles) {
+  if (unbundledApiEntries.has(file)) {
+    console.log(`  ${file} → left as source`);
+    continue;
+  }
+
   const entry = file;
   const tmpFile = file.replace(/\.ts$/, ".bundled.mjs");
 
