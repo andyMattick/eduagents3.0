@@ -2,14 +2,13 @@ import express from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { runIngestionPipelineMock } = vi.hoisted(() => ({
-  runIngestionPipelineMock: vi.fn(),
+const { runAzureExtractionMock } = vi.hoisted(() => ({
+  runAzureExtractionMock: vi.fn(),
 }));
 
-vi.mock("../../../prism-v4/ingestion/runIngestionPipeline", () => ({
-  runIngestionPipeline: runIngestionPipelineMock,
+vi.mock("../../../prism-v4/ingestion/azure/azureExtractor", () => ({
+  runAzureExtraction: runAzureExtractionMock,
 }));
-//new
 import handler from "../../../../api/v4-ingest";
 
 function createTestApp() {
@@ -24,17 +23,11 @@ describe("v4 ingest route", () => {
   });
 
   it("returns exactly the canonical TaggingPipelineInput shape", async () => {
-    runIngestionPipelineMock.mockResolvedValue({
-      canonical: {
-        fileName: "sample.pdf",
-        content: "1. Solve the fraction problem.",
-        pages: [{ pageNumber: 1, text: "1. Solve the fraction problem." }],
-        paragraphs: [{ text: "1. Solve the fraction problem.", pageNumber: 1 }],
-        tables: [],
-        readingOrder: ["1. Solve the fraction problem."],
-      },
-      sections: [{ sectionId: "sec-1", text: "1. Solve the fraction problem." }],
-      rawAzureRetained: false,
+    runAzureExtractionMock.mockResolvedValue({
+      content: "1. Solve the fraction problem.",
+      pages: [{ pageNumber: 1, lines: [{ content: "1. Solve the fraction problem." }] }],
+      paragraphs: [{ content: "1. Solve the fraction problem.", boundingRegions: [{ pageNumber: 1 }] }],
+      tables: [],
     });
 
     const app = createTestApp();
@@ -56,7 +49,7 @@ describe("v4 ingest route", () => {
       tables: [],
       readingOrder: ["1. Solve the fraction problem."],
     });
-    expect(runIngestionPipelineMock).toHaveBeenCalledTimes(1);
-    expect(runIngestionPipelineMock).toHaveBeenCalledWith(expect.any(Buffer), "sample.pdf");
+    expect(runAzureExtractionMock).toHaveBeenCalledTimes(1);
+    expect(runAzureExtractionMock).toHaveBeenCalledWith(expect.any(Buffer));
   });
 });

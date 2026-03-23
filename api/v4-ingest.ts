@@ -1,7 +1,10 @@
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "http";
 
-import { runIngestionPipeline } from "../src/prism-v4/ingestion/runIngestionPipeline";
+import { runAzureExtraction } from "../src/prism-v4/ingestion/azure/azureExtractor";
+import { normalizeAzureLayout } from "../src/prism-v4/ingestion/azure/azureNormalizer";
+import { mapAzureToCanonical } from "../src/prism-v4/ingestion/normalize/structureMapper";
+import { cleanText } from "../src/prism-v4/ingestion/normalize/textCleaner";
 import type { TaggingPipelineInput } from "../src/prism-v4/schema/semantic";
 
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
@@ -39,6 +42,29 @@ function getSingleHeaderValue(header: string | string[] | undefined) {
   }
 
   return header;
+}
+
+function cleanCanonicalText(result: TaggingPipelineInput["azureExtract"]) {
+  return {
+    ...result,
+    content: cleanText(result.content),
+    pages: result.pages.map((page) => ({
+      ...page,
+      text: cleanText(page.text),
+    })),
+    paragraphs: result.paragraphs?.map((paragraph) => ({
+      ...paragraph,
+      text: cleanText(paragraph.text),
+    })),
+    tables: result.tables?.map((table) => ({
+      ...table,
+      cells: table.cells.map((cell) => ({
+        ...cell,
+        text: cleanText(cell.text),
+      })),
+    })),
+    readingOrder: result.readingOrder?.map((entry) => cleanText(entry)).filter(Boolean),
+  };
 }
 
 async function readRequestBody(req: IncomingMessage & { arrayBuffer?: () => Promise<ArrayBuffer> }) {
@@ -141,7 +167,9 @@ export default async function handler(req: IncomingMessage & { method?: string; 
     }
 
     const fileBuffer = await readRequestBody(req);
-    const { canonical } = await runIngestionPipeline(fileBuffer, fileName);
+    const rawAzure = await runAzureExtraction(fileBuffer);
+    const normalizedAzure = normalizeAzureLayout(rawAzure);
+    const canonical = cleanCanonicalText(mapAzureToCanonical(normalizedAzure, fileName));
 
     const response: TaggingPipelineInput = {
       documentId: createDocumentId(fileName),

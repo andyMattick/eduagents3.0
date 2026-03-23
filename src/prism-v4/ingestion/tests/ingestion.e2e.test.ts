@@ -4,24 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   runAzureExtractionMock,
-  shouldRetainRawOutputMock,
-  storeDebugRawAzureMock,
 } = vi.hoisted(() => ({
   runAzureExtractionMock: vi.fn(),
-  shouldRetainRawOutputMock: vi.fn(() => false),
-  storeDebugRawAzureMock: vi.fn(),
 }));
 
 vi.mock("../azure/azureExtractor", () => ({
   runAzureExtraction: runAzureExtractionMock,
-}));
-
-vi.mock("../debug/debugStorage", () => ({
-  storeDebugRawAzure: storeDebugRawAzureMock,
-}));
-
-vi.mock("../debug/retentionPolicy", () => ({
-  shouldRetainRawOutput: shouldRetainRawOutputMock,
 }));
 
 import { uploadRouter } from "../upload/uploadRouter";
@@ -60,7 +48,6 @@ function createTestApp() {
 describe("Phase 2 Ingestion Pipeline", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    shouldRetainRawOutputMock.mockReturnValue(false);
   });
 
   it("uploads → extracts → normalizes → segments", async () => {
@@ -89,25 +76,6 @@ describe("Phase 2 Ingestion Pipeline", () => {
     expect(sections[0].sectionId).toBe("sec-1");
     expect(sections[0].title).toBe("Unit 1");
     expect(sections[0].text).toContain("Solve the problem shown below.");
-    expect(storeDebugRawAzureMock).not.toHaveBeenCalled();
-  });
-
-  it("retains raw Azure output only when debug retention is enabled", async () => {
-    runAzureExtractionMock.mockResolvedValue(azureLayoutFixture);
-    shouldRetainRawOutputMock.mockReturnValue(true);
-
-    const app = createTestApp();
-
-    const res = await request(app)
-      .post("/api/ingestion/upload")
-      .attach("file", Buffer.from("%PDF-1.4 sample"), {
-        filename: "sample.pdf",
-        contentType: "application/pdf",
-      });
-
-    expect(res.status).toBe(200);
-    expect(storeDebugRawAzureMock).toHaveBeenCalledTimes(1);
-    expect(storeDebugRawAzureMock).toHaveBeenCalledWith("sample.pdf", azureLayoutFixture);
   });
 
   it("falls back to page text when Azure paragraphs are absent", async () => {

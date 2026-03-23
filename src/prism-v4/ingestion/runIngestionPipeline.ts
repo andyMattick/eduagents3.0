@@ -1,7 +1,5 @@
 import { runAzureExtraction } from "./azure/azureExtractor";
 import { normalizeAzureLayout } from "./azure/azureNormalizer";
-import { storeDebugRawAzure } from "./debug/debugStorage";
-import { shouldRetainRawOutput } from "./debug/retentionPolicy";
 import { mapAzureToCanonical } from "./normalize/structureMapper";
 import { cleanText } from "./normalize/textCleaner";
 import { segmentSections } from "./segment/sectionSegmenter";
@@ -35,12 +33,6 @@ export async function runIngestionPipeline(
   fileName: string,
 ): Promise<IngestionPipelineResult> {
   const rawAzure = await runAzureExtraction(fileBuffer);
-  const rawAzureRetained = shouldRetainRawOutput();
-
-  if (rawAzureRetained) {
-    await storeDebugRawAzure(fileName, rawAzure);
-  }
-
   const normalized = normalizeAzureLayout(rawAzure);
   const canonical = cleanCanonicalText(mapAzureToCanonical(normalized, fileName));
   const sections = segmentSections(canonical);
@@ -48,6 +40,6 @@ export async function runIngestionPipeline(
   return {
     canonical,
     sections,
-    rawAzureRetained,
+    rawAzureRetained: false,
   };
 }
