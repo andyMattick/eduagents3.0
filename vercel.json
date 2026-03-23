@@ -2,5 +2,14 @@
   "version": 2,
   "buildCommand": "node scripts/bundle-api.mjs && npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "routes": [
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ]
 }
