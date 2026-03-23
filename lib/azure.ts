@@ -27,12 +27,25 @@ function normalizeEndpoint(raw: string): string {
   return s;
 }
 
+function getEnvValue(...keys: string[]) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 export function getAzureConfig() {
-  const endpoint = process.env.AZURE_DOCUMENT_ENDPOINT;
-  const key = process.env.AZURE_DOCUMENT_KEY;
+  const endpoint = getEnvValue("AZURE_DOCUMENT_ENDPOINT", "AZURE_FORM_RECOGNIZER_ENDPOINT");
+  const key = getEnvValue("AZURE_DOCUMENT_KEY", "AZURE_FORM_RECOGNIZER_KEY");
 
   if (!endpoint || !key) {
-    throw new Error("AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY must be set");
+    throw new Error(
+      "Azure is not configured. Set AZURE_DOCUMENT_ENDPOINT and AZURE_DOCUMENT_KEY, or AZURE_FORM_RECOGNIZER_ENDPOINT and AZURE_FORM_RECOGNIZER_KEY.",
+    );
   }
 
   const clean = normalizeEndpoint(endpoint);
@@ -43,6 +56,60 @@ export function getAzureConfig() {
 
 export function azureAnalyzeUrl(endpoint: string): string {
   return `${endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`;
+}
+
+export async function analyzeAzureDocument(
+  fileBuffer: Buffer,
+  mimeType = "application/pdf",
+): Promise<AzureAnalyzeResult> {
+  const config = getAzureConfig();
+  const analyzeUrl = azureAnalyzeUrl(config.endpoint);
+
+  console.log("[azure] URL:", analyzeUrl);
+
+  const submitRes = await fetch(analyzeUrl, {
+    method: "POST",
+    headers: {
+      "Ocp-Apim-Subscription-Key": config.key,
+      "Content-Type": mimeType,
+    },
+    body: new Uint8Array(fileBuffer),
+  });
+
+  if (submitRes.status !== 202) {
+    const errText = await submitRes.text();
+    throw new Error(`Azure rejected the document (${submitRes.status}): ${errText}`);
+  }
+
+  const operationLocation = submitRes.headers.get("operation-location");
+  if (!operationLocation) {
+    throw new Error("Azure did not return an operation-location header");
+  }
+
+  const maxPolls = 30;
+  const pollIntervalMs = 1500;
+
+  for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+
+    const pollRes = await fetch(operationLocation, {
+      headers: {
+        "Ocp-Apim-Subscription-Key": config.key,
+      },
+    });
+
+    const pollData = (await pollRes.json()) as { status?: string; analyzeResult?: AzureAnalyzeResult };
+
+    if (pollData.status === "succeeded") {
+      return pollData.analyzeResult ?? { content: "", pages: [], paragraphs: [], tables: [] };
+    }
+
+    if (pollData.status === "failed") {
+      throw new Error(`Azure analysis failed: ${JSON.stringify(pollData)}`);
+    }
+  }
+
+  throw new Error("Azure analysis timed out after polling");
 }
 
 // ── Result types ────────────────────────────────────────────────────────────
@@ -68,7 +135,7 @@ interface AzurePage {
   pageNumber: number;
 }
 
-interface AzureAnalyzeResult {
+export interface AzureAnalyzeResult {
   content: string;
   paragraphs?: AzureParagraph[];
   tables?: AzureTable[];

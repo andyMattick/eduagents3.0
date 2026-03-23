@@ -1,4 +1,4 @@
-import { getAzureConfig, azureAnalyzeUrl, mapAzureResult } from "../lib/azure";
+import { analyzeAzureDocument, getAzureConfig, mapAzureResult } from "../lib/azure";
 
 export const runtime = "nodejs";
 
@@ -40,70 +40,19 @@ export default async function handler(req: any, res: any) {
 
     const fileBuffer = Buffer.from(fileBase64, "base64");
 
-    let config;
     try {
-      config = getAzureConfig();
+      getAzureConfig();
     } catch {
       return res.status(500).json({ error: "Azure not configured" });
     }
 
     console.log("File received:", fileBuffer.length, "bytes, mime:", mimeType);
 
-    const analyzeUrl = azureAnalyzeUrl(config.endpoint);
-    console.log("[azure-extract] ENDPOINT:", config.endpoint);
-    console.log("[azure-extract] URL:", analyzeUrl);
-
     const finalMime = mimeType || "application/pdf";
+    const analyzeResult = await analyzeAzureDocument(fileBuffer, finalMime);
+    const result = mapAzureResult(analyzeResult, fileName || "upload");
 
-    // ── Step 1: Submit document for analysis ──────────────────────────────
-    const submitRes = await fetch(analyzeUrl, {
-      method: "POST",
-      headers: {
-        "Ocp-Apim-Subscription-Key": config.key,
-        "Content-Type": finalMime,
-      },
-      body: fileBuffer,
-    });
-
-    if (submitRes.status !== 202) {
-      const errText = await submitRes.text();
-      console.error("Azure submit error:", submitRes.status, errText);
-      return res.status(submitRes.status).json({
-        error: `Azure rejected the document (${submitRes.status})`,
-        detail: errText,
-      });
-    }
-
-    const operationLocation = submitRes.headers.get("operation-location");
-    if (!operationLocation) {
-      return res.status(502).json({ error: "Azure did not return an operation-location header" });
-    }
-
-    // ── Step 2: Poll until complete ───────────────────────────────────────
-    const MAX_POLLS = 30;
-    const POLL_INTERVAL_MS = 1500;
-
-    for (let i = 0; i < MAX_POLLS; i++) {
-      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-
-      const pollRes = await fetch(operationLocation, {
-        headers: { "Ocp-Apim-Subscription-Key": config.key },
-      });
-
-      const pollData = await pollRes.json();
-
-      if (pollData.status === "succeeded") {
-        const result = mapAzureResult(pollData.analyzeResult, fileName || "upload");
-        return res.status(200).json(result);
-      }
-
-      if (pollData.status === "failed") {
-        console.error("Azure analysis failed:", pollData);
-        return res.status(502).json({ error: "Azure analysis failed", detail: pollData });
-      }
-    }
-
-    return res.status(504).json({ error: "Azure analysis timed out after polling" });
+    return res.status(200).json(result);
   } catch (err: any) {
     console.error("ERROR:", err);
     res.status(500).json({ error: err.message });
