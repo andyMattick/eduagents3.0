@@ -26,7 +26,7 @@ export function DocumentUpload() {
     try {
       const fileBuffer = await selectedFile.arrayBuffer();
 
-      const response = await fetch("/api/v4/ingest", {
+      const response = await fetch("/api/v4-ingest", {
         method: "POST",
         headers: {
           "Content-Type": selectedFile.type || "application/octet-stream",

@@ -76,7 +76,7 @@ describe("DocumentUpload", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v4/ingest",
+      "/api/v4-ingest",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

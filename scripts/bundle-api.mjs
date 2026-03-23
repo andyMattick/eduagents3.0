@@ -36,7 +36,7 @@ const externalPackages = [
 ];
 
 const unbundledApiEntries = new Set([
-  join("api", "v4", "ingest.ts"),
+  join("api", "v4-ingest.ts"),
 ]);
 
 function collectApiTsFiles(dir) {

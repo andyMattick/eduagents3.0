@@ -10,11 +10,11 @@ vi.mock("../../../prism-v4/ingestion/runIngestionPipeline", () => ({
   runIngestionPipeline: runIngestionPipelineMock,
 }));
 
-import handler from "../../../pages/api/v4/ingest";
+import handler from "../../../../api/v4-ingest";
 
 function createTestApp() {
   const app = express();
-  app.post("/api/v4/ingest", (req, res) => handler(req, res));
+  app.post("/api/v4-ingest", (req, res) => handler(req, res));
   return app;
 }
 
@@ -39,7 +39,7 @@ describe("v4 ingest route", () => {
 
     const app = createTestApp();
     const response = await request(app)
-      .post("/api/v4/ingest")
+      .post("/api/v4-ingest")
       .set("Content-Type", "application/pdf")
       .set("x-file-name", "sample.pdf")
       .send(Buffer.from("%PDF-1.4 sample"));

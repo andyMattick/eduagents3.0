@@ -1,8 +1,8 @@
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "http";
 
-import { runIngestionPipeline } from "../../../prism-v4/ingestion/runIngestionPipeline";
-import type { TaggingPipelineInput } from "../../../prism-v4/schema/semantic";
+import { runIngestionPipeline } from "../src/prism-v4/ingestion/runIngestionPipeline";
+import type { TaggingPipelineInput } from "../src/prism-v4/schema/semantic";
 
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set([".pdf", ".doc", ".docx"]);
@@ -112,6 +112,8 @@ function sendJson(res: ServerResponse, statusCode: number, payload: unknown) {
   res.end(JSON.stringify(payload));
 }
 
+export const runtime = "nodejs";
+
 export const config = {
   api: {
     bodyParser: false,
@@ -127,9 +129,7 @@ export default async function handler(req: IncomingMessage & { method?: string; 
   }
 
   try {
-    console.log("STEP 1: handler start");
     const fileName = getSingleHeaderValue(req.headers["x-file-name"]);
-    console.log("STEP 2: filename", fileName);
     const mimeType = getSingleHeaderValue(req.headers["content-type"]);
 
     if (!fileName) {
@@ -141,9 +141,7 @@ export default async function handler(req: IncomingMessage & { method?: string; 
     }
 
     const fileBuffer = await readRequestBody(req);
-    console.log("STEP 3: buffer length", fileBuffer.length);
     const { canonical } = await runIngestionPipeline(fileBuffer, fileName);
-    console.log("STEP 4: azure done");
 
     const response: TaggingPipelineInput = {
       documentId: createDocumentId(fileName),
