@@ -28,6 +28,8 @@ export default async function handler(req: any, res: any) {
       return res.status(auth.status).json({ error: auth.error });
     }
 
+    console.info("[documents/store] authenticated", { userId: auth.userId });
+
     // Parse body
     let body = req.body;
     if (typeof body === "string") body = JSON.parse(body);
@@ -41,24 +43,40 @@ export default async function handler(req: any, res: any) {
     // Extract semantics before storing (never blocks on failure)
     let semantics = null;
     try {
+      console.info("[store] semantic extraction started");
       semantics = await extractSemantics(content);
+      console.info("[store] semantic extraction finished", { hasSemantics: Boolean(semantics) });
     } catch (err) {
       console.warn("[store] Semantic extraction failed (non-blocking):", err);
     }
 
-    const docId = await storeDocument({
-      userId: auth.userId,
-      title: title || "Untitled Document",
-      content,
-      metadata: {
-        ...metadata,
-        ...(semantics ? { semantics } : {}),
-      },
-    });
+    let docId: string | null = null;
+    let ragStatus: "stored" | "skipped" = "skipped";
 
-    return res.status(200).json({ docId, semantics });
+    try {
+      console.info("[store] attempting insert");
+      docId = await storeDocument({
+        userId: auth.userId,
+        title: title || "Untitled Document",
+        content,
+        metadata: {
+          ...metadata,
+          ...(semantics ? { semantics } : {}),
+        },
+      });
+      ragStatus = "stored";
+      console.info("[store] insert success", { docId });
+    } catch (err) {
+      console.error("[store] Non-blocking failure:", err);
+    }
+
+    console.info("[respond] returning JSON", { ragStatus, hasDocId: Boolean(docId) });
+    return res.status(200).json({ docId, semantics, ragStatus });
   } catch (err: any) {
     console.error("documents/store error:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      error: "DOCUMENT_STORE_FAILED",
+      detail: err?.message || "Unknown documents/store failure",
+    });
   }
 }

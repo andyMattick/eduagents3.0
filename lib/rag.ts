@@ -13,6 +13,8 @@ import { supabaseAdmin } from "./supabase";
 import { createHash } from "crypto";
 import type { QuerySemantics } from "./semantic/parseQuery";
 
+const schemaColumnSupport = new Map<string, boolean>();
+
 function getMissingSchemaColumn(errorText: string): string | null {
   if (!errorText.includes("PGRST204") && !errorText.includes("schema cache")) {
     return null;
@@ -56,6 +58,136 @@ async function insertWithSchemaFallback({
 
     throw new Error(`Failed to insert ${label}: ${err}`);
   }
+}
+
+function createAuthHeaders(key: string): Record<string, string> {
+  return {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+  };
+}
+
+function createJsonHeaders(key: string, prefer?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...createAuthHeaders(key),
+    "Content-Type": "application/json",
+  };
+
+  if (prefer) {
+    headers.Prefer = prefer;
+  }
+
+  return headers;
+}
+
+async function hasColumn(url: string, key: string, table: string, column: string): Promise<boolean> {
+  const cacheKey = `${table}.${column}`;
+  const cached = schemaColumnSupport.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const res = await fetch(`${url}/rest/v1/${table}?select=${encodeURIComponent(column)}&limit=1`, {
+    headers: createAuthHeaders(key),
+  });
+
+  if (res.ok) {
+    schemaColumnSupport.set(cacheKey, true);
+    return true;
+  }
+
+  const errorText = await res.text();
+  const missingColumn = getMissingSchemaColumn(errorText);
+  if (missingColumn === column) {
+    console.warn(`[RAG] ${table}.${column} missing in live schema; disabling dependent logic`);
+    schemaColumnSupport.set(cacheKey, false);
+    return false;
+  }
+
+  console.warn(`[RAG] Failed probing ${table}.${column}; treating as unavailable`, errorText);
+  return false;
+}
+
+async function isTableReachable(url: string, key: string, table: string): Promise<boolean> {
+  const res = await fetch(`${url}/rest/v1/${table}?select=id&limit=1`, {
+    headers: createAuthHeaders(key),
+  });
+
+  if (res.ok) {
+    return true;
+  }
+
+  console.warn(`[RAG] ${table} reachability probe failed:`, await res.text());
+  return false;
+}
+
+async function canInsertDocument(url: string, key: string, userId: string, supportsContentHash: boolean): Promise<boolean> {
+  const probeContent = `RAG health probe ${new Date().toISOString()}`;
+  const probeBody: Record<string, unknown> = {
+    user_id: userId,
+    title: "[health-check] rag probe",
+    content: probeContent,
+    metadata: {
+      probe: true,
+      source: "api/health/rag",
+    },
+  };
+
+  if (supportsContentHash) {
+    probeBody.content_hash = contentHash(probeContent);
+  }
+
+  try {
+    const res = await insertWithSchemaFallback({
+      url: `${url}/rest/v1/documents`,
+      headers: createJsonHeaders(key, "return=representation"),
+      body: probeBody,
+      label: "document health probe",
+    });
+
+    const docs = await res.json();
+    const docId = Array.isArray(docs) ? docs[0]?.id : docs?.id;
+    if (!docId) {
+      return false;
+    }
+
+    await fetch(`${url}/rest/v1/documents?id=eq.${encodeURIComponent(docId)}`, {
+      method: "DELETE",
+      headers: createJsonHeaders(key, "return=minimal"),
+    });
+
+    return true;
+  } catch (error) {
+    console.warn("[RAG] Document insert probe failed:", error);
+    return false;
+  }
+}
+
+export interface RagHealthStatus {
+  documentsTable: boolean;
+  contentHashColumn: boolean;
+  canInsert: boolean;
+}
+
+export async function probeRagHealth(userId: string): Promise<RagHealthStatus> {
+  const { url, key } = supabaseAdmin();
+  const documentsTable = await isTableReachable(url, key, "documents");
+  if (!documentsTable) {
+    return {
+      documentsTable: false,
+      contentHashColumn: false,
+      canInsert: false,
+    };
+  }
+
+  const contentHashColumn = await hasColumn(url, key, "documents", "content_hash");
+  const canInsert = await canInsertDocument(url, key, userId, contentHashColumn);
+
+  return {
+    documentsTable,
+    contentHashColumn,
+    canInsert,
+  };
 }
 
 // ── Chunking ────────────────────────────────────────────────────────────────
@@ -116,34 +248,36 @@ export async function storeDocument({
   metadata?: Record<string, unknown>;
 }): Promise<string> {
   const { url, key } = supabaseAdmin();
-  const headers: Record<string, string> = {
-    apikey: key,
-    Authorization: `Bearer ${key}`,
-    "Content-Type": "application/json",
-    Prefer: "return=representation",
-  };
+  const headers = createJsonHeaders(key, "return=representation");
+
+  console.info("[rag] store started", { userId, title });
 
   // 0. Deduplication — skip if identical document already stored
   const hash = contentHash(content);
-  let canUseContentHash = true;
+  const canUseContentHash = await hasColumn(url, key, "documents", "content_hash");
 
-  const dedupRes = await fetch(
-    `${url}/rest/v1/documents?user_id=eq.${encodeURIComponent(userId)}&content_hash=eq.${encodeURIComponent(hash)}&select=id&limit=1`,
-    { headers: { apikey: key, Authorization: `Bearer ${key}` } }
-  );
-  if (dedupRes.ok) {
-    const existing = await dedupRes.json();
-    if (Array.isArray(existing) && existing.length > 0) {
-      return existing[0].id; // already stored
+  if (canUseContentHash) {
+    const dedupRes = await fetch(
+      `${url}/rest/v1/documents?user_id=eq.${encodeURIComponent(userId)}&content_hash=eq.${encodeURIComponent(hash)}&select=id&limit=1`,
+      { headers: createAuthHeaders(key) }
+    );
+    if (dedupRes.ok) {
+      const existing = await dedupRes.json();
+      if (Array.isArray(existing) && existing.length > 0) {
+        console.info("[rag] dedup hit", { userId, documentId: existing[0].id });
+        return existing[0].id; // already stored
+      }
+    } else {
+      const dedupErr = await dedupRes.text();
+      if (getMissingSchemaColumn(dedupErr) === "content_hash") {
+        schemaColumnSupport.set("documents.content_hash", false);
+        console.warn("[RAG] content_hash column missing; skipping document deduplication");
+      } else {
+        console.warn("[RAG] Document deduplication lookup failed:", dedupErr);
+      }
     }
   } else {
-    const dedupErr = await dedupRes.text();
-    if (getMissingSchemaColumn(dedupErr) === "content_hash") {
-      canUseContentHash = false;
-      console.warn("[RAG] content_hash column missing; skipping document deduplication");
-    } else {
-      console.warn("[RAG] Document deduplication lookup failed:", dedupErr);
-    }
+    console.warn("[RAG] content_hash column missing; skipping hash logic");
   }
 
   // 1. Insert document
@@ -157,6 +291,8 @@ export async function storeDocument({
     documentBody.content_hash = hash;
   }
 
+  console.info("[rag] document insert start", { userId, title });
+
   const docRes = await insertWithSchemaFallback({
     url: `${url}/rest/v1/documents`,
     headers,
@@ -168,8 +304,11 @@ export async function storeDocument({
   const docId = Array.isArray(docs) ? docs[0]?.id : docs?.id;
   if (!docId) throw new Error("Document insert returned no id");
 
+  console.info("[rag] document insert success", { docId });
+
   // 2. Chunk + embed + store (non-blocking — never fails the document insert)
   setTimeout(() => {
+    console.info("[rag] chunk embedding scheduled", { docId });
     void embedAndStoreChunks({ url, headers, docId, userId, title, content, metadata }).catch((err) =>
       console.error(`[RAG] background embed failed for doc ${docId}:`, err)
     );

@@ -32,8 +32,8 @@ export function storeDocumentForRAG(
       if (!res.ok) {
         console.warn("[RAG] Failed to store document:", await res.text());
       } else {
-        const { docId } = await res.json();
-        console.info("[RAG] Document stored:", docId);
+        const { docId, ragStatus } = await res.json();
+        console.info("[RAG] Store result:", ragStatus, docId);
       }
     } catch (err) {
       console.warn("[RAG] Store failed (non-blocking):", err);
