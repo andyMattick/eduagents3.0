@@ -136,4 +136,31 @@ describe("Semantic pipeline", () => {
     expect(graph?.nodes.length).toBeGreaterThan(0);
     expect(graph?.edges.every((edge) => (edge.weight ?? 0) >= 1)).toBe(true);
   });
+
+  it("gives a multi-directive single-part problem more multistep weight than a trivial multipart child", async () => {
+    const output = await runSemanticPipeline({
+      documentId: "doc-multistep",
+      fileName: "sample.pdf",
+      azureExtract: {
+        fileName: "sample.pdf",
+        content: [
+          "1. Solve the equation and explain your reasoning.",
+          "2. Read the stem.",
+          "a) State the answer.",
+        ].join("\n"),
+        pages: [{ pageNumber: 1, text: "page 1" }],
+        paragraphs: [
+          { text: "1. Solve the equation and explain your reasoning.", pageNumber: 1 },
+          { text: "2. Read the stem.", pageNumber: 1 },
+          { text: "a) State the answer.", pageNumber: 1 },
+        ],
+        tables: [],
+      },
+    });
+
+    const singlePart = output.problems.find((problem) => problem.problemId === "p1");
+    const multipartChild = output.problems.find((problem) => problem.problemId === "p2a");
+
+    expect(singlePart?.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(multipartChild?.tags?.cognitive.multiStep ?? 0);
+  });
 });

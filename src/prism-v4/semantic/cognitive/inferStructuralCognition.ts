@@ -1,17 +1,46 @@
 import type { Problem } from "../../schema/domain";
 import type { CognitiveProfile } from "../../schema/semantic";
+import { clamp01 } from "../utils/heuristics";
+
+const DIRECTIVE_PATTERNS = [
+	/\bsolve\b/gi,
+	/\bexplain\b/gi,
+	/\bjustify\b/gi,
+	/\bcompare\b/gi,
+	/\banalyze\b/gi,
+	/\bshow\b/gi,
+	/\bdescribe\b/gi,
+	/\binterpret\b/gi,
+	/\bevaluate\b/gi,
+	/\bprove\b/gi,
+	/\bcalculate\b/gi,
+	/\bdetermine\b/gi,
+];
+
+function countDirectiveMatches(text: string) {
+	return DIRECTIVE_PATTERNS.reduce((count, pattern) => count + (text.match(pattern)?.length ?? 0), 0);
+}
 
 export function inferStructuralCognition(problem: Problem): Partial<CognitiveProfile> {
 	const isMultipart = problem.partIndex !== null && problem.partIndex !== undefined && problem.partIndex > 0;
-	const multiStep = isMultipart ? 0.5 : 0.1;
+	const problemText = `${problem.stemText ?? ""}\n${problem.partText ?? ""}\n${problem.cleanedText ?? problem.rawText ?? ""}`;
+	const directiveCount = countDirectiveMatches(problemText);
+	const extractedSteps = Math.max(1, problem.tags?.steps ?? 1);
 	const representationCount = problem.tags?.representationCount ?? 1;
-  const representationComplexity = representationCount > 1 ? 0.6 : 0.2;
+	const representationComplexity = clamp01(0.2 + Math.max(0, representationCount - 1) * 0.2);
+	const constructedResponse = Boolean(problem.tags?.problemType.constructedResponse || problem.tags?.problemType.shortAnswer);
+	const responseBoost = constructedResponse ? 0.06 : 0.02;
+	const stepBoost = Math.min(0.28, Math.max(0, extractedSteps - 1) * 0.14);
+	const directiveBoost = Math.min(0.2, Math.max(0, directiveCount - 1) * 0.1);
+	const multipartBoost = isMultipart ? 0.08 : 0;
+	const representationBoost = Math.min(0.12, Math.max(0, representationCount - 1) * 0.06);
+	const multiStep = clamp01(0.08 + stepBoost + directiveBoost + multipartBoost + representationBoost + responseBoost);
 
 	const bloom: CognitiveProfile["bloom"] = {
 		remember: 0.1,
 		understand: 0.2,
-		apply: multiStep > 0.3 ? 0.3 : 0.1,
-		analyze: multiStep > 0.3 ? 0.2 : 0.05,
+		apply: clamp01(0.08 + multiStep * 0.35),
+		analyze: clamp01(0.04 + multiStep * 0.28),
 		evaluate: 0.05,
 		create: 0,
 	};

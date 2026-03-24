@@ -3,6 +3,29 @@ import type { ProblemTagVector } from "../../schema/semantic";
 import { clamp01, type ProblemTypeName, type RepresentationName } from "../utils/heuristics";
 import { normalizeWhitespace } from "../utils/textUtils";
 
+const DIRECTIVE_PATTERNS = [
+  /\bsolve\b/gi,
+  /\bexplain\b/gi,
+  /\bjustify\b/gi,
+  /\bcompare\b/gi,
+  /\banalyze\b/gi,
+  /\bshow\b/gi,
+  /\bdescribe\b/gi,
+  /\binterpret\b/gi,
+  /\bevaluate\b/gi,
+  /\bprove\b/gi,
+  /\bcalculate\b/gi,
+  /\bdetermine\b/gi,
+];
+
+function countDirectiveMatches(text: string) {
+  return DIRECTIVE_PATTERNS.reduce((count, pattern) => count + (text.match(pattern)?.length ?? 0), 0);
+}
+
+function normalizeExtractedMultiStep(steps: number) {
+  return clamp01(0.1 + Math.max(0, steps - 1) * 0.3);
+}
+
 export interface ProblemWithMetadata extends Problem {
   problemType: ProblemTypeName;
   representation: RepresentationName;
@@ -53,9 +76,11 @@ export function extractProblemMetadata(
       representation = "equation";
     }
 
-    const stepMarkers = text.match(/\b(?:then|next|after that|finally|show|explain|justify|compare|analyze)\b/gi) ?? [];
-    const steps = Math.max(1, /\bpart\s+[a-z0-9]+\b/gi.test(lower) ? stepMarkers.length + 1 : Math.max(1, Math.ceil(stepMarkers.length / 2) + 1));
-    const multiStep = steps > 1 ? 1 : 0;
+    const directiveCount = countDirectiveMatches(text);
+    const sequentialMarkers = text.match(/\b(?:then|next|after that|finally|using your work|show your work)\b/gi) ?? [];
+    const partReferenceBoost = /\bpart\s+[a-z0-9]+\b/gi.test(lower) ? 1 : 0;
+    const steps = Math.max(1, Math.min(4, directiveCount + (sequentialMarkers.length > 0 ? 1 : 0) + partReferenceBoost));
+    const multiStep = normalizeExtractedMultiStep(steps);
     const abstractionLevel = clamp01(
       (["justify", "analyze", "infer", "evaluate", "generalize"].filter((keyword) => lower.includes(keyword)).length +
         (representation === "equation" || representation === "graph" ? 1 : 0)) /

@@ -1,7 +1,8 @@
 import type { CognitiveProfile, ProblemTagVector } from "../../schema/semantic";
 import { clamp01 } from "../utils/heuristics";
+import { fusionConfig, type FusionWeights } from "./fusionConfig";
 
-export type AzureTags = Pick<ProblemTagVector, "abstractionLevel" | "bloom" | "difficulty" | "linguisticLoad">;
+export type AzureTags = Pick<ProblemTagVector, "abstractionLevel" | "bloom" | "difficulty" | "linguisticLoad" | "multiStep">;
 
 function weighted(
 	azureValue: number | undefined,
@@ -67,16 +68,20 @@ export function fuseCognition(
 	azure: AzureTags,
 	structural: Partial<CognitiveProfile>,
 	template: Partial<CognitiveProfile>,
+	weights: FusionWeights = fusionConfig,
 ): CognitiveProfile {
-	const weights = { azure: 0.2, structural: 0.4, template: 0.4 };
-	const bloom = fuseBloom(azure.bloom, structural.bloom, template.bloom, weights);
+	const bloom = fuseBloom(azure.bloom, structural.bloom, template.bloom, weights.bloom);
 
 	return {
 		bloom,
-		difficulty: weighted(azure.difficulty, structural.difficulty, template.difficulty, weights),
+		difficulty: weighted(azure.difficulty, structural.difficulty, template.difficulty, weights.difficulty),
 		linguisticLoad: clamp01(azure.linguisticLoad),
 		abstractionLevel: clamp01(azure.abstractionLevel),
-		multiStep: clamp01(structural.multiStep ?? 0),
+		multiStep: weighted(azure.multiStep, structural.multiStep, template.multiStep, {
+			azure: weights.multistep.extracted,
+			structural: weights.multistep.structural,
+			template: weights.multistep.template,
+		}),
 		representationComplexity: clamp01(structural.representationComplexity ?? 0),
 		misconceptionRisk: clamp01(template.misconceptionRisk ?? 0),
 	};

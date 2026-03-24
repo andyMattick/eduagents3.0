@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CognitiveProfile } from "../../../schema/semantic";
 import { fuseCognition, type AzureTags } from "../fuseCognition";
+import type { FusionWeights } from "../fusionConfig";
 
 describe("fuseCognition", () => {
 	it("lets structural and template signals override a flat Azure bloom", () => {
@@ -10,6 +11,7 @@ describe("fuseCognition", () => {
 			difficulty: 0.2,
 			linguisticLoad: 0.3,
 			abstractionLevel: 0.2,
+			multiStep: 0.1,
 		};
 		const structural: Partial<CognitiveProfile> = {
 			bloom: { apply: 0.5, analyze: 0.4 },
@@ -33,6 +35,7 @@ describe("fuseCognition", () => {
 			difficulty: 0.3,
 			linguisticLoad: 0.2,
 			abstractionLevel: 0.2,
+			multiStep: 0.2,
 		};
 		const fused = fuseCognition(
 			azure,
@@ -44,7 +47,7 @@ describe("fuseCognition", () => {
 			{},
 		);
 
-		expect(fused.multiStep).toBeGreaterThan(0.5);
+		expect(fused.multiStep).toBeGreaterThan(0.35);
 		expect(fused.bloom.apply).toBeGreaterThanOrEqual(fused.bloom.understand);
 	});
 
@@ -54,6 +57,7 @@ describe("fuseCognition", () => {
 			difficulty: 0.3,
 			linguisticLoad: 0.2,
 			abstractionLevel: 0.2,
+			multiStep: 0.1,
 		};
 
 		const fused = fuseCognition(
@@ -63,5 +67,51 @@ describe("fuseCognition", () => {
 		);
 
 		expect(fused.misconceptionRisk).toBeCloseTo(0.45, 5);
+	});
+
+	it("blends extracted and structural multistep instead of using structural only", () => {
+		const azure: AzureTags = {
+			bloom: { remember: 0.1, understand: 0.3, apply: 0.2, analyze: 0.1, evaluate: 0, create: 0 },
+			difficulty: 0.25,
+			linguisticLoad: 0.2,
+			abstractionLevel: 0.2,
+			multiStep: 0.7,
+		};
+
+		const fused = fuseCognition(
+			azure,
+			{ multiStep: 0.1, representationComplexity: 0.2 },
+			{},
+		);
+
+		expect(fused.multiStep).toBeGreaterThan(0.3);
+		expect(fused.multiStep).toBeLessThan(0.7);
+	});
+
+	it("respects caller-provided fusion weights", () => {
+		const azure: AzureTags = {
+			bloom: { remember: 0.1, understand: 0.3, apply: 0.2, analyze: 0.1, evaluate: 0, create: 0 },
+			difficulty: 0.25,
+			linguisticLoad: 0.2,
+			abstractionLevel: 0.2,
+			multiStep: 0.8,
+		};
+		const structural: Partial<CognitiveProfile> = { multiStep: 0.1, representationComplexity: 0.2 };
+		const template: Partial<CognitiveProfile> = { multiStep: 0.2 };
+		const structuralHeavy: FusionWeights = {
+			bloom: { azure: 0.3, structural: 0.25, template: 0.45 },
+			difficulty: { azure: 0.5, structural: 0.2, template: 0.3 },
+			multistep: { extracted: 0.1, structural: 0.8, template: 0.1 },
+		};
+		const extractedHeavy: FusionWeights = {
+			bloom: { azure: 0.3, structural: 0.25, template: 0.45 },
+			difficulty: { azure: 0.5, structural: 0.2, template: 0.3 },
+			multistep: { extracted: 0.8, structural: 0.1, template: 0.1 },
+		};
+
+		const structuralWeighted = fuseCognition(azure, structural, template, structuralHeavy);
+		const extractedWeighted = fuseCognition(azure, structural, template, extractedHeavy);
+
+		expect(extractedWeighted.multiStep).toBeGreaterThan(structuralWeighted.multiStep);
 	});
 });
