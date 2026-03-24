@@ -1,5 +1,7 @@
 import { supabaseRest } from "../../../lib/supabase";
 import type { CognitiveTemplate } from "../semantic/cognitive/templates";
+import { loadTeacherTemplates } from "../semantic/cognitive/templates/loadTeacherTemplates";
+import { deriveTemplateFromFeedback } from "../semantic/cognitive/templateLearning";
 import type {
 	FeedbackTarget,
 	ProblemOverrideRecord,
@@ -398,36 +400,24 @@ function buildTemplateId(evidenceText: string) {
 }
 
 function buildTeacherTemplateRecord(feedback: TeacherFeedback): TeacherDerivedTemplateRecord | null {
-	const evidenceText = feedback.evidence?.text?.trim();
-	if (!evidenceText) {
+	const derived = deriveTemplateFromFeedback(feedback);
+	if (!derived) {
 		return null;
 	}
-
-	if (!["bloom", "difficulty", "multiStep", "concepts", "misconceptionRisk"].includes(feedback.target)) {
-		return null;
-	}
-
-	const bloom = feedback.target === "bloom"
-		? (typeof feedback.teacherValue === "object" && feedback.teacherValue ? feedback.teacherValue as TeacherDerivedTemplateRecord["bloom"] : oneHotBloom(feedback.teacherValue))
-		: feedback.target === "multiStep"
-			? { apply: 0.2, analyze: Number(feedback.teacherValue) > Number(feedback.aiValue) ? 0.2 : 0.05 }
-			: undefined;
-
-	const difficultyBoost = feedback.target === "difficulty" || feedback.target === "multiStep"
-		? Number(feedback.teacherValue) - Number(feedback.aiValue ?? 0)
-		: undefined;
-	const misconceptionRiskBoost = feedback.target === "misconceptionRisk"
-		? Number(feedback.teacherValue) - Number(feedback.aiValue ?? 0)
-		: undefined;
 
 	return {
-		id: buildTemplateId(evidenceText),
+		id: buildTemplateId(derived.evidenceText ?? feedback.evidence?.text?.trim() ?? ""),
 		teacherId: feedback.teacherId,
 		sourceFeedbackId: feedback.feedbackId,
-		evidenceText,
-		bloom: bloom ?? undefined,
-		difficultyBoost: Number.isFinite(difficultyBoost ?? NaN) ? difficultyBoost : undefined,
-		misconceptionRiskBoost: Number.isFinite(misconceptionRiskBoost ?? NaN) ? misconceptionRiskBoost : undefined,
+		evidenceText: derived.evidenceText ?? feedback.evidence?.text?.trim() ?? "",
+		name: derived.name,
+		archetypeKey: derived.archetypeKey,
+		patternConfig: derived.patternConfig,
+		stepHints: derived.stepHints,
+		bloom: derived.bloom,
+		difficultyBoost: derived.difficultyBoost,
+		multiStepBoost: derived.multiStepBoost,
+		misconceptionRiskBoost: derived.misconceptionRiskBoost,
 		createdAt: feedback.createdAt,
 	};
 }
@@ -442,8 +432,13 @@ export async function learnTemplateFromFeedback(feedback: TeacherFeedback): Prom
 	const merged: TeacherDerivedTemplateRecord = existing
 		? {
 			...existing,
+			name: template.name ?? existing.name,
+			archetypeKey: template.archetypeKey ?? existing.archetypeKey,
+			patternConfig: template.patternConfig ?? existing.patternConfig,
+			stepHints: template.stepHints ?? existing.stepHints,
 			bloom: { ...(existing.bloom ?? {}), ...(template.bloom ?? {}) },
 			difficultyBoost: template.difficultyBoost ?? existing.difficultyBoost,
+			multiStepBoost: template.multiStepBoost ?? existing.multiStepBoost,
 			misconceptionRiskBoost: template.misconceptionRiskBoost ?? existing.misconceptionRiskBoost,
 		}
 		: template;
@@ -461,14 +456,23 @@ export async function learnTemplateFromFeedback(feedback: TeacherFeedback): Prom
 	return merged;
 }
 
-function recordToTemplate(record: TeacherDerivedTemplateRecord): CognitiveTemplate {
-	return {
-		id: record.id,
-		match: (problem) => [problem.stemText, problem.partText, problem.cleanedText, problem.rawText].some((text) => text?.includes(record.evidenceText)),
-		bloom: record.bloom ?? {},
-		difficultyBoost: record.difficultyBoost,
-		misconceptionRiskBoost: record.misconceptionRiskBoost,
-	};
+export async function upsertTeacherDerivedTemplateRecord(record: TeacherDerivedTemplateRecord): Promise<TeacherDerivedTemplateRecord> {
+	const { templates, rejected } = loadTeacherTemplates([record]);
+	if (templates.length === 0) {
+		throw new Error(`INVALID_TEACHER_TEMPLATE: ${rejected[0]?.reason ?? "unknown validation error"}`);
+	}
+
+	if (canUseSupabase()) {
+		await supabaseRest("cognitive_templates", {
+			method: "POST",
+			body: normalizeTemplate(record),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} else {
+		templateMemory.set(record.id, record);
+	}
+
+	return record;
 }
 
 export async function getTeacherDerivedTemplateRecords(subject?: string, domain?: string): Promise<TeacherDerivedTemplateRecord[]> {
@@ -511,10 +515,10 @@ export async function listTeacherDerivedTemplates(subject?: string, domain?: str
 		if (!payload) {
 			return [];
 		}
-		return ((payload.templates ?? []) as TeacherDerivedTemplateRecord[]).map(recordToTemplate);
+		return loadTeacherTemplates((payload.templates ?? []) as TeacherDerivedTemplateRecord[]).templates;
 	}
 	const records = await getTeacherDerivedTemplateRecords(subject, domain);
-	return records.map(recordToTemplate);
+	return loadTeacherTemplates(records).templates;
 }
 
 export function resetTeacherFeedbackState() {

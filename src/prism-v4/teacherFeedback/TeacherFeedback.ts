@@ -1,4 +1,5 @@
 import type { CognitiveProfile } from "../schema/semantic";
+import type { TemplatePatternConfig, TemplateStepHints } from "../semantic/cognitive/templates/loadTemplates";
 
 export interface EvidenceHighlight {
 	text: string;
@@ -69,11 +70,16 @@ export interface TeacherDerivedTemplateRecord {
 	teacherId: string;
 	sourceFeedbackId: string;
 	evidenceText: string;
+	name?: string;
+	archetypeKey?: string;
 	subject?: string;
 	domain?: string;
+	patternConfig?: TemplatePatternConfig;
 	bloom?: Partial<CognitiveProfile["bloom"]>;
 	difficultyBoost?: number;
+	multiStepBoost?: number;
 	misconceptionRiskBoost?: number;
+	stepHints?: TemplateStepHints;
 	createdAt: string;
 }
 

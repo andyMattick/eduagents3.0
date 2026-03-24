@@ -1,7 +1,8 @@
 import type { Problem } from "../../schema/domain";
 
-const PARENT_LABEL = /^(\d+)\.\s*$/;
-const CHILD_LABEL = /^(\d+)\s*([a-z])\)?\s*$/;
+const HTML_SPACE = /&nbsp;|\u00a0/gi;
+const PARENT_LABEL = /^(\d+)\s*\.?\s*$/;
+const CHILD_LABEL = /^(\d+)\s*([a-z])\s*[\.)]?\s*$/;
 
 function letterIndex(letter: string) {
 	return letter.toLowerCase().charCodeAt(0) - 96;
@@ -25,7 +26,10 @@ export function detectMultipart(problems: Problem[]): Problem[] {
 	}
 
 	for (const problem of problems) {
-		const label = (problem.teacherLabel ?? "").trim();
+		const label = (problem.teacherLabel ?? "")
+			.replace(HTML_SPACE, " ")
+			.replace(/\s+/g, " ")
+			.trim();
 
 		const parentMatch = label.match(PARENT_LABEL);
 		if (parentMatch) {

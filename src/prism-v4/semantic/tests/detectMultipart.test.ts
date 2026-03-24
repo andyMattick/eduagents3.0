@@ -38,6 +38,18 @@ describe("detectMultipart", () => {
 		expect(problems.map((problem) => problem.rootProblemId)).toEqual(["p2", "p2", "p2", "p3"]);
 	});
 
+	it("handles html spacing, parent labels without punctuation, and dotted child suffixes", () => {
+		const problems = detectMultipart([
+			makeProblem("p2", "2"),
+			makeProblem("p2a", "2a."),
+			makeProblem("p2b", "2b&nbsp; )"),
+		]);
+
+		expect(problems.map((problem) => problem.partIndex)).toEqual([0, 1, 2]);
+		expect(problems.map((problem) => problem.parentProblemId)).toEqual([null, "p2", "p2"]);
+		expect(problems.map((problem) => problem.problemGroupId)).toEqual(["p2", "p2", "p2"]);
+	});
+
 	it("preserves existing multipart structure and defaults malformed labels safely", () => {
 		const child: Problem = {
 			...makeProblem("p1a", "a)"),

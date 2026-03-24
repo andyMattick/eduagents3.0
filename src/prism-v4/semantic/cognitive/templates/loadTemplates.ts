@@ -13,7 +13,7 @@ export interface TemplatePatternConfig {
 
 export interface TemplateStepHints {
 	expectedSteps: number;
-	stepType: "procedural" | "conceptual" | "interpretive" | "mixed";
+	stepType: "procedural" | "conceptual" | "interpretive" | "mixed" | "definition" | "code-interpretation";
 }
 
 export interface SeededCognitiveTemplate {

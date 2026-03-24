@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Problem } from "../../../schema/domain";
 import type { ProblemTagVector } from "../../../schema/semantic";
-import { applyTemplates, elaTemplates, getTemplateMatches, historyTemplates, mathTemplates, scienceTemplates, statsTemplates } from "../templates";
+import { applyTemplates, elaTemplates, genericTemplates, getTemplateMatches, historyTemplates, mathTemplates, scienceTemplates, statsTemplates } from "../templates";
 
 function makeProblem(overrides: Partial<Problem> & { rawText: string }, tags?: Partial<ProblemTagVector>): Problem {
 	return {
@@ -51,6 +51,32 @@ function makeProblem(overrides: Partial<Problem> & { rawText: string }, tags?: P
 }
 
 describe("template matching", () => {
+	it("matches definition prompts with the generic starter template", () => {
+		const definitionProblem = makeProblem(
+			{ rawText: "What is photosynthesis?" },
+			{ subject: "general", domain: "general", concepts: { "general.definition": 1 } },
+		);
+
+		const matches = getTemplateMatches(definitionProblem, genericTemplates);
+
+		expect(matches[0]?.template.id).toBe("definition-basic");
+		expect(matches[0]?.passesThreshold).toBe(true);
+		expect(applyTemplates(definitionProblem, genericTemplates).bloom?.remember ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches code reasoning prompts without reclassifying them as equation-only work", () => {
+		const codeProblem = makeProblem(
+			{ rawText: "Predict the output of this code: for(let i = 0; i < 2; i++) { console.log(i); }" },
+			{ subject: "general", domain: "general", concepts: { "general.code": 1 }, representation: "paragraph" },
+		);
+
+		const matches = getTemplateMatches(codeProblem, genericTemplates);
+
+		expect(matches[0]?.template.id).toBe("code-reasoning-basic");
+		expect(matches[0]?.passesThreshold).toBe(true);
+		expect(applyTemplates(codeProblem, genericTemplates).bloom?.understand ?? 0).toBeGreaterThan(0);
+	});
+
 	it("matches math and stats starter templates", () => {
 		const mathProblem = makeProblem(
 			{ rawText: "Use the model to write an equation and solve the system." },

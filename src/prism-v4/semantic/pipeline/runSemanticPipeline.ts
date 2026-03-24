@@ -4,7 +4,7 @@ import type { ValidatedOverrides } from "../../teacherFeedback";
 import { getProblemOverride, listTeacherDerivedTemplates } from "../../teacherFeedback";
 import { buildConceptGraph } from "../document/buildConceptGraph";
 import { buildDocumentInsights } from "../document/buildDocumentInsights";
-import { applyTemplates, fuseCognition, fuseOverrides, getMatchedTemplates, inferStructuralCognition, pickTemplatesForSubject } from "../cognitive";
+import { applyTemplates, buildInternalProblemReasoning, fuseCognition, fuseOverrides, getPrioritizedTemplateMatches, getTemplateMatches, inferStructuralCognition, pickTemplatesForSubject, type InternalProblemReasoning } from "../cognitive";
 import { extractProblems } from "../extract/extractProblem";
 import { extractProblemMetadata } from "../extract/extractProblemMetadata";
 import { extractTables } from "../extract/extractTables";
@@ -72,10 +72,19 @@ function toCanonicalProblem(
   };
 }
 
+type InternalProblem = Problem & {
+	reasoning?: InternalProblemReasoning;
+};
+
 export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<TaggingPipelineOutput> {
   const extractedProblems = detectMultipart(extractProblems(input.azureExtract));
   const tablesByProblemId = extractTables(input.azureExtract, extractedProblems);
   const problems = extractProblemMetadata(extractedProblems, tablesByProblemId);
+  const multipartParentIds = new Set(
+    problems
+      .filter((candidate) => candidate.parentProblemId)
+      .map((candidate) => candidate.parentProblemId!)
+  );
   const concepts = tagConcepts(problems);
   const linguistic = tagLinguisticLoad(problems);
   const bloom = tagBloom(problems);
@@ -97,31 +106,64 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
       ...problem,
       tags: azureTags,
     };
-    const structural = inferStructuralCognition(seedProblem);
+    const structural = inferStructuralCognition(seedProblem, {
+      isMultipartParent: multipartParentIds.has(problem.problemId),
+    });
     const teacherTemplates = await listTeacherDerivedTemplates(azureTags.subject, azureTags.domain);
     const subjectTemplates = pickTemplatesForSubject(azureTags.subject);
-    const matchedSubjectTemplates = getMatchedTemplates(seedProblem, subjectTemplates);
-    const matchedTeacherTemplates = getMatchedTemplates(seedProblem, teacherTemplates);
+    const subjectTemplateMatches = getTemplateMatches(seedProblem, subjectTemplates);
+    const teacherTemplateMatches = getTemplateMatches(seedProblem, teacherTemplates);
+    const prioritizedMatches = getPrioritizedTemplateMatches(seedProblem, subjectTemplates, teacherTemplates);
+    const primaryMatch = prioritizedMatches[0];
+    const matchedSubjectTemplates = subjectTemplateMatches.map((result) => result.template);
+    const matchedTeacherTemplates = teacherTemplateMatches.map((result) => result.template);
     const domainTemplate = applyTemplates(seedProblem, subjectTemplates);
     const teacherTemplate = applyTemplates(seedProblem, teacherTemplates);
+    const selectedStepMatch = prioritizedMatches.find((result) => result.template.stepHints);
+    const stepReasoning = selectedStepMatch?.template.stepHints
+      ? {
+          templateExpectedSteps: selectedStepMatch.template.stepHints.expectedSteps,
+          templateConfidence: selectedStepMatch.confidence,
+          templateIsBestGuess: selectedStepMatch.isBestGuess,
+          stepType: selectedStepMatch.template.stepHints.stepType,
+          templateId: selectedStepMatch.template.id,
+          templateSource: (selectedStepMatch.source === "teacher" ? "teacher" : "subject") as const,
+        }
+      : undefined;
+    const useTeacherTemplateAsPrimary = primaryMatch?.source === "teacher";
     const template = {
-      ...domainTemplate,
-      ...teacherTemplate,
+      ...(useTeacherTemplateAsPrimary ? domainTemplate : {}),
+      ...(useTeacherTemplateAsPrimary ? teacherTemplate : domainTemplate),
       bloom: {
-        remember: teacherTemplate.bloom?.remember ?? domainTemplate.bloom?.remember ?? 0,
-        understand: teacherTemplate.bloom?.understand ?? domainTemplate.bloom?.understand ?? 0,
-        apply: teacherTemplate.bloom?.apply ?? domainTemplate.bloom?.apply ?? 0,
-        analyze: teacherTemplate.bloom?.analyze ?? domainTemplate.bloom?.analyze ?? 0,
-        evaluate: teacherTemplate.bloom?.evaluate ?? domainTemplate.bloom?.evaluate ?? 0,
-        create: teacherTemplate.bloom?.create ?? domainTemplate.bloom?.create ?? 0,
+        remember: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.remember ?? domainTemplate.bloom?.remember ?? 0
+          : domainTemplate.bloom?.remember ?? 0,
+        understand: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.understand ?? domainTemplate.bloom?.understand ?? 0
+          : domainTemplate.bloom?.understand ?? 0,
+        apply: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.apply ?? domainTemplate.bloom?.apply ?? 0
+          : domainTemplate.bloom?.apply ?? 0,
+        analyze: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.analyze ?? domainTemplate.bloom?.analyze ?? 0
+          : domainTemplate.bloom?.analyze ?? 0,
+        evaluate: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.evaluate ?? domainTemplate.bloom?.evaluate ?? 0
+          : domainTemplate.bloom?.evaluate ?? 0,
+        create: useTeacherTemplateAsPrimary
+          ? teacherTemplate.bloom?.create ?? domainTemplate.bloom?.create ?? 0
+          : domainTemplate.bloom?.create ?? 0,
       },
+      reasoning: stepReasoning,
     };
     const cognitive = fuseCognition(azureTags, structural, template);
+    const internalReasoning = buildInternalProblemReasoning(structural, template);
     const canonicalProblemId = `${input.documentId}::${problem.problemId}`;
     const overrides = await getProblemOverride(canonicalProblemId) as ValidatedOverrides | null;
     const overriddenProblem = fuseOverrides({
       ...seedProblem,
       canonicalProblemId,
+      reasoning: internalReasoning,
       tags: {
         ...azureTags,
         cognitive,
@@ -134,7 +176,7 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
 			structuralMultiStep: structural.multiStep,
 		},
       },
-    }, overrides);
+    } as InternalProblem, overrides);
 
     return {
       problem: overriddenProblem,

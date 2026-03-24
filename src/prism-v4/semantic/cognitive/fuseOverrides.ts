@@ -3,7 +3,7 @@ import type { ValidatedOverrides } from "../../teacherFeedback";
 
 const IMMUTABLE_KEYS = new Set(["canonicalProblemId", "rootProblemId", "parentProblemId", "displayOrder", "createdAt"]);
 
-export function fuseOverrides(problem: Problem, overrides: ValidatedOverrides | null | undefined): Problem {
+export function fuseOverrides<T extends Problem>(problem: T, overrides: ValidatedOverrides | null | undefined): T {
 	if (!overrides) {
 		if (problem.tags?.reasoning) {
 			problem.tags.reasoning.overridesApplied = false;
@@ -91,5 +91,5 @@ export function fuseOverrides(problem: Problem, overrides: ValidatedOverrides | 
 		};
 	}
 
-	return next;
+	return next as T;
 }

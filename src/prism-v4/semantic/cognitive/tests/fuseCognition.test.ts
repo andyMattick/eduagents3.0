@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CognitiveProfile } from "../../../schema/semantic";
-import { fuseCognition, type AzureTags } from "../fuseCognition";
+import { fuseCognition, fuseExpectedSteps, type AzureTags } from "../fuseCognition";
 import type { FusionWeights } from "../fusionConfig";
 
 describe("fuseCognition", () => {
@@ -113,5 +113,25 @@ describe("fuseCognition", () => {
 		const extractedWeighted = fuseCognition(azure, structural, template, extractedHeavy);
 
 		expect(extractedWeighted.multiStep).toBeGreaterThan(structuralWeighted.multiStep);
+	});
+
+	it("blends expected step counts and keeps them internal to reasoning", () => {
+		const expected = fuseExpectedSteps(
+			{ reasoning: { structuralStepEstimate: 3.2 } },
+			{ reasoning: { templateExpectedSteps: 2, templateConfidence: 0.5, templateIsBestGuess: false, stepType: "conceptual" } },
+		);
+
+		expect(expected.expectedSteps).toBe(3);
+		expect(expected.stepSource).toBe("blended");
+	});
+
+	it("downscales best-guess template influence when fusing expected steps", () => {
+		const expected = fuseExpectedSteps(
+			{ reasoning: { structuralStepEstimate: 4 } },
+			{ reasoning: { templateExpectedSteps: 1, templateConfidence: 0.5, templateIsBestGuess: true, stepType: "definition" } },
+		);
+
+		expect(expected.expectedSteps).toBe(3);
+		expect(expected.stepSource).toBe("blended");
 	});
 });

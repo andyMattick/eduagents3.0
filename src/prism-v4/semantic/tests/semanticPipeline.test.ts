@@ -163,4 +163,5 @@ describe("Semantic pipeline", () => {
 
     expect(singlePart?.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(multipartChild?.tags?.cognitive.multiStep ?? 0);
   });
+
 });

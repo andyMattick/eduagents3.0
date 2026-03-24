@@ -13,6 +13,10 @@ export interface TemplateMatchResult {
 	isBestGuess: boolean;
 }
 
+export interface PrioritizedTemplateMatchResult extends TemplateMatchResult {
+	source: "system" | "teacher";
+}
+
 const runtimeTemplates = loadSeededTemplates().map(toRuntimeTemplate);
 
 const genericOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "generic");
@@ -217,6 +221,32 @@ export function getMatchedTemplates(
 	templates: CognitiveTemplate[] = cognitiveTemplates,
 ): CognitiveTemplate[] {
 	return getTemplateMatches(problem, templates).map((result) => result.template);
+}
+
+export function getPrioritizedTemplateMatches(
+	problem: Problem,
+	systemTemplates: CognitiveTemplate[],
+	teacherTemplates: CognitiveTemplate[],
+): PrioritizedTemplateMatchResult[] {
+	const systemMatches = getTemplateMatches(problem, systemTemplates).map((result) => ({ ...result, source: "system" as const }));
+	const teacherMatches = getTemplateMatches(problem, teacherTemplates).map((result) => ({ ...result, source: "teacher" as const }));
+	const strongTeacher = teacherMatches.filter((result) => result.passesThreshold && !result.isBestGuess);
+	if (strongTeacher.length > 0) {
+		return strongTeacher;
+	}
+
+	const strongSystem = systemMatches.filter((result) => result.passesThreshold && !result.isBestGuess);
+	if (strongSystem.length > 0) {
+		return strongSystem;
+	}
+
+	const teacherBestGuess = teacherMatches.find((result) => result.isBestGuess);
+	if (teacherBestGuess) {
+		return [teacherBestGuess];
+	}
+
+	const systemBestGuess = systemMatches.find((result) => result.isBestGuess);
+	return systemBestGuess ? [systemBestGuess] : [];
 }
 
 export function applyTemplates(

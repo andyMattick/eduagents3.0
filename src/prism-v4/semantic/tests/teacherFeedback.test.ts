@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runSemanticPipeline } from "../pipeline/runSemanticPipeline";
-import { deleteProblemOverride, getProblemOverride, resetTeacherFeedbackState, saveTeacherFeedback } from "../../teacherFeedback";
+import { deleteProblemOverride, getProblemOverride, resetTeacherFeedbackState, saveTeacherFeedback, upsertTeacherDerivedTemplateRecord } from "../../teacherFeedback";
 import type { TaggingPipelineInput } from "../../schema/semantic";
 
 function buildInput(documentId = "doc-1", content = "1. Solve the equation.") : TaggingPipelineInput {
@@ -120,6 +120,39 @@ describe("teacher feedback integration", () => {
 		const problem = output.problems[0]!;
 
 		expect(problem.tags?.cognitive.bloom.evaluate).toBeGreaterThan(0);
+	});
+
+	it("lets a strong teacher template override a system template without changing public output shape", async () => {
+		const baseline = await runSemanticPipeline(buildInput("doc-strong-teacher", "1. Explain the anomalous phrase in the passage."));
+		await upsertTeacherDerivedTemplateRecord({
+			id: "teacher-derived-strong-template",
+			teacherId: "teacher-1",
+			sourceFeedbackId: "feedback-strong-template",
+			evidenceText: "anomalous phrase",
+			name: "Teacher Strong Template",
+			archetypeKey: "teacher-derived",
+			patternConfig: {
+				textPatterns: ["anomalous phrase"],
+				structuralPatterns: ["constructedResponse"],
+				regexPatterns: [],
+				minConfidence: 0.85,
+			},
+			stepHints: {
+				expectedSteps: 5,
+				stepType: "mixed",
+			},
+			bloom: { evaluate: 0.9, analyze: 0.4 },
+			multiStepBoost: 0.95,
+			createdAt: new Date().toISOString(),
+		});
+
+		const output = await runSemanticPipeline(buildInput("doc-strong-teacher", "1. Explain the anomalous phrase in the passage."));
+		const problem = output.problems[0]!;
+
+		expect(problem.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(baseline.problems[0]?.tags?.cognitive.multiStep ?? 0);
+		expect(problem.tags?.reasoning).not.toHaveProperty("expectedSteps");
+		expect(problem.tags?.reasoning).not.toHaveProperty("stepSource");
+		expect(problem).not.toHaveProperty("reasoning");
 	});
 
 	it("removes teacher adjustments after reset", async () => {
