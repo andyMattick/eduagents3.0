@@ -4,6 +4,30 @@ import path from 'path'
 import type { Plugin } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
+async function readJsonBody(req: NodeJS.ReadableStream): Promise<any> {
+  const chunks: Buffer[] = []
+
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (chunk: Buffer) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+    req.on('end', resolve)
+    req.on('error', reject)
+  })
+
+  const raw = Buffer.concat(chunks).toString() || '{}'
+  return JSON.parse(raw)
+}
+
+function setApiCors(res: any, methods: string) {
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', methods)
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+}
+
+function sendJson(res: any, statusCode: number, payload: unknown) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(payload))
+}
+
 /**
  * Local dev middleware — serves /api/llm so `npm run dev` works without
  * Vercel CLI. In production, the real Vercel serverless function takes over.
@@ -422,6 +446,109 @@ function localTemplateProxy(): Plugin {
   };
 }
 
+function localPrismV4Proxy(): Plugin {
+  return {
+    name: 'local-prism-v4-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/v4', async (req, res, next) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const pathname = url.pathname.replace(/\/+$/, '') || '/'
+
+        const feedbackMethods = 'GET, POST, DELETE, OPTIONS'
+        setApiCors(res, feedbackMethods)
+
+        if (req.method === 'OPTIONS') {
+          sendJson(res, 200, {})
+          return
+        }
+
+        try {
+          const feedbackMod = await server.ssrLoadModule('/src/prism-v4/teacherFeedback/index.ts')
+
+          if (pathname === '/teacher-feedback') {
+            if (req.method !== 'POST') {
+              sendJson(res, 405, { error: 'Method not allowed' })
+              return
+            }
+
+            const body = await readJsonBody(req)
+            if (!body.teacherId || !body.documentId || !body.canonicalProblemId || !body.target) {
+              sendJson(res, 400, { error: 'Missing required teacher feedback fields.' })
+              return
+            }
+
+            const result = await feedbackMod.saveTeacherFeedback(body)
+            sendJson(res, 200, result)
+            return
+          }
+
+          if (pathname === '/teacher-feedback/templates') {
+            if (req.method !== 'GET') {
+              sendJson(res, 405, { error: 'Method not allowed' })
+              return
+            }
+
+            const subject = url.searchParams.get('subject') ?? undefined
+            const domain = url.searchParams.get('domain') ?? undefined
+            const templates = await feedbackMod.getTeacherDerivedTemplateRecords(subject, domain)
+            sendJson(res, 200, { templates })
+            return
+          }
+
+          if (pathname.startsWith('/teacher-feedback/')) {
+            if (req.method !== 'GET') {
+              sendJson(res, 405, { error: 'Method not allowed' })
+              return
+            }
+
+            const canonicalProblemId = decodeURIComponent(pathname.slice('/teacher-feedback/'.length))
+            if (!canonicalProblemId) {
+              sendJson(res, 400, { error: 'Missing canonicalProblemId' })
+              return
+            }
+
+            const feedback = await feedbackMod.getFeedbackForProblem(canonicalProblemId)
+            sendJson(res, 200, { feedback })
+            return
+          }
+
+          if (pathname.startsWith('/problem-overrides/')) {
+            const canonicalProblemId = decodeURIComponent(pathname.slice('/problem-overrides/'.length))
+            if (!canonicalProblemId) {
+              sendJson(res, 400, { error: 'Missing canonicalProblemId' })
+              return
+            }
+
+            if (req.method === 'GET') {
+              const overrides = await feedbackMod.getProblemOverride(canonicalProblemId)
+              sendJson(res, 200, { overrides })
+              return
+            }
+
+            if (req.method === 'DELETE') {
+              const result = await feedbackMod.deleteProblemOverride(canonicalProblemId)
+              sendJson(res, 200, result)
+              return
+            }
+
+            sendJson(res, 405, { error: 'Method not allowed' })
+            return
+          }
+
+          next()
+        } catch (err: any) {
+          if (err instanceof Error && err.message.startsWith('INVALID_OVERRIDE:')) {
+            sendJson(res, 400, { error: err.message.replace('INVALID_OVERRIDE: ', '') })
+            return
+          }
+
+          sendJson(res, 500, { error: err?.message ?? 'Local PRISM v4 API proxy failed' })
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
   // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
@@ -429,7 +556,7 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
-    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy()],
+    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy(), localPrismV4Proxy()],
     server: {
       port: 3000,
       open: true,

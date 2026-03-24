@@ -237,6 +237,30 @@ function normalizeTemplate(template: TeacherDerivedTemplateRecord) {
 	};
 }
 
+async function readJsonIfAvailable<T>(response: Response): Promise<T | null> {
+	const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+
+	if (contentType.includes("application/json")) {
+		return response.json() as Promise<T>;
+	}
+
+	const text = await response.text();
+	const trimmed = text.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	if (trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html") || trimmed.startsWith("<")) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(trimmed) as T;
+	} catch {
+		return null;
+	}
+}
+
 export async function saveTeacherFeedback(payload: TeacherFeedbackPayload) {
 	const feedback = createFeedback(payload);
 	const currentOverride = await getProblemOverride(payload.canonicalProblemId);
@@ -272,7 +296,10 @@ export async function getFeedbackForProblem(canonicalProblemId: string): Promise
 		if (!response.ok) {
 			return [];
 		}
-		const payload = await response.json();
+		const payload = await readJsonIfAvailable<{ feedback?: TeacherFeedback[] }>(response);
+		if (!payload) {
+			return [];
+		}
 		return (payload.feedback ?? []) as TeacherFeedback[];
 	}
 
@@ -304,7 +331,10 @@ export async function getProblemOverride(canonicalProblemId: string): Promise<Pr
 		if (!response.ok) {
 			return null;
 		}
-		const payload = await response.json();
+		const payload = await readJsonIfAvailable<{ overrides?: ValidatedOverrides | null }>(response);
+		if (!payload) {
+			return null;
+		}
 		return (payload.overrides ?? null) as ValidatedOverrides | null;
 	}
 
@@ -477,7 +507,10 @@ export async function listTeacherDerivedTemplates(subject?: string, domain?: str
 		if (!response.ok) {
 			return [];
 		}
-		const payload = await response.json();
+		const payload = await readJsonIfAvailable<{ templates?: TeacherDerivedTemplateRecord[] }>(response);
+		if (!payload) {
+			return [];
+		}
 		return ((payload.templates ?? []) as TeacherDerivedTemplateRecord[]).map(recordToTemplate);
 	}
 	const records = await getTeacherDerivedTemplateRecords(subject, domain);
