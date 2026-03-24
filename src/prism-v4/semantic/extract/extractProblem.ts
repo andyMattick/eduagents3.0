@@ -10,6 +10,7 @@ interface ParagraphBlock {
 
 interface ProblemPartDraft {
 	partLabel: string;
+	partIndex: number;
 	teacherLabel: string;
 	pageNumber: number;
 	textLines: string[];
@@ -67,6 +68,15 @@ function matchSubpart(text: string): SubpartMatch | null {
 	};
 }
 
+function alphabetIndex(partLabel: string) {
+	const normalized = partLabel.trim().toLowerCase();
+	if (!/^[a-z]$/.test(normalized)) {
+		return 0;
+	}
+
+	return normalized.charCodeAt(0) - 96;
+}
+
 function looksLikeHeader(text: string, role?: string) {
 	if (role === "title") {
 		return true;
@@ -88,8 +98,10 @@ function looksLikeHeader(text: string, role?: string) {
 function createProblem(params: {
 	problemId: string;
 	rootProblemId: string;
-	parentProblemId?: string;
+	parentProblemId?: string | null;
 	problemNumber: number;
+	partIndex: number;
+	partLabel?: string;
 	teacherLabel: string;
 	stemText: string;
 	partText?: string;
@@ -97,17 +109,27 @@ function createProblem(params: {
 	cleanedText: string;
 	fileName: string;
 	sourcePageNumber: number;
+	displayOrder: number;
 }): Problem {
+	const createdAt = new Date().toISOString();
+	const localProblemId = params.problemId;
+	const problemGroupId = params.rootProblemId;
+
 	return {
 		problemId: params.problemId,
+		localProblemId,
+		problemGroupId,
 		canonicalProblemId: undefined,
 		rootProblemId: params.rootProblemId,
 		parentProblemId: params.parentProblemId,
 		problemNumber: params.problemNumber,
-		partLabel: params.partText ? params.teacherLabel.slice(0, -1) : undefined,
+		partIndex: params.partIndex,
+		partLabel: params.partLabel,
 		teacherLabel: params.teacherLabel,
 		stemText: params.stemText,
 		partText: params.partText,
+		displayOrder: params.displayOrder,
+		createdAt,
 		rawText: params.rawText,
 		cleanedText: params.cleanedText,
 		mediaUrls: extractMediaUrls(params.rawText),
@@ -125,22 +147,29 @@ function extractMediaUrls(text: string) {
 
 function buildProblemGroupProblems(group: ProblemGroupDraft, fileName: string): Problem[] {
 	const stemText = normalizeWhitespace(group.stemLines.join("\n"));
+	const rootDisplayOrder = group.problemNumber * 1000;
+	const rootProblem = createProblem({
+		problemId: group.rootProblemId,
+		rootProblemId: group.rootProblemId,
+		parentProblemId: null,
+		problemNumber: group.problemNumber,
+		partIndex: 0,
+		teacherLabel: group.teacherLabel,
+		stemText,
+		rawText: `${group.teacherLabel} ${stemText}`.trim(),
+		cleanedText: stemText,
+		fileName,
+		sourcePageNumber: group.pageNumber,
+		displayOrder: rootDisplayOrder,
+	});
+
 	if (group.parts.length === 0) {
-		const rawText = `${group.teacherLabel} ${stemText}`.trim();
-		return [createProblem({
-			problemId: group.rootProblemId,
-			rootProblemId: group.rootProblemId,
-			problemNumber: group.problemNumber,
-			teacherLabel: group.teacherLabel,
-			stemText,
-			rawText,
-			cleanedText: stemText,
-			fileName,
-			sourcePageNumber: group.pageNumber,
-		})];
+		return [rootProblem];
 	}
 
-	return group.parts.map((part) => {
+	return [
+		rootProblem,
+		...group.parts.map((part) => {
 		const partText = normalizeWhitespace(part.textLines.join("\n"));
 		const rawText = [
 			`${group.teacherLabel} ${stemText}`.trim(),
@@ -153,6 +182,8 @@ function buildProblemGroupProblems(group: ProblemGroupDraft, fileName: string): 
 			rootProblemId: group.rootProblemId,
 			parentProblemId: group.rootProblemId,
 			problemNumber: group.problemNumber,
+			partIndex: part.partIndex,
+			partLabel: part.partLabel,
 			teacherLabel: part.teacherLabel,
 			stemText,
 			partText,
@@ -160,21 +191,31 @@ function buildProblemGroupProblems(group: ProblemGroupDraft, fileName: string): 
 			cleanedText,
 			fileName,
 			sourcePageNumber: part.pageNumber,
+			displayOrder: group.problemNumber * 1000 + part.partIndex * 100,
 		});
-	});
+		}),
+	];
 }
 
 function buildLegacyProblem(rawText: string, cleanedText: string, fileName: string, sourcePageNumber: number): Problem {
+	const problemId = `p${sourcePageNumber}-${Math.abs(cleanedText.length)}`;
+	const createdAt = new Date().toISOString();
+
 	return {
-		problemId: `p${sourcePageNumber}-${Math.abs(cleanedText.length)}`,
+		problemId,
+		localProblemId: problemId,
+		problemGroupId: problemId,
 		canonicalProblemId: undefined,
 		rootProblemId: undefined,
-		parentProblemId: undefined,
+		parentProblemId: null,
 		problemNumber: undefined,
+		partIndex: 0,
 		partLabel: undefined,
 		teacherLabel: undefined,
 		stemText: undefined,
 		partText: undefined,
+		displayOrder: undefined,
+		createdAt,
 		rawText,
 		cleanedText,
 		mediaUrls: extractMediaUrls(rawText),
@@ -218,6 +259,7 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 		if (subpart) {
 			currentPart = {
 				partLabel: subpart.partLabel,
+				partIndex: alphabetIndex(subpart.partLabel),
 				teacherLabel: `${subpart.partLabel})`,
 				pageNumber: block.pageNumber,
 				textLines: subpart.body ? [subpart.body] : [],

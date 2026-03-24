@@ -24,10 +24,15 @@ const EXACT_PROBLEM_KEYS = [
   "canonicalProblemId",
   "cleanedText",
   "correctAnswer",
+  "createdAt",
+  "displayOrder",
+  "localProblemId",
   "mediaUrls",
   "parentProblemId",
+  "partIndex",
   "partLabel",
   "partText",
+  "problemGroupId",
   "problemId",
   "problemNumber",
   "rawText",
@@ -86,7 +91,22 @@ describe("Semantic pipeline", () => {
       expect(Object.keys(problem).sort()).toEqual(EXACT_PROBLEM_KEYS);
       expect(problem.sourceType).toBe("document");
       expect(problem.tags).toBeDefined();
+      expect(problem).not.toHaveProperty("oldField");
+      expect(problem).not.toHaveProperty("legacyBloom");
       expect(problem.canonicalProblemId).toBe(`doc-1::${problem.problemId}`);
+      expect(problem.localProblemId).toBe(problem.problemId);
+      expect(problem.problemGroupId).toBe(problem.rootProblemId ?? problem.problemId);
+      expect(problem.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(problem.tags?.cognitive).toMatchObject({
+        bloom: expect.any(Object),
+        difficulty: expect.any(Number),
+        multiStep: expect.any(Number),
+      });
+      expect(problem.tags).not.toHaveProperty("legacyBloom");
+      expect(problem.tags).not.toHaveProperty("oldProblem");
+      expect(problem.tags?.reasoning).toBeDefined();
+      expect(problem.tags?.cognitive.bloom.apply).toBeGreaterThanOrEqual(0);
+      expect(problem.tags?.cognitive.multiStep).toBeGreaterThanOrEqual(0);
     }
   });
 
@@ -97,6 +117,9 @@ describe("Semantic pipeline", () => {
       expect(vector[FRUSTRATION_FIELD as keyof typeof vector]).toBe(0.2);
       expect(vector.difficulty).toBeGreaterThanOrEqual(0);
       expect(vector.difficulty).toBeLessThanOrEqual(1);
+      expect(vector.cognitive).toBeDefined();
+      expect(vector.cognitive.bloom.understand).toBeGreaterThanOrEqual(0);
+      expect(vector.cognitive.representationComplexity).toBeGreaterThanOrEqual(0);
     }
 
     expect(output.documentInsights.overallDifficulty).toBeGreaterThanOrEqual(0);

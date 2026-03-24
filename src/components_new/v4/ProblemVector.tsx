@@ -1,11 +1,17 @@
 import type { ProblemTagVector } from "../../prism-v4/schema/semantic";
 
+const SHOW_COGNITION_DEBUG = import.meta.env.DEV || import.meta.env.VITE_SHOW_COGNITION_DEBUG === "true";
+
 function topEntries(record: Record<string, number> | undefined, limit: number) {
   return Object.entries(record ?? {}).sort((left, right) => right[1] - left[1]).slice(0, limit);
 }
 
 function dominantBloom(vector: ProblemTagVector) {
   return Object.entries(vector.bloom).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "remember";
+}
+
+function dominantCognitiveBloom(vector: ProblemTagVector) {
+  return Object.entries(vector.cognitive.bloom).sort((left, right) => right[1] - left[1])[0]?.[0] ?? "remember";
 }
 
 export function ProblemVector(props: { vector: ProblemTagVector }) {
@@ -39,6 +45,15 @@ export function ProblemVector(props: { vector: ProblemTagVector }) {
         <span className="v4-stat-label">Steps</span>
         <strong>{vector.steps}</strong>
       </div>
+
+      {SHOW_COGNITION_DEBUG && (
+        <div className="v4-vector-span" data-testid="cognitive-debug">
+          <span className="v4-stat-label">Cognitive profile</span>
+          <strong>
+            {`Bloom: ${dominantCognitiveBloom(vector)} · Difficulty: ${vector.cognitive.difficulty.toFixed(2)} · Multi-step: ${vector.cognitive.multiStep.toFixed(2)}`}
+          </strong>
+        </div>
+      )}
 
       <div className="v4-vector-span">
         <span className="v4-stat-label">Concepts</span>

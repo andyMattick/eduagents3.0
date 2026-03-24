@@ -14,6 +14,20 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  async function loadPipelineOutput() {
+	setIsLoading(true);
+	setError(null);
+	try {
+		const result = await runSemanticPipeline(input);
+		setOutput(result);
+	} catch (pipelineError) {
+		setOutput(null);
+		setError(pipelineError instanceof Error ? pipelineError.message : "Semantic pipeline failed.");
+	} finally {
+		setIsLoading(false);
+	}
+	}
+
   useEffect(() => {
     let active = true;
 
@@ -65,7 +79,7 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
   return (
     <div className="v4-viewer-grid">
       <DocumentOverview input={input} output={output} />
-      <ProblemList problems={output.problems} problemVectors={output.problemVectors} />
+      <ProblemList problems={output.problems} problemVectors={output.problemVectors} onRerun={loadPipelineOutput} />
       <ConceptGraph graph={output.documentInsights.conceptGraph} />
       <DebugPanel input={input} output={output} />
     </div>

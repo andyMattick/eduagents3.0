@@ -1,8 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { inferStructuralCognition } from "../cognitive";
 import { extractProblems } from "../extract/extractProblem";
 
 describe("extractProblems", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-24T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("builds stable hierarchical ids for numbered problems and subparts", () => {
     const problems = extractProblems({
       fileName: "quiz.pdf",
@@ -31,12 +41,22 @@ describe("extractProblems", () => {
       readingOrder: [],
     });
 
-    expect(problems.map((problem) => problem.problemId)).toEqual(["p1a", "p1b", "p2a", "p2b", "p3"]);
-    expect(problems.map((problem) => problem.rootProblemId)).toEqual(["p1", "p1", "p2", "p2", "p3"]);
-    expect(problems.map((problem) => problem.teacherLabel)).toEqual(["a)", "b)", "a)", "b)", "3."]);
-    expect(problems[0]?.stemText).toBe("Bob has a magic coin that lands on heads 70% of the time.");
-    expect(problems[0]?.partText).toBe("Describe the parameter in this situation.");
-    expect(problems[4]?.cleanedText).toBe("Write one conclusion based on the data.");
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p1", "p1a", "p1b", "p2", "p2a", "p2b", "p3"]);
+    expect(problems.map((problem) => problem.localProblemId)).toEqual(["p1", "p1a", "p1b", "p2", "p2a", "p2b", "p3"]);
+    expect(problems.map((problem) => problem.problemGroupId)).toEqual(["p1", "p1", "p1", "p2", "p2", "p2", "p3"]);
+    expect(problems.map((problem) => problem.rootProblemId)).toEqual(["p1", "p1", "p1", "p2", "p2", "p2", "p3"]);
+    expect(problems.map((problem) => problem.parentProblemId)).toEqual([null, "p1", "p1", null, "p2", "p2", null]);
+    expect(problems.map((problem) => problem.partIndex)).toEqual([0, 1, 2, 0, 1, 2, 0]);
+    expect(problems.map((problem) => problem.displayOrder)).toEqual([1000, 1100, 1200, 2000, 2100, 2200, 3000]);
+    expect(problems.map((problem) => problem.teacherLabel)).toEqual(["1.", "a)", "b)", "2.", "a)", "b)", "3."]);
+    expect(problems.every((problem) => problem.createdAt === "2026-03-24T12:00:00.000Z")).toBe(true);
+    expect(problems[1]?.stemText).toBe("Bob has a magic coin that lands on heads 70% of the time.");
+    expect(problems[1]?.partText).toBe("Describe the parameter in this situation.");
+    expect(problems[6]?.cleanedText).toBe("Write one conclusion based on the data.");
+
+    const structural = inferStructuralCognition(problems[1]!);
+    expect(structural.bloom?.apply).toBeGreaterThanOrEqual(0);
+    expect(structural.multiStep).toBeGreaterThanOrEqual(0);
   });
 
   it("merges continuation lines into the active part", () => {
@@ -53,8 +73,8 @@ describe("extractProblems", () => {
       readingOrder: [],
     });
 
-    expect(problems).toHaveLength(1);
-    expect(problems[0]?.problemId).toBe("p1a");
-    expect(problems[0]?.partText).toBe("State the trend.\nSupport your answer with one value.");
+    expect(problems).toHaveLength(2);
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p1", "p1a"]);
+    expect(problems[1]?.partText).toBe("State the trend.\nSupport your answer with one value.");
   });
 });

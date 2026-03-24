@@ -4,6 +4,12 @@ function formatMetric(value: number | undefined) {
   return typeof value === "number" ? value.toFixed(2) : "-";
 }
 
+const BLOOM_ORDER = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
+
+function topBloomLabel(bloom: Record<string, number>) {
+	return BLOOM_ORDER.reduce((top, current) => (bloom[current] > bloom[top] ? current : top), BLOOM_ORDER[0]);
+}
+
 export function DocumentOverview(props: { input: TaggingPipelineInput; output: TaggingPipelineOutput }) {
   const { input, output } = props;
   const insights = output.documentInsights;
@@ -11,6 +17,20 @@ export function DocumentOverview(props: { input: TaggingPipelineInput; output: T
   const partCount = output.problems.filter((problem) => Boolean(problem.partLabel)).length;
   const topConcepts = Object.entries(insights.documentConcepts ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 6);
   const topStandards = Object.entries(insights.documentStandards ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 4);
+  const cognitiveVectors = output.problemVectors.filter((vector) => vector.cognitive);
+  const bloomCounts = cognitiveVectors.reduce<Record<string, number>>((accumulator, vector) => {
+    const label = topBloomLabel(vector.cognitive.bloom);
+    accumulator[label] = (accumulator[label] ?? 0) + 1;
+    return accumulator;
+  }, {});
+  const bloomSummary = Object.entries(bloomCounts)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3)
+    .map(([label, count]) => `${label} ${Math.round((count / Math.max(cognitiveVectors.length, 1)) * 100)}%`)
+    .join(", ");
+  const averageDifficulty = cognitiveVectors.reduce((total, vector) => total + vector.cognitive.difficulty, 0) / Math.max(cognitiveVectors.length, 1);
+  const averageMultiStep = cognitiveVectors.reduce((total, vector) => total + vector.cognitive.multiStep, 0) / Math.max(cognitiveVectors.length, 1);
+  const misconceptionHotspots = cognitiveVectors.filter((vector) => vector.cognitive.misconceptionRisk >= 0.3).length;
 
   return (
     <section className="v4-panel">
@@ -72,6 +92,28 @@ export function DocumentOverview(props: { input: TaggingPipelineInput; output: T
         </div>
 
         <div>
+      <h3>Cognitive summary</h3>
+      <ul className="v4-ranked-list" data-testid="document-cognitive-summary">
+      <li>
+        <span>Bloom distribution</span>
+        <strong>{bloomSummary || "None"}</strong>
+      </li>
+      <li>
+        <span>Average difficulty</span>
+        <strong>{formatMetric(averageDifficulty)}</strong>
+      </li>
+      <li>
+        <span>Average multi-step load</span>
+        <strong>{formatMetric(averageMultiStep)}</strong>
+      </li>
+      <li>
+        <span>Misconception hotspots</span>
+        <strong>{misconceptionHotspots}</strong>
+      </li>
+      </ul>
+    </div>
+
+    <div>
           <h3>Standards</h3>
           <ul className="v4-ranked-list">
             {topStandards.length > 0 ? topStandards.map(([standard, score]) => (

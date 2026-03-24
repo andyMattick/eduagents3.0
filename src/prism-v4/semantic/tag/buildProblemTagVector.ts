@@ -15,6 +15,40 @@ interface BuildProblemTagVectorArgs {
   standards: Record<string, Record<string, number>>;
 }
 
+function inferRepresentationCount(problem: ProblemWithMetadata, representation: RepresentationName) {
+  const text = `${problem.stemText ?? ""}\n${problem.partText ?? ""}\n${problem.cleanedText ?? problem.rawText ?? ""}`.toLowerCase();
+  const cues = new Set<RepresentationName>();
+
+  cues.add(representation);
+
+  if (/\bgraph\b|\bchart\b|\bplot\b/.test(text)) {
+    cues.add("graph");
+  }
+  if (/\btable\b|\brow\b|\bcolumn\b/.test(text)) {
+    cues.add("table");
+  }
+  if (/\bdiagram\b|\billustration\b/.test(text)) {
+    cues.add("diagram");
+  }
+  if (/\bmap\b/.test(text)) {
+    cues.add("map");
+  }
+  if (/\btimeline\b/.test(text)) {
+    cues.add("timeline");
+  }
+  if (/\bexperiment\b|\blab\b/.test(text)) {
+    cues.add("experiment");
+  }
+  if (/\bprimary source\b|\bexcerpt\b/.test(text)) {
+    cues.add("primarySource");
+  }
+  if (/\bequation\b|\bsolve for\b|=/.test(text)) {
+    cues.add("equation");
+  }
+
+  return Math.max(1, cues.size);
+}
+
 export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemTagVector[] {
   const {
     problems,
@@ -49,6 +83,7 @@ export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemT
     }
 
     const repr = (representation[id] ?? "paragraph") as RepresentationName;
+    const representationCount = inferRepresentationCount(p, repr);
     const dominantConcept = pickDominantKey(conceptMap, "general.comprehension");
     const subject = dominantConcept.startsWith("math")
       ? "math"
@@ -89,7 +124,7 @@ export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemT
       multiStep: p.multiStep,
       steps: p.steps,
       representation: repr,
-      representationCount: 1,
+      representationCount,
       linguisticLoad,
       vocabularyTier: vocabTier,
       sentenceComplexity,
@@ -104,6 +139,15 @@ export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemT
       misconceptionTriggers: misconceptions[id] ?? {},
       engagementPotential: clamp01(0.35 + Object.keys(conceptMap).length * 0.12 + (repr !== "paragraph" ? 0.1 : 0)),
       standards: standards[id] ?? {},
+      cognitive: {
+        bloom: bloomMap,
+        difficulty: contentComplexity,
+        linguisticLoad,
+        abstractionLevel: p.abstractionLevel,
+        multiStep: p.multiStep,
+        representationComplexity: clamp01((representationCount - 1) / 3),
+        misconceptionRisk: clamp01(Math.max(...Object.values(misconceptions[id] ?? {}), 0)),
+      },
     };
 
     const vector = baseVector as ProblemTagVector;

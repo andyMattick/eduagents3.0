@@ -41,6 +41,10 @@ describe("v4 ingest route", () => {
     expect(Object.keys(response.body).sort()).toEqual(["azureExtract", "documentId", "fileName"]);
     expect(response.body.fileName).toBe("sample.pdf");
     expect(response.body.documentId).toMatch(/^sample-/);
+    expect(response.body).not.toHaveProperty("problems");
+    expect(response.body).not.toHaveProperty("problemVectors");
+    expect(response.body).not.toHaveProperty("legacyBloom");
+    expect(response.body).not.toHaveProperty("oldField");
     expect(response.body.azureExtract).toEqual({
       fileName: "sample.pdf",
       content: "1. Solve the fraction problem.",
@@ -49,6 +53,9 @@ describe("v4 ingest route", () => {
       tables: [],
       readingOrder: ["1. Solve the fraction problem."],
     });
+    expect(response.body.azureExtract.pages[0]).not.toHaveProperty("lines");
+    expect(response.body.azureExtract.paragraphs[0]).not.toHaveProperty("content");
+    expect(response.body.azureExtract.paragraphs[0]).not.toHaveProperty("boundingRegions");
     expect(runAzureExtractionMock).toHaveBeenCalledTimes(1);
     expect(runAzureExtractionMock).toHaveBeenCalledWith(expect.any(Buffer));
   });

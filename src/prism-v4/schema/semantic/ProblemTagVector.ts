@@ -1,3 +1,34 @@
+	export interface CognitiveProfile {
+	  bloom: {
+	    remember: number;
+	    understand: number;
+	    apply: number;
+	    analyze: number;
+	    evaluate: number;
+	    create: number;
+	  };
+	  difficulty: number;
+	  linguisticLoad: number;
+	  abstractionLevel: number;
+	  multiStep: number;
+	  representationComplexity: number;
+	  misconceptionRisk: number;
+	}
+
+	export interface ReasoningMetadata {
+	  azureBloom: CognitiveProfile["bloom"];
+	  structuralBloom: Partial<CognitiveProfile["bloom"]>;
+	  templateIds: string[];
+	  teacherTemplateIds: string[];
+	  overridesApplied: boolean;
+	  structuralMultiStep?: number;
+	}
+
+	export interface TeacherAdjustmentMetadata {
+	  overrideVersion: number;
+	  lastUpdatedAt: string;
+	}
+
 	export interface ProblemTagVector {
 	  subject: string; // "math", "reading", etc.
 	  domain: string;  // "fractions", "inference", etc.
@@ -64,6 +95,15 @@
 	
 	  // Standards alignment
 	  standards?: Record<string, number>;
+
+	  teacherSegmentation?: Record<string, unknown>;
+	  teacherProblemGrouping?: Record<string, unknown>;
+	  teacherAdjustments?: TeacherAdjustmentMetadata;
+	  reasoning?: ReasoningMetadata;
+
+	  // NOTE: `cognitive` is part of the stable v4 contract.
+	  // PRISM and downstream analytics depend on this shape.
+	  cognitive: CognitiveProfile;
 	
 	  azure?: {
 	    text: string;

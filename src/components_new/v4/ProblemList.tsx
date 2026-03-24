@@ -8,6 +8,8 @@ interface ProblemGroupViewModel {
   problemNumber?: number;
   stemText?: string;
   sourcePageNumber?: number;
+  displayOrder: number;
+  parentItem?: { problem: Problem; vector: ProblemTagVector };
   items: Array<{ problem: Problem; vector: ProblemTagVector }>;
 }
 
@@ -18,14 +20,22 @@ function groupProblems(problems: Problem[], problemVectors: ProblemTagVector[]):
     const rootProblemId = problem.rootProblemId ?? problem.problemId;
     const existing = groups.get(rootProblemId);
     const entry = { problem, vector: problemVectors[index] };
+    const isRootProblem = problem.problemId === rootProblemId && !problem.partLabel;
 
     if (existing) {
-      existing.items.push(entry);
+      if (isRootProblem) {
+        existing.parentItem = entry;
+      } else {
+        existing.items.push(entry);
+      }
       if (!existing.stemText && problem.stemText) {
         existing.stemText = problem.stemText;
       }
       if (!existing.sourcePageNumber && problem.sourcePageNumber) {
         existing.sourcePageNumber = problem.sourcePageNumber;
+      }
+      if (problem.displayOrder !== undefined) {
+        existing.displayOrder = Math.min(existing.displayOrder, problem.displayOrder);
       }
       return;
     }
@@ -33,17 +43,24 @@ function groupProblems(problems: Problem[], problemVectors: ProblemTagVector[]):
     groups.set(rootProblemId, {
       rootProblemId,
       problemNumber: problem.problemNumber,
-      stemText: problem.stemText,
+      stemText: isRootProblem ? problem.cleanedText ?? problem.stemText : problem.stemText,
       sourcePageNumber: problem.sourcePageNumber,
-      items: [entry],
+      displayOrder: problem.displayOrder ?? Number.MAX_SAFE_INTEGER,
+      parentItem: isRootProblem ? entry : undefined,
+      items: isRootProblem ? [] : [entry],
     });
   });
 
-  return [...groups.values()];
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      items: [...group.items].sort((left, right) => (left.problem.displayOrder ?? Number.MAX_SAFE_INTEGER) - (right.problem.displayOrder ?? Number.MAX_SAFE_INTEGER)),
+    }))
+    .sort((left, right) => left.displayOrder - right.displayOrder);
 }
 
-export function ProblemList(props: { problems: Problem[]; problemVectors: ProblemTagVector[] }) {
-  const { problems, problemVectors } = props;
+export function ProblemList(props: { problems: Problem[]; problemVectors: ProblemTagVector[]; onRerun: () => Promise<void> }) {
+  const { problems, problemVectors, onRerun } = props;
   const groups = groupProblems(problems, problemVectors);
   const partCount = problems.filter((problem) => Boolean(problem.partLabel)).length;
 
@@ -58,7 +75,14 @@ export function ProblemList(props: { problems: Problem[]; problemVectors: Proble
       </div>
 
       <div className="v4-problem-list">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          const visibleItems = group.items.length > 0
+            ? group.items
+            : group.parentItem
+              ? [group.parentItem]
+              : [];
+
+          return (
           <section key={group.rootProblemId} className="v4-problem-group">
             <div className="v4-problem-group-header">
               <div>
@@ -76,12 +100,12 @@ export function ProblemList(props: { problems: Problem[]; problemVectors: Proble
             )}
 
             <div className="v4-problem-group-items">
-              {group.items.map(({ problem, vector }) => (
-                <ProblemCard key={problem.problemId} problem={problem} vector={vector} />
+              {visibleItems.map(({ problem, vector }) => (
+                <ProblemCard key={problem.problemId} problem={problem} vector={vector} onRerun={onRerun} />
               ))}
             </div>
           </section>
-        ))}
+        )})}
       </div>
     </section>
   );

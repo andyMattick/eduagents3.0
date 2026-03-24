@@ -1,0 +1,134 @@
+import { afterEach, describe, expect, it } from "vitest";
+
+import { runSemanticPipeline } from "../pipeline/runSemanticPipeline";
+import { deleteProblemOverride, getProblemOverride, resetTeacherFeedbackState, saveTeacherFeedback } from "../../teacherFeedback";
+import type { TaggingPipelineInput } from "../../schema/semantic";
+
+function buildInput(documentId = "doc-1", content = "1. Solve the equation.") : TaggingPipelineInput {
+	return {
+		documentId,
+		fileName: `${documentId}.pdf`,
+		azureExtract: {
+			fileName: `${documentId}.pdf`,
+			content,
+			pages: [{ pageNumber: 1, text: content }],
+			paragraphs: content.split("\n").map((text) => ({ text, pageNumber: 1 })),
+			tables: [],
+			readingOrder: content.split("\n"),
+		},
+	};
+}
+
+describe("teacher feedback integration", () => {
+	afterEach(() => {
+		resetTeacherFeedbackState();
+	});
+
+	it("replaces bloom, difficulty, concepts, subject and domain via overrides", async () => {
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "bloom", aiValue: "remember", teacherValue: "analyze" });
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "difficulty", aiValue: 0.2, teacherValue: 0.8 });
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "concepts", aiValue: {}, teacherValue: { "teacher.concept": 1 } });
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "subject", aiValue: "general", teacherValue: "science" });
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "domain", aiValue: "general", teacherValue: "lab-design" });
+
+		const output = await runSemanticPipeline(buildInput());
+		const problem = output.problems[0]!;
+
+		expect(problem.tags?.cognitive.bloom.analyze).toBe(1);
+		expect(problem.tags?.difficulty).toBe(0.8);
+		expect(problem.tags?.concepts).toEqual({ "teacher.concept": 1 });
+		expect(problem.tags?.subject).toBe("science");
+		expect(problem.tags?.domain).toBe("lab-design");
+	});
+
+	it("applies text and segmentation overrides without changing immutable ids", async () => {
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: "doc-1",
+			canonicalProblemId: "doc-1::p1",
+			target: "stemText",
+			aiValue: "Solve the equation.",
+			teacherValue: "Revised teacher stem.",
+		});
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: "doc-1",
+			canonicalProblemId: "doc-1::p1",
+			target: "segmentation",
+			aiValue: null,
+			teacherValue: { reassignRequested: true },
+		});
+
+		const output = await runSemanticPipeline(buildInput());
+		const problem = output.problems[0]!;
+
+		expect(problem.stemText).toBe("Revised teacher stem.");
+		expect((problem.tags as Record<string, unknown>).teacherSegmentation).toEqual({ reassignRequested: true });
+		expect(problem.canonicalProblemId).toBe("doc-1::p1");
+		expect(problem.displayOrder).toBe(1000);
+	});
+
+	it("persists overrides across runs", async () => {
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "difficulty", aiValue: 0.2, teacherValue: 0.7 });
+
+		const first = await runSemanticPipeline(buildInput());
+		const second = await runSemanticPipeline(buildInput());
+
+		expect(first.problems[0]?.tags?.difficulty).toBe(0.7);
+		expect(second.problems[0]?.tags?.difficulty).toBe(0.7);
+	});
+
+	it("increments override version metadata across teacher edits", async () => {
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "difficulty", aiValue: 0.2, teacherValue: 0.7 });
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "multiStep", aiValue: 0.1, teacherValue: 0.6 });
+
+		const override = await getProblemOverride("doc-1::p1");
+		const output = await runSemanticPipeline(buildInput());
+
+		expect(override?.overrideVersion).toBe(2);
+		expect(override?.lastUpdatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		expect(output.problems[0]?.tags?.teacherAdjustments).toEqual({
+			overrideVersion: 2,
+			lastUpdatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+		});
+		expect(output.problems[0]?.tags?.reasoning?.overridesApplied).toBe(true);
+	});
+
+	it("rejects invalid override values", async () => {
+		await expect(saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: "doc-1",
+			canonicalProblemId: "doc-1::p1",
+			target: "difficulty",
+			aiValue: 0.2,
+			teacherValue: 1.4,
+		})).rejects.toThrow("INVALID_OVERRIDE: difficulty must be in [0,1]");
+	});
+
+	it("fires teacher-derived templates on new problems", async () => {
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: "doc-1",
+			canonicalProblemId: "doc-1::p1",
+			target: "bloom",
+			aiValue: "understand",
+			teacherValue: "evaluate",
+			evidence: { text: "anomalous phrase" },
+		});
+
+		const output = await runSemanticPipeline(buildInput("doc-2", "1. Explain the anomalous phrase in the passage."));
+		const problem = output.problems[0]!;
+
+		expect(problem.tags?.cognitive.bloom.evaluate).toBeGreaterThan(0);
+	});
+
+	it("removes teacher adjustments after reset", async () => {
+		await saveTeacherFeedback({ teacherId: "teacher-1", documentId: "doc-1", canonicalProblemId: "doc-1::p1", target: "difficulty", aiValue: 0.2, teacherValue: 0.7 });
+		await deleteProblemOverride("doc-1::p1");
+
+		const output = await runSemanticPipeline(buildInput());
+
+		expect(output.problems[0]?.tags?.teacherAdjustments).toBeUndefined();
+		expect(output.problems[0]?.tags?.reasoning?.overridesApplied).toBe(false);
+	});
+});
