@@ -77,4 +77,32 @@ describe("extractProblems", () => {
     expect(problems.map((problem) => problem.problemId)).toEqual(["p1", "p1a"]);
     expect(problems[1]?.partText).toBe("State the trend.\nSupport your answer with one value.");
   });
+
+  it("recognizes numeric-prefixed multipart labels without a separate normalization pass", () => {
+    const problems = extractProblems({
+      fileName: "quiz.pdf",
+      content: [
+        "2. Use the table to answer the questions.",
+        "2a) State the trend.",
+        "2b) Explain what the data suggests.",
+      ].join("\n"),
+      pages: [{ pageNumber: 1, text: "quiz" }],
+      paragraphs: [
+        { text: "2. Use the table to answer the questions.", pageNumber: 1 },
+        { text: "2a) State the trend.", pageNumber: 1 },
+        { text: "2b) Explain what the data suggests.", pageNumber: 1 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p2", "p2a", "p2b"]);
+    expect(problems.map((problem) => problem.problemGroupId)).toEqual(["p2", "p2", "p2"]);
+    expect(problems.map((problem) => problem.rootProblemId)).toEqual(["p2", "p2", "p2"]);
+    expect(problems.map((problem) => problem.parentProblemId)).toEqual([null, "p2", "p2"]);
+    expect(problems.map((problem) => problem.partIndex)).toEqual([0, 1, 2]);
+    expect(problems.map((problem) => problem.teacherLabel)).toEqual(["2.", "a)", "b)"]);
+    expect(problems[1]?.partText).toBe("State the trend.");
+    expect(problems[2]?.partText).toBe("Explain what the data suggests.");
+  });
 });

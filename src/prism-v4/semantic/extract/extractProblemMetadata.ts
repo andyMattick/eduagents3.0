@@ -1,6 +1,7 @@
 import { Problem } from "../../schema/domain/Problem";
 import type { ProblemTagVector } from "../../schema/semantic";
 import { clamp01, type ProblemTypeName, type RepresentationName } from "../utils/heuristics";
+import { detectRepresentationSignals } from "../utils/representationCues";
 import { normalizeWhitespace } from "../utils/textUtils";
 
 const DIRECTIVE_PATTERNS = [
@@ -57,24 +58,11 @@ export function extractProblemMetadata(
       problemType = "shortAnswer";
     }
 
-    let representation: RepresentationName = "paragraph";
-    if ((tablesByProblemId[p.problemId] ?? []).length > 0) {
-      representation = "table";
-    } else if (/\bgraph\b|\bplot\b|\bchart\b/i.test(lower)) {
-      representation = "graph";
-    } else if (/\bmap\b/i.test(lower)) {
-      representation = "map";
-    } else if (/\btimeline\b/i.test(lower)) {
-      representation = "timeline";
-    } else if (/\bexperiment\b|\blab\b/i.test(lower)) {
-      representation = "experiment";
-    } else if (/\bprimary source\b|\bexcerpt\b/i.test(lower)) {
-      representation = "primarySource";
-    } else if (/\bdiagram\b|\billustration\b/i.test(lower)) {
-      representation = "diagram";
-    } else if (/\bequation\b|\bsolve for\b|\b=\b/.test(text)) {
-      representation = "equation";
-    }
+    const representationSignals = detectRepresentationSignals({
+      text,
+      hasExtractedTable: (tablesByProblemId[p.problemId] ?? []).length > 0,
+    });
+    const representation: RepresentationName = representationSignals.representation;
 
     const directiveCount = countDirectiveMatches(text);
     const sequentialMarkers = text.match(/\b(?:then|next|after that|finally|using your work|show your work)\b/gi) ?? [];

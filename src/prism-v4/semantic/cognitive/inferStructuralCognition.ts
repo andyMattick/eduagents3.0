@@ -26,6 +26,7 @@ export function inferStructuralCognition(problem: Problem): Partial<CognitivePro
 	const problemText = `${problem.stemText ?? ""}\n${problem.partText ?? ""}\n${problem.cleanedText ?? problem.rawText ?? ""}`;
 	const directiveCount = countDirectiveMatches(problemText);
 	const extractedSteps = Math.max(1, problem.tags?.steps ?? 1);
+	const representationType = problem.tags?.representation ?? "paragraph";
 	const representationCount = problem.tags?.representationCount ?? 1;
 	const representationComplexity = clamp01(0.2 + Math.max(0, representationCount - 1) * 0.2);
 	const constructedResponse = Boolean(problem.tags?.problemType.constructedResponse || problem.tags?.problemType.shortAnswer);
@@ -33,7 +34,12 @@ export function inferStructuralCognition(problem: Problem): Partial<CognitivePro
 	const stepBoost = Math.min(0.28, Math.max(0, extractedSteps - 1) * 0.14);
 	const directiveBoost = Math.min(0.2, Math.max(0, directiveCount - 1) * 0.1);
 	const multipartBoost = isMultipart ? 0.08 : 0;
-	const representationBoost = Math.min(0.12, Math.max(0, representationCount - 1) * 0.06);
+	const representationTypeBoost = representationType === "paragraph"
+		? 0
+		: representationType === "equation"
+			? 0.02
+			: 0.04;
+	const representationBoost = Math.min(0.12, Math.max(0, representationCount - 1) * 0.05 + representationTypeBoost);
 	const multiStep = clamp01(0.08 + stepBoost + directiveBoost + multipartBoost + representationBoost + responseBoost);
 
 	const bloom: CognitiveProfile["bloom"] = {

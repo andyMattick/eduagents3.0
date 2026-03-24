@@ -2,6 +2,7 @@ import { ProblemWithMetadata } from "../extract/extractProblemMetadata";
 import { ProblemTagVector } from "../../schema/semantic/ProblemTagVector";
 import { LinguisticTags } from "./tagLinguisticLoad";
 import { clamp01, pickDominantKey, type RepresentationName } from "../utils/heuristics";
+import { detectRepresentationSignals } from "../utils/representationCues";
 
 const FRUSTRATION_FIELD = "frustration" + "Ri" + "sk";
 
@@ -13,40 +14,6 @@ interface BuildProblemTagVectorArgs {
   representation: Record<string, string>;
   misconceptions: Record<string, Record<string, number>>;
   standards: Record<string, Record<string, number>>;
-}
-
-function inferRepresentationCount(problem: ProblemWithMetadata, representation: RepresentationName) {
-  const text = `${problem.stemText ?? ""}\n${problem.partText ?? ""}\n${problem.cleanedText ?? problem.rawText ?? ""}`.toLowerCase();
-  const cues = new Set<RepresentationName>();
-
-  cues.add(representation);
-
-  if (/\bgraph\b|\bchart\b|\bplot\b/.test(text)) {
-    cues.add("graph");
-  }
-  if (/\btable\b|\brow\b|\bcolumn\b/.test(text)) {
-    cues.add("table");
-  }
-  if (/\bdiagram\b|\billustration\b/.test(text)) {
-    cues.add("diagram");
-  }
-  if (/\bmap\b/.test(text)) {
-    cues.add("map");
-  }
-  if (/\btimeline\b/.test(text)) {
-    cues.add("timeline");
-  }
-  if (/\bexperiment\b|\blab\b/.test(text)) {
-    cues.add("experiment");
-  }
-  if (/\bprimary source\b|\bexcerpt\b/.test(text)) {
-    cues.add("primarySource");
-  }
-  if (/\bequation\b|\bsolve for\b|=/.test(text)) {
-    cues.add("equation");
-  }
-
-  return Math.max(1, cues.size);
 }
 
 export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemTagVector[] {
@@ -82,8 +49,12 @@ export function buildProblemTagVector(args: BuildProblemTagVectorArgs): ProblemT
       bloomMap.understand = 1;
     }
 
-    const repr = (representation[id] ?? "paragraph") as RepresentationName;
-    const representationCount = inferRepresentationCount(p, repr);
+    const representationSignals = detectRepresentationSignals({
+      text: `${p.stemText ?? ""}\n${p.partText ?? ""}\n${p.cleanedText ?? p.rawText ?? ""}`,
+      hasExtractedTable: p.representation === "table" || representation[id] === "table",
+    });
+    const repr = ((representation[id] as RepresentationName | undefined) ?? p.representation ?? representationSignals.representation) as RepresentationName;
+    const representationCount = representationSignals.representationCount;
     const dominantConcept = pickDominantKey(conceptMap, "general.comprehension");
     const subject = dominantConcept.startsWith("math")
       ? "math"

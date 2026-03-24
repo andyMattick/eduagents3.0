@@ -31,6 +31,7 @@ interface TopLevelMatch {
 }
 
 interface SubpartMatch {
+	problemNumber?: number;
 	partLabel: string;
 	body: string;
 }
@@ -52,19 +53,21 @@ function matchTopLevelProblem(text: string): TopLevelMatch | null {
 }
 
 function matchSubpart(text: string): SubpartMatch | null {
-	const match = text.match(/^(?:\(([a-z])\)|([a-z])[.)])\s+(.*)$/);
+	const match = text.match(/^(?:(\d+)([a-z])[.)]|\(([a-z])\)|([a-z])[.)]|(\d+)([a-z]))\s+(.*)$/);
 	if (!match) {
 		return null;
 	}
 
-	const partLabel = (match[1] ?? match[2] ?? "").toLowerCase();
+	const numberedProblem = match[1] ?? match[5];
+	const partLabel = (match[2] ?? match[3] ?? match[4] ?? match[6] ?? "").toLowerCase();
 	if (!partLabel) {
 		return null;
 	}
 
 	return {
+		problemNumber: numberedProblem ? Number(numberedProblem) : undefined,
 		partLabel,
-		body: normalizeWhitespace(match[3] ?? ""),
+		body: normalizeWhitespace(match[7] ?? ""),
 	};
 }
 
@@ -257,6 +260,19 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 
 		const subpart = matchSubpart(block.text);
 		if (subpart) {
+			if (subpart.problemNumber && subpart.problemNumber !== currentGroup.problemNumber) {
+				currentPart = null;
+				currentGroup = {
+					problemNumber: subpart.problemNumber,
+					rootProblemId: `p${subpart.problemNumber}`,
+					teacherLabel: `${subpart.problemNumber}.`,
+					pageNumber: block.pageNumber,
+					stemLines: [],
+					parts: [],
+				};
+				groups.push(currentGroup);
+			}
+
 			currentPart = {
 				partLabel: subpart.partLabel,
 				partIndex: alphabetIndex(subpart.partLabel),
