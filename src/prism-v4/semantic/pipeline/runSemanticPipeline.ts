@@ -1,5 +1,6 @@
 import type { TaggingPipelineInput, TaggingPipelineOutput } from "../../schema/semantic";
 import type { Problem } from "../../schema/domain";
+import type { ValidatedOverrides } from "../../teacherFeedback";
 import { getProblemOverride, listTeacherDerivedTemplates } from "../../teacherFeedback";
 import { buildConceptGraph } from "../document/buildConceptGraph";
 import { buildDocumentInsights } from "../document/buildDocumentInsights";
@@ -7,6 +8,7 @@ import { applyTemplates, fuseCognition, fuseOverrides, getMatchedTemplates, infe
 import { extractProblems } from "../extract/extractProblem";
 import { extractProblemMetadata } from "../extract/extractProblemMetadata";
 import { extractTables } from "../extract/extractTables";
+import { detectMultipart } from "../structure/detectMultipart";
 import { buildProblemTagVector } from "../tag/buildProblemTagVector";
 import { tagBloom } from "../tag/tagBloom";
 import { tagConcepts } from "../tag/tagConcepts";
@@ -71,7 +73,7 @@ function toCanonicalProblem(
 }
 
 export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<TaggingPipelineOutput> {
-  const extractedProblems = extractProblems(input.azureExtract);
+  const extractedProblems = detectMultipart(extractProblems(input.azureExtract));
   const tablesByProblemId = extractTables(input.azureExtract, extractedProblems);
   const problems = extractProblemMetadata(extractedProblems, tablesByProblemId);
   const concepts = tagConcepts(problems);
@@ -106,13 +108,17 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
       ...domainTemplate,
       ...teacherTemplate,
       bloom: {
-        ...(domainTemplate.bloom ?? {}),
-        ...(teacherTemplate.bloom ?? {}),
+        remember: teacherTemplate.bloom?.remember ?? domainTemplate.bloom?.remember ?? 0,
+        understand: teacherTemplate.bloom?.understand ?? domainTemplate.bloom?.understand ?? 0,
+        apply: teacherTemplate.bloom?.apply ?? domainTemplate.bloom?.apply ?? 0,
+        analyze: teacherTemplate.bloom?.analyze ?? domainTemplate.bloom?.analyze ?? 0,
+        evaluate: teacherTemplate.bloom?.evaluate ?? domainTemplate.bloom?.evaluate ?? 0,
+        create: teacherTemplate.bloom?.create ?? domainTemplate.bloom?.create ?? 0,
       },
     };
     const cognitive = fuseCognition(azureTags, structural, template);
     const canonicalProblemId = `${input.documentId}::${problem.problemId}`;
-    const overrides = await getProblemOverride(canonicalProblemId);
+    const overrides = await getProblemOverride(canonicalProblemId) as ValidatedOverrides | null;
     const overriddenProblem = fuseOverrides({
       ...seedProblem,
       canonicalProblemId,

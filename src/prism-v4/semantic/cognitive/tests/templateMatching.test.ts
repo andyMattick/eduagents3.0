@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Problem } from "../../../schema/domain";
 import type { ProblemTagVector } from "../../../schema/semantic";
-import { applyTemplates, elaTemplates, historyTemplates, mathTemplates, scienceTemplates, statsTemplates } from "../templates";
+import { applyTemplates, elaTemplates, getTemplateMatches, historyTemplates, mathTemplates, scienceTemplates, statsTemplates } from "../templates";
 
 function makeProblem(overrides: Partial<Problem> & { rawText: string }, tags?: Partial<ProblemTagVector>): Problem {
 	return {
@@ -90,5 +90,58 @@ describe("template matching", () => {
 		);
 
 		expect(applyTemplates(historyProblem, historyTemplates).bloom?.analyze ?? 0).toBeGreaterThan(0);
+	});
+
+	it("returns a bounded best-guess fallback when no strong template clears threshold", () => {
+		const weakProblem = makeProblem(
+			{ rawText: "What consequence might follow from this policy?" },
+			{ subject: "socialstudies", domain: "civics", concepts: { "socialstudies.civics": 1 } },
+		);
+
+		const matches = getTemplateMatches(weakProblem, historyTemplates);
+
+		expect(matches).toHaveLength(1);
+		expect(matches[0]?.isBestGuess).toBe(true);
+		expect(matches[0]?.confidence ?? 0).toBeLessThan(0.45);
+		expect(applyTemplates(weakProblem, historyTemplates).difficulty ?? 0).toBeLessThan(0.08);
+	});
+
+	it("uses structural flags to strengthen multi-representation templates", () => {
+		const problem = makeProblem(
+			{ rawText: "Use the graph and table to explain the data trend." },
+			{
+				subject: "science",
+				domain: "experiments",
+				concepts: { "science.experimental_design": 1 },
+				representation: "table",
+				representationCount: 2,
+				problemType: { constructedResponse: 1 },
+			},
+		);
+
+		const matches = getTemplateMatches(problem, scienceTemplates);
+
+		expect(matches[0]?.template.id).toBe("multi-representation-synthesis");
+		expect(matches[0]?.passesThreshold).toBe(true);
+	});
+
+	it("prefers strong explicit matches over weaker fallback guesses", () => {
+		const strongProblem = makeProblem(
+			{ rawText: "Read the passage and infer what the author implies." },
+			{
+				subject: "reading",
+				domain: "inference",
+				concepts: { "reading.inference": 1 },
+				representation: "primarySource",
+				representationCount: 1,
+				problemType: { constructedResponse: 1 },
+			},
+		);
+
+		const matches = getTemplateMatches(strongProblem, elaTemplates);
+
+		expect(matches.length).toBeGreaterThan(0);
+		expect(matches.every((match) => match.isBestGuess === false)).toBe(true);
+		expect(matches[0]?.confidence ?? 0).toBeGreaterThanOrEqual(matches[matches.length - 1]?.confidence ?? 0);
 	});
 });

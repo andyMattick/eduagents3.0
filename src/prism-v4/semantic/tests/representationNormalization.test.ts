@@ -52,7 +52,7 @@ describe("representation normalization", () => {
 	});
 
 	it("keeps code-like content internal while preserving a public paragraph representation", () => {
-		const signals = detectRepresentationSignals({ text: "function add(a, b) { return a + b; } What does console.log(add(1, 2)); output?" });
+		const signals = detectRepresentationSignals({ text: "function add(a, b) { const y = a + b; return y; } What does console.log(add(1, 2)); output?" });
 
 		expect(signals.cues.codeLike).toBe(true);
 		expect(signals.representation).toBe("paragraph");

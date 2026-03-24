@@ -29,13 +29,22 @@ function hasAnyMatch(text: string, patterns: RegExp[]) {
 
 export function detectRepresentationSignals(args: DetectRepresentationSignalsArgs): RepresentationSignals {
 	const normalizedText = args.text.toLowerCase();
+	const codeLike = hasAnyMatch(args.text, [
+		/\bfor\s*\(/,
+		/\bwhile\s*\(/,
+		/\bif\s*\(/,
+		/\bfunction\b/i,
+		/\bdef\b/i,
+		/\bclass\b/i,
+		/console\.log/,
+		/[{}]/,
+	]);
 	const cues: RepresentationCueFlags = {
-		equation: hasAnyMatch(normalizedText, [
-			/\bsolve for\b/,
-			/\bequation\b/,
-			/\bf\(x\)\b/,
-			/\by\s*=\s*/,
-			/\b[0-9a-z]+\s*=\s*[0-9a-z+\-*/() ]+/,
+		equation: !codeLike && hasAnyMatch(args.text, [
+			/\bsolve for\b/i,
+			/\bequation\b/i,
+			/\b[fF]\s*\(\s*x\s*\)/,
+			/[a-zA-Z]\s*=\s*[^=]/,
 		]),
 		graph: hasAnyMatch(normalizedText, [
 			/\bgraph\b/,
@@ -80,17 +89,7 @@ export function detectRepresentationSignals(args: DetectRepresentationSignalsArg
 			/\bauthor\b/,
 			/\bread the passage\b/,
 		]),
-		codeLike: hasAnyMatch(normalizedText, [
-			/[{}]/,
-			/;/,
-			/\bfor\s*\(/,
-			/\bwhile\s*\(/,
-			/\bif\s*\(/,
-			/\bfunction\b/,
-			/\bdef\b/,
-			/\bclass\b/,
-			/\bconsole\b/,
-		]),
+		codeLike,
 	};
 
 	const precedence: Array<{ name: RepresentationName; active: boolean }> = [
@@ -101,6 +100,7 @@ export function detectRepresentationSignals(args: DetectRepresentationSignalsArg
 		{ name: "experiment", active: cues.experiment },
 		{ name: "primarySource", active: cues.primarySource },
 		{ name: "diagram", active: cues.diagram },
+		{ name: "paragraph", active: cues.codeLike },
 		{ name: "equation", active: cues.equation },
 	];
 

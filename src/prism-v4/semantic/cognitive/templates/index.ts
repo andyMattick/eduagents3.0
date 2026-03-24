@@ -1,317 +1,243 @@
 import type { Problem } from "../../../schema/domain";
 import type { CognitiveProfile } from "../../../schema/semantic";
 import { clamp01 } from "../../utils/heuristics";
+import { detectRepresentationSignals } from "../../utils/representationCues";
+import { loadSeededTemplates, toRuntimeTemplate, type CognitiveTemplate, type TemplateSubject } from "./loadTemplates";
+
+export type { CognitiveTemplate, SeededCognitiveTemplate, TemplateSubject } from "./loadTemplates";
+
+export interface TemplateMatchResult {
+	template: CognitiveTemplate;
+	confidence: number;
+	passesThreshold: boolean;
+	isBestGuess: boolean;
+}
+
+const runtimeTemplates = loadSeededTemplates().map(toRuntimeTemplate);
+
+const genericOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "generic");
+const mathOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "math");
+const statsOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "statistics");
+const elaOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "reading");
+const scienceOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "science");
+const historyOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "socialstudies");
+
+export const genericTemplates = genericOnlyTemplates;
+export const mathTemplates = [...genericOnlyTemplates, ...mathOnlyTemplates, ...statsOnlyTemplates];
+export const statsTemplates = [...genericOnlyTemplates, ...statsOnlyTemplates];
+export const elaTemplates = [...genericOnlyTemplates, ...elaOnlyTemplates];
+export const scienceTemplates = [...genericOnlyTemplates, ...scienceOnlyTemplates];
+export const historyTemplates = [...genericOnlyTemplates, ...historyOnlyTemplates];
+export const cognitiveTemplates: CognitiveTemplate[] = runtimeTemplates;
 
 function problemText(problem: Problem) {
 	return `${problem.stemText ?? ""}\n${problem.partText ?? ""}\n${problem.cleanedText ?? problem.rawText}`;
 }
 
-function hasConcept(problem: Problem, fragment: string) {
-	return Object.keys(problem.tags?.concepts ?? {}).some((concept) => concept.includes(fragment));
+function lowerProblemText(problem: Problem) {
+	return problemText(problem).toLowerCase();
 }
 
-function hasDomain(problem: Problem, fragment: string) {
-	return (problem.tags?.domain ?? "").includes(fragment);
+function weightedAverage(entries: Array<{ value: number; weight: number }>) {
+	if (entries.length === 0) {
+		return 0;
+	}
+
+	const totalWeight = entries.reduce((sum, entry) => sum + entry.weight, 0);
+	if (totalWeight <= 0) {
+		return 0;
+	}
+
+	return entries.reduce((sum, entry) => sum + entry.value * entry.weight, 0) / totalWeight;
 }
 
-export interface CognitiveTemplate {
-	id: string;
-	match: (problem: Problem) => boolean;
-	bloom: Partial<CognitiveProfile["bloom"]>;
-	difficultyBoost?: number;
-	misconceptionRiskBoost?: number;
+function scoreTextPatterns(text: string, patterns: string[]) {
+	if (patterns.length === 0) {
+		return undefined;
+	}
+
+	const hits = patterns.filter((pattern) => text.includes(pattern.toLowerCase())).length;
+	return hits / patterns.length;
 }
 
-const interpretationTemplate: CognitiveTemplate = {
-	id: "interpretation",
-	match: (problem) => /\binterpret\b|\bexplain\b|\bconclude\b|\bwhat does this mean\b/i.test(problemText(problem)),
-	bloom: { understand: 0.2, analyze: 0.3, evaluate: 0.2 },
-	difficultyBoost: 0.08,
-	misconceptionRiskBoost: 0.05,
-};
+function scoreRegexPatterns(text: string, patterns: string[]) {
+	if (patterns.length === 0) {
+		return undefined;
+	}
 
-const modelingTemplate: CognitiveTemplate = {
-	id: "modeling",
-	match: (problem) => /\bmodel\b|\brepresent\b|\bwrite an equation\b|\bsimulate\b|\bconstruct\b/i.test(problemText(problem)),
-	bloom: { apply: 0.25, analyze: 0.15, create: 0.15 },
-	difficultyBoost: 0.1,
-	misconceptionRiskBoost: 0.08,
-};
+	const hits = patterns.filter((pattern) => {
+		try {
+			return new RegExp(pattern, "i").test(text);
+		} catch {
+			return false;
+		}
+	}).length;
 
-const evidenceEvaluationTemplate: CognitiveTemplate = {
-	id: "evidence-evaluation",
-	match: (problem) => /\bevidence\b|\bsupport\b|\bjustify\b|\bwhich claim\b|\bbest supports\b/i.test(problemText(problem)),
-	bloom: { understand: 0.1, analyze: 0.25, evaluate: 0.3 },
-	difficultyBoost: 0.1,
-	misconceptionRiskBoost: 0.12,
-};
+	return hits / patterns.length;
+}
 
-const dataAnalysisTemplate: CognitiveTemplate = {
-	id: "data-analysis",
-	match: (problem) => /\bdata\b|\bgraph\b|\btable\b|\bchart\b|\bplot\b|\bdistribution\b|\btrend\b/i.test(problemText(problem)),
-	bloom: { understand: 0.1, apply: 0.2, analyze: 0.3 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.1,
-};
+function getStructuralFlags(problem: Problem) {
+	const text = problemText(problem);
+	const signals = detectRepresentationSignals({
+		text,
+		hasExtractedTable: problem.tags?.representation === "table",
+	});
+	const problemType = problem.tags?.problemType ?? {};
+	const representation = problem.tags?.representation ?? signals.representation;
+	const representationCount = problem.tags?.representationCount ?? signals.representationCount;
 
-const causeEffectTemplate: CognitiveTemplate = {
-	id: "cause-effect-reasoning",
-	match: (problem) => /\bcause\b|\beffect\b|\bresult\b|\bconsequence\b|\bimpact\b|\bleads to\b/i.test(problemText(problem)),
-	bloom: { understand: 0.15, analyze: 0.25, evaluate: 0.15 },
-	difficultyBoost: 0.08,
-	misconceptionRiskBoost: 0.08,
-};
+	return {
+		hasEquation: representation === "equation" || signals.cues.equation,
+		hasGraph: representation === "graph" || signals.cues.graph,
+		hasTable: representation === "table" || signals.cues.table,
+		hasDiagram: representation === "diagram" || signals.cues.diagram,
+		hasMap: representation === "map" || signals.cues.map,
+		hasTimeline: representation === "timeline" || signals.cues.timeline,
+		hasExperiment: representation === "experiment" || signals.cues.experiment,
+		hasSourceExcerpt: representation === "primarySource" || signals.cues.primarySource,
+		hasPassage: signals.cues.primarySource,
+		hasCodeLikeContent: signals.cues.codeLike,
+		multiRepresentation: representationCount > 1,
+		constructedResponse: Boolean(problemType.constructedResponse || problemType.shortAnswer),
+		multipart: (problem.partIndex ?? 0) > 0,
+	};
+}
 
-const multiRepresentationSynthesisTemplate: CognitiveTemplate = {
-	id: "multi-representation-synthesis",
-	match: (problem) => /\buse the graph\b|\buse the table\b|\bcompare the diagram\b|\busing the model\b|\bfrom the graph and table\b/i.test(problemText(problem)),
-	bloom: { apply: 0.2, analyze: 0.25, create: 0.05 },
-	difficultyBoost: 0.14,
-	misconceptionRiskBoost: 0.12,
-};
+function countActiveRepresentationFlags(structuralFlags: ReturnType<typeof getStructuralFlags>) {
+	return [
+		structuralFlags.hasEquation,
+		structuralFlags.hasGraph,
+		structuralFlags.hasTable,
+		structuralFlags.hasDiagram,
+		structuralFlags.hasMap,
+		structuralFlags.hasTimeline,
+		structuralFlags.hasExperiment,
+		structuralFlags.hasSourceExcerpt,
+	].filter(Boolean).length;
+}
 
-const mainIdeaTemplate: CognitiveTemplate = {
-	id: "main-idea",
-	match: (problem) => /\bmain idea\b|\bcentral idea\b|\btheme\b/i.test(problemText(problem)) || hasConcept(problem, "reading"),
-	bloom: { understand: 0.25, analyze: 0.15 },
-	difficultyBoost: 0.06,
-};
+function getArchetypeBonus(template: CognitiveTemplate, structuralFlags: ReturnType<typeof getStructuralFlags>) {
+	if (template.archetypeKey !== "multi-representation-synthesis") {
+		return 0;
+	}
 
-const inferenceTemplate: CognitiveTemplate = {
-	id: "inference",
-	match: (problem) => /\binfer\b|\binference\b|\bimply\b|\bsuggest\b/i.test(problemText(problem)) || hasDomain(problem, "inference"),
-	bloom: { understand: 0.1, analyze: 0.3, evaluate: 0.1 },
-	difficultyBoost: 0.1,
-	misconceptionRiskBoost: 0.1,
-};
+	const representationKinds = countActiveRepresentationFlags(structuralFlags);
+	if (!structuralFlags.multiRepresentation || representationKinds < 2) {
+		return 0;
+	}
 
-const authorPurposeTemplate: CognitiveTemplate = {
-	id: "author-purpose",
-	match: (problem) => /\bauthor'?s purpose\b|\bpoint of view\b|\btone\b|\bpurpose of the passage\b/i.test(problemText(problem)),
-	bloom: { understand: 0.2, analyze: 0.25 },
-	difficultyBoost: 0.08,
-};
+	return structuralFlags.constructedResponse ? 0.6 : 0.48;
+}
 
-const argumentAnalysisTemplate: CognitiveTemplate = {
-	id: "argument-analysis",
-	match: (problem) => /\bargument\b|\bclaim\b|\breasoning\b|\bcounterclaim\b/i.test(problemText(problem)),
-	bloom: { analyze: 0.3, evaluate: 0.25 },
-	difficultyBoost: 0.1,
-	misconceptionRiskBoost: 0.08,
-};
+function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateMatchResult | null {
+	if (template.match) {
+		if (!template.match(problem)) {
+			return null;
+		}
 
-const algebraTemplate: CognitiveTemplate = {
-	id: "multi-step-algebra",
-	match: (problem) => /\bsolve\b.*\bequation\b|\bsystem of equations\b|\binequality\b/i.test(problemText(problem)) || hasConcept(problem, "algebra"),
-	bloom: { apply: 0.3, analyze: 0.2 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.1,
-};
+		return {
+			template,
+			confidence: 1,
+			passesThreshold: true,
+			isBestGuess: false,
+		};
+	}
 
-const functionAnalysisTemplate: CognitiveTemplate = {
-	id: "function-analysis",
-	match: (problem) => /\bfunction\b|\brate of change\b|\bslope\b|\bintercept\b/i.test(problemText(problem)) || hasConcept(problem, "function"),
-	bloom: { understand: 0.1, apply: 0.25, analyze: 0.2 },
-	difficultyBoost: 0.1,
-};
+	if (!template.patternConfig) {
+		return null;
+	}
 
-const proofTemplate: CognitiveTemplate = {
-	id: "proof",
-	match: (problem) => /\bprove\b|\bshow that\b|\bjustify why\b/i.test(problemText(problem)),
-	bloom: { analyze: 0.2, evaluate: 0.25, create: 0.15 },
-	difficultyBoost: 0.14,
-	misconceptionRiskBoost: 0.08,
-};
+	const text = lowerProblemText(problem);
+	const structuralFlags = getStructuralFlags(problem);
+	const textScore = scoreTextPatterns(text, template.patternConfig.textPatterns);
+	const structuralScore = template.patternConfig.structuralPatterns.length > 0
+		? template.patternConfig.structuralPatterns.filter((flag) => structuralFlags[flag as keyof typeof structuralFlags]).length / template.patternConfig.structuralPatterns.length
+		: undefined;
+	const regexScore = scoreRegexPatterns(problemText(problem), template.patternConfig.regexPatterns ?? []);
+	const confidence = clamp01(weightedAverage([
+		...(typeof textScore === "number" ? [{ value: textScore, weight: 0.55 }] : []),
+		...(typeof structuralScore === "number" ? [{ value: structuralScore, weight: 0.3 }] : []),
+		...(typeof regexScore === "number" ? [{ value: regexScore, weight: 0.15 }] : []),
+	]) + getArchetypeBonus(template, structuralFlags));
 
-const optimizationTemplate: CognitiveTemplate = {
-	id: "optimization",
-	match: (problem) => /\bmaximize\b|\bminimize\b|\boptimal\b|\bbest value\b/i.test(problemText(problem)),
-	bloom: { apply: 0.2, analyze: 0.25, evaluate: 0.2 },
-	difficultyBoost: 0.14,
-};
+	if (confidence <= 0) {
+		return null;
+	}
 
-const confidenceIntervalTemplate: CognitiveTemplate = {
-	id: "confidence-interval",
-	match: (problem) => /\bconfidence interval\b|\bmargin of error\b|\binterval estimate\b/i.test(problemText(problem)),
-	bloom: { understand: 0.1, apply: 0.25, analyze: 0.2 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.12,
-};
-
-const hypothesisTestingTemplate: CognitiveTemplate = {
-	id: "hypothesis-testing",
-	match: (problem) => /\bhypothesis test\b|\bp-value\b|\bnull hypothesis\b|\balternative hypothesis\b/i.test(problemText(problem)),
-	bloom: { apply: 0.25, analyze: 0.25, evaluate: 0.2 },
-	difficultyBoost: 0.15,
-	misconceptionRiskBoost: 0.15,
-};
-
-const errorTypeTemplate: CognitiveTemplate = {
-	id: "type-i-ii",
-	match: (problem) => /\btype i\b|\btype ii\b|\bfalse positive\b|\bfalse negative\b/i.test(problemText(problem)),
-	bloom: { understand: 0.15, analyze: 0.25, evaluate: 0.15 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.18,
-};
-
-const samplingDistributionTemplate: CognitiveTemplate = {
-	id: "sampling-distribution",
-	match: (problem) => /\bsampling distribution\b|\bstandard error\b|\bsample proportion\b/i.test(problemText(problem)),
-	bloom: { understand: 0.15, apply: 0.2, analyze: 0.2 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.12,
-};
-
-const experimentalDesignTemplate: CognitiveTemplate = {
-	id: "experimental-design",
-	match: (problem) => /\bexperimental design\b|\bdesign an experiment\b|\bhypothesis\b|\bprocedure\b/i.test(problemText(problem)),
-	bloom: { apply: 0.2, analyze: 0.2, create: 0.2 },
-	difficultyBoost: 0.14,
-	misconceptionRiskBoost: 0.12,
-};
-
-const variableControlTemplate: CognitiveTemplate = {
-	id: "variable-control",
-	match: (problem) => /\bcontrol variable\b|\bindependent variable\b|\bdependent variable\b|\bconstant\b/i.test(problemText(problem)),
-	bloom: { understand: 0.2, apply: 0.2, analyze: 0.15 },
-	difficultyBoost: 0.1,
-	misconceptionRiskBoost: 0.1,
-};
-
-const dataInterpretationTemplate: CognitiveTemplate = {
-	id: "science-data-interpretation",
-	match: (problem) => /\bdata\b|\bgraph\b|\btrend\b|\bobservation\b/i.test(problemText(problem)) || hasConcept(problem, "science"),
-	bloom: { understand: 0.1, analyze: 0.3 },
-	difficultyBoost: 0.1,
-};
-
-const modelEvaluationTemplate: CognitiveTemplate = {
-	id: "model-evaluation",
-	match: (problem) => /\bevaluate the model\b|\blimitations of the model\b|\bcompare models\b/i.test(problemText(problem)),
-	bloom: { analyze: 0.25, evaluate: 0.25 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.08,
-};
-
-const sourcingTemplate: CognitiveTemplate = {
-	id: "sourcing",
-	match: (problem) => /\bsource\b|\bwho wrote\b|\bwhen was this written\b|\borigin of the document\b/i.test(problemText(problem)),
-	bloom: { understand: 0.2, analyze: 0.2 },
-	difficultyBoost: 0.08,
-};
-
-const corroborationTemplate: CognitiveTemplate = {
-	id: "corroboration",
-	match: (problem) => /\bcorroborate\b|\bcompare sources\b|\bboth sources\b|\bagree and disagree\b/i.test(problemText(problem)),
-	bloom: { analyze: 0.3, evaluate: 0.2 },
-	difficultyBoost: 0.12,
-	misconceptionRiskBoost: 0.08,
-};
-
-const perspectiveAnalysisTemplate: CognitiveTemplate = {
-	id: "perspective-analysis",
-	match: (problem) => /\bperspective\b|\bpoint of view\b|\bbias\b|\baudience\b/i.test(problemText(problem)),
-	bloom: { understand: 0.15, analyze: 0.25, evaluate: 0.15 },
-	difficultyBoost: 0.1,
-};
-
-export const genericTemplates: CognitiveTemplate[] = [
-	interpretationTemplate,
-	evidenceEvaluationTemplate,
-	dataAnalysisTemplate,
-	causeEffectTemplate,
-	multiRepresentationSynthesisTemplate,
-];
-
-export const mathTemplates: CognitiveTemplate[] = [
-	modelingTemplate,
-	algebraTemplate,
-	functionAnalysisTemplate,
-	proofTemplate,
-	optimizationTemplate,
-	multiRepresentationSynthesisTemplate,
-];
-
-export const statsTemplates: CognitiveTemplate[] = [
-	dataAnalysisTemplate,
-	confidenceIntervalTemplate,
-	hypothesisTestingTemplate,
-	errorTypeTemplate,
-	samplingDistributionTemplate,
-];
-
-export const elaTemplates: CognitiveTemplate[] = [
-	mainIdeaTemplate,
-	inferenceTemplate,
-	evidenceEvaluationTemplate,
-	authorPurposeTemplate,
-	argumentAnalysisTemplate,
-];
-
-export const scienceTemplates: CognitiveTemplate[] = [
-	experimentalDesignTemplate,
-	variableControlTemplate,
-	dataInterpretationTemplate,
-	modelEvaluationTemplate,
-	multiRepresentationSynthesisTemplate,
-];
-
-export const historyTemplates: CognitiveTemplate[] = [
-	sourcingTemplate,
-	corroborationTemplate,
-	causeEffectTemplate,
-	perspectiveAnalysisTemplate,
-	evidenceEvaluationTemplate,
-];
-
-export const cognitiveTemplates: CognitiveTemplate[] = [
-	...genericTemplates,
-	...mathTemplates,
-	...statsTemplates,
-	...elaTemplates,
-	...scienceTemplates,
-	...historyTemplates,
-];
+	return {
+		template,
+		confidence,
+		passesThreshold: confidence >= (template.minConfidence ?? template.patternConfig.minConfidence),
+		isBestGuess: false,
+	};
+}
 
 export function pickTemplatesForSubject(subject: string): CognitiveTemplate[] {
 	switch (subject) {
 		case "math":
-			return [...genericTemplates, ...mathTemplates, ...statsTemplates];
+			return mathTemplates;
 		case "reading":
-			return [...genericTemplates, ...elaTemplates];
+			return elaTemplates;
 		case "science":
-			return [...genericTemplates, ...scienceTemplates];
+			return scienceTemplates;
 		case "socialstudies":
-			return [...genericTemplates, ...historyTemplates];
+			return historyTemplates;
 		default:
 			return genericTemplates;
 	}
 }
 
-export function applyTemplates(
+export function getTemplateMatches(
 	problem: Problem,
 	templates: CognitiveTemplate[] = cognitiveTemplates,
-): Partial<CognitiveProfile> {
-	const matched = getMatchedTemplates(problem, templates);
-	const bloom: Partial<CognitiveProfile["bloom"]> = {};
+): TemplateMatchResult[] {
+	const scored = templates
+		.map((template) => scoreTemplate(problem, template))
+		.filter((result): result is TemplateMatchResult => result !== null)
+		.sort((left, right) => right.confidence - left.confidence);
 
-	for (const template of matched) {
-		for (const [level, score] of Object.entries(template.bloom)) {
-			const key = level as keyof CognitiveProfile["bloom"];
-			bloom[key] = clamp01((bloom[key] ?? 0) + (score ?? 0));
-		}
+	const strongHits = scored.filter((result) => result.passesThreshold);
+	if (strongHits.length > 0) {
+		return strongHits;
 	}
 
-	return {
-		bloom,
-		difficulty: clamp01(matched.reduce((total, template) => total + (template.difficultyBoost ?? 0), 0)),
-		misconceptionRisk: clamp01(matched.reduce((total, template) => total + (template.misconceptionRiskBoost ?? 0), 0)),
-	};
+	const bestGuess = scored[0];
+	if (!bestGuess) {
+		return [];
+	}
+
+	return [{
+		...bestGuess,
+		isBestGuess: true,
+	}];
 }
 
 export function getMatchedTemplates(
 	problem: Problem,
 	templates: CognitiveTemplate[] = cognitiveTemplates,
 ): CognitiveTemplate[] {
-	return templates.filter((template) => template.match(problem));
+	return getTemplateMatches(problem, templates).map((result) => result.template);
+}
+
+export function applyTemplates(
+	problem: Problem,
+	templates: CognitiveTemplate[] = cognitiveTemplates,
+): Partial<CognitiveProfile> {
+	const matched = getTemplateMatches(problem, templates);
+	const bloom: Partial<CognitiveProfile["bloom"]> = {};
+
+	for (const match of matched) {
+		const scale = match.confidence * (match.isBestGuess ? 0.6 : 1);
+		for (const [level, score] of Object.entries(match.template.bloom)) {
+			const key = level as keyof CognitiveProfile["bloom"];
+			bloom[key] = clamp01((bloom[key] ?? 0) + (score ?? 0) * scale);
+		}
+	}
+
+	return {
+		bloom,
+		difficulty: clamp01(matched.reduce((total, match) => total + (match.template.difficultyBoost ?? 0) * match.confidence * (match.isBestGuess ? 0.6 : 1), 0)),
+		multiStep: clamp01(matched.reduce((total, match) => total + (match.template.multiStepBoost ?? 0) * match.confidence * (match.isBestGuess ? 0.6 : 1), 0)),
+		misconceptionRisk: clamp01(matched.reduce((total, match) => total + (match.template.misconceptionRiskBoost ?? 0) * match.confidence * (match.isBestGuess ? 0.6 : 1), 0)),
+	};
 }
