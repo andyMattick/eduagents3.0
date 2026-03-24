@@ -21,16 +21,24 @@ const EXACT_DOCUMENT_KEYS = [
   "title",
 ];
 const EXACT_PROBLEM_KEYS = [
+  "canonicalProblemId",
   "cleanedText",
   "correctAnswer",
   "mediaUrls",
+  "parentProblemId",
+  "partLabel",
+  "partText",
   "problemId",
+  "problemNumber",
   "rawText",
+  "rootProblemId",
   "rubric",
   "sourceDocumentId",
   "sourcePageNumber",
   "sourceType",
+  "stemText",
   "tags",
+  "teacherLabel",
 ];
 
 function buildInput(): TaggingPipelineInput {
@@ -63,7 +71,7 @@ describe("Semantic pipeline", () => {
     const output = await runSemanticPipeline(buildInput());
 
     expect(output.documentId).toBe("doc-1");
-    expect(output.problems.length).toBeGreaterThan(0);
+    expect(output.problems.map((problem) => problem.problemId)).toEqual(["p1", "p2"]);
     expect(output.problemVectors.length).toBe(output.problems.length);
     expect(Object.keys(output).sort()).toEqual(EXACT_OUTPUT_KEYS);
     expect(Object.keys(output.documentInsights).sort()).toEqual(EXACT_DOCUMENT_KEYS);
@@ -78,6 +86,7 @@ describe("Semantic pipeline", () => {
       expect(Object.keys(problem).sort()).toEqual(EXACT_PROBLEM_KEYS);
       expect(problem.sourceType).toBe("document");
       expect(problem.tags).toBeDefined();
+      expect(problem.canonicalProblemId).toBe(`doc-1::${problem.problemId}`);
     }
   });
 

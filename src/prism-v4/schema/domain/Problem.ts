@@ -2,6 +2,14 @@
     
     export interface Problem {
 	  problemId: string;
+	  canonicalProblemId?: string;
+	  rootProblemId?: string;
+	  parentProblemId?: string;
+	  problemNumber?: number;
+	  partLabel?: string;
+	  teacherLabel?: string;
+	  stemText?: string;
+	  partText?: string;
 	
 	  // Raw + cleaned text
 	  rawText: string;

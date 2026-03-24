@@ -13,9 +13,39 @@ import { tagMisconceptionTriggers } from "../tag/tagMisconceptionTriggers";
 import { tagRepresentation } from "../tag/tagRepresentation";
 import { tagStandards } from "../tag/tagStandards";
 
-function toCanonicalProblem(problem: { problemId: string; rawText: string; cleanedText?: string; mediaUrls?: string[]; correctAnswer?: Problem["correctAnswer"]; rubric?: Problem["rubric"]; sourceType: Problem["sourceType"]; sourceDocumentId?: string; sourcePageNumber?: number; }, tags: Problem["tags"]): Problem {
+function toCanonicalProblem(
+  documentId: string,
+  problem: {
+    problemId: string;
+    canonicalProblemId?: string;
+    rootProblemId?: string;
+    parentProblemId?: string;
+    problemNumber?: number;
+    partLabel?: string;
+    teacherLabel?: string;
+    stemText?: string;
+    partText?: string;
+    rawText: string;
+    cleanedText?: string;
+    mediaUrls?: string[];
+    correctAnswer?: Problem["correctAnswer"];
+    rubric?: Problem["rubric"];
+    sourceType: Problem["sourceType"];
+    sourceDocumentId?: string;
+    sourcePageNumber?: number;
+  },
+  tags: Problem["tags"]
+): Problem {
   return {
     problemId: problem.problemId,
+    canonicalProblemId: `${documentId}::${problem.problemId}`,
+    rootProblemId: problem.rootProblemId,
+    parentProblemId: problem.parentProblemId,
+    problemNumber: problem.problemNumber,
+    partLabel: problem.partLabel,
+    teacherLabel: problem.teacherLabel,
+    stemText: problem.stemText,
+    partText: problem.partText,
     rawText: problem.rawText,
     cleanedText: problem.cleanedText,
     mediaUrls: problem.mediaUrls,
@@ -47,7 +77,7 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
     misconceptions,
     standards,
   });
-  const taggedProblems = problems.map((problem, index) => toCanonicalProblem(problem, problemVectors[index]));
+  const taggedProblems = problems.map((problem, index) => toCanonicalProblem(input.documentId, problem, problemVectors[index]));
   const conceptGraph = buildConceptGraph(problemVectors);
   const documentInsights = buildDocumentInsights({
     documentId: input.documentId,

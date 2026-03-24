@@ -97,7 +97,13 @@ function getDocumentTitle(azureExtract: AzureExtractResult) {
 }
 
 function getProblemTitle(problem: Problem) {
-  const sourceText = problem.cleanedText ?? problem.rawText;
+  const sourceText = problem.partText ?? problem.cleanedText ?? problem.rawText;
   const firstLine = sourceText.split(/\n+/)[0] ?? sourceText;
-  return truncateText(normalizeWhitespace(firstLine), 80);
+  const prefix = problem.partLabel
+    ? `Problem ${problem.problemNumber ?? "?"} ${problem.teacherLabel ?? ""}`.trim()
+    : problem.teacherLabel
+      ? `Problem ${problem.problemNumber ?? "?"}`
+      : undefined;
+  const summary = truncateText(normalizeWhitespace(firstLine), 80);
+  return prefix ? `${prefix}: ${summary}` : summary;
 }

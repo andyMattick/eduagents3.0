@@ -191,6 +191,36 @@
   margin-top: 1rem;
 }
 
+.v4-viewer .v4-problem-group {
+  display: grid;
+  gap: 1rem;
+  border-radius: 22px;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  background: rgba(255, 255, 255, 0.5);
+  padding: 1rem;
+}
+
+.v4-viewer .v4-problem-group-header,
+.v4-viewer .v4-problem-group-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.v4-viewer .v4-problem-group-items {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.v4-viewer .v4-problem-stem {
+  margin-top: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: rgba(156, 77, 43, 0.08);
+}
+
 .v4-viewer .v4-debug-block {
   overflow: auto;
   margin: 1rem 0 0;

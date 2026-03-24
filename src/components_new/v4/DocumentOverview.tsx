@@ -7,6 +7,8 @@ function formatMetric(value: number | undefined) {
 export function DocumentOverview(props: { input: TaggingPipelineInput; output: TaggingPipelineOutput }) {
   const { input, output } = props;
   const insights = output.documentInsights;
+  const uniqueProblems = new Set(output.problems.map((problem) => problem.rootProblemId ?? problem.problemId)).size;
+  const partCount = output.problems.filter((problem) => Boolean(problem.partLabel)).length;
   const topConcepts = Object.entries(insights.documentConcepts ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 6);
   const topStandards = Object.entries(insights.documentStandards ?? {}).sort((left, right) => right[1] - left[1]).slice(0, 4);
 
@@ -26,7 +28,11 @@ export function DocumentOverview(props: { input: TaggingPipelineInput; output: T
         </div>
         <div className="v4-stat-card">
           <span className="v4-stat-label">Problems</span>
-          <strong>{output.problems.length}</strong>
+          <strong>{uniqueProblems}</strong>
+        </div>
+        <div className="v4-stat-card">
+          <span className="v4-stat-label">Parts</span>
+          <strong>{partCount || output.problems.length}</strong>
         </div>
         <div className="v4-stat-card">
           <span className="v4-stat-label">Subject</span>
