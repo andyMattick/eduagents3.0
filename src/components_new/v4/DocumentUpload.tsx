@@ -55,7 +55,7 @@ export function DocumentUpload() {
       <div className="v4-shell">
         <section className="v4-panel v4-hero">
           <div>
-            <p className="v4-kicker">PRISM v4 Document Ingestion</p>
+            
             <h1>Upload a source document to start the v4 ingestion and semantic viewer flow.</h1>
             <p className="v4-subtitle">
               This is the active home screen. It ingests a PDF or DOCX, produces the schema-exact tagging input,

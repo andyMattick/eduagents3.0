@@ -57,12 +57,9 @@ function TeacherAppContent() {
       <header className="app-header v4-home-header">
         <div className="app-header-content v4-home-header-content">
           <div className="v4-home-brand">
-            <p className="v4-home-kicker">PRISM v4 Home</p>
+            <p className="v4-home-kicker">Agents of Education: Home</p>
             <h1>Document Ingestion</h1>
-            <p className="v4-home-subtitle">
-              v3 UI is hidden. The active product surface is now the v4 ingestion, semantic extraction,
-              narrator, storage, and viewer flow.
-            </p>
+
           </div>
 
           <div className="v4-home-actions">
