@@ -859,3 +859,14 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+/* === V4 VIEWER FIX === */
+.v4-viewer,
+.v4-viewer * {
+  color: #111 !important;
+  fill: #111 !important;
+}
+
+.v4-viewer {
+  background: #fff !important;
+}
