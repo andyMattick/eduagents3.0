@@ -984,3 +984,58 @@
   background-color: #000000 !important; /* pure black background */
   border-color: #444 !important;
 }
+
+/* v4-feedback-grid: dark-mode safe, high contrast, clean spacing */
+.v4-feedback-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--v4-surface, #1e1e1e);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.v4-feedback-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--v4-text-primary, #f5f5f5);
+  gap: 0.4rem;
+}
+
+/* Select + Range Inputs */
+.v4-feedback-grid select,
+.v4-feedback-grid input[type="range"] {
+  background: var(--v4-input-bg, #2a2a2a);
+  color: var(--v4-text-primary, #f5f5f5);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+/* Range track + thumb for dark mode */
+.v4-feedback-grid input[type="range"]::-webkit-slider-runnable-track {
+  background: rgba(255,255,255,0.15);
+  height: 4px;
+  border-radius: 4px;
+}
+
+.v4-feedback-grid input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--v4-accent, #4da3ff);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-top: -5px;
+  cursor: pointer;
+}
+
+.v4-feedback-grid select:focus,
+.v4-feedback-grid input[type="range"]:focus {
+  outline: 2px solid var(--v4-accent, #4da3ff);
+  outline-offset: 2px;
+}
