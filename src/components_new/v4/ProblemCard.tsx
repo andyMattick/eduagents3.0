@@ -114,6 +114,11 @@ export function ProblemCard(props: { problem: Problem; vector: ProblemTagVector;
             teacherValue: update.teacherValue,
             rationale: rationale || undefined,
             evidence: evidenceText ? { text: evidenceText } : undefined,
+            context: {
+              subject: vector.subject,
+              templateIds: vector.reasoning?.templateIds ?? [],
+              teacherTemplateIds: vector.reasoning?.teacherTemplateIds ?? [],
+            },
           }),
         });
 

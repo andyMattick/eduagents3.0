@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runSemanticPipeline } from "../pipeline/runSemanticPipeline";
 import { deleteProblemOverride, getProblemOverride, resetTeacherFeedbackState, saveTeacherFeedback, upsertTeacherDerivedTemplateRecord } from "../../teacherFeedback";
+import { loadTemplateLearning, recordTeacherAction } from "../learning";
 import type { TaggingPipelineInput } from "../../schema/semantic";
 
 function buildInput(documentId = "doc-1", content = "1. Solve the equation.") : TaggingPipelineInput {
@@ -153,6 +154,58 @@ describe("teacher feedback integration", () => {
 		expect(problem.tags?.reasoning).not.toHaveProperty("expectedSteps");
 		expect(problem.tags?.reasoning).not.toHaveProperty("stepSource");
 		expect(problem).not.toHaveProperty("reasoning");
+	});
+
+	it("records learning context from teacher feedback without changing public output shape", async () => {
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: "doc-1",
+			canonicalProblemId: "doc-1::p1",
+			target: "difficulty",
+			aiValue: 0.2,
+			teacherValue: 0.7,
+			context: {
+				subject: "general",
+				templateIds: ["definition-basic"],
+			},
+		});
+
+		const learning = await loadTemplateLearning();
+		const output = await runSemanticPipeline(buildInput());
+
+		expect(learning.find((record) => record.templateId === "definition-basic")?.teacherOverrides).toBeGreaterThan(0);
+		expect(output.problems[0]?.tags?.reasoning).not.toHaveProperty("expectedSteps");
+		expect(output.problems[0]).not.toHaveProperty("reasoning");
+	});
+
+	it("applies learned expected-step adjustments only when learning data is present", async () => {
+		const baseline = await runSemanticPipeline(buildInput("doc-steps", "1. Interpret the graph and explain the trend."));
+
+		await recordTeacherAction({
+			eventId: "learn-steps-1",
+			teacherId: "teacher-1",
+			problemId: "doc-steps::p1",
+			timestamp: Date.now(),
+			actionType: "expected_steps_correction",
+			oldValue: 0.2,
+			newValue: { expectedSteps: 5, stepType: "mixed" },
+			context: { subject: "general", templateIds: ["interpretation"] },
+		});
+		await recordTeacherAction({
+			eventId: "learn-steps-2",
+			teacherId: "teacher-1",
+			problemId: "doc-steps::p2",
+			timestamp: Date.now() + 1,
+			actionType: "expected_steps_correction",
+			oldValue: 0.2,
+			newValue: { expectedSteps: 5, stepType: "mixed" },
+			context: { subject: "general", templateIds: ["interpretation"] },
+		});
+
+		const learned = await runSemanticPipeline(buildInput("doc-steps", "1. Interpret the graph and explain the trend."));
+
+		expect(learned.problems[0]?.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(baseline.problems[0]?.tags?.cognitive.multiStep ?? 0);
+		expect(learned.problems[0]?.tags?.reasoning).not.toHaveProperty("expectedSteps");
 	});
 
 	it("removes teacher adjustments after reset", async () => {

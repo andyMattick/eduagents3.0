@@ -36,6 +36,13 @@ interface SubpartMatch {
 	body: string;
 }
 
+interface InlineSubpartParseResult {
+	leadingText?: string;
+	parts: ProblemPartDraft[];
+}
+
+const INLINE_SUBPART_BOUNDARY = /\s+(?=(?:\d+[a-z][.)]|\([a-z]\)|[a-z][.)]|\d+[a-z])\s+)/i;
+
 function looksLikeProblemBoundary(text: string) {
 	return /^(?:\d+[.)\]]|q\s*\d+[.)\]]|question\s*\d+[:.]|[A-Z][.)])\s+/i.test(text);
 }
@@ -78,6 +85,46 @@ function alphabetIndex(partLabel: string) {
 	}
 
 	return normalized.charCodeAt(0) - 96;
+}
+
+function toProblemPartDraft(subpart: SubpartMatch, pageNumber: number): ProblemPartDraft {
+	return {
+		partLabel: subpart.partLabel,
+		partIndex: alphabetIndex(subpart.partLabel),
+		teacherLabel: `${subpart.partLabel})`,
+		pageNumber,
+		textLines: subpart.body ? [subpart.body] : [],
+	};
+}
+
+function splitInlineSubparts(text: string, pageNumber: number): InlineSubpartParseResult | null {
+	const segments = text
+		.split(INLINE_SUBPART_BOUNDARY)
+		.map((segment) => normalizeWhitespace(segment))
+		.filter((segment) => segment.length > 0);
+
+	if (segments.length <= 1) {
+		return null;
+	}
+
+	const result: InlineSubpartParseResult = { parts: [] };
+
+	for (const segment of segments) {
+		const subpart = matchSubpart(segment);
+		if (subpart) {
+			result.parts.push(toProblemPartDraft(subpart, pageNumber));
+			continue;
+		}
+
+		if (result.parts.length === 0) {
+			result.leadingText = result.leadingText ? `${result.leadingText}\n${segment}` : segment;
+			continue;
+		}
+
+		result.parts[result.parts.length - 1]!.textLines.push(segment);
+	}
+
+	return result.parts.length > 0 ? result : null;
 }
 
 function looksLikeHeader(text: string, role?: string) {
@@ -239,15 +286,17 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 		if (topLevel) {
 			foundTopLevelProblem = true;
 			currentPart = null;
+			const inlineSubparts = splitInlineSubparts(topLevel.body, block.pageNumber);
 			currentGroup = {
 				problemNumber: topLevel.problemNumber,
 				rootProblemId: `p${topLevel.problemNumber}`,
 				teacherLabel: `${topLevel.problemNumber}.`,
 				pageNumber: block.pageNumber,
-				stemLines: topLevel.body ? [topLevel.body] : [],
-				parts: [],
+				stemLines: inlineSubparts?.leadingText ? [inlineSubparts.leadingText] : topLevel.body ? [topLevel.body] : [],
+				parts: inlineSubparts?.parts ?? [],
 			};
 			groups.push(currentGroup);
+			currentPart = currentGroup.parts[currentGroup.parts.length - 1] ?? null;
 			continue;
 		}
 
@@ -255,6 +304,21 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 			if (looksLikeHeader(block.text, block.role)) {
 				continue;
 			}
+			continue;
+		}
+
+		const inlineSubparts = splitInlineSubparts(block.text, block.pageNumber);
+		if (inlineSubparts) {
+			if (inlineSubparts.leadingText) {
+				if (currentPart) {
+					currentPart.textLines.push(inlineSubparts.leadingText);
+				} else {
+					currentGroup.stemLines.push(inlineSubparts.leadingText);
+				}
+			}
+
+			currentGroup.parts.push(...inlineSubparts.parts);
+			currentPart = currentGroup.parts[currentGroup.parts.length - 1] ?? currentPart;
 			continue;
 		}
 
@@ -273,13 +337,7 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 				groups.push(currentGroup);
 			}
 
-			currentPart = {
-				partLabel: subpart.partLabel,
-				partIndex: alphabetIndex(subpart.partLabel),
-				teacherLabel: `${subpart.partLabel})`,
-				pageNumber: block.pageNumber,
-				textLines: subpart.body ? [subpart.body] : [],
-			};
+			currentPart = toProblemPartDraft(subpart, block.pageNumber);
 			currentGroup.parts.push(currentPart);
 			continue;
 		}

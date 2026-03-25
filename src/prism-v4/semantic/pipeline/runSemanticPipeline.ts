@@ -2,9 +2,10 @@ import type { TaggingPipelineInput, TaggingPipelineOutput } from "../../schema/s
 import type { Problem } from "../../schema/domain";
 import type { ValidatedOverrides } from "../../teacherFeedback";
 import { getProblemOverride, listTeacherDerivedTemplates } from "../../teacherFeedback";
+import { applyLearningAdjustments, loadTemplateLearning } from "../learning/learningService";
 import { buildConceptGraph } from "../document/buildConceptGraph";
 import { buildDocumentInsights } from "../document/buildDocumentInsights";
-import { applyTemplates, buildInternalProblemReasoning, fuseCognition, fuseOverrides, getPrioritizedTemplateMatches, getTemplateMatches, inferStructuralCognition, pickTemplatesForSubject, type InternalProblemReasoning } from "../cognitive";
+import { applyTemplates, buildInternalProblemReasoning, fuseCognition, fuseOverrides, getPrioritizedTemplateMatches, getTemplateMatches, inferStructuralCognition, pickTemplatesForSubject, type InternalProblemReasoning, type TemplateCognitionInput } from "../cognitive";
 import { extractProblems } from "../extract/extractProblem";
 import { extractProblemMetadata } from "../extract/extractProblemMetadata";
 import { extractTables } from "../extract/extractTables";
@@ -77,6 +78,7 @@ type InternalProblem = Problem & {
 };
 
 export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<TaggingPipelineOutput> {
+  const learningRecords = await loadTemplateLearning();
   const extractedProblems = detectMultipart(extractProblems(input.azureExtract));
   const tablesByProblemId = extractTables(input.azureExtract, extractedProblems);
   const problems = extractProblemMetadata(extractedProblems, tablesByProblemId);
@@ -109,8 +111,14 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
     const structural = inferStructuralCognition(seedProblem, {
       isMultipartParent: multipartParentIds.has(problem.problemId),
     });
-    const teacherTemplates = await listTeacherDerivedTemplates(azureTags.subject, azureTags.domain);
-    const subjectTemplates = pickTemplatesForSubject(azureTags.subject);
+    const teacherTemplates = applyLearningAdjustments(
+      await listTeacherDerivedTemplates(azureTags.subject, azureTags.domain),
+      learningRecords,
+    );
+    const subjectTemplates = applyLearningAdjustments(
+      pickTemplatesForSubject(azureTags.subject),
+      learningRecords,
+    );
     const subjectTemplateMatches = getTemplateMatches(seedProblem, subjectTemplates);
     const teacherTemplateMatches = getTemplateMatches(seedProblem, teacherTemplates);
     const prioritizedMatches = getPrioritizedTemplateMatches(seedProblem, subjectTemplates, teacherTemplates);
@@ -120,14 +128,14 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
     const domainTemplate = applyTemplates(seedProblem, subjectTemplates);
     const teacherTemplate = applyTemplates(seedProblem, teacherTemplates);
     const selectedStepMatch = prioritizedMatches.find((result) => result.template.stepHints);
-    const stepReasoning = selectedStepMatch?.template.stepHints
+    const stepReasoning: TemplateCognitionInput["reasoning"] = selectedStepMatch?.template.stepHints
       ? {
           templateExpectedSteps: selectedStepMatch.template.stepHints.expectedSteps,
           templateConfidence: selectedStepMatch.confidence,
           templateIsBestGuess: selectedStepMatch.isBestGuess,
           stepType: selectedStepMatch.template.stepHints.stepType,
           templateId: selectedStepMatch.template.id,
-          templateSource: (selectedStepMatch.source === "teacher" ? "teacher" : "subject") as const,
+        templateSource: selectedStepMatch.source === "teacher" ? "teacher" : "subject",
         }
       : undefined;
     const useTeacherTemplateAsPrimary = primaryMatch?.source === "teacher";

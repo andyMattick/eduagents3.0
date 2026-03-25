@@ -1,5 +1,6 @@
 import type { CognitiveProfile } from "../schema/semantic";
 import type { TemplatePatternConfig, TemplateStepHints } from "../semantic/cognitive/templates/loadTemplates";
+import type { TeacherActionContext } from "../semantic/learning/TeacherActionEvent";
 
 export interface EvidenceHighlight {
 	text: string;
@@ -92,4 +93,5 @@ export interface TeacherFeedbackPayload {
 	teacherValue: unknown;
 	rationale?: string;
 	evidence?: EvidenceHighlight;
+	context?: TeacherActionContext;
 }

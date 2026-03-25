@@ -105,4 +105,49 @@ describe("extractProblems", () => {
     expect(problems[1]?.partText).toBe("State the trend.");
     expect(problems[2]?.partText).toBe("Explain what the data suggests.");
   });
+
+  it("segments inline numeric-prefixed subparts embedded in a top-level block", () => {
+    const problems = extractProblems({
+      fileName: "quiz.pdf",
+      content: "2. A researcher is studying a new treatment. 2a. Describe the design. 2b. Identify the variables. 2c. Explain random assignment. 2d. Predict the outcome.",
+      pages: [{ pageNumber: 1, text: "quiz" }],
+      paragraphs: [
+        { text: "2. A researcher is studying a new treatment. 2a. Describe the design. 2b. Identify the variables. 2c. Explain random assignment. 2d. Predict the outcome.", pageNumber: 1 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p2", "p2a", "p2b", "p2c", "p2d"]);
+    expect(problems.map((problem) => problem.teacherLabel)).toEqual(["2.", "a)", "b)", "c)", "d)"]);
+    expect(problems[0]?.stemText).toBe("A researcher is studying a new treatment.");
+    expect(problems[1]?.partText).toBe("Describe the design.");
+    expect(problems[2]?.partText).toBe("Identify the variables.");
+    expect(problems[3]?.partText).toBe("Explain random assignment.");
+    expect(problems[4]?.partText).toBe("Predict the outcome.");
+  });
+
+  it("segments inline numeric-prefixed subparts in a continuation block after the parent", () => {
+    const problems = extractProblems({
+      fileName: "quiz.pdf",
+      content: [
+        "9. Put the bill-ordering steps in sequence.",
+        "9a. Committee review 9b. Presidential signature 9c. Floor debate 9d. Introduction in Congress",
+      ].join("\n"),
+      pages: [{ pageNumber: 1, text: "quiz" }],
+      paragraphs: [
+        { text: "9. Put the bill-ordering steps in sequence.", pageNumber: 1 },
+        { text: "9a. Committee review 9b. Presidential signature 9c. Floor debate 9d. Introduction in Congress", pageNumber: 1 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p9", "p9a", "p9b", "p9c", "p9d"]);
+    expect(problems.map((problem) => problem.teacherLabel)).toEqual(["9.", "a)", "b)", "c)", "d)"]);
+    expect(problems[1]?.partText).toBe("Committee review");
+    expect(problems[2]?.partText).toBe("Presidential signature");
+    expect(problems[3]?.partText).toBe("Floor debate");
+    expect(problems[4]?.partText).toBe("Introduction in Congress");
+  });
 });

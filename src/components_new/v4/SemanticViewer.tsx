@@ -8,8 +8,10 @@ import { DebugPanel } from "./DebugPanel";
 import { DocumentOverview } from "./DocumentOverview";
 import { ProblemList } from "./ProblemList";
 
-export function SemanticViewer(props: { input: TaggingPipelineInput }) {
-  const { input } = props;
+type ViewerMode = "inspect" | "semantic" | "correct";
+
+export function SemanticViewer(props: { input: TaggingPipelineInput; mode: ViewerMode }) {
+  const { input, mode } = props;
   const [output, setOutput] = useState<TaggingPipelineOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,7 +83,7 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
       <DocumentOverview input={input} output={output} />
       <ProblemList problems={output.problems} problemVectors={output.problemVectors} onRerun={loadPipelineOutput} />
       <ConceptGraph graph={output.documentInsights.conceptGraph} />
-      <DebugPanel input={input} output={output} />
+      {mode !== "correct" && <DebugPanel input={input} output={output} />}
     </div>
   );
 }

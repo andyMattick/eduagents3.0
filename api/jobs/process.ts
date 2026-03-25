@@ -96,9 +96,17 @@ async function executeJob(job: { type: string; input: any }): Promise<any> {
       return executeAzureExtract(job.input);
     case "llm-generate":
       return executeLlmGenerate(job.input);
+    case "template-learning-aggregate":
+      return executeTemplateLearningAggregate();
     default:
       throw new Error(`Unknown job type: ${job.type}`);
   }
+}
+
+async function executeTemplateLearningAggregate() {
+  const { aggregateTemplateLearning } = await import("../../src/prism-v4/semantic/learning/learningService");
+	const records = await aggregateTemplateLearning();
+	return { records };
 }
 
 async function executeAzureExtract(input: {

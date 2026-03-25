@@ -2,6 +2,7 @@ import { supabaseRest } from "../../../lib/supabase";
 import type { CognitiveTemplate } from "../semantic/cognitive/templates";
 import { loadTeacherTemplates } from "../semantic/cognitive/templates/loadTeacherTemplates";
 import { deriveTemplateFromFeedback } from "../semantic/cognitive/templateLearning";
+import { recordTeacherAction, resetLearningState, type TeacherActionEvent, type TeacherActionType } from "../semantic/learning";
 import type {
 	FeedbackTarget,
 	ProblemOverrideRecord,
@@ -74,6 +75,40 @@ function createFeedback(payload: TeacherFeedbackPayload): TeacherFeedback {
 		rationale: payload.rationale,
 		evidence: payload.evidence,
 		createdAt: new Date().toISOString(),
+	};
+}
+
+function feedbackTargetToActionType(target: FeedbackTarget): TeacherActionType {
+	switch (target) {
+		case "multiStep":
+			return "expected_steps_correction";
+		case "difficulty":
+			return "difficulty_correction";
+		case "representationComplexity":
+			return "representation_correction";
+		case "segmentation":
+		case "problemGrouping":
+			return "multipart_restructure";
+		default:
+			return "template_override";
+	}
+}
+
+function buildTeacherActionEvent(payload: TeacherFeedbackPayload, feedback: TeacherFeedback): TeacherActionEvent {
+	return {
+		eventId: `action-${feedback.feedbackId}`,
+		teacherId: feedback.teacherId,
+		problemId: feedback.canonicalProblemId,
+		timestamp: Date.parse(feedback.createdAt),
+		actionType: feedbackTargetToActionType(payload.target),
+		oldValue: payload.aiValue,
+		newValue: payload.teacherValue,
+		context: {
+			subject: payload.context?.subject ?? "unknown",
+			gradeLevel: payload.context?.gradeLevel,
+			templateIds: payload.context?.templateIds ?? [],
+			teacherTemplateIds: payload.context?.teacherTemplateIds ?? [],
+		},
 	};
 }
 
@@ -285,6 +320,7 @@ export async function saveTeacherFeedback(payload: TeacherFeedbackPayload) {
 	}
 
 	const learnedTemplate = await learnTemplateFromFeedback(feedback);
+	await recordTeacherAction(buildTeacherActionEvent(payload, feedback));
 	return {
 		feedback,
 		overrides: mergedOverride,
@@ -525,4 +561,5 @@ export function resetTeacherFeedbackState() {
 	feedbackMemory.length = 0;
 	overrideMemory.clear();
 	templateMemory.clear();
+	resetLearningState();
 }

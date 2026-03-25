@@ -134,6 +134,10 @@ function getArchetypeBonus(template: CognitiveTemplate, structuralFlags: ReturnT
 }
 
 function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateMatchResult | null {
+	if (template.learningAdjustment?.frozen) {
+		return null;
+	}
+
 	if (template.match) {
 		if (!template.match(problem)) {
 			return null;
@@ -141,7 +145,7 @@ function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateM
 
 		return {
 			template,
-			confidence: 1,
+			confidence: clamp01(1 + (template.learningAdjustment?.confidenceDelta ?? 0)),
 			passesThreshold: true,
 			isBestGuess: false,
 		};
@@ -162,7 +166,7 @@ function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateM
 		...(typeof textScore === "number" ? [{ value: textScore, weight: 0.55 }] : []),
 		...(typeof structuralScore === "number" ? [{ value: structuralScore, weight: 0.3 }] : []),
 		...(typeof regexScore === "number" ? [{ value: regexScore, weight: 0.15 }] : []),
-	]) + getArchetypeBonus(template, structuralFlags));
+	]) + getArchetypeBonus(template, structuralFlags) + (template.learningAdjustment?.confidenceDelta ?? 0));
 
 	if (confidence <= 0) {
 		return null;

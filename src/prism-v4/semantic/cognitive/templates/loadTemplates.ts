@@ -50,6 +50,12 @@ export interface CognitiveTemplate {
 	multiStepBoost?: number;
 	misconceptionRiskBoost?: number;
 	minConfidence?: number;
+	learningAdjustment?: {
+		confidenceDelta?: number;
+		frozen?: boolean;
+		learnedExpectedSteps?: number;
+		learnedStepType?: TemplateStepHints["stepType"];
+	};
 	match?: (problem: Problem) => boolean;
 }
 
