@@ -9,6 +9,7 @@ import { applyTemplates, buildInternalProblemReasoning, fuseCognition, fuseOverr
 import { extractProblems } from "../extract/extractProblem";
 import { extractProblemMetadata } from "../extract/extractProblemMetadata";
 import { extractTables } from "../extract/extractTables";
+import { applyPostSemanticProcessing } from "../postProcessing";
 import { detectMultipart } from "../structure/detectMultipart";
 import { buildProblemTagVector } from "../tag/buildProblemTagVector";
 import { tagBloom } from "../tag/tagBloom";
@@ -201,7 +202,9 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
     };
   }));
   const enrichedProblemVectors = enrichedProblems.map((entry) => entry.vector);
-  const taggedProblems = enrichedProblems.map((entry) => toCanonicalProblem(input.documentId, entry.problem, entry.vector));
+  const taggedProblems = enrichedProblems.map((entry) => applyPostSemanticProcessing(
+    toCanonicalProblem(input.documentId, entry.problem, entry.vector),
+  ));
   const conceptGraph = buildConceptGraph(enrichedProblemVectors);
   const documentInsights = buildDocumentInsights({
     documentId: input.documentId,

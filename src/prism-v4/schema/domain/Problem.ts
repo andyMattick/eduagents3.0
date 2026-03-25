@@ -40,4 +40,27 @@
 	
 	  // Link to semantic fingerprint
 	  tags?: ProblemTagVector;
+
+	  narrative?: {
+		whatProblemAsks?: string;
+		reasoningPath?: string;
+		studentStruggles?: string;
+		complexity?: string;
+		skillsTouched?: string;
+		connections?: string;
+		scaffolding?: string;
+		enrichment?: string;
+		standards?: string;
+		whyThisInterpretation?: string;
+	};
+
+  // ⭐ NEW: Differentiation hooks
+		scaffolds?: string[];
+		enrichments?: string[];
+
+  // ⭐ NEW: Anti-cheating analysis
+	antiCheating?: {
+		vulnerabilitySummary?: string;
+		suggestedChanges?: string[];
+	};
 	}

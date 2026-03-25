@@ -21,13 +21,16 @@ const EXACT_DOCUMENT_KEYS = [
   "title",
 ];
 const EXACT_PROBLEM_KEYS = [
+  "antiCheating",
   "canonicalProblemId",
   "cleanedText",
   "correctAnswer",
   "createdAt",
   "displayOrder",
+  "enrichments",
   "localProblemId",
   "mediaUrls",
+  "narrative",
   "parentProblemId",
   "partIndex",
   "partLabel",
@@ -38,6 +41,7 @@ const EXACT_PROBLEM_KEYS = [
   "rawText",
   "rootProblemId",
   "rubric",
+  "scaffolds",
   "sourceDocumentId",
   "sourcePageNumber",
   "sourceType",
@@ -91,6 +95,12 @@ describe("Semantic pipeline", () => {
       expect(Object.keys(problem).sort()).toEqual(EXACT_PROBLEM_KEYS);
       expect(problem.sourceType).toBe("document");
       expect(problem.tags).toBeDefined();
+      expect(problem.narrative).toBeDefined();
+      expect(problem.narrative?.whatProblemAsks).toBeTruthy();
+      expect(problem.narrative?.reasoningPath).toBeTruthy();
+      expect(problem.scaffolds).toBeDefined();
+      expect(problem.enrichments).toBeDefined();
+      expect(problem.antiCheating).toBeDefined();
       expect(problem).not.toHaveProperty("oldField");
       expect(problem).not.toHaveProperty("legacyBloom");
       expect(problem.canonicalProblemId).toBe(`doc-1::${problem.problemId}`);
@@ -162,6 +172,32 @@ describe("Semantic pipeline", () => {
     const multipartChild = output.problems.find((problem) => problem.problemId === "p2a");
 
     expect(singlePart?.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(multipartChild?.tags?.cognitive.multiStep ?? 0);
+  });
+
+  it("adds post-semantic scaffolds, enrichment, and anti-cheating analysis", async () => {
+    const output = await runSemanticPipeline({
+      documentId: "doc-graph",
+      fileName: "graph.pdf",
+      azureExtract: {
+        fileName: "graph.pdf",
+        content: "1. Look at the graph and answer the question.",
+        pages: [
+          {
+            pageNumber: 1,
+            text: "1. Look at the graph and answer the question.",
+          },
+        ],
+        paragraphs: [
+          { text: "1. Look at the graph and answer the question.", pageNumber: 1 },
+        ],
+        tables: [],
+      },
+    });
+
+    const [problem] = output.problems;
+
+    expect(problem?.scaffolds).toContain("Highlight key points on the graph before solving.");
+    expect(problem?.antiCheating?.vulnerabilitySummary).toContain("Students may guess based on graph shape without reasoning.");
   });
 
 });
