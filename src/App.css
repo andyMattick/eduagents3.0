@@ -870,3 +870,11 @@
 .v4-viewer {
   background: #fff !important;
 }
+
+/* Force readable JSON inside the v4 debug block */
+.v4-debug-block,
+.v4-debug-block * {
+  color: #ffffff !important;     /* bright white text */
+  background-color: #000000 !important; /* pure black background */
+  border-color: #444 !important;
+}
