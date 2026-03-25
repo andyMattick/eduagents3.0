@@ -1,44 +1,21 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider } from "./components_new/Auth/useAuth";
 import { useAuth } from "./components_new/Auth/useAuth";
-import { supabase } from './supabase/client';
-import type { StepId } from './components_new/Pipeline/ConversationalAssessment';
 import { SignIn } from './components_new/Auth/SignIn';
 import { SignUp } from './components_new/Auth/SignUp';
 import { AdminDashboard } from './components_new/Admin/AdminDashboard';
-import { MyAssessmentsPage } from './components_new/TeacherSystem/MyAssessmentsPage';
-import { MyAgentsPage } from './components_new/TeacherSystem/MyAgentsPage';
-import { TeacherProfilePage } from './components_new/TeacherSystem/TeacherProfilePage';
 import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
-import WhatWeInferPage from './components_new/Inference/WhatWeInferPage';
-import { AssessmentDetailPage } from './components_new/TeacherSystem/AssessmentDetailPage';
-import { loadTeacherProfile } from './services_new/teacherProfileService';
-import { TemplatesPage, TemplateSummaryPage, TemplateWizardPage } from './components_new/templates';
-import type { TemplateOption } from './components_new/templates';
 import { DocumentUpload } from './components_new/v4/DocumentUpload';
 import './App.css';
-import { ConversationalAssessmentWrapper } from './components_new/Pipeline/ConversationalAssessmentWrapper';
-import { AnalyzerV2 } from "./pipeline/analyzerV2/analyzerV2";
-(window as any).AnalyzerV2 = AnalyzerV2;
-
-import { saveAnalyzerOutput } from "./pipeline/persistence/saveAnalyzerOutput";
-(window as any).saveAnalyzerOutput = saveAnalyzerOutput;
-
-import { loadAnalyzerOutput } from "./pipeline/persistence/loadAnalyzerOutput";
-// @ts-ignore
-window.loadAnalyzerOutput = loadAnalyzerOutput;
-
-
-
 
 console.log("ENV CHECK", import.meta.env);
 
-type AppTab = 'pipeline' | 'notepad' | 'what-we-infer' | 'my-assessments' | 'my-agents' | 'assessment-detail' | 'my-profile';
-
 type AuthPage = 'signin' | 'signup';
+
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic']);
 
 export interface AssignmentContext {
   assignmentId: string;
@@ -55,20 +32,8 @@ export interface AssignmentContext {
    Teacher App (with theme toggle)
 --------------------------------*/
 function TeacherAppContent() {
-  const [activeTab, setActiveTab] = useState<AppTab>('my-assessments');
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [pathname, setPathname] = useState<string>(window.location.pathname);
-  const [builderTemplateToApply, setBuilderTemplateToApply] = useState<TemplateOption | null>(null);
   const { logout, user } = useAuth();
-  const [pipelineDefaults, setPipelineDefaults] = useState<Partial<Record<StepId, string>>>({});  // Tracks whether this user has ever saved a teacher profile.
-  // null = still loading, false = no profile yet (show first-run banner), true = exists.
-  const [hasStoredProfile, setHasStoredProfile] = useState<boolean | null>(null);
-  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false);
-  // Check whether a stored profile row exists for this user (once on mount).
-  useEffect(() => {
-    if (!user?.id) return;
-    loadTeacherProfile(user.id).then((p) => setHasStoredProfile(p !== null)).catch(() => setHasStoredProfile(false));
-  }, [user?.id]);
 
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname);
@@ -76,266 +41,42 @@ function TeacherAppContent() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const navigate = (path: string) => {
-    if (window.location.pathname !== path) {
-      window.history.pushState({}, '', path);
-    }
-    setPathname(path);
-  };
-
-  const summaryPathMatch = pathname.match(/^\/templates\/([^/]+)\/summary$/);
-  const summaryTemplateId = summaryPathMatch?.[1] ?? null;
-
-  const onUseTemplateInBuilder = (template: TemplateOption) => {
-    setBuilderTemplateToApply(template);
-    setActiveTab('pipeline');
-    navigate('/');
-  };
-
-  /** Derive most-used course + grade from the teacher's last 20 assessments */
   useEffect(() => {
-    if (!user?.id) return;
-    supabase
-      .from('assessment_templates')
-      .select('domain, uar_json')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-      .then(({ data }) => {
-        if (!data?.length) return;
-        // Most common domain → course default
-        const domainCounts: Record<string, number> = {};
-        for (const t of data) {
-          const d = (t.domain as string | null)?.trim();
-          if (d) domainCounts[d] = (domainCounts[d] ?? 0) + 1;
-        }
-        const topCourse = Object.entries(domainCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-        // Most common grade level
-        const gradeCounts: Record<string, number> = {};
-        for (const t of data) {
-          const uar = t.uar_json as Record<string, any> | null;
-          const g: string | undefined =
-            Array.isArray(uar?.gradeLevels) ? uar!.gradeLevels[0] : uar?.grade;
-          if (g) gradeCounts[String(g)] = (gradeCounts[String(g)] ?? 0) + 1;
-        }
-        const topGrade = Object.entries(gradeCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-        const defaults: Partial<Record<StepId, string>> = {};
-        if (topCourse) defaults.course = topCourse;
-        if (topGrade) defaults.gradeLevels = topGrade;
-        if (Object.keys(defaults).length) setPipelineDefaults(defaults);
-      });
-  }, [user?.id]);
+    if (ACTIVE_V4_PATHS.has(pathname)) {
+      return;
+    }
+
+    window.history.replaceState({}, '', '/');
+    setPathname('/');
+  }, [pathname]);
 
   const handleLogout = async () => await logout();
 
   return (
     <div className="app-container">
-      {/* Header */}
-      <div className="app-header">
-        <div className="app-header-content">
-          <div className="app-tabs">
-            <button
-              className={`app-tab ${activeTab === 'my-assessments' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('my-assessments');
-                navigate('/');
-              }}
-            >
-              <span className="app-tab-icon">📋</span>
-              My Assessments
-            </button>
+      <header className="app-header v4-home-header">
+        <div className="app-header-content v4-home-header-content">
+          <div className="v4-home-brand">
+            <p className="v4-home-kicker">PRISM v4 Home</p>
+            <h1>Document Ingestion</h1>
+            <p className="v4-home-subtitle">
+              v3 UI is hidden. The active product surface is now the v4 ingestion, semantic extraction,
+              narrator, storage, and viewer flow.
+            </p>
+          </div>
 
-            <button
-              className={`app-tab ${activeTab === 'pipeline' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('pipeline');
-                navigate('/');
-              }}
-            >
-              <span className="app-tab-icon">📝</span>
-              Pipeline
-            </button>
-
-            <button
-              className={`app-tab ${pathname.startsWith('/templates') ? 'active' : ''}`}
-              onClick={() => navigate('/templates')}
-            >
-              <span className="app-tab-icon">🧩</span>
-              Templates
-            </button>
-
-            <button
-              className={`app-tab ${pathname === '/v4/semantic' ? 'active' : ''}`}
-              onClick={() => navigate('/v4/semantic')}
-            >
-              <span className="app-tab-icon">🧭</span>
-              V4 Semantic
-            </button>
-
-            {/* My Agents tab hidden from teacher nav — component kept for internal use */}
-
-            
-
-            <button
-              className={`app-tab ${activeTab === 'my-profile' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveTab('my-profile');
-                navigate('/');
-              }}
-              title="Your teaching defaults — pre-fill every new assessment"
-            >
-              <span className="app-tab-icon">⚙️</span>
-              My Defaults
-            </button>
-
-            
-
-            {/* Theme Toggle */}
-
+          <div className="v4-home-actions">
+            {user?.email && <span className="v4-home-user">{user.email}</span>}
             <button onClick={handleLogout} className="logout-button">
               Sign Out
             </button>
-
-
           </div>
-
         </div>
-      </div>
+      </header>
 
-      {/* Content — all tabs stay mounted; CSS hides inactive ones so pipeline state survives navigation */}
-      <div className="app-content">
-        {pathname === '/templates/new' && user?.id && (
-          <TemplateWizardPage
-            teacherId={user.id}
-            onNavigate={navigate}
-          />
-        )}
-
-        {pathname === '/templates' && user?.id && (
-          <TemplatesPage
-            teacherId={user.id}
-            onNavigate={navigate}
-            onUseTemplateInBuilder={onUseTemplateInBuilder}
-          />
-        )}
-
-        {summaryTemplateId && user?.id && (
-          <TemplateSummaryPage
-            teacherId={user.id}
-            templateId={summaryTemplateId}
-            onNavigate={navigate}
-            onUseTemplateInBuilder={onUseTemplateInBuilder}
-          />
-        )}
-
-        {pathname === '/v4/semantic' && (
-          <DocumentUpload />
-        )}
-
-        {pathname === '/' && (
-        <div style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
-          <ConversationalAssessmentWrapper
-            userId={user?.id ?? null}
-            defaultAnswers={pipelineDefaults}
-            builderTemplateToApply={builderTemplateToApply}
-            onResult={(data) => {
-              console.log("Pipeline result:", data);
-            }}
-          />
-        </div>
-        )}
-
-        {/* My Assessments — uses TeacherDashboard which renders rich cards and handles navigation */}
-        {pathname === '/' && activeTab === 'my-assessments' && (
-          <MyAssessmentsPage
-            teacherId={user?.id ?? ''}
-            teacherName={user?.name}
-            onNewAssessment={() => setActiveTab('pipeline')}
-            onViewTemplate={(templateId) => {
-              setSelectedTemplateId(templateId);
-              setActiveTab('assessment-detail');
-            }}
-          />
-        )}
-
-        {pathname === '/' && activeTab === 'my-agents' && (
-          <MyAgentsPage
-            userId={user?.id ?? ''}
-            onNewAssessment={() => { setActiveTab('pipeline'); }}
-          />
-        )}
-
-        <div style={{ display: pathname === '/' && activeTab === 'what-we-infer' ? 'block' : 'none' }}>
-          <WhatWeInferPage />
-        </div>
-
-        {pathname === '/' && activeTab === 'assessment-detail' && selectedTemplateId && (
-          <AssessmentDetailPage
-            templateId={selectedTemplateId}
-            onBack={() => setActiveTab('my-assessments')}
-          />
-        )}
-
-        {pathname === '/' && activeTab === 'my-profile' && user?.id && (
-          <TeacherProfilePage userId={user.id} />
-        )}
-
-        {/* ── First-run banner for users without a stored profile ──── */}
-        {pathname === '/' && activeTab === 'my-assessments' &&
-          hasStoredProfile === false &&
-          !profileBannerDismissed && (
-          <div style={{
-            margin: '1rem 1.5rem 0',
-            padding: '0.75rem 1rem',
-            background: 'var(--color-primary-subtle, #ede9fe)',
-            border: '1px solid var(--color-primary, #6366f1)',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            fontSize: '0.875rem',
-            color: 'var(--color-text, #1a1a2e)',
-          }}>
-            <span>⚙️</span>
-            <span style={{ flex: 1 }}>
-              <strong>Using default settings.</strong>{' '}
-              Personalise question types, pacing, and writing style so the system asks you fewer questions each time.
-            </span>
-            <button
-              onClick={() => setActiveTab('my-profile')}
-              style={{
-                padding: '0.375rem 0.75rem',
-                background: 'var(--color-primary, #6366f1)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '0.8rem',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Set My Defaults →
-            </button>
-            <button
-              onClick={() => setProfileBannerDismissed(true)}
-              title="Dismiss"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '1rem',
-                lineHeight: 1,
-                color: 'var(--color-text-muted, #6b7280)',
-                padding: '0.25rem',
-              }}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-      </div>
+      <main className="app-content app-content--v4">
+        <DocumentUpload />
+      </main>
     </div>
   );
 }

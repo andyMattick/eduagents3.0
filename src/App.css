@@ -115,6 +115,76 @@
   animation: slideUp 0.6s ease-out;
 }
 
+.app-content--v4 {
+  max-width: 100%;
+  padding: 0;
+}
+
+.v4-home-header {
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.18), transparent 30%),
+    linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%);
+}
+
+.v4-home-header-content {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: none;
+}
+
+.v4-home-brand {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.v4-home-kicker {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.74rem;
+  color: #9c4d2b;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.v4-home-brand h1 {
+  margin: 0;
+  color: #2a1d16;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1;
+}
+
+.v4-home-subtitle {
+  margin: 0;
+  max-width: 52rem;
+  color: #574233;
+  line-height: 1.55;
+}
+
+.v4-home-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.v4-home-user {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 251, 245, 0.84);
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  color: #574233;
+  font-size: 0.9rem;
+}
+
 /* Animations */
 @keyframes slideDown {
   from {
@@ -506,6 +576,20 @@
     padding: 1rem;
   }
 
+  .app-content--v4 {
+    padding: 0;
+  }
+
+  .v4-home-header-content {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .v4-home-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .section {
     padding: 1.5rem 1rem;
   }
@@ -554,6 +638,28 @@
 
   .app-content {
     padding: 0.75rem;
+  }
+
+  .app-content--v4 {
+    padding: 0;
+  }
+
+  .v4-home-header-content {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .v4-home-brand h1 {
+    font-size: 1.7rem;
+  }
+
+  .v4-home-actions {
+    align-items: stretch;
+  }
+
+  .v4-home-user {
+    width: 100%;
+    justify-content: center;
   }
 
   h1 { font-size: 1.25rem; }

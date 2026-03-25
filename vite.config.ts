@@ -556,7 +556,7 @@ export default defineConfig(({ mode }) => {
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
-    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localTemplateProxy(), localPrismV4Proxy()],
+    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localPrismV4Proxy()],
     server: {
       port: 3000,
       open: true,

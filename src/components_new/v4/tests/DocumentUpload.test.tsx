@@ -162,7 +162,7 @@ describe("DocumentUpload", () => {
       },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Run v4 ingestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start v4 ingestion" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -229,7 +229,7 @@ describe("DocumentUpload", () => {
     fireEvent.change(screen.getAllByLabelText("Source document")[0]!, {
       target: { files: [new File(["pdf-data"], "sample.pdf", { type: "application/pdf" })] },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Run v4 ingestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start v4 ingestion" }));
 
     expect(await screen.findByText("Teacher narratives")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText("Expert Mode"));

@@ -101,7 +101,7 @@ export interface UniversalProblem {
 }
 
 // ============================================================================
-// 6. LEARNER PROFILE - Review persona
+// 6. LEARNER PROFILE - Review profile
 // ============================================================================
 
 export interface ProfileTraits {

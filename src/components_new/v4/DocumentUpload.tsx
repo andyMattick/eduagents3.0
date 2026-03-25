@@ -55,11 +55,11 @@ export function DocumentUpload() {
       <div className="v4-shell">
         <section className="v4-panel v4-hero">
           <div>
-            <p className="v4-kicker">PRISM v4 Semantic Viewer</p>
-            <h1>Upload a source document and inspect the canonical semantic output.</h1>
+            <p className="v4-kicker">PRISM v4 Document Ingestion</p>
+            <h1>Upload a source document to start the v4 ingestion and semantic viewer flow.</h1>
             <p className="v4-subtitle">
-              This route is read-only. It ingests a PDF or DOCX, produces a schema-exact tagging input,
-              and renders the semantic pipeline output without touching simulation or authoring flows.
+              This is the active home screen. It ingests a PDF or DOCX, produces the schema-exact tagging input,
+              and renders the v4 semantic output without invoking retired pipeline or template flows.
             </p>
           </div>
 
@@ -79,7 +79,7 @@ export function DocumentUpload() {
 
             <div className="v4-upload-actions">
               <button className="v4-button" type="submit" disabled={isUploading}>
-                {isUploading ? "Uploading..." : "Run v4 ingestion"}
+                {isUploading ? "Uploading..." : "Start v4 ingestion"}
               </button>
               {selectedFile && <span className="v4-upload-name">{selectedFile.name}</span>}
             </div>

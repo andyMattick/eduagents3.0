@@ -241,7 +241,7 @@ export interface StudentResponse {
   understoodConcepts: string[];
   struggledWith: string[];
   overallEngagement: number; // 0-1
-  atRiskProfile: boolean;
+  needsIntervention: boolean;
 }
 
 // ============================================================================
