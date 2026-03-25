@@ -58,7 +58,7 @@ export function DocumentUpload() {
             
             <h1>Upload a source document to start the v4 ingestion and semantic viewer flow.</h1>
             <p className="v4-subtitle">
-              This is the active home screen. It ingests a PDF or DOCX, produces the schema-exact tagging input,
+              This is the active home screen. It ingests a PDF, produces the schema-exact tagging input,
               and renders the v4 semantic output without invoking retired pipeline or template flows.
             </p>
           </div>

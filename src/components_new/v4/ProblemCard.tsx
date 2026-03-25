@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import type { Problem } from "../../prism-v4/schema/domain";
 import type { DocumentSemanticInsights, ProblemTagVector } from "../../prism-v4/schema/semantic";
-import type { NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
+import type { NarratorLens } from "../../prism-v4/narrator/types";
 
 import { ProblemVector } from "./ProblemVector";
 import { TeacherNarrativePanel } from "./TeacherNarrativePanel";
@@ -96,9 +96,9 @@ export function ProblemCard(props: {
   documentSummary: DocumentSemanticInsights;
   onRerun: () => Promise<void>;
   expertMode: boolean;
-  theme: NarrativeTheme;
+  lens: NarratorLens;
 }) {
-  const { problem, vector, documentSummary, onRerun, expertMode, theme } = props;
+  const { problem, vector, documentSummary, onRerun, expertMode, lens } = props;
   const title = problem.partLabel
     ? `${problem.teacherLabel ?? `${problem.partLabel})`} ${problem.problemId}`
     : `Problem ${problem.problemNumber ?? problem.problemId.replace(/^p/, "")}`;
@@ -141,7 +141,14 @@ export function ProblemCard(props: {
     </div>
 
     <p className="v4-body-copy">{body}</p>
-    <TeacherNarrativePanel theme={theme} problem={vector} document={documentSummary} />
+    <TeacherNarrativePanel
+      lens={lens}
+      problemId={canonicalProblemId}
+      problemText={body}
+      semanticFingerprint={vector}
+      gradeLevel={documentSummary.gradeLevel !== undefined ? String(documentSummary.gradeLevel) : undefined}
+      subject={vector.subject || documentSummary.subject}
+    />
     </article>
   );
   }

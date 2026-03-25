@@ -134,20 +134,42 @@ describe("DocumentUpload", () => {
   });
 
   it("uploads to the v4 ingest route and renders semantic output", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        documentId: "doc-1",
-        fileName: "sample.pdf",
-        azureExtract: {
-          fileName: "sample.pdf",
-          content: "1. What is 2 + 2?",
-          pages: [{ pageNumber: 1, text: "1. What is 2 + 2?" }],
-          paragraphs: [{ text: "1. What is 2 + 2?", pageNumber: 1 }],
-          tables: [],
-          readingOrder: ["1. What is 2 + 2?"],
-        },
-      }),
+    const fetchMock = vi.fn((input: string) => {
+      if (input === "/api/v4-ingest") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            documentId: "doc-1",
+            fileName: "sample.pdf",
+            azureExtract: {
+              fileName: "sample.pdf",
+              content: "1. What is 2 + 2?",
+              pages: [{ pageNumber: 1, text: "1. What is 2 + 2?" }],
+              paragraphs: [{ text: "1. What is 2 + 2?", pageNumber: 1 }],
+              tables: [],
+              readingOrder: ["1. What is 2 + 2?"],
+            },
+          }),
+        });
+      }
+
+      if (input === "/api/v4/narrate-problem") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            lens: "what-is-this-asking",
+            blocks: {
+              taskEssence: {
+                summary: "determine what the prompt is asking and solve it with clear reasoning",
+                evidence: "What is 2 + 2?",
+              },
+            },
+            narrative: "This problem asks students to determine what the prompt is asking and solve it with clear reasoning.",
+          }),
+        });
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch call: ${input}`));
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -164,7 +186,18 @@ describe("DocumentUpload", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start v4 ingestion" }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v4-ingest",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "Content-Type": "application/pdf",
+          "x-file-name": "sample.pdf",
+        }),
+        body: expect.any(ArrayBuffer),
+      }),
+    ));
+
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v4-ingest",
       expect.objectContaining({
@@ -186,6 +219,7 @@ describe("DocumentUpload", () => {
     expect(screen.getByText("a) p1a")).toBeInTheDocument();
     expect(screen.getByText("b) p1b")).toBeInTheDocument();
     expect(await screen.findAllByTestId("teacher-narrative-panel")).toHaveLength(2);
+    expect(await screen.findAllByText("This problem asks students to determine what the prompt is asking and solve it with clear reasoning.")).toHaveLength(2);
     expect(screen.queryByText("Co-occurrence map")).not.toBeInTheDocument();
     expect(screen.queryByText("Raw canonical JSON")).not.toBeInTheDocument();
   });
@@ -214,6 +248,22 @@ describe("DocumentUpload", () => {
         return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
       }
 
+      if (input === "/api/v4/narrate-problem") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            lens: "what-is-this-asking",
+            blocks: {
+              taskEssence: {
+                summary: "determine what the prompt is asking and solve it with clear reasoning",
+                evidence: "What is 2 + 2?",
+              },
+            },
+            narrative: "This problem asks students to determine what the prompt is asking and solve it with clear reasoning.",
+          }),
+        });
+      }
+
       if (input === "/api/v4/problem-overrides/doc-1%3A%3Ap1a" && init?.method === "DELETE") {
         return Promise.resolve({ ok: true, json: async () => ({ deleted: true }) });
       }
@@ -232,6 +282,7 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start v4 ingestion" }));
 
     expect(await screen.findByText("Teacher narratives")).toBeInTheDocument();
+    expect(await screen.findAllByTestId("teacher-narrative-panel")).toHaveLength(2);
     fireEvent.click(screen.getByLabelText("Expert Mode"));
 
     expect(await screen.findByText("Sample semantic title")).toBeInTheDocument();

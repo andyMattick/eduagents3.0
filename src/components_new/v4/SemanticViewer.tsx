@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
+import { NARRATOR_LENS_OPTIONS, type NarratorLens } from "../../prism-v4/narrator/types";
 import { runSemanticPipeline } from "../../prism-v4/semantic/pipeline/runSemanticPipeline";
 import type { TaggingPipelineInput, TaggingPipelineOutput } from "../../prism-v4/schema/semantic";
-import { NARRATIVE_THEME_OPTIONS, NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
 
 import { ConceptGraph } from "./ConceptGraph";
 import { DebugPanel } from "./DebugPanel";
@@ -17,7 +17,7 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isExpertMode, setIsExpertMode] = useState(false);
-  const [theme, setTheme] = useState<NarrativeTheme>(NarrativeTheme.WhatProblemAsks);
+  const [lens, setLens] = useState<NarratorLens>("what-is-this-asking");
 
   async function loadPipelineOutput() {
 	setIsLoading(true);
@@ -116,10 +116,10 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
         <select
           id="v4-theme-dropdown"
           className="v4-theme-dropdown"
-          value={theme}
-          onChange={(event) => setTheme(event.target.value as NarrativeTheme)}
+          value={lens}
+          onChange={(event) => setLens(event.target.value as NarratorLens)}
         >
-          {NARRATIVE_THEME_OPTIONS.map((option) => (
+          {NARRATOR_LENS_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
@@ -135,7 +135,7 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
         documentSummary={output.documentInsights}
         onRerun={loadPipelineOutput}
         expertMode={isExpertMode}
-        theme={theme}
+        lens={lens}
       />
       {isExpertMode ? <ConceptGraph graph={output.documentInsights.conceptGraph} /> : null}
       {isExpertMode ? <DebugPanel input={input} output={output} /> : null}

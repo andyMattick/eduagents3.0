@@ -1,6 +1,6 @@
 import type { Problem } from "../../prism-v4/schema/domain";
 import type { DocumentSemanticInsights, ProblemTagVector } from "../../prism-v4/schema/semantic";
-import type { NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
+import type { NarratorLens } from "../../prism-v4/narrator/types";
 
 import { ProblemCard } from "./ProblemCard";
 
@@ -66,9 +66,9 @@ export function ProblemList(props: {
 	documentSummary: DocumentSemanticInsights;
 	onRerun: () => Promise<void>;
 	expertMode: boolean;
-	theme: NarrativeTheme;
+  lens: NarratorLens;
 }) {
-  const { problems, problemVectors, documentSummary, onRerun, expertMode, theme } = props;
+  const { problems, problemVectors, documentSummary, onRerun, expertMode, lens } = props;
   const groups = groupProblems(problems, problemVectors);
   const partCount = problems.filter((problem) => Boolean(problem.partLabel)).length;
 
@@ -116,7 +116,7 @@ export function ProblemList(props: {
           documentSummary={documentSummary}
           onRerun={onRerun}
           expertMode={expertMode}
-          theme={theme}
+          lens={lens}
         />
               ))}
             </div>
