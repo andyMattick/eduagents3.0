@@ -2,19 +2,22 @@ import { useEffect, useState } from "react";
 
 import { runSemanticPipeline } from "../../prism-v4/semantic/pipeline/runSemanticPipeline";
 import type { TaggingPipelineInput, TaggingPipelineOutput } from "../../prism-v4/schema/semantic";
+import { NARRATIVE_THEME_OPTIONS, NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
 
 import { ConceptGraph } from "./ConceptGraph";
 import { DebugPanel } from "./DebugPanel";
 import { DocumentOverview } from "./DocumentOverview";
 import { ProblemList } from "./ProblemList";
 
-type ViewerMode = "inspect" | "semantic" | "correct";
+const EXPERT_MODE_STORAGE_KEY = "v4-semantic-expert-mode";
 
-export function SemanticViewer(props: { input: TaggingPipelineInput; mode: ViewerMode }) {
-  const { input, mode } = props;
+export function SemanticViewer(props: { input: TaggingPipelineInput }) {
+  const { input } = props;
   const [output, setOutput] = useState<TaggingPipelineOutput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isExpertMode, setIsExpertMode] = useState(false);
+  const [theme, setTheme] = useState<NarrativeTheme>(NarrativeTheme.WhatProblemAsks);
 
   async function loadPipelineOutput() {
 	setIsLoading(true);
@@ -29,6 +32,23 @@ export function SemanticViewer(props: { input: TaggingPipelineInput; mode: Viewe
 		setIsLoading(false);
 	}
 	}
+
+  useEffect(() => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const stored = window.sessionStorage.getItem(EXPERT_MODE_STORAGE_KEY);
+  setIsExpertMode(stored === "true");
+  }, []);
+
+  useEffect(() => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.sessionStorage.setItem(EXPERT_MODE_STORAGE_KEY, isExpertMode ? "true" : "false");
+  }, [isExpertMode]);
 
   useEffect(() => {
     let active = true;
@@ -79,11 +99,47 @@ export function SemanticViewer(props: { input: TaggingPipelineInput; mode: Viewe
   }
 
   return (
-    <div className="v4-viewer-grid">
-      <DocumentOverview input={input} output={output} />
-      <ProblemList problems={output.problems} problemVectors={output.problemVectors} onRerun={loadPipelineOutput} />
-      <ConceptGraph graph={output.documentInsights.conceptGraph} />
-      {mode !== "correct" && <DebugPanel input={input} output={output} />}
-    </div>
+    <>
+      <section className="v4-panel v4-block-light">
+      <div className="v4-expert-toggle">
+        <label htmlFor="v4-expert-mode-toggle" className="v4-section-title">Expert Mode</label>
+        <input
+        id="v4-expert-mode-toggle"
+        type="checkbox"
+        checked={isExpertMode}
+        onChange={(event) => setIsExpertMode(event.target.checked)}
+        />
+      </div>
+      {!isExpertMode && (
+        <div>
+        <label className="v4-section-title" htmlFor="v4-theme-dropdown">What would you like to explore?</label>
+        <select
+          id="v4-theme-dropdown"
+          className="v4-theme-dropdown"
+          value={theme}
+          onChange={(event) => setTheme(event.target.value as NarrativeTheme)}
+        >
+          {NARRATIVE_THEME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        </div>
+      )}
+      </section>
+
+      <div className="v4-viewer-grid">
+      {isExpertMode ? <DocumentOverview input={input} output={output} /> : null}
+      <ProblemList
+        problems={output.problems}
+        problemVectors={output.problemVectors}
+        documentSummary={output.documentInsights}
+        onRerun={loadPipelineOutput}
+        expertMode={isExpertMode}
+        theme={theme}
+      />
+      {isExpertMode ? <ConceptGraph graph={output.documentInsights.conceptGraph} /> : null}
+      {isExpertMode ? <DebugPanel input={input} output={output} /> : null}
+      </div>
+    </>
   );
 }

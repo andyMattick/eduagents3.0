@@ -2,9 +2,11 @@ import type { FormEvent } from "react";
 import { useState } from "react";
 
 import type { Problem } from "../../prism-v4/schema/domain";
-import type { ProblemTagVector } from "../../prism-v4/schema/semantic";
+import type { DocumentSemanticInsights, ProblemTagVector } from "../../prism-v4/schema/semantic";
+import type { NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
 
 import { ProblemVector } from "./ProblemVector";
+import { TeacherNarrativePanel } from "./TeacherNarrativePanel";
 
 const BLOOM_OPTIONS = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
 const REPRESENTATION_OPTIONS = ["equation", "table", "graph", "paragraph", "diagram", "map", "timeline", "experiment", "primarySource"] as const;
@@ -88,8 +90,15 @@ function ProvenanceBadge(props: { vector: ProblemTagVector }) {
   );
 }
 
-export function ProblemCard(props: { problem: Problem; vector: ProblemTagVector; onRerun: () => Promise<void> }) {
-  const { problem, vector, onRerun } = props;
+export function ProblemCard(props: {
+  problem: Problem;
+  vector: ProblemTagVector;
+  documentSummary: DocumentSemanticInsights;
+  onRerun: () => Promise<void>;
+  expertMode: boolean;
+  theme: NarrativeTheme;
+}) {
+  const { problem, vector, documentSummary, onRerun, expertMode, theme } = props;
   const title = problem.partLabel
     ? `${problem.teacherLabel ?? `${problem.partLabel})`} ${problem.problemId}`
     : `Problem ${problem.problemNumber ?? problem.problemId.replace(/^p/, "")}`;
@@ -120,6 +129,22 @@ export function ProblemCard(props: { problem: Problem; vector: ProblemTagVector;
   const canonicalProblemId = problem.canonicalProblemId ?? `${problem.sourceDocumentId ?? "document"}::${problem.problemId}`;
   const matchedPatterns = buildMatchedPatternList(vector);
   const inferredSteps = vector.reasoning?.adjustedExpectedSteps ?? vector.reasoning?.expectedSteps ?? multiStepScoreToExpectedSteps(vector.cognitive.multiStep);
+
+  if (!expertMode) {
+  return (
+    <article className="v4-problem-card">
+    <div className="v4-problem-header">
+      <div>
+      <p className="v4-kicker">{problem.partLabel ? `Part ${problem.partLabel.toUpperCase()}` : "Problem"}</p>
+      <h3>{title}</h3>
+      </div>
+    </div>
+
+    <p className="v4-body-copy">{body}</p>
+    <TeacherNarrativePanel theme={theme} problem={vector} document={documentSummary} />
+    </article>
+  );
+  }
 
   async function submitTeacherFeedback(updates: Array<{ target: string; aiValue: unknown; teacherValue: unknown }>, successMessage: string) {
     setIsSubmitting(true);

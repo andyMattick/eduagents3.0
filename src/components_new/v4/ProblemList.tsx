@@ -1,5 +1,6 @@
 import type { Problem } from "../../prism-v4/schema/domain";
-import type { ProblemTagVector } from "../../prism-v4/schema/semantic";
+import type { DocumentSemanticInsights, ProblemTagVector } from "../../prism-v4/schema/semantic";
+import type { NarrativeTheme } from "../../prism-v4/semantic/narrative/themes";
 
 import { ProblemCard } from "./ProblemCard";
 
@@ -59,8 +60,15 @@ function groupProblems(problems: Problem[], problemVectors: ProblemTagVector[]):
     .sort((left, right) => left.displayOrder - right.displayOrder);
 }
 
-export function ProblemList(props: { problems: Problem[]; problemVectors: ProblemTagVector[]; onRerun: () => Promise<void> }) {
-  const { problems, problemVectors, onRerun } = props;
+export function ProblemList(props: {
+	problems: Problem[];
+	problemVectors: ProblemTagVector[];
+	documentSummary: DocumentSemanticInsights;
+	onRerun: () => Promise<void>;
+	expertMode: boolean;
+	theme: NarrativeTheme;
+}) {
+  const { problems, problemVectors, documentSummary, onRerun, expertMode, theme } = props;
   const groups = groupProblems(problems, problemVectors);
   const partCount = problems.filter((problem) => Boolean(problem.partLabel)).length;
 
@@ -69,9 +77,9 @@ export function ProblemList(props: { problems: Problem[]; problemVectors: Proble
       <div className="v4-section-heading">
         <div>
           <p className="v4-kicker">Problem list</p>
-          <h2>Problem semantic vectors</h2>
+          <h2>{expertMode ? "Problem semantic vectors" : "Teacher narratives"}</h2>
         </div>
-        <span className="v4-pill">{groups.length} problems / {partCount || problems.length} parts</span>
+        {expertMode ? <span className="v4-pill">{groups.length} problems / {partCount || problems.length} parts</span> : null}
       </div>
 
       <div className="v4-problem-list">
@@ -89,10 +97,10 @@ export function ProblemList(props: { problems: Problem[]; problemVectors: Proble
                 <p className="v4-kicker">Teacher view</p>
                 <h3>{`Problem ${group.problemNumber ?? group.rootProblemId.replace(/^p/, "")}`}</h3>
               </div>
-              <div className="v4-problem-group-meta">
+              {expertMode ? <div className="v4-problem-group-meta">
                 <span className="v4-pill">{group.rootProblemId}</span>
                 <span className="v4-pill">page {group.sourcePageNumber ?? "-"}</span>
-              </div>
+              </div> : null}
             </div>
 
             {group.stemText && group.items.some(({ problem }) => Boolean(problem.partLabel)) && (
@@ -101,7 +109,15 @@ export function ProblemList(props: { problems: Problem[]; problemVectors: Proble
 
             <div className="v4-problem-group-items">
               {visibleItems.map(({ problem, vector }) => (
-                <ProblemCard key={problem.problemId} problem={problem} vector={vector} onRerun={onRerun} />
+                <ProblemCard
+          key={problem.problemId}
+          problem={problem}
+          vector={vector}
+          documentSummary={documentSummary}
+          onRerun={onRerun}
+          expertMode={expertMode}
+          theme={theme}
+        />
               ))}
             </div>
           </section>

@@ -6,14 +6,11 @@ import type { TaggingPipelineInput } from "../../prism-v4/schema/semantic";
 import { SemanticViewer } from "./SemanticViewer";
 import "./v4.css";
 
-type ViewerMode = "inspect" | "semantic" | "correct";
-
 export function DocumentUpload() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [input, setInput] = useState<TaggingPipelineInput | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [mode, setMode] = useState<ViewerMode>("semantic");
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,7 +42,6 @@ export function DocumentUpload() {
       }
 
       setInput(payload as TaggingPipelineInput);
-      setMode("semantic");
     } catch (uploadError) {
       setInput(null);
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed.");
@@ -92,22 +88,7 @@ export function DocumentUpload() {
           </form>
         </section>
 
-        {input && (
-          <section className="v4-panel v4-mode-panel">
-            <div>
-              <p className="v4-kicker">Teacher workflow</p>
-              <h2>What would you like to do with this document?</h2>
-              <p className="v4-subtitle">Switch between structure inspection, semantic review, and teacher correction without leaving this route.</p>
-            </div>
-            <div className="v4-mode-toggle" role="tablist" aria-label="Semantic viewer mode">
-              <button className={`v4-button ${mode === "inspect" ? "v4-button-active" : "v4-button-secondary"}`} type="button" onClick={() => setMode("inspect")}>Inspect structure</button>
-              <button className={`v4-button ${mode === "semantic" ? "v4-button-active" : "v4-button-secondary"}`} type="button" onClick={() => setMode("semantic")}>Review interpretation</button>
-              <button className={`v4-button ${mode === "correct" ? "v4-button-active" : "v4-button-secondary"}`} type="button" onClick={() => setMode("correct")}>Apply teacher corrections</button>
-            </div>
-          </section>
-        )}
-
-        {input && <SemanticViewer input={input} mode={mode} />}
+        {input && <SemanticViewer input={input} />}
       </div>
     </div>
   );

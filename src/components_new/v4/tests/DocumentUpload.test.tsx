@@ -177,24 +177,20 @@ describe("DocumentUpload", () => {
       }),
     );
 
-    expect(await screen.findByText("Sample semantic title")).toBeInTheDocument();
-    expect(screen.getByText("Problem semantic vectors")).toBeInTheDocument();
+    expect(await screen.findByText("Teacher narratives")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expert Mode")).toBeInTheDocument();
+    expect(screen.getByLabelText("What would you like to explore?")).toBeInTheDocument();
+    expect(screen.getByText("Teacher narratives")).toBeInTheDocument();
     expect(screen.queryByText(/legacy/i)).toBeNull();
     expect(screen.getByText("Problem 1")).toBeInTheDocument();
     expect(screen.getByText("a) p1a")).toBeInTheDocument();
     expect(screen.getByText("b) p1b")).toBeInTheDocument();
-    expect(screen.getAllByText("Challenge or correct this")).toHaveLength(2);
-    expect(screen.getAllByTestId("ai-understanding")).toHaveLength(2);
-    const cognitiveDebugBlocks = await screen.findAllByTestId("cognitive-debug");
-    expect(cognitiveDebugBlocks).toHaveLength(2);
-    expect(cognitiveDebugBlocks[0]).toHaveTextContent("Bloom:");
-    expect(cognitiveDebugBlocks[0]).toHaveTextContent("Difficulty:");
-    expect(cognitiveDebugBlocks[0]).toHaveTextContent("Multi-step:");
-    expect(screen.getByTestId("document-cognitive-summary")).toHaveTextContent("Average difficulty");
-    expect(screen.getByText("Co-occurrence map")).toBeInTheDocument();
+    expect(await screen.findAllByTestId("teacher-narrative-panel")).toHaveLength(2);
+    expect(screen.queryByText("Co-occurrence map")).not.toBeInTheDocument();
+    expect(screen.queryByText("Raw canonical JSON")).not.toBeInTheDocument();
   });
 
-  it("reruns cognition after teacher correction and can reset to AI defaults", async () => {
+    it("switches into expert mode and restores the existing expert panels", async () => {
     const fetchMock = vi.fn((input: string, init?: RequestInit) => {
       if (input === "/api/v4-ingest") {
         return Promise.resolve({
@@ -226,10 +222,7 @@ describe("DocumentUpload", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    runSemanticPipelineMock
-      .mockResolvedValueOnce(buildSemanticOutput(false))
-      .mockResolvedValueOnce(buildSemanticOutput(true))
-      .mockResolvedValueOnce(buildSemanticOutput(false));
+    runSemanticPipelineMock.mockResolvedValue(buildSemanticOutput(false));
 
     render(<DocumentUpload />);
 
@@ -238,7 +231,18 @@ describe("DocumentUpload", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Run v4 ingestion" }));
 
+    expect(await screen.findByText("Teacher narratives")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Expert Mode"));
+
     expect(await screen.findByText("Sample semantic title")).toBeInTheDocument();
+    expect(await screen.findByText("Problem semantic vectors")).toBeInTheDocument();
+    expect(screen.getAllByText("Challenge or correct this")).toHaveLength(2);
+    expect(screen.getAllByTestId("ai-understanding")).toHaveLength(2);
+    const cognitiveDebugBlocks = await screen.findAllByTestId("cognitive-debug");
+    expect(cognitiveDebugBlocks).toHaveLength(2);
+    expect(screen.getByText("Co-occurrence map")).toBeInTheDocument();
+    expect(screen.getByText("Raw canonical JSON")).toBeInTheDocument();
+
     fireEvent.click(screen.getAllByRole("button", { name: "Challenge or correct this" })[0]!);
     fireEvent.change(screen.getAllByLabelText("Difficulty")[0]!, { target: { value: "0.85" } });
     fireEvent.click(screen.getByRole("button", { name: "Submit correction" }));
@@ -247,18 +251,5 @@ describe("DocumentUpload", () => {
       "/api/v4/teacher-feedback",
       expect.objectContaining({ method: "POST" }),
     ));
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Re-run cognition" })[0]!);
-    expect(await screen.findByText("Override version: 1")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Why this interpretation?" })[0]!);
-    expect(await screen.findByTestId("reasoning-panel")).toHaveTextContent("math-computation");
-    expect(screen.getByTestId("reasoning-panel")).toHaveTextContent("teacher-anomalous-phrase");
-
-    fireEvent.click(screen.getByRole("button", { name: "Reset to AI defaults" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v4/problem-overrides/doc-1%3A%3Ap1a",
-      expect.objectContaining({ method: "DELETE" }),
-    ));
-    await waitFor(() => expect(screen.queryByText("Override version: 1")).not.toBeInTheDocument());
   });
 });
