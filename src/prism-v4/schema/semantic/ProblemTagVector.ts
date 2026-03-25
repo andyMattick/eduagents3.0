@@ -22,6 +22,15 @@
 	  teacherTemplateIds: string[];
 	  overridesApplied: boolean;
 	  structuralMultiStep?: number;
+	  selectedTemplateId?: string;
+	  selectedTemplateName?: string;
+	  selectedTemplateSource?: "system" | "teacher";
+	  selectedTemplateStatus?: "stable" | "learning" | "frozen";
+	  selectedTemplateFrozen?: boolean;
+	  templateConfidence?: number;
+	  adjustedTemplateConfidence?: number;
+	  expectedSteps?: number;
+	  adjustedExpectedSteps?: number;
 	}
 
 	export interface TeacherAdjustmentMetadata {

@@ -8,6 +8,7 @@ export type { CognitiveTemplate, SeededCognitiveTemplate, TemplateSubject } from
 
 export interface TemplateMatchResult {
 	template: CognitiveTemplate;
+	baseConfidence: number;
 	confidence: number;
 	passesThreshold: boolean;
 	isBestGuess: boolean;
@@ -134,18 +135,16 @@ function getArchetypeBonus(template: CognitiveTemplate, structuralFlags: ReturnT
 }
 
 function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateMatchResult | null {
-	if (template.learningAdjustment?.frozen) {
-		return null;
-	}
-
 	if (template.match) {
 		if (!template.match(problem)) {
 			return null;
 		}
 
+		const baseConfidence = 1;
 		return {
 			template,
-			confidence: clamp01(1 + (template.learningAdjustment?.confidenceDelta ?? 0)),
+			baseConfidence,
+			confidence: clamp01(baseConfidence + (template.learningAdjustment?.confidenceDelta ?? 0)),
 			passesThreshold: true,
 			isBestGuess: false,
 		};
@@ -162,11 +161,12 @@ function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateM
 		? template.patternConfig.structuralPatterns.filter((flag) => structuralFlags[flag as keyof typeof structuralFlags]).length / template.patternConfig.structuralPatterns.length
 		: undefined;
 	const regexScore = scoreRegexPatterns(problemText(problem), template.patternConfig.regexPatterns ?? []);
-	const confidence = clamp01(weightedAverage([
+	const baseConfidence = clamp01(weightedAverage([
 		...(typeof textScore === "number" ? [{ value: textScore, weight: 0.55 }] : []),
 		...(typeof structuralScore === "number" ? [{ value: structuralScore, weight: 0.3 }] : []),
 		...(typeof regexScore === "number" ? [{ value: regexScore, weight: 0.15 }] : []),
-	]) + getArchetypeBonus(template, structuralFlags) + (template.learningAdjustment?.confidenceDelta ?? 0));
+	]) + getArchetypeBonus(template, structuralFlags));
+	const confidence = clamp01(baseConfidence + (template.learningAdjustment?.confidenceDelta ?? 0));
 
 	if (confidence <= 0) {
 		return null;
@@ -174,6 +174,7 @@ function scoreTemplate(problem: Problem, template: CognitiveTemplate): TemplateM
 
 	return {
 		template,
+		baseConfidence,
 		confidence,
 		passesThreshold: confidence >= (template.minConfidence ?? template.patternConfig.minConfidence),
 		isBestGuess: false,

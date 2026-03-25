@@ -236,6 +236,30 @@
   gap: 0.85rem;
 }
 
+.v4-viewer .v4-provenance-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.6rem;
+}
+
+.v4-viewer .v4-provenance-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.v4-viewer .v4-provenance-meta {
+  color: #5d4a3e;
+  font-size: 0.82rem;
+}
+
 .v4-viewer .v4-ai-understanding,
 .v4-viewer .v4-feedback-form {
   display: grid;
@@ -278,6 +302,27 @@
 .v4-viewer .v4-feedback-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.v4-viewer .v4-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(31, 26, 23, 0.42);
+  z-index: 50;
+}
+
+.v4-viewer .v4-modal {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 1rem;
+  border-radius: 22px;
+  padding: 1.25rem;
+  border: 1px solid rgba(86, 57, 32, 0.18);
+  background: #fffaf3;
+  box-shadow: 0 24px 70px rgba(31, 26, 23, 0.24);
 }
 
 @media (max-width: 900px) {

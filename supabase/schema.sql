@@ -406,6 +406,48 @@ CREATE POLICY "teacher_templates: own rows delete"
 
 
 -- ────────────────────────────────────────────────────────────
+-- 11B. TEACHER ACTION EVENTS
+--      Append-only teacher corrections used to aggregate
+--      template learning signals.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.teacher_action_events (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id  uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  problem_id  text        NOT NULL,
+  action_type text        NOT NULL,
+  old_value   jsonb,
+  new_value   jsonb,
+  context     jsonb,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_problem
+  ON public.teacher_action_events (problem_id);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_teacher
+  ON public.teacher_action_events (teacher_id);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_action
+  ON public.teacher_action_events (action_type);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 11C. TEMPLATE LEARNING RECORDS
+--      Aggregated weekly drift-aware learning signals keyed by
+--      template id.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.template_learning_records (
+  template_id                   text        PRIMARY KEY,
+  strong_matches                integer     NOT NULL DEFAULT 0,
+  weak_matches                  integer     NOT NULL DEFAULT 0,
+  teacher_overrides             integer     NOT NULL DEFAULT 0,
+  expected_steps_corrections    integer     NOT NULL DEFAULT 0,
+  drift_score                   double precision NOT NULL DEFAULT 0,
+  last_updated                  timestamptz NOT NULL DEFAULT now()
+);
+
+
+-- ────────────────────────────────────────────────────────────
 -- 12. JOBS
 --     Async job queue for long-running pipeline operations.
 --     Status lifecycle: pending → running → succeeded | failed

@@ -1,3 +1,4 @@
+import { supabaseRest } from "../../../../lib/supabase";
 import type { CognitiveTemplate, TemplateStepHints } from "../cognitive/templates/loadTemplates";
 
 export type TeacherActionType =
@@ -46,7 +47,120 @@ let learningDirty = false;
 
 export const MIN_LEARNING_EVIDENCE = 2;
 export const FREEZE_EVIDENCE_THRESHOLD = 3;
-export const DRIFT_FREEZE_THRESHOLD = 0.75;
+export const DRIFT_FREEZE_THRESHOLD = 0.4;
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function canUseSupabase() {
+	return typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function isUuid(value: string) {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function hashText(value: string) {
+	let hash = 2166136261;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+
+	return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function toStableUuid(value: string) {
+	if (isUuid(value)) {
+		return value.toLowerCase();
+	}
+
+	const seed = [
+		hashText(value),
+		hashText(`${value}:a`),
+		hashText(`${value}:b`),
+		hashText(`${value}:c`),
+	].join("");
+	const chars = seed.slice(0, 32).split("");
+	chars[12] = "4";
+	chars[16] = ["8", "9", "a", "b"][parseInt(chars[16] ?? "0", 16) % 4];
+	const hex = chars.join("");
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function toIsoString(value: number) {
+	return new Date(value).toISOString();
+}
+
+async function readJsonIfAvailable<T>(response: Response): Promise<T | null> {
+	const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+	if (contentType.includes("application/json")) {
+		return response.json() as Promise<T>;
+	}
+
+	const text = (await response.text()).trim();
+	if (!text) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(text) as T;
+	} catch {
+		return null;
+	}
+}
+
+function normalizeTeacherActionEvent(event: TeacherActionEvent) {
+	return {
+		teacher_id: toStableUuid(event.teacherId),
+		problem_id: event.problemId,
+		action_type: event.actionType,
+		old_value: event.oldValue ?? null,
+		new_value: event.newValue ?? null,
+		context: {
+			...event.context,
+			originalTeacherId: event.teacherId,
+		},
+		created_at: toIsoString(event.timestamp),
+	};
+}
+
+function normalizeTemplateLearningRecord(record: TemplateLearningRecord) {
+	return {
+		template_id: record.templateId,
+		strong_matches: record.strongMatches,
+		weak_matches: record.weakMatches,
+		teacher_overrides: record.teacherOverrides,
+		expected_steps_corrections: record.expectedStepsCorrections,
+		drift_score: record.driftScore,
+		last_updated: toIsoString(record.lastUpdated),
+	};
+}
+
+function hydrateTeacherActionEvent(row: Record<string, unknown>): TeacherActionEvent {
+	const context = (row.context as (TeacherActionContext & { originalTeacherId?: string }) | undefined) ?? { subject: "unknown" };
+	const fallbackTeacherId = typeof row.teacher_id === "string" ? row.teacher_id : "unknown-teacher";
+	return {
+		eventId: typeof row.id === "string" ? row.id : `event-${Date.now()}`,
+		teacherId: typeof context.originalTeacherId === "string" ? context.originalTeacherId : fallbackTeacherId,
+		problemId: String(row.problem_id ?? "unknown-problem"),
+		timestamp: Date.parse(String(row.created_at ?? new Date().toISOString())),
+		actionType: row.action_type as TeacherActionType,
+		oldValue: row.old_value,
+		newValue: row.new_value,
+		context,
+	};
+}
+
+function hydrateTemplateLearningRecord(row: Record<string, unknown>): TemplateLearningRecord {
+	return {
+		templateId: String(row.template_id),
+		strongMatches: Number(row.strong_matches ?? 0),
+		weakMatches: Number(row.weak_matches ?? 0),
+		teacherOverrides: Number(row.teacher_overrides ?? 0),
+		expectedStepsCorrections: Number(row.expected_steps_corrections ?? 0),
+		driftScore: Number(row.drift_score ?? 0),
+		lastUpdated: Date.parse(String(row.last_updated ?? new Date().toISOString())),
+	};
+}
 
 function clamp01(value: number) {
 	return Math.min(1, Math.max(0, value));
@@ -115,18 +229,87 @@ function affectedTemplateIds(context: TeacherActionContext) {
 export async function recordTeacherAction(event: TeacherActionEvent): Promise<void> {
 	teacherActionMemory.push(event);
 	learningDirty = true;
+	if (canUseSupabase()) {
+		await supabaseRest("teacher_action_events", {
+			method: "POST",
+			body: normalizeTeacherActionEvent(event),
+			prefer: "return=minimal",
+		});
+	}
+}
+
+export async function saveTeacherActionEvent(event: TeacherActionEvent): Promise<void> {
+	await recordTeacherAction(event);
 }
 
 export async function listTeacherActions(): Promise<TeacherActionEvent[]> {
-	return [...teacherActionMemory];
+	return loadTeacherActionEvents();
 }
 
-export async function aggregateTemplateLearning(): Promise<TemplateLearningRecord[]> {
+export async function loadTeacherActionEvents(since?: number | string | Date): Promise<TeacherActionEvent[]> {
+	const sinceTimestamp = since instanceof Date
+		? since.getTime()
+		: typeof since === "string"
+			? Date.parse(since)
+			: typeof since === "number"
+				? since
+				: undefined;
+
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("teacher_action_events", {
+			select: "id,teacher_id,problem_id,action_type,old_value,new_value,context,created_at",
+			filters: {
+				...(typeof sinceTimestamp === "number" && Number.isFinite(sinceTimestamp)
+					? { created_at: `gte.${toIsoString(sinceTimestamp)}` }
+					: {}),
+				order: "created_at.asc",
+			},
+		});
+		return ((rows as Array<Record<string, unknown>>) ?? []).map(hydrateTeacherActionEvent);
+	}
+
+	return teacherActionMemory.filter((event) => (typeof sinceTimestamp === "number" ? event.timestamp >= sinceTimestamp : true));
+}
+
+export async function saveTemplateLearningRecord(record: TemplateLearningRecord): Promise<void> {
+	learningRecordMemory.set(record.templateId, record);
+	if (canUseSupabase()) {
+		await supabaseRest("template_learning_records", {
+			method: "POST",
+			body: normalizeTemplateLearningRecord(record),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+}
+
+export async function loadTemplateLearningRecords(): Promise<TemplateLearningRecord[]> {
+	if (typeof window !== "undefined") {
+		const response = await fetch("/api/v4/teacher-feedback/learning");
+		if (!response.ok) {
+			return [];
+		}
+		const payload = await readJsonIfAvailable<{ records?: TemplateLearningRecord[] }>(response);
+		return payload?.records ?? [];
+	}
+
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("template_learning_records", {
+			select: "template_id,strong_matches,weak_matches,teacher_overrides,expected_steps_corrections,drift_score,last_updated",
+			filters: { order: "last_updated.desc" },
+		});
+		return ((rows as Array<Record<string, unknown>>) ?? []).map(hydrateTemplateLearningRecord);
+	}
+
+	return [...learningRecordMemory.values()];
+}
+
+export async function aggregateTemplateLearning(since = Date.now() - ONE_WEEK_MS): Promise<TemplateLearningRecord[]> {
 	const stepSignals = new Map<string, number[]>();
 	const stepTypes = new Map<string, TemplateStepHints["stepType"][]>();
 	const nextRecords = new Map<string, TemplateLearningRecord>();
+	const teacherActions = await loadTeacherActionEvents(since);
 
-	for (const event of teacherActionMemory) {
+	for (const event of teacherActions) {
 		const strongIds = new Set(event.context.teacherTemplateIds ?? []);
 		const weakIds = new Set(event.context.templateIds ?? []);
 		for (const templateId of affectedTemplateIds(event.context)) {
@@ -190,15 +373,24 @@ export async function aggregateTemplateLearning(): Promise<TemplateLearningRecor
 
 	learningRecordMemory.clear();
 	for (const record of nextRecords.values()) {
-		learningRecordMemory.set(record.templateId, record);
+		await saveTemplateLearningRecord(record);
 	}
 	learningDirty = false;
 	return [...learningRecordMemory.values()];
 }
 
 export async function loadTemplateLearning(): Promise<TemplateLearningRecord[]> {
-	if (learningDirty) {
+	if (typeof window !== "undefined") {
+		return loadTemplateLearningRecords();
+	}
+
+	if (learningDirty && !canUseSupabase()) {
 		return aggregateTemplateLearning();
+	}
+
+	const records = await loadTemplateLearningRecords();
+	if (records.length > 0 || canUseSupabase()) {
+		return records;
 	}
 
 	return [...learningRecordMemory.values()];
@@ -219,21 +411,24 @@ export function applyLearningAdjustments(
 			return [template];
 		}
 
-		if (learning.frozen) {
-			return [];
-		}
+		const hasLearnedSteps = typeof learning.learnedExpectedSteps === "number";
+		const isFrozen = Boolean(learning.frozen);
 
 		const adjusted: CognitiveTemplate = {
 			...template,
 			learningAdjustment: {
-				confidenceDelta: learning.confidenceDelta,
-				frozen: learning.frozen,
+				confidenceDelta: isFrozen ? undefined : learning.confidenceDelta,
+				frozen: isFrozen,
 				learnedExpectedSteps: learning.learnedExpectedSteps,
 				learnedStepType: isStepType(learning.learnedStepType) ? learning.learnedStepType : undefined,
+				originalExpectedSteps: template.stepHints?.expectedSteps,
+				driftScore: learning.driftScore,
+				evidenceCount: learning.evidenceCount,
+				status: isFrozen ? "frozen" : (learning.evidenceCount ?? 0) > 0 || hasLearnedSteps || typeof learning.confidenceDelta === "number" ? "learning" : "stable",
 			},
 		};
 
-		if (typeof learning.learnedExpectedSteps === "number") {
+		if (!isFrozen && typeof learning.learnedExpectedSteps === "number") {
 			adjusted.stepHints = {
 				expectedSteps: learning.learnedExpectedSteps,
 				stepType: isStepType(learning.learnedStepType)

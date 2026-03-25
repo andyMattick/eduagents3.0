@@ -151,7 +151,8 @@ describe("teacher feedback integration", () => {
 		const problem = output.problems[0]!;
 
 		expect(problem.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(baseline.problems[0]?.tags?.cognitive.multiStep ?? 0);
-		expect(problem.tags?.reasoning).not.toHaveProperty("expectedSteps");
+		expect(problem.tags?.reasoning?.expectedSteps).toBe(5);
+		expect(problem.tags?.reasoning?.adjustedExpectedSteps).toBe(5);
 		expect(problem.tags?.reasoning).not.toHaveProperty("stepSource");
 		expect(problem).not.toHaveProperty("reasoning");
 	});
@@ -174,7 +175,8 @@ describe("teacher feedback integration", () => {
 		const output = await runSemanticPipeline(buildInput());
 
 		expect(learning.find((record) => record.templateId === "definition-basic")?.teacherOverrides).toBeGreaterThan(0);
-		expect(output.problems[0]?.tags?.reasoning).not.toHaveProperty("expectedSteps");
+		expect(output.problems[0]?.tags?.reasoning?.expectedSteps).toBeGreaterThan(0);
+		expect(output.problems[0]?.tags?.reasoning?.selectedTemplateStatus).toBeDefined();
 		expect(output.problems[0]).not.toHaveProperty("reasoning");
 	});
 
@@ -205,7 +207,7 @@ describe("teacher feedback integration", () => {
 		const learned = await runSemanticPipeline(buildInput("doc-steps", "1. Interpret the graph and explain the trend."));
 
 		expect(learned.problems[0]?.tags?.cognitive.multiStep ?? 0).toBeGreaterThan(baseline.problems[0]?.tags?.cognitive.multiStep ?? 0);
-		expect(learned.problems[0]?.tags?.reasoning).not.toHaveProperty("expectedSteps");
+		expect(learned.problems[0]?.tags?.reasoning?.adjustedExpectedSteps ?? 0).toBeGreaterThan(baseline.problems[0]?.tags?.reasoning?.adjustedExpectedSteps ?? 0);
 	});
 
 	it("removes teacher adjustments after reset", async () => {

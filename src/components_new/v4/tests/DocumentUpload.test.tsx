@@ -250,7 +250,7 @@ describe("DocumentUpload", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Re-run cognition" })[0]!);
     expect(await screen.findByText("Override version: 1")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Why the AI thinks this" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Why this interpretation?" })[0]!);
     expect(await screen.findByTestId("reasoning-panel")).toHaveTextContent("math-computation");
     expect(screen.getByTestId("reasoning-panel")).toHaveTextContent("teacher-anomalous-phrase");
 

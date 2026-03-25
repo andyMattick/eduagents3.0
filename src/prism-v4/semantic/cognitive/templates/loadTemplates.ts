@@ -55,6 +55,10 @@ export interface CognitiveTemplate {
 		frozen?: boolean;
 		learnedExpectedSteps?: number;
 		learnedStepType?: TemplateStepHints["stepType"];
+		originalExpectedSteps?: number;
+		driftScore?: number;
+		evidenceCount?: number;
+		status?: "stable" | "learning" | "frozen";
 	};
 	match?: (problem: Problem) => boolean;
 }

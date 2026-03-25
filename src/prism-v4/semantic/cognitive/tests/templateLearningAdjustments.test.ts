@@ -42,9 +42,11 @@ describe("template learning adjustments", () => {
 
 		const records = await aggregateTemplateLearning();
 		const record = records.find((entry) => entry.templateId === "definition-basic");
+		const adjustedTemplate = applyLearningAdjustments(genericTemplates, records).find((template) => template.id === "definition-basic");
 
 		expect(record?.frozen).toBe(true);
-		expect(applyLearningAdjustments(genericTemplates, records).some((template) => template.id === "definition-basic")).toBe(false);
+		expect(adjustedTemplate).toBeDefined();
+		expect(adjustedTemplate?.learningAdjustment?.frozen).toBe(true);
 	});
 
 	it("learns expected steps after repeated corrections", async () => {
