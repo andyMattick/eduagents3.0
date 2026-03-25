@@ -5,8 +5,8 @@ This folder contains the canonical schema categories for PRISM v4.
 ## Structure
 
 - `domain/` owns teacher-authored and system-managed business objects.
-- `semantic/` owns content-derived annotations and semantic normalization.
-- `integration/` owns PRISM assembly and transport contracts.
+- `semantic/` owns content-derived annotations, canonical content normalization, and document analysis contracts.
+- `integration/` owns PRISM assembly and transport contracts, including document-intent request/response payloads.
 - `view/` owns reporting-only render projections.
 
 ## Authoritative Rules

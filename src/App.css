@@ -985,40 +985,43 @@
   border-color: #444 !important;
 }
 
-/* v4-feedback-grid: dark-mode safe, high contrast, clean spacing */
+/* Force readable text + inputs in dark mode */
 .v4-feedback-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1rem;
   padding: 1rem;
-  background: var(--v4-surface, #1e1e1e);
+
+  /* Ensure the container has a real surface */
+  background-color: var(--v4-surface, #1e1e1e);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,0.08);
 }
 
+/* Labels must override inherited dark-mode text */
 .v4-feedback-grid label {
-  display: flex;
-  flex-direction: column;
+  color: var(--v4-text-primary, #f5f5f5);
   font-size: 0.9rem;
   font-weight: 500;
-  color: var(--v4-text-primary, #f5f5f5);
+  display: flex;
+  flex-direction: column;
   gap: 0.4rem;
 }
 
-/* Select + Range Inputs */
+/* Selects + Range Inputs */
 .v4-feedback-grid select,
 .v4-feedback-grid input[type="range"] {
-  background: var(--v4-input-bg, #2a2a2a);
+  background-color: var(--v4-input-bg, #2a2a2a);
   color: var(--v4-text-primary, #f5f5f5);
-  border: 1px solid rgba(255,255,255,0.15);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
   font-size: 0.9rem;
 }
 
-/* Range track + thumb for dark mode */
+/* Range track + thumb */
 .v4-feedback-grid input[type="range"]::-webkit-slider-runnable-track {
-  background: rgba(255,255,255,0.15);
+  background: rgba(255, 255, 255, 0.25);
   height: 4px;
   border-radius: 4px;
 }
@@ -1034,8 +1037,35 @@
   cursor: pointer;
 }
 
+/* Focus states */
 .v4-feedback-grid select:focus,
 .v4-feedback-grid input[type="range"]:focus {
   outline: 2px solid var(--v4-accent, #4da3ff);
   outline-offset: 2px;
 }
+
+/* Fix for v4-panel: ensure readable text on light backgrounds */
+.v4-panel {
+  background-color: var(--v4-surface, #ffffff); /* or your preferred light surface */
+  color: var(--v4-text-primary, #111111);       /* force dark readable text */
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid rgba(0,0,0,0.08);
+}
+
+/* Ensure all descendants inherit readable text */
+.v4-panel * {
+  color: var(--v4-text-primary, #111111);
+}
+
+/* Optional: if the panel contains inputs */
+.v4-panel input,
+.v4-panel select,
+.v4-panel textarea {
+  background-color: #f7f7f7;
+  color: #111111;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+}
+
