@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type { DocumentRole, DocumentSession, SessionRole } from "../../prism-v4/schema/domain";
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
@@ -8,6 +8,21 @@ import type { AnalyzedDocument, DocumentCollectionAnalysis, TaggingPipelineInput
 
 import { SemanticViewer } from "./SemanticViewer";
 import "./v4.css";
+
+const DEBUG_UPLOAD_TRACE = import.meta.env.DEV;
+
+function logUploadTrace(message: string, details?: Record<string, unknown>) {
+  if (!DEBUG_UPLOAD_TRACE) {
+    return;
+  }
+
+  if (details) {
+    console.info(`[Wave6 Upload] ${message}`, details);
+    return;
+  }
+
+  console.info(`[Wave6 Upload] ${message}`);
+}
 
 type RegisteredDocumentSummary = {
   documentId: string;
@@ -302,6 +317,8 @@ export function DocumentUpload() {
   const [debugInput, setDebugInput] = useState<TaggingPipelineInput | null>(null);
   const [debugError, setDebugError] = useState<string | null>(null);
   const [isLoadingDebug, setIsLoadingDebug] = useState(false);
+  const uploadInFlightRef = useRef(false);
+  const lastUploadAttemptKeyRef = useRef<string | null>(null);
 
   async function fetchJson<T>(input: string, init?: RequestInit) {
     const response = await fetch(input, init);
@@ -332,13 +349,31 @@ export function DocumentUpload() {
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const uploadAttemptKey = selectedFiles
+      .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
+      .sort()
+      .join("|");
+
+    if (uploadInFlightRef.current || isUploading) {
+      logUploadTrace("ignored submit while upload in flight", { isUploading, selectedFileCount: selectedFiles.length });
+      return;
+    }
+
+    if (uploadAttemptKey.length > 0 && lastUploadAttemptKeyRef.current === uploadAttemptKey) {
+      logUploadTrace("ignored duplicate submit", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
+      return;
+    }
+
     if (selectedFiles.length === 0) {
       setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
       return;
     }
 
+    uploadInFlightRef.current = true;
+    lastUploadAttemptKeyRef.current = uploadAttemptKey;
     setIsUploading(true);
     setError(null);
+    logUploadTrace("upload started", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
 
     try {
       const registered: RegisteredDocumentSummary[] = [];
@@ -346,6 +381,7 @@ export function DocumentUpload() {
       let sessionId: string | null = null;
 
       for (const file of selectedFiles) {
+        logUploadTrace("uploading file", { fileName: file.name, fileSize: file.size, fileType: file.type || "application/octet-stream" });
         const buffer = await file.arrayBuffer();
         const payload = await fetchJson<{ documentId: string; sessionId: string; registered: RegisteredDocumentSummary[] }>("/api/v4/documents/upload", {
           method: "POST",
@@ -359,6 +395,7 @@ export function DocumentUpload() {
         registered.push(uploaded);
         nextFileMap[uploaded.documentId] = file;
         sessionId = sessionId ?? payload.sessionId;
+        logUploadTrace("file uploaded", { fileName: file.name, documentId: uploaded.documentId, sessionId: payload.sessionId });
       }
 
       const documentRoles = Object.fromEntries(registered.map((entry) => {
@@ -371,6 +408,7 @@ export function DocumentUpload() {
         return [entry.documentId, [guessSessionRole(role)]];
       }));
 
+      logUploadTrace("persisting session roles", { sessionId, documentCount: registered.length });
       await fetchJson("/api/v4/documents/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -382,28 +420,36 @@ export function DocumentUpload() {
         }),
       });
 
-      await Promise.all(registered.map((entry) => fetchJson("/api/v4/documents/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: workspace?.sessionId ?? sessionId,  // whichever variable you have in scope
-          documentId: entry.documentId,
-        }),
-
-      })));
+      for (const entry of registered) {
+        logUploadTrace("analyzing document", { sessionId: workspace?.sessionId ?? sessionId, documentId: entry.documentId });
+        await fetchJson("/api/v4/documents/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId: workspace?.sessionId ?? sessionId,
+            documentId: entry.documentId,
+          }),
+        });
+        logUploadTrace("analysis complete", { documentId: entry.documentId });
+      }
 
       setUploadedFileMap((current) => ({ ...current, ...nextFileMap }));
       setSelectedDocumentIds(registered.map((entry) => entry.documentId));
       setPrimaryDocumentId(registered[0]?.documentId ?? null);
       setCurrentProduct(null);
       setLastIntentRequest(null);
+      logUploadTrace("refreshing workspace", { sessionId });
       await refreshWorkspace(sessionId!);
+      logUploadTrace("upload flow complete", { sessionId, uploadedCount: registered.length });
     } catch (uploadError) {
       setWorkspace(null);
       setCurrentProduct(null);
       setError(uploadError instanceof Error ? uploadError.message : "Workspace creation failed.");
+      logUploadTrace("upload flow failed", { error: uploadError instanceof Error ? uploadError.message : "Workspace creation failed." });
     } finally {
       setIsUploading(false);
+      uploadInFlightRef.current = false;
+      logUploadTrace("upload lock released");
     }
   }
 
