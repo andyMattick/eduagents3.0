@@ -99,7 +99,7 @@ describe("v4 documents binary routes", () => {
 
 		const analyzeResponse = await request(app)
 			.post("/api/v4/documents/analyze")
-			.send({ documentId: uploadResponse.body.documentId });
+			.send({ sessionId: uploadResponse.body.sessionId, documentId: uploadResponse.body.documentId });
 
 		expect(analyzeResponse.status).toBe(200);
 		expect(analyzeResponse.body.analyzedDocument.document.surfaces.length).toBeGreaterThan(0);
@@ -120,7 +120,7 @@ describe("v4 documents binary routes", () => {
 
 		const analyzeResponse = await request(app)
 			.post("/api/v4/documents/analyze")
-			.send({ documentId: uploadResponse.body.documentId });
+			.send({ sessionId: uploadResponse.body.sessionId, documentId: uploadResponse.body.documentId });
 
 		expect(analyzeResponse.status).toBe(200);
 		expect(analyzeResponse.body.analyzedDocument.document.surfaces.length).toBe(1);
@@ -142,7 +142,7 @@ describe("v4 documents binary routes", () => {
 
 		const analyzeResponse = await request(app)
 			.post("/api/v4/documents/analyze")
-			.send({ documentId: uploadResponse.body.documentId });
+			.send({ sessionId: uploadResponse.body.sessionId, documentId: uploadResponse.body.documentId });
 
 		expect(analyzeResponse.status).toBe(200);
 		expect(analyzeResponse.body.analyzedDocument.document.surfaces.length).toBeGreaterThan(0);
@@ -181,7 +181,7 @@ describe("v4 documents binary routes", () => {
 		for (const documentId of documentIds) {
 			const analyzeResponse = await request(app)
 				.post("/api/v4/documents/analyze")
-				.send({ documentId });
+				.send({ sessionId: pdfUpload.body.sessionId, documentId });
 			expect(analyzeResponse.status).toBe(200);
 		}
 

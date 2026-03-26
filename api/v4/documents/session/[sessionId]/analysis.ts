@@ -20,6 +20,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return res.status(404).json({ error: "Session not found" });
 	}
 
-	const analysis = getCollectionAnalysis(sessionId) ?? buildDocumentCollectionAnalysis(sessionId) ?? buildDefaultCollectionAnalysis(sessionId);
+	const analysis = getCollectionAnalysis(sessionId) ?? buildDefaultCollectionAnalysis(sessionId);
 	return res.status(200).json({ session, analysis });
 }
