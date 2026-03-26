@@ -1,16 +1,21 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
-import { getAnalyzedDocument, getRegisteredDocument, saveAnalyzedDocument } from "../../../src/prism-v4/documents/registry";
+import {
+	getAnalyzedDocumentStore,
+	getDocumentSessionIdStore,
+	getRegisteredDocumentStore,
+	saveAnalyzedDocumentStore,
+} from "../../../src/prism-v4/documents/registryStore";
 
 export const runtime = "nodejs";
 
 function parseBody(body: unknown) {
 	if (typeof body !== "string") {
-		return body as { documentId?: string };
+		return body as { documentId?: string; sessionId?: string };
 	}
 
-	return JSON.parse(body) as { documentId?: string };
+	return JSON.parse(body) as { documentId?: string; sessionId?: string };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -24,21 +29,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "documentId is required" });
 		}
 
-		const document = getRegisteredDocument(payload.documentId);
+		const document = await getRegisteredDocumentStore(payload.documentId);
 		if (!document) {
 			return res.status(404).json({ error: "Document not found" });
 		}
 
-		let analyzedDocument = getAnalyzedDocument(payload.documentId);
+		let analyzedDocument = await getAnalyzedDocumentStore(payload.documentId);
 		if (!analyzedDocument) {
-			analyzedDocument = saveAnalyzedDocument(await analyzeRegisteredDocument({
+			analyzedDocument = await analyzeRegisteredDocument({
 				documentId: document.documentId,
 				sourceFileName: document.sourceFileName,
 				sourceMimeType: document.sourceMimeType,
 				rawBinary: document.rawBinary,
 				azureExtract: document.azureExtract,
 				canonicalDocument: document.canonicalDocument,
-			}));
+			});
+			const sessionId = payload.sessionId ?? await getDocumentSessionIdStore(payload.documentId);
+			await saveAnalyzedDocumentStore(analyzedDocument, sessionId);
 		}
 		return res.status(200).json({
 			documentId: payload.documentId,

@@ -2,7 +2,12 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
-import { createDocumentSession, registerDocuments, saveAnalyzedDocument } from "../../../src/prism-v4/documents/registry";
+import {
+	createDocumentSessionStore,
+	ensureSessionDocumentsStore,
+	registerDocumentsStore,
+	saveAnalyzedDocumentStore,
+} from "../../../src/prism-v4/documents/registryStore";
 
 export const runtime = "nodejs";
 export const config = {
@@ -85,6 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const headers = req.headers ?? {};
 		const contentType = getSingleHeaderValue(headers["content-type"]) ?? "application/octet-stream";
 		const fileName = getSingleHeaderValue(headers["x-file-name"]);
+		const requestedSessionId = getSingleHeaderValue(headers["x-session-id"]);
 		if (contentType.includes("application/json") || typeof req.body !== "undefined") {
 		const payload = parseBody(req.body ?? {});
 		const documents = (payload.documents ?? []).filter((entry) => entry.sourceFileName && entry.sourceMimeType);
@@ -92,8 +98,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "documents must contain at least one sourceFileName/sourceMimeType pair" });
 		}
 
-		const registered = registerDocuments(documents as Array<{ sourceFileName: string; sourceMimeType: string; azureExtract?: { fileName: string; content: string; pages: Array<{ pageNumber: number; text: string }>; paragraphs?: Array<{ text: string; pageNumber: number; role?: string }>; tables?: Array<{ rowCount: number; columnCount: number; pageNumber?: number; cells: Array<{ rowIndex: number; columnIndex: number; text: string }> }>; readingOrder?: string[] } }>);
-		const session = payload.createSession === false ? null : createDocumentSession(registered.map((entry) => entry.documentId));
+		const registered = await registerDocumentsStore(documents as Array<{ sourceFileName: string; sourceMimeType: string; azureExtract?: { fileName: string; content: string; pages: Array<{ pageNumber: number; text: string }>; paragraphs?: Array<{ text: string; pageNumber: number; role?: string }>; tables?: Array<{ rowCount: number; columnCount: number; pageNumber?: number; cells: Array<{ rowIndex: number; columnIndex: number; text: string }> }>; readingOrder?: string[] } }>);
+		const session = payload.createSession === false
+			? null
+			: requestedSessionId
+				? await ensureSessionDocumentsStore(requestedSessionId, registered.map((entry) => entry.documentId))
+				: await createDocumentSessionStore(registered.map((entry) => entry.documentId));
 
 		return res.status(200).json({
 			documentIds: registered.map((entry) => entry.documentId),
@@ -121,21 +131,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "Request body is empty." });
 		}
 
-		const [registered] = registerDocuments([{ sourceFileName: fileName, sourceMimeType: contentType, rawBinary: buffer }]);
-		const session = createDocumentSession([registered.documentId]);
+		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: contentType, rawBinary: buffer }], requestedSessionId ?? null);
+		const session = requestedSessionId
+			? await ensureSessionDocumentsStore(requestedSessionId, [registered.documentId])
+			: await createDocumentSessionStore([registered.documentId]);
 
 		// Analyze inline while the binary is available in this invocation.
 		// Vercel serverless functions are stateless — the in-memory registry is
 		// not shared across invocations, so a separate /analyze call in a
 		// subsequent request would always return 404 "Document not found".
-		const analyzedDocument = saveAnalyzedDocument(
-			await analyzeRegisteredDocument({
-				documentId: registered.documentId,
-				sourceFileName: registered.sourceFileName,
-				sourceMimeType: registered.sourceMimeType,
-				rawBinary: buffer,
-			}),
-		);
+		const analyzedDocument = await analyzeRegisteredDocument({
+			documentId: registered.documentId,
+			sourceFileName: registered.sourceFileName,
+			sourceMimeType: registered.sourceMimeType,
+			rawBinary: buffer,
+		});
+		await saveAnalyzedDocumentStore(analyzedDocument, session.sessionId);
 
 		return res.status(200).json({
 			documentId: registered.documentId,

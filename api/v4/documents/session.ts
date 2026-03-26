@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { getAnalyzedDocumentsForSession, getDocumentSession, getSessionDocuments, upsertDocumentSession } from "../../../src/prism-v4/documents/registry";
+import {
+	getAnalyzedDocumentsForSessionStore,
+	getDocumentSessionStore,
+	getSessionDocumentsStore,
+	upsertDocumentSessionStore,
+} from "../../../src/prism-v4/documents/registryStore";
 import type { DocumentSession } from "../../../src/prism-v4/schema/domain";
 
 export const runtime = "nodejs";
@@ -20,15 +25,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "sessionId is required" });
 		}
 
-		const session = getDocumentSession(sessionId);
+		const session = await getDocumentSessionStore(sessionId);
 		if (!session) {
 			return res.status(404).json({ error: "Session not found" });
 		}
 
+		const [documents, analyzedDocuments] = await Promise.all([
+			getSessionDocumentsStore(sessionId),
+			getAnalyzedDocumentsForSessionStore(sessionId),
+		]);
+
 		return res.status(200).json({
 			session,
-			documents: getSessionDocuments(sessionId),
-			analyzedDocuments: getAnalyzedDocumentsForSession(sessionId),
+			documents,
+			analyzedDocuments,
 		});
 	}
 
@@ -42,12 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "sessionId, documentIds, documentRoles, and sessionRoles are required" });
 		}
 
-		const session = upsertDocumentSession({
+		const existing = await getDocumentSessionStore(payload.sessionId);
+		const session = await upsertDocumentSessionStore({
 			sessionId: payload.sessionId,
 			documentIds: payload.documentIds,
 			documentRoles: payload.documentRoles,
 			sessionRoles: payload.sessionRoles,
-			createdAt: getDocumentSession(payload.sessionId)?.createdAt,
+			createdAt: existing?.createdAt,
 		});
 
 		return res.status(200).json(session);

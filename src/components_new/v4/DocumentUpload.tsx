@@ -31,6 +31,12 @@ type RegisteredDocumentSummary = {
   createdAt: string;
 };
 
+type UploadDocumentResponse = {
+  documentId: string;
+  sessionId: string;
+  registered: RegisteredDocumentSummary[];
+};
+
 type SessionWorkspace = {
   sessionId: string;
   session: DocumentSession;
@@ -383,19 +389,20 @@ export function DocumentUpload() {
       for (const file of selectedFiles) {
         logUploadTrace("uploading file", { fileName: file.name, fileSize: file.size, fileType: file.type || "application/octet-stream" });
         const buffer = await file.arrayBuffer();
-        const payload = await fetchJson<{ documentId: string; sessionId: string; registered: RegisteredDocumentSummary[] }>("/api/v4/documents/upload", {
+        const uploadPayload: UploadDocumentResponse = await fetchJson("/api/v4/documents/upload", {
           method: "POST",
           headers: {
             "Content-Type": file.type || "application/octet-stream",
             "x-file-name": file.name,
+            ...(sessionId ? { "x-session-id": sessionId } : {}),
           },
           body: buffer,
         });
-        const uploaded = payload.registered[0]!;
+        const uploaded = uploadPayload.registered[0]!;
         registered.push(uploaded);
         nextFileMap[uploaded.documentId] = file;
-        sessionId = sessionId ?? payload.sessionId;
-        logUploadTrace("file uploaded", { fileName: file.name, documentId: uploaded.documentId, sessionId: payload.sessionId });
+        sessionId = sessionId ?? uploadPayload.sessionId;
+        logUploadTrace("file uploaded", { fileName: file.name, documentId: uploaded.documentId, sessionId: uploadPayload.sessionId });
       }
 
       const documentRoles = Object.fromEntries(registered.map((entry) => {

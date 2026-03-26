@@ -1,7 +1,15 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { buildIntentPayload, getIntentBuildErrorStatus, isBuiltIntentType } from "../../../src/prism-v4/documents/intents/buildIntentProduct";
-import { getDocumentSession, getIntentProduct, listIntentProductsForSession, saveIntentProduct } from "../../../src/prism-v4/documents/registry";
+import { getCollectionAnalysis } from "../../../src/prism-v4/documents/registry";
+import {
+	getDocumentSessionStore,
+	getIntentProductStore,
+	hydrateSessionToRegistryStore,
+	listIntentProductsForSessionStore,
+	saveCollectionAnalysisStore,
+	saveIntentProductStore,
+} from "../../../src/prism-v4/documents/registryStore";
 import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
 
 export const runtime = "nodejs";
@@ -28,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const sessionId = Array.isArray(req.query.sessionId) ? req.query.sessionId[0] : req.query.sessionId;
 
 		if (productId) {
-			const product = getIntentProduct(productId);
+			const product = await getIntentProductStore(productId);
 			if (!product) {
 				return res.status(404).json({ error: "Product not found" });
 			}
@@ -36,14 +44,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		if (sessionId) {
-			const session = getDocumentSession(sessionId);
+			const session = await getDocumentSessionStore(sessionId);
 			if (!session) {
 				return res.status(404).json({ error: "Session not found" });
 			}
 
 			return res.status(200).json({
 				sessionId,
-				products: listIntentProductsForSession(sessionId),
+				products: await listIntentProductsForSessionStore(sessionId),
 			});
 		}
 
@@ -60,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "sessionId, documentIds, and intentType are required" });
 		}
 
-		const session = getDocumentSession(payload.sessionId);
+		const session = await getDocumentSessionStore(payload.sessionId);
 		if (!session) {
 			return res.status(404).json({ error: "Session not found" });
 		}
@@ -70,8 +78,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const intentRequest = payload as IntentRequest & { intentType: typeof payload.intentType };
+		await hydrateSessionToRegistryStore(intentRequest.sessionId);
 		const builtPayload = await buildIntentPayload(intentRequest);
-		const product = saveIntentProduct(intentRequest, builtPayload, schemaVersionForIntent(intentRequest.intentType));
+		const collectionAnalysis = getCollectionAnalysis(intentRequest.sessionId);
+		if (collectionAnalysis) {
+			await saveCollectionAnalysisStore(collectionAnalysis);
+		}
+		const product = await saveIntentProductStore(intentRequest, builtPayload, schemaVersionForIntent(intentRequest.intentType));
 
 		return res.status(200).json(product);
 	} catch (error) {
