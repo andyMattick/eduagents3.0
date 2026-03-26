@@ -385,7 +385,11 @@ export function DocumentUpload() {
       await Promise.all(registered.map((entry) => fetchJson("/api/v4/documents/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documentId: entry.documentId }),
+        body: JSON.stringify({
+          sessionId: workspace?.sessionId ?? sessionId,  // whichever variable you have in scope
+          documentId: entry.documentId,
+        }),
+
       })));
 
       setUploadedFileMap((current) => ({ ...current, ...nextFileMap }));
@@ -563,8 +567,8 @@ export function DocumentUpload() {
       <div className="v4-shell">
         <section className="v4-panel v4-hero">
           <div>
-            <p className="v4-kicker">Wave 6</p>
-            <h1>What do you want to do with these documents?</h1>
+            <p className="v4-kicker">Document Ingestion</p>
+            <h1>What documents do you want to process?</h1>
             <p className="v4-subtitle">
               Upload multiple documents, assign roles, inspect analysis summaries, and route directly into the new intent-driven product engine.
             </p>
