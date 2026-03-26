@@ -95,3 +95,18 @@ Phase 3 receives:
 
 Phase 3 must not call Azure or modify ingestion logic.
 Phase 2 must not perform semantic tagging or problem extraction.
+
+## Teacher Workspace
+
+The active teacher-facing v4 flow no longer drops directly into the semantic viewer.
+
+The default path is now:
+
+1. upload one or more documents
+2. create a session-backed workspace
+3. analyze the session documents
+4. choose an intent
+5. view the generated product
+6. optionally inspect semantics through the legacy viewer
+
+See `src/prism-v4/documents/README.md` for the workflow summary, route map, and product-layer notes.

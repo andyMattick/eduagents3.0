@@ -12,6 +12,9 @@ vi.mock("../prism-v4/ingestion/azure/azureExtractor", () => ({
 }));
 
 import analyzeHandler from "../../api/v4/documents/analyze";
+import intentHandler from "../../api/v4/documents/intent";
+import sessionAnalysisHandler from "../../api/v4/documents/session/[sessionId]/analysis";
+import sessionHandler from "../../api/v4/documents/session";
 import uploadHandler from "../../api/v4/documents/upload";
 import { resetDocumentRegistryState } from "../prism-v4/documents/registry";
 
@@ -19,6 +22,9 @@ function createApp() {
 	const app = express();
 	app.post("/api/v4/documents/upload", (req, res) => uploadHandler(req as any, res as any));
 	app.post("/api/v4/documents/analyze", express.json(), (req, res) => analyzeHandler(req as any, res as any));
+	app.post("/api/v4/documents/session", express.json(), (req, res) => sessionHandler(req as any, res as any));
+	app.get("/api/v4/documents/session/:sessionId/analysis", (req, res) => sessionAnalysisHandler(req as any, res as any));
+	app.post("/api/v4/documents/intent", express.json(), (req, res) => intentHandler(req as any, res as any));
 	return app;
 }
 
@@ -143,5 +149,158 @@ describe("v4 documents binary routes", () => {
 		expect(analyzeResponse.body.analyzedDocument.document.nodes.some((node: any) => node.nodeType === "figure")).toBe(true);
 		expect(analyzeResponse.body.analyzedDocument.fragments.some((fragment: any) => !fragment.isInstructional)).toBe(true);
 		expect(analyzeResponse.body.analyzedDocument.problems.length).toBeGreaterThan(0);
+	});
+
+	it("builds Wave 4 collection analysis and intents across PDF, DOCX, and PPTX uploads", async () => {
+		runAzureExtractionMock.mockResolvedValue({
+			content: "1. Solve the fraction problem.",
+			pages: [{ pageNumber: 1, lines: [{ content: "1. Solve the fraction problem." }] }],
+			paragraphs: [{ content: "1. Solve the fraction problem.", boundingRegions: [{ pageNumber: 1 }] }],
+			tables: [],
+		});
+
+		const app = createApp();
+		const pdfUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/pdf")
+			.set("x-file-name", "worksheet.pdf")
+			.send(Buffer.from("%PDF-1.4 sample"));
+		const docxUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+			.set("x-file-name", "lesson.docx")
+			.send(await buildDocxBuffer());
+		const pptxUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+			.set("x-file-name", "slides.pptx")
+			.send(await buildPptxBuffer());
+
+		const documentIds = [pdfUpload.body.documentId, docxUpload.body.documentId, pptxUpload.body.documentId];
+
+		for (const documentId of documentIds) {
+			const analyzeResponse = await request(app)
+				.post("/api/v4/documents/analyze")
+				.send({ documentId });
+			expect(analyzeResponse.status).toBe(200);
+		}
+
+		const sessionId = docxUpload.body.sessionId;
+		const sessionResponse = await request(app)
+			.post("/api/v4/documents/session")
+			.send({
+				sessionId,
+				documentIds,
+				documentRoles: {
+					[documentIds[0]]: ["worksheet"],
+					[documentIds[1]]: ["notes"],
+					[documentIds[2]]: ["slides"],
+				},
+				sessionRoles: {
+					[documentIds[0]]: ["comparison-target"],
+					[documentIds[1]]: ["unit-member"],
+					[documentIds[2]]: ["unit-member"],
+				},
+			});
+
+		expect(sessionResponse.status).toBe(200);
+
+		const analysisResponse = await request(app)
+			.get(`/api/v4/documents/session/${sessionId}/analysis`)
+			.query({ sessionId });
+
+		expect(analysisResponse.status).toBe(200);
+		expect(analysisResponse.body.analysis.documentIds).toHaveLength(3);
+		expect(analysisResponse.body.analysis.documentSimilarity.length).toBeGreaterThanOrEqual(3);
+		expect(Object.keys(analysisResponse.body.analysis.coverageSummary.perDocument)).toHaveLength(3);
+
+		const compareResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds: documentIds.slice(0, 2), intentType: "compare-documents" });
+		expect(compareResponse.status).toBe(200);
+		expect(compareResponse.body.payload.kind).toBe("compare-documents");
+
+		const mergeResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds, intentType: "merge-documents" });
+		expect(mergeResponse.status).toBe(200);
+		expect(mergeResponse.body.payload.kind).toBe("merge-documents");
+
+		const sequenceResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds, intentType: "build-sequence" });
+		expect(sequenceResponse.status).toBe(200);
+		expect(sequenceResponse.body.payload.kind).toBe("sequence");
+	});
+
+	it("builds Wave 5 instructional products across mixed-format uploads", async () => {
+		runAzureExtractionMock.mockResolvedValue({
+			content: "1. Solve the fraction problem.",
+			pages: [{ pageNumber: 1, lines: [{ content: "1. Solve the fraction problem." }] }],
+			paragraphs: [{ content: "1. Solve the fraction problem.", boundingRegions: [{ pageNumber: 1 }] }],
+			tables: [],
+		});
+
+		const app = createApp();
+		const pdfUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/pdf")
+			.set("x-file-name", "worksheet.pdf")
+			.send(Buffer.from("%PDF-1.4 sample"));
+		const docxUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+			.set("x-file-name", "lesson.docx")
+			.send(await buildDocxBuffer());
+		const pptxUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+			.set("x-file-name", "slides.pptx")
+			.send(await buildPptxBuffer());
+
+		const documentIds = [pdfUpload.body.documentId, docxUpload.body.documentId, pptxUpload.body.documentId];
+		const sessionId = docxUpload.body.sessionId;
+
+		const sessionResponse = await request(app)
+			.post("/api/v4/documents/session")
+			.send({
+				sessionId,
+				documentIds,
+				documentRoles: {
+					[documentIds[0]]: ["worksheet"],
+					[documentIds[1]]: ["notes"],
+					[documentIds[2]]: ["slides"],
+				},
+				sessionRoles: {
+					[documentIds[0]]: ["unit-member"],
+					[documentIds[1]]: ["unit-member"],
+					[documentIds[2]]: ["unit-member"],
+				},
+			});
+		expect(sessionResponse.status).toBe(200);
+
+		const lessonResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds: [docxUpload.body.documentId], intentType: "build-lesson" });
+		expect(lessonResponse.status).toBe(200);
+		expect(lessonResponse.body.payload.kind).toBe("lesson");
+
+		const unitResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds, intentType: "build-unit" });
+		expect(unitResponse.status).toBe(200);
+		expect(unitResponse.body.payload.kind).toBe("unit");
+
+		const mapResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds, intentType: "build-instructional-map" });
+		expect(mapResponse.status).toBe(200);
+		expect(mapResponse.body.payload.kind).toBe("instructional-map");
+
+		const alignmentResponse = await request(app)
+			.post("/api/v4/documents/intent")
+			.send({ sessionId, documentIds, intentType: "curriculum-alignment" });
+		expect(alignmentResponse.status).toBe(200);
+		expect(alignmentResponse.body.payload.kind).toBe("curriculum-alignment");
 	});
 });

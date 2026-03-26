@@ -2,6 +2,7 @@ export type IntentType =
 	| "build-test"
 	| "build-review"
 	| "build-lesson"
+	| "curriculum-alignment"
 	| "build-practice-set"
 	| "extract-problems"
 	| "extract-concepts"

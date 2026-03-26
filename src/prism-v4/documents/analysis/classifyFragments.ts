@@ -1,5 +1,90 @@
 import type { CanonicalDocument, FragmentSemanticRecord } from "../../schema/semantic";
 
+function unique<T>(values: T[]) {
+	return [...new Set(values)];
+}
+
+function extractLearningObjective(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
+	if (instructionalRole !== "objective") {
+		return null;
+	}
+
+	return text
+		.replace(/^(learning objective|objective|learning target|i can)[:\s-]*/i, "")
+		.trim() || text.trim();
+}
+
+function extractPrerequisiteConcepts(text: string) {
+	const lower = text.toLowerCase();
+	const concepts: string[] = [];
+	if (/fraction/.test(lower)) {
+		concepts.push("fractions");
+	}
+	if (/equivalent/.test(lower)) {
+		concepts.push("equivalent fractions");
+	}
+	if (/number line/.test(lower)) {
+		concepts.push("number line reasoning");
+	}
+	if (/equation|inverse operation/.test(lower)) {
+		concepts.push("equation solving");
+	}
+	if (/denominator/.test(lower)) {
+		concepts.push("common denominators");
+	}
+	if (/review|before|prior|remember/.test(lower)) {
+		return unique(concepts.length > 0 ? concepts : [text.trim().slice(0, 48)]);
+	}
+
+	return unique(concepts);
+}
+
+function inferScaffoldLevel(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
+	const lower = text.toLowerCase();
+	if (instructionalRole === "objective" || /independent|exit ticket|extension/.test(lower)) {
+		return "low" as const;
+	}
+	if (instructionalRole === "example" || /step|guided|together|model/.test(lower)) {
+		return "high" as const;
+	}
+	if (instructionalRole === "instruction" || /practice|support|hint/.test(lower)) {
+		return "medium" as const;
+	}
+	return "medium" as const;
+}
+
+function inferExampleType(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
+	if (instructionalRole !== "example") {
+		return undefined;
+	}
+	const lower = text.toLowerCase();
+	if (/counterexample|not this|incorrect/.test(lower)) {
+		return "counterexample" as const;
+	}
+	if (/worked example|step|showing each step|model/.test(lower)) {
+		return "worked" as const;
+	}
+	return "non-worked" as const;
+}
+
+function extractMisconceptionTriggers(text: string) {
+	const lower = text.toLowerCase();
+	const triggers: string[] = [];
+	if (/common mistake|mistake|error|misconception/.test(lower)) {
+		triggers.push(text.trim());
+	}
+	if (/denominator/.test(lower)) {
+		triggers.push("confusing numerator and denominator roles");
+	}
+	if (/number line/.test(lower)) {
+		triggers.push("misreading scale or interval spacing");
+	}
+	if (/inverse operation|equation/.test(lower)) {
+		triggers.push("forgetting inverse operations");
+	}
+	return unique(triggers);
+}
+
 function inferContentType(nodeType: CanonicalDocument["nodes"][number]["nodeType"], text: string): FragmentSemanticRecord["contentType"] {
 	if (nodeType === "figure") {
 		return "image";
@@ -62,6 +147,11 @@ export function classifyFragments(document: CanonicalDocument): FragmentSemantic
 		const text = node.normalizedText ?? node.text ?? "";
 		const contentType = inferContentType(node.nodeType, text);
 		const classification = classifyRole(text, contentType);
+		const learningObjective = extractLearningObjective(text, classification.instructionalRole);
+		const prerequisiteConcepts = extractPrerequisiteConcepts(text);
+		const scaffoldLevel = inferScaffoldLevel(text, classification.instructionalRole);
+		const exampleType = inferExampleType(text, classification.instructionalRole);
+		const misconceptionTriggers = extractMisconceptionTriggers(text);
 		return {
 			id: `${document.id}-fragment-${node.id}`,
 			documentId: document.id,
@@ -69,11 +159,23 @@ export function classifyFragments(document: CanonicalDocument): FragmentSemantic
 			isInstructional: classification.isInstructional,
 			instructionalRole: classification.instructionalRole,
 			contentType,
+			learningObjective,
+			prerequisiteConcepts,
+			scaffoldLevel,
+			exampleType,
+			misconceptionTriggers,
 			confidence: classification.confidence,
-			classifierVersion: "wave2-v1",
+			classifierVersion: "wave5-v1",
 			strategy: "rule-based",
 			evidence: classification.evidence,
-			semanticTags: classification.isInstructional ? [classification.instructionalRole] : ["metadata"],
+			semanticTags: classification.isInstructional
+				? unique([
+					classification.instructionalRole,
+					...(learningObjective ? ["learning-objective"] : []),
+					...(prerequisiteConcepts.length > 0 ? ["prerequisite"] : []),
+					...(misconceptionTriggers.length > 0 ? ["misconception-trigger"] : []),
+				])
+				: ["metadata"],
 		};
 	});
 }

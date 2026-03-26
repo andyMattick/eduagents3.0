@@ -85,10 +85,11 @@ describe("buildIntentPayload", () => {
 		resetDocumentRegistryState();
 	});
 
-	it("builds the first five Wave 3 intent payloads from analyzed documents", async () => {
+	it("builds the Wave 3, Wave 4, and Wave 5 intent payloads from analyzed documents", async () => {
 		const registered = registerDocuments([
 			{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" },
 			{ sourceFileName: "quiz.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "slides.pdf", sourceMimeType: "application/pdf" },
 		]);
 		const documentIds = registered.map((document) => document.documentId);
 		const session = createDocumentSession(documentIds);
@@ -109,10 +110,18 @@ describe("buildIntentPayload", () => {
 			representation: "diagram",
 			difficulty: "high",
 		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: documentIds[2]!,
+			sourceFileName: "slides.pdf",
+			concept: "equivalent fractions",
+			problemText: "Use a number line to compare 2/4 and 1/2.",
+			representation: "number-line",
+			difficulty: "medium",
+		}));
 
 		const extractProblems = await buildIntentPayload({
 			sessionId: session.sessionId,
-			documentIds,
+			documentIds: documentIds.slice(0, 2),
 			intentType: "extract-problems",
 		});
 		expect(extractProblems.kind).toBe("problem-extraction");
@@ -120,7 +129,7 @@ describe("buildIntentPayload", () => {
 
 		const extractConcepts = await buildIntentPayload({
 			sessionId: session.sessionId,
-			documentIds,
+			documentIds: documentIds.slice(0, 2),
 			intentType: "extract-concepts",
 		});
 		expect(extractConcepts.kind).toBe("concept-extraction");
@@ -128,7 +137,7 @@ describe("buildIntentPayload", () => {
 
 		const summary = await buildIntentPayload({
 			sessionId: session.sessionId,
-			documentIds,
+			documentIds: documentIds.slice(0, 2),
 			intentType: "summarize",
 		});
 		expect(summary.kind).toBe("summary");
@@ -136,7 +145,7 @@ describe("buildIntentPayload", () => {
 
 		const review = await buildIntentPayload({
 			sessionId: session.sessionId,
-			documentIds,
+			documentIds: documentIds.slice(0, 2),
 			intentType: "build-review",
 		});
 		expect(review.kind).toBe("review");
@@ -144,11 +153,72 @@ describe("buildIntentPayload", () => {
 
 		const test = await buildIntentPayload({
 			sessionId: session.sessionId,
-			documentIds,
+			documentIds: documentIds.slice(0, 2),
 			intentType: "build-test",
 			options: { itemCount: 2 },
 		});
 		expect(test.kind).toBe("test");
 		expect(test.totalItemCount).toBe(2);
+
+		const compare = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: documentIds.slice(0, 2),
+			intentType: "compare-documents",
+		});
+		expect(compare.kind).toBe("compare-documents");
+		expect(compare.documents).toHaveLength(2);
+		expect(compare.documentSimilarity.length).toBeGreaterThan(0);
+
+		const merge = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds,
+			intentType: "merge-documents",
+		});
+		expect(merge.kind).toBe("merge-documents");
+		expect(merge.mergedInsights.totalDocuments).toBe(3);
+		expect(merge.mergedProblems.length).toBeGreaterThan(0);
+
+		const sequence = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds,
+			intentType: "build-sequence",
+		});
+		expect(sequence.kind).toBe("sequence");
+		expect(sequence.recommendedOrder).toHaveLength(3);
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [documentIds[0]!],
+			intentType: "build-lesson",
+		});
+		expect(lesson.kind).toBe("lesson");
+		expect(lesson.conceptIntroduction.length).toBeGreaterThan(0);
+		expect(lesson.sourceAnchors).toHaveLength(1);
+
+		const unit = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds,
+			intentType: "build-unit",
+		});
+		expect(unit.kind).toBe("unit");
+		expect(unit.lessonSequence).toHaveLength(3);
+		expect(unit.conceptMap.length).toBeGreaterThan(0);
+
+		const instructionalMap = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds,
+			intentType: "build-instructional-map",
+		});
+		expect(instructionalMap.kind).toBe("instructional-map");
+		expect(instructionalMap.documentConceptAlignment).toHaveLength(3);
+		expect(instructionalMap.problemConceptAlignment.length).toBeGreaterThan(0);
+
+		const alignment = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds,
+			intentType: "curriculum-alignment",
+		});
+		expect(alignment.kind).toBe("curriculum-alignment");
+		expect(alignment.standardsCoverage.length).toBeGreaterThan(0);
 	});
 });

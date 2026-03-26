@@ -14,6 +14,14 @@ function parseBody(body: unknown) {
 	return JSON.parse(body) as IntentRequest;
 }
 
+function schemaVersionForIntent(intentType: IntentRequest["intentType"]) {
+	if (["build-lesson", "build-unit", "build-instructional-map", "curriculum-alignment"].includes(intentType)) {
+		return "wave5-v1";
+	}
+
+	return ["compare-documents", "merge-documents", "build-sequence"].includes(intentType) ? "wave4-v1" : "wave3-v1";
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method === "GET") {
 		const productId = Array.isArray(req.query.productId) ? req.query.productId[0] : req.query.productId;
@@ -58,12 +66,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		if (!isBuiltIntentType(payload.intentType)) {
-			return res.status(400).json({ error: `Unsupported Wave 3 intent: ${payload.intentType}` });
+			return res.status(400).json({ error: `Unsupported built intent: ${payload.intentType}` });
 		}
 
 		const intentRequest = payload as IntentRequest & { intentType: typeof payload.intentType };
 		const builtPayload = await buildIntentPayload(intentRequest);
-		const product = saveIntentProduct(intentRequest, builtPayload);
+		const product = saveIntentProduct(intentRequest, builtPayload, schemaVersionForIntent(intentRequest.intentType));
 
 		return res.status(200).json(product);
 	} catch (error) {

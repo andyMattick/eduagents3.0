@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { getDocumentSession, upsertDocumentSession } from "../../../src/prism-v4/documents/registry";
+import { getAnalyzedDocumentsForSession, getDocumentSession, getSessionDocuments, upsertDocumentSession } from "../../../src/prism-v4/documents/registry";
 import type { DocumentSession } from "../../../src/prism-v4/schema/domain";
 
 export const runtime = "nodejs";
@@ -14,6 +14,24 @@ function parseBody(body: unknown) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+	if (req.method === "GET") {
+		const sessionId = Array.isArray(req.query.sessionId) ? req.query.sessionId[0] : req.query.sessionId;
+		if (!sessionId) {
+			return res.status(400).json({ error: "sessionId is required" });
+		}
+
+		const session = getDocumentSession(sessionId);
+		if (!session) {
+			return res.status(404).json({ error: "Session not found" });
+		}
+
+		return res.status(200).json({
+			session,
+			documents: getSessionDocuments(sessionId),
+			analyzedDocuments: getAnalyzedDocumentsForSession(sessionId),
+		});
+	}
+
 	if (req.method !== "POST") {
 		return res.status(405).json({ error: "Method not allowed" });
 	}

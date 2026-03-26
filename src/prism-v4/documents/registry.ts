@@ -91,6 +91,17 @@ export function getAnalyzedDocument(documentId: string) {
 	return analyzedDocuments.get(documentId) ?? null;
 }
 
+export function getAnalyzedDocumentsForSession(sessionId: string) {
+	const session = getDocumentSession(sessionId);
+	if (!session) {
+		return [];
+	}
+
+	return session.documentIds
+		.map((documentId) => getAnalyzedDocument(documentId))
+		.filter((document): document is NonNullable<ReturnType<typeof getAnalyzedDocument>> => Boolean(document));
+}
+
 export function upsertDocumentSession(session: Omit<DocumentSession, "createdAt" | "updatedAt"> & Partial<Pick<DocumentSession, "createdAt">>) {
 	const existing = sessions.get(session.sessionId);
 	const next: DocumentSession = {
@@ -113,6 +124,58 @@ export function createDocumentSession(documentIds: string[]) {
 
 export function getDocumentSession(sessionId: string) {
 	return sessions.get(sessionId) ?? null;
+}
+
+export function addDocumentToSession(sessionId: string, documentId: string) {
+	const session = getDocumentSession(sessionId);
+	if (!session) {
+		return null;
+	}
+
+	if (session.documentIds.includes(documentId)) {
+		return session;
+	}
+
+	return upsertDocumentSession({
+		...session,
+		documentIds: [...session.documentIds, documentId],
+		documentRoles: {
+			...session.documentRoles,
+			[documentId]: session.documentRoles[documentId] ?? ["unknown"],
+		},
+		sessionRoles: {
+			...session.sessionRoles,
+			[documentId]: session.sessionRoles[documentId] ?? ["source-material"],
+		},
+		createdAt: session.createdAt,
+	});
+}
+
+export function setDocumentRoles(sessionId: string, documentId: string, roles: DocumentSession["documentRoles"][string]) {
+	const session = getDocumentSession(sessionId);
+	if (!session || !session.documentIds.includes(documentId)) {
+		return null;
+	}
+
+	return upsertDocumentSession({
+		...session,
+		documentRoles: {
+			...session.documentRoles,
+			[documentId]: roles.length > 0 ? roles : ["unknown"],
+		},
+		createdAt: session.createdAt,
+	});
+}
+
+export function getSessionDocuments(sessionId: string) {
+	const session = getDocumentSession(sessionId);
+	if (!session) {
+		return [];
+	}
+
+	return session.documentIds
+		.map((documentId) => getRegisteredDocument(documentId))
+		.filter((document): document is RegisteredDocument => Boolean(document));
 }
 
 export function saveCollectionAnalysis(analysis: DocumentCollectionAnalysis) {
@@ -141,7 +204,17 @@ export function buildDefaultCollectionAnalysis(sessionId: string): DocumentColle
 		coverageSummary: {
 			totalConcepts: 0,
 			docsPerConcept: {},
+			perDocument: Object.fromEntries(session.documentIds.map((documentId) => [documentId, {
+				documentId,
+				conceptCount: 0,
+				problemCount: 0,
+				instructionalDensity: 0,
+				representations: [],
+				dominantDifficulty: "low",
+			}])),
 		},
+		documentSimilarity: [],
+		conceptToDocumentMap: {},
 		updatedAt: now(),
 	};
 
