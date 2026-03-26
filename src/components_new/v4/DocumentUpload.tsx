@@ -328,9 +328,29 @@ export function DocumentUpload() {
 
   async function fetchJson<T>(input: string, init?: RequestInit) {
     const response = await fetch(input, init);
-    const payload = await response.json();
+    const rawBody = await response.text();
+    const trimmedBody = rawBody.trim();
+
+    if (!trimmedBody) {
+      throw new Error(`Empty response from ${input}`);
+    }
+
+    if (trimmedBody.startsWith("<!DOCTYPE") || trimmedBody.startsWith("<html") || trimmedBody.startsWith("<")) {
+      throw new Error(`Non-JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(trimmedBody);
+    } catch {
+      throw new Error(`Invalid JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
+    }
+
     if (!response.ok) {
-      throw new Error(payload?.error ?? `Request failed: ${input}`);
+      const errorMessage = typeof payload === "object" && payload !== null && "error" in payload
+        ? String((payload as { error?: unknown }).error ?? `Request failed: ${input}`)
+        : `Request failed: ${input}`;
+      throw new Error(errorMessage);
     }
     return payload as T;
   }

@@ -37,7 +37,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		return res.status(200).json({
 			session,
-			documents,
+			documents: documents.map((document) => ({
+				documentId: document.documentId,
+				sourceFileName: document.sourceFileName,
+				sourceMimeType: document.sourceMimeType,
+				createdAt: document.createdAt,
+			})),
 			analyzedDocuments,
 		});
 	}
