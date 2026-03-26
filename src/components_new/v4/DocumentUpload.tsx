@@ -420,18 +420,11 @@ export function DocumentUpload() {
         }),
       });
 
-      for (const entry of registered) {
-        logUploadTrace("analyzing document", { sessionId, documentId: entry.documentId });
-        await fetchJson("/api/v4/documents/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: sessionId,
-            documentId: entry.documentId,
-          }),
-        });
-        logUploadTrace("analysis complete", { documentId: entry.documentId });
-      }
+      // Analysis is now performed inline inside /api/v4/documents/upload while
+      // the binary is still in memory. A separate /analyze call is not needed
+      // and would always 404 in a stateless Vercel serverless environment
+      // because the in-memory registry is not shared across invocations.
+      logUploadTrace("analysis completed inline during upload", { documentCount: registered.length });
 
       setUploadedFileMap((current) => ({ ...current, ...nextFileMap }));
       setSelectedDocumentIds(registered.map((entry) => entry.documentId));

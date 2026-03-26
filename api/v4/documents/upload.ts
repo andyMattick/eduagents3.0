@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
-import { createDocumentSession, registerDocuments } from "../../../src/prism-v4/documents/registry";
+import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
+import { createDocumentSession, registerDocuments, saveAnalyzedDocument } from "../../../src/prism-v4/documents/registry";
 
 export const runtime = "nodejs";
 export const config = {
@@ -123,6 +124,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const [registered] = registerDocuments([{ sourceFileName: fileName, sourceMimeType: contentType, rawBinary: buffer }]);
 		const session = createDocumentSession([registered.documentId]);
 
+		// Analyze inline while the binary is available in this invocation.
+		// Vercel serverless functions are stateless — the in-memory registry is
+		// not shared across invocations, so a separate /analyze call in a
+		// subsequent request would always return 404 "Document not found".
+		const analyzedDocument = saveAnalyzedDocument(
+			await analyzeRegisteredDocument({
+				documentId: registered.documentId,
+				sourceFileName: registered.sourceFileName,
+				sourceMimeType: registered.sourceMimeType,
+				rawBinary: buffer,
+			}),
+		);
+
 		return res.status(200).json({
 			documentId: registered.documentId,
 			documentIds: [registered.documentId],
@@ -135,6 +149,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 					createdAt: registered.createdAt,
 				},
 			],
+			analyzedDocument,
 		});
 	} catch (error) {
 		return res.status(500).json({ error: error instanceof Error ? error.message : "Upload registration failed" });
