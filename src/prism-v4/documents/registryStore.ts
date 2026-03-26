@@ -21,6 +21,12 @@ import type { DocumentSession, DocumentRole, SessionRole } from "../schema/domai
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
 import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../schema/semantic";
 
+const SESSIONS_TABLE = "prism_v4_sessions";
+const DOCUMENTS_TABLE = "prism_v4_documents";
+const ANALYZED_DOCUMENTS_TABLE = "prism_v4_analyzed_documents";
+const COLLECTION_ANALYSES_TABLE = "prism_v4_collection_analyses";
+const INTENT_PRODUCTS_TABLE = "prism_v4_intent_products";
+
 type SessionRow = {
 	session_id: string;
 	document_ids: string[];
@@ -162,13 +168,13 @@ async function updateDocumentSessionIds(sessionId: string, documentIds: string[]
 
 	const filterValue = `in.(${documentIds.join(",")})`;
 	await Promise.all([
-		supabaseRest("v4_documents", {
+		supabaseRest(DOCUMENTS_TABLE, {
 			method: "PATCH",
 			filters: { document_id: filterValue },
 			body: { session_id: sessionId },
 			prefer: "return=minimal",
 		}),
-		supabaseRest("v4_analyzed_documents", {
+		supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 			method: "PATCH",
 			filters: { document_id: filterValue },
 			body: { session_id: sessionId },
@@ -193,7 +199,7 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 		azureExtract: entry.azureExtract,
 	}));
 
-	await supabaseRest("v4_documents", {
+	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "POST",
 		body: registered.map((document) => toDocumentRow(document, sessionId)),
 		prefer: "resolution=merge-duplicates,return=minimal",
@@ -207,7 +213,7 @@ export async function getDocumentSessionStore(sessionId: string) {
 		return getDocumentSession(sessionId);
 	}
 
-	const rows = await supabaseRest("v4_sessions", {
+	const rows = await supabaseRest(SESSIONS_TABLE, {
 		select: "session_id,document_ids,document_roles,session_roles,created_at,updated_at",
 		filters: { session_id: `eq.${sessionId}` },
 	});
@@ -234,7 +240,7 @@ export async function createDocumentSessionStore(documentIds: string[], sessionI
 		updatedAt: now(),
 	};
 
-	await supabaseRest("v4_sessions", {
+	await supabaseRest(SESSIONS_TABLE, {
 		method: "POST",
 		body: toSessionRow(session),
 		prefer: "resolution=merge-duplicates,return=minimal",
@@ -282,7 +288,7 @@ export async function ensureSessionDocumentsStore(sessionId: string, documentIds
 		updatedAt: now(),
 	};
 
-	await supabaseRest("v4_sessions", {
+	await supabaseRest(SESSIONS_TABLE, {
 		method: "POST",
 		body: toSessionRow(nextSession),
 		prefer: "resolution=merge-duplicates,return=minimal",
@@ -306,7 +312,7 @@ export async function upsertDocumentSessionStore(session: Omit<DocumentSession, 
 		updatedAt: now(),
 	};
 
-	await supabaseRest("v4_sessions", {
+	await supabaseRest(SESSIONS_TABLE, {
 		method: "POST",
 		body: toSessionRow(nextSession),
 		prefer: "resolution=merge-duplicates,return=minimal",
@@ -320,7 +326,7 @@ export async function getRegisteredDocumentStore(documentId: string) {
 		return getRegisteredDocument(documentId);
 	}
 
-	const rows = await supabaseRest("v4_documents", {
+	const rows = await supabaseRest(DOCUMENTS_TABLE, {
 		select: "document_id,session_id,source_file_name,source_mime_type,created_at,raw_binary_base64,canonical_document,azure_extract",
 		filters: { document_id: `eq.${documentId}` },
 	});
@@ -333,7 +339,7 @@ export async function getDocumentSessionIdStore(documentId: string) {
 		return null;
 	}
 
-	const rows = await supabaseRest("v4_documents", {
+	const rows = await supabaseRest(DOCUMENTS_TABLE, {
 		select: "document_id,session_id",
 		filters: { document_id: `eq.${documentId}` },
 	});
@@ -346,7 +352,7 @@ export async function getSessionDocumentsStore(sessionId: string) {
 		return getSessionDocuments(sessionId);
 	}
 
-	const rows = await supabaseRest("v4_documents", {
+	const rows = await supabaseRest(DOCUMENTS_TABLE, {
 		select: "document_id,session_id,source_file_name,source_mime_type,created_at,raw_binary_base64,canonical_document,azure_extract",
 		filters: { session_id: `eq.${sessionId}`, order: "created_at.asc" },
 	});
@@ -358,7 +364,7 @@ export async function getAnalyzedDocumentStore(documentId: string) {
 		return getAnalyzedDocument(documentId);
 	}
 
-	const rows = await supabaseRest("v4_analyzed_documents", {
+	const rows = await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 		select: "document_id,session_id,analyzed_document,updated_at",
 		filters: { document_id: `eq.${documentId}` },
 	});
@@ -371,7 +377,7 @@ export async function getAnalyzedDocumentsForSessionStore(sessionId: string) {
 		return getAnalyzedDocumentsForSession(sessionId);
 	}
 
-	const rows = await supabaseRest("v4_analyzed_documents", {
+	const rows = await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 		select: "document_id,session_id,analyzed_document,updated_at",
 		filters: { session_id: `eq.${sessionId}`, order: "updated_at.asc" },
 	});
@@ -383,7 +389,7 @@ export async function saveAnalyzedDocumentStore(analyzedDocument: AnalyzedDocume
 		return saveAnalyzedDocument(analyzedDocument);
 	}
 
-	await supabaseRest("v4_analyzed_documents", {
+	await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 		method: "POST",
 		body: {
 			document_id: analyzedDocument.document.id,
@@ -394,7 +400,7 @@ export async function saveAnalyzedDocumentStore(analyzedDocument: AnalyzedDocume
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 
-	await supabaseRest("v4_documents", {
+	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "PATCH",
 		filters: { document_id: `eq.${analyzedDocument.document.id}` },
 		body: { canonical_document: analyzedDocument.document },
@@ -409,7 +415,7 @@ export async function saveCollectionAnalysisStore(analysis: DocumentCollectionAn
 		return saveCollectionAnalysis(analysis);
 	}
 
-	await supabaseRest("v4_collection_analyses", {
+	await supabaseRest(COLLECTION_ANALYSES_TABLE, {
 		method: "POST",
 		body: {
 			session_id: analysis.sessionId,
@@ -427,7 +433,7 @@ export async function getCollectionAnalysisStore(sessionId: string) {
 		return null;
 	}
 
-	const rows = await supabaseRest("v4_collection_analyses", {
+	const rows = await supabaseRest(COLLECTION_ANALYSES_TABLE, {
 		select: "session_id,analysis,updated_at",
 		filters: { session_id: `eq.${sessionId}` },
 	});
@@ -451,7 +457,7 @@ export async function saveIntentProductStore<T extends BuiltIntentType>(request:
 		createdAt: now(),
 	};
 
-	await supabaseRest("v4_intent_products", {
+	await supabaseRest(INTENT_PRODUCTS_TABLE, {
 		method: "POST",
 		body: {
 			product_id: product.productId,
@@ -474,7 +480,7 @@ export async function getIntentProductStore(productId: string) {
 		return getIntentProduct(productId);
 	}
 
-	const rows = await supabaseRest("v4_intent_products", {
+	const rows = await supabaseRest(INTENT_PRODUCTS_TABLE, {
 		select: "product_id,session_id,intent_type,document_ids,product_type,schema_version,payload,created_at",
 		filters: { product_id: `eq.${productId}` },
 	});
@@ -487,7 +493,7 @@ export async function listIntentProductsForSessionStore(sessionId: string) {
 		return listIntentProductsForSession(sessionId);
 	}
 
-	const rows = await supabaseRest("v4_intent_products", {
+	const rows = await supabaseRest(INTENT_PRODUCTS_TABLE, {
 		select: "product_id,session_id,intent_type,document_ids,product_type,schema_version,payload,created_at",
 		filters: { session_id: `eq.${sessionId}`, order: "created_at.desc" },
 	});
