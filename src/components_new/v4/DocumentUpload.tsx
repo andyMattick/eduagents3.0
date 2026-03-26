@@ -358,7 +358,7 @@ export function DocumentUpload() {
   async function refreshWorkspace(sessionId: string) {
     const [sessionPayload, analysisPayload, productsPayload] = await Promise.all([
       fetchJson<{ session: DocumentSession; documents: RegisteredDocumentSummary[]; analyzedDocuments: AnalyzedDocument[] }>(`/api/v4/documents/session?sessionId=${encodeURIComponent(sessionId)}`),
-      fetchJson<{ analysis: DocumentCollectionAnalysis }>(`/api/v4/documents/session/${encodeURIComponent(sessionId)}/analysis?sessionId=${encodeURIComponent(sessionId)}`),
+      fetchJson<{ analysis: DocumentCollectionAnalysis }>(`/api/v4/documents/session-analysis?sessionId=${encodeURIComponent(sessionId)}`),
       fetchJson<{ sessionId: string; products: IntentProduct[] }>(`/api/v4/documents/intent?sessionId=${encodeURIComponent(sessionId)}`),
     ]);
 
