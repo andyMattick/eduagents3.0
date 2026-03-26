@@ -421,12 +421,12 @@ export function DocumentUpload() {
       });
 
       for (const entry of registered) {
-        logUploadTrace("analyzing document", { sessionId: workspace?.sessionId ?? sessionId, documentId: entry.documentId });
+        logUploadTrace("analyzing document", { sessionId, documentId: entry.documentId });
         await fetchJson("/api/v4/documents/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            sessionId: workspace?.sessionId ?? sessionId,
+            sessionId: sessionId,
             documentId: entry.documentId,
           }),
         });
