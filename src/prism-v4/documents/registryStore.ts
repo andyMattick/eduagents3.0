@@ -88,11 +88,11 @@ function unique(values: string[]) {
 }
 
 function defaultDocumentRoles(documentIds: string[]) {
-	return Object.fromEntries(documentIds.map((documentId) => [documentId, ["unknown"] satisfies DocumentRole[]]));
+	return Object.fromEntries(documentIds.map((documentId) => [documentId, ["unknown"] as DocumentRole[]]));
 }
 
 function defaultSessionRoles(documentIds: string[]) {
-	return Object.fromEntries(documentIds.map((documentId) => [documentId, ["source-material"] satisfies SessionRole[]]));
+	return Object.fromEntries(documentIds.map((documentId) => [documentId, ["source-material"] as SessionRole[]]));
 }
 
 function toSessionRow(session: DocumentSession): SessionRow {
@@ -183,7 +183,7 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 	}
 
 	const createdAt = now();
-	const registered = entries.map((entry) => ({
+	const registered: RegisteredDocument[] = entries.map((entry) => ({
 		documentId: createId("doc"),
 		sourceFileName: entry.sourceFileName,
 		sourceMimeType: entry.sourceMimeType,
@@ -191,7 +191,7 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 		rawBinary: entry.rawBinary,
 		canonicalDocument: entry.canonicalDocument,
 		azureExtract: entry.azureExtract,
-	}) satisfies RegisteredDocument);
+	}));
 
 	await supabaseRest("v4_documents", {
 		method: "POST",
