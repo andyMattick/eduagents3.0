@@ -2,9 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
 import {
-	getAnalyzedDocumentStore,
-	getDocumentSessionIdStore,
-	getRegisteredDocumentStore,
+	loadPrismDocumentAnalysisTarget,
 	saveAnalyzedDocumentStore,
 } from "../../../src/prism-v4/documents/registryStore";
 
@@ -29,23 +27,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(400).json({ error: "documentId is required" });
 		}
 
-		const document = await getRegisteredDocumentStore(payload.documentId);
-		if (!document) {
+		const analysisTarget = await loadPrismDocumentAnalysisTarget(payload.documentId, payload.sessionId ?? null);
+		if (!analysisTarget) {
 			return res.status(404).json({ error: "Document not found" });
 		}
 
-		let analyzedDocument = await getAnalyzedDocumentStore(payload.documentId);
+		let analyzedDocument = analysisTarget.analyzedDocument;
 		if (!analyzedDocument) {
 			analyzedDocument = await analyzeRegisteredDocument({
-				documentId: document.documentId,
-				sourceFileName: document.sourceFileName,
-				sourceMimeType: document.sourceMimeType,
-				rawBinary: document.rawBinary,
-				azureExtract: document.azureExtract,
-				canonicalDocument: document.canonicalDocument,
+				documentId: analysisTarget.registeredDocument.documentId,
+				sourceFileName: analysisTarget.registeredDocument.sourceFileName,
+				sourceMimeType: analysisTarget.registeredDocument.sourceMimeType,
+				rawBinary: analysisTarget.registeredDocument.rawBinary,
+				azureExtract: analysisTarget.registeredDocument.azureExtract,
+				canonicalDocument: analysisTarget.registeredDocument.canonicalDocument,
 			});
-			const sessionId = payload.sessionId ?? await getDocumentSessionIdStore(payload.documentId);
-			await saveAnalyzedDocumentStore(analyzedDocument, sessionId);
+			await saveAnalyzedDocumentStore(analyzedDocument, analysisTarget.sessionId);
 		}
 		return res.status(200).json({
 			documentId: payload.documentId,

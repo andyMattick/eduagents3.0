@@ -1,5 +1,6 @@
 export * from "./CanonicalDocument";
 export * from "./FragmentSemanticRecord";
+export * from "./InstructionalUnit";
 export * from "./ExtractedProblem";
 export * from "./AnalyzedDocument";
 export * from "./DocumentCollectionAnalysis";

@@ -1,13 +1,11 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { buildIntentPayload, getIntentBuildErrorStatus, isBuiltIntentType } from "../../../src/prism-v4/documents/intents/buildIntentProduct";
-import { getCollectionAnalysis } from "../../../src/prism-v4/documents/registry";
 import {
 	getDocumentSessionStore,
 	getIntentProductStore,
-	hydrateSessionToRegistryStore,
 	listIntentProductsForSessionStore,
-	saveCollectionAnalysisStore,
+	loadPrismSessionContextCached,
 	saveIntentProductStore,
 } from "../../../src/prism-v4/documents/registryStore";
 import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
@@ -78,12 +76,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const intentRequest = payload as IntentRequest & { intentType: typeof payload.intentType };
-		await hydrateSessionToRegistryStore(intentRequest.sessionId);
-		const builtPayload = await buildIntentPayload(intentRequest);
-		const collectionAnalysis = getCollectionAnalysis(intentRequest.sessionId);
-		if (collectionAnalysis) {
-			await saveCollectionAnalysisStore(collectionAnalysis);
+		const context = await loadPrismSessionContextCached(intentRequest.sessionId);
+		if (!context) {
+			return res.status(404).json({ error: "Session not found" });
 		}
+		const builtPayload = await buildIntentPayload(intentRequest, context);
 		const product = await saveIntentProductStore(intentRequest, builtPayload, schemaVersionForIntent(intentRequest.intentType));
 
 		return res.status(200).json(product);

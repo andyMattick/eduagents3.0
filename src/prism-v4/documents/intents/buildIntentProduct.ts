@@ -1,13 +1,5 @@
-import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis } from "../analysis";
-import {
-	buildDefaultCollectionAnalysis,
-	getAnalyzedDocument,
-	getCollectionAnalysis,
-	getDocumentSession,
-	getRegisteredDocument,
-	saveAnalyzedDocument,
-} from "../registry";
-import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../../schema/semantic";
+import { groupFragments } from "../analysis";
+import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../../schema/semantic";
 import type {
 	BuiltIntentType,
 	CompareDocumentsProduct,
@@ -26,6 +18,7 @@ import type {
 	TestItem,
 	UnitProduct,
 } from "../../schema/integration";
+import type { PrismSessionContext } from "../registryStore";
 
 class IntentBuildError extends Error {
 	statusCode: number;
@@ -39,9 +32,24 @@ class IntentBuildError extends Error {
 interface BuilderContext<T extends BuiltIntentType> {
 	request: IntentRequest & { intentType: T };
 	analyzedDocuments: AnalyzedDocument[];
+	instructionalUnits: InstructionalUnit[];
 	collectionAnalysis: DocumentCollectionAnalysis;
 	sourceFileNames: Record<string, string>;
 	documentSummaries: ProductDocumentSummary[];
+}
+
+interface InstructionalUnitEntry {
+	unit: InstructionalUnit;
+	text: string;
+	questionTexts: string[];
+	documentIds: string[];
+	sourceFileNames: string[];
+	anchorNodeIds: string[];
+	roles: string[];
+	contentTypes: string[];
+	primaryDocumentId: string;
+	primarySourceFileName: string;
+	difficultyBand: "low" | "medium" | "high";
 }
 
 const SUPPORTED_INTENTS: BuiltIntentType[] = [
@@ -66,6 +74,8 @@ const DIFFICULTY_SCORE: Record<"low" | "medium" | "high", number> = {
 	medium: 2,
 	high: 3,
 };
+
+
 
 function joinList(values: string[]) {
 	return values.filter(Boolean).join(", ");
@@ -123,17 +133,52 @@ function getFragmentText(analyzed: AnalyzedDocument, fragment: AnalyzedDocument[
 		.trim();
 }
 
-function collectFragmentEntries(analyzedDocuments: AnalyzedDocument[], sourceFileNames: Record<string, string>) {
-	return analyzedDocuments.flatMap((analyzed) =>
-		analyzed.fragments.map((fragment) => ({
-			fragment,
-			analyzed,
-			documentId: analyzed.document.id,
-			sourceFileName: sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			text: getFragmentText(analyzed, fragment),
-			anchorNodeIds: unique(fragment.anchors.map((anchor) => anchor.nodeId)),
-		})),
-	);
+function toDifficultyBand(value: number): "low" | "medium" | "high" {
+	if (value >= 0.67) {
+		return "high";
+	}
+	if (value >= 0.4) {
+		return "medium";
+	}
+	return "low";
+}
+
+function collectInstructionalUnitEntries(units: InstructionalUnit[], analyzedDocuments: AnalyzedDocument[], sourceFileNames: Record<string, string>): InstructionalUnitEntry[] {
+	const analyzedById = new Map(analyzedDocuments.map((analyzed) => [analyzed.document.id, analyzed]));
+
+	return units.map((unit) => {
+		const orderedFragments = [...unit.fragments].sort((left, right) => left.id.localeCompare(right.id));
+		const fragmentTexts = orderedFragments.map((fragment) => {
+			const analyzed = analyzedById.get(fragment.documentId);
+			return analyzed ? getFragmentText(analyzed, fragment) : "";
+		}).filter(Boolean);
+		const text = unique(orderedFragments.map((fragment) => {
+			const analyzed = analyzedById.get(fragment.documentId);
+			return analyzed ? getFragmentText(analyzed, fragment) : "";
+		}).filter(Boolean)).join(" ").trim();
+		const questionTexts = unique(orderedFragments
+			.filter((fragment) => fragment.contentType === "question")
+			.map((fragment) => {
+				const analyzed = analyzedById.get(fragment.documentId);
+				return analyzed ? getFragmentText(analyzed, fragment) : "";
+			})
+			.filter(Boolean));
+		const documentIds = unique(orderedFragments.map((fragment) => fragment.documentId));
+		const derivedSourceFileNames = documentIds.map((documentId) => sourceFileNames[documentId] ?? analyzedById.get(documentId)?.document.sourceFileName ?? documentId);
+		return {
+			unit,
+			text: text || fragmentTexts.join(" ").trim() || unit.title || joinList(unit.learningTargets) || joinList(unit.concepts),
+			questionTexts,
+			documentIds,
+			sourceFileNames: unique(derivedSourceFileNames),
+			anchorNodeIds: unique(orderedFragments.flatMap((fragment) => fragment.anchors.map((anchor) => anchor.nodeId))),
+			roles: unique(orderedFragments.map((fragment) => fragment.instructionalRole)),
+			contentTypes: unique(orderedFragments.map((fragment) => fragment.contentType)),
+			primaryDocumentId: documentIds[0] ?? "unknown-document",
+			primarySourceFileName: derivedSourceFileNames[0] ?? "Unknown source",
+			difficultyBand: toDifficultyBand(unit.difficulty),
+		};
+	});
 }
 
 function toStandardId(concept: string) {
@@ -180,7 +225,7 @@ function dominantDifficulty(analyzed: AnalyzedDocument) {
 	}, "low");
 }
 
-function buildProblemEntries(context: BuilderContext<"extract-problems" | "build-review" | "build-test">, focus: string | null) {
+function buildProblemEntries(context: { analyzedDocuments: AnalyzedDocument[]; sourceFileNames: Record<string, string> }, focus: string | null) {
 	return context.analyzedDocuments.flatMap<ProblemExtractionEntry>((analyzed) =>
 		analyzed.problems
 			.filter((problem) => matchesFocus([problem.text, ...problem.concepts, ...problem.representations], focus))
@@ -199,7 +244,7 @@ function buildProblemEntries(context: BuilderContext<"extract-problems" | "build
 	);
 }
 
-function buildConceptEntries(context: BuilderContext<"extract-concepts" | "summarize" | "build-review" | "build-test">, focus: string | null) {
+	function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; sourceFileNames: Record<string, string> }, focus: string | null) {
 	const concepts = new Map<string, ConceptExtractionEntry>();
 
 	for (const analyzed of context.analyzedDocuments) {
@@ -265,6 +310,7 @@ function buildSummaryProduct(context: BuilderContext<"summarize">): IntentPayloa
 	const focus = getFocus(context.request.options);
 	const conceptEntries = buildConceptEntries(context, focus);
 	const topConcepts = conceptEntries.slice(0, 3).map((entry) => entry.concept);
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 
 	return {
 		kind: "summary",
@@ -284,7 +330,7 @@ function buildSummaryProduct(context: BuilderContext<"summarize">): IntentPayloa
 			instructionalProfile: {
 				exampleCount: analyzed.insights.exampleCount,
 				explanationCount: analyzed.insights.explanationCount,
-				questionCount: analyzed.fragments.filter((fragment) => fragment.contentType === "question").length,
+				questionCount: unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id) && entry.contentTypes.includes("question")).length,
 			},
 		})),
 		crossDocumentTakeaways: [
@@ -342,30 +388,142 @@ function buildReviewProduct(context: BuilderContext<"build-review">): IntentPayl
 	};
 }
 
+function inferUnitCognitiveDemand(entry: InstructionalUnitEntry): TestItem["cognitiveDemand"] {
+	if (entry.roles.includes("reflection")) {
+		return "analysis";
+	}
+	if (entry.roles.includes("objective") || entry.roles.includes("explanation")) {
+		return "conceptual";
+	}
+	if (entry.contentTypes.includes("diagram") || entry.contentTypes.includes("graph") || entry.contentTypes.includes("table")) {
+		return "modeling";
+	}
+	if (entry.roles.includes("problem-stem") || entry.roles.includes("problem-part")) {
+		return entry.difficultyBand === "high" ? "analysis" : "procedural";
+	}
+	return entry.difficultyBand === "high" ? "conceptual" : "procedural";
+}
+
+function prioritizeAssessmentUnits(entries: InstructionalUnitEntry[]) {
+	return [...entries].sort((left, right) => {
+		const leftQuestionLike = left.questionTexts.length > 0 || left.contentTypes.includes("question") || left.roles.includes("problem-stem") || left.roles.includes("problem-part");
+		const rightQuestionLike = right.questionTexts.length > 0 || right.contentTypes.includes("question") || right.roles.includes("problem-stem") || right.roles.includes("problem-part");
+		if (leftQuestionLike !== rightQuestionLike) {
+			return leftQuestionLike ? -1 : 1;
+		}
+		return left.unit.unitId.localeCompare(right.unit.unitId);
+	});
+}
+
+function buildAssessmentPrompts(entry: InstructionalUnitEntry, concept: string) {
+	const prompts = entry.questionTexts.length > 0
+		? entry.questionTexts
+		: [entry.text || entry.unit.title || `Explain ${concept}.`];
+	return unique(prompts.filter(Boolean));
+}
+
+function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test">, focus: string | null): InstructionalUnitEntry[] {
+	return buildProblemEntries(context, focus).map((problem) => ({
+		unit: {
+			unitId: `problem-unit-${problem.problemId}`,
+			fragments: [],
+			concepts: problem.concepts,
+			skills: [problem.cognitiveDemand, "problem-stem", "question"],
+			learningTargets: [],
+			misconceptions: problem.misconceptions,
+			difficulty: problem.difficulty === "high" ? 1 : problem.difficulty === "medium" ? 0.5 : 0.2,
+			linguisticLoad: 0.5,
+			sourceSections: [],
+			confidence: 1,
+			title: problem.text,
+		},
+		text: problem.text,
+		questionTexts: [problem.text],
+		documentIds: [problem.documentId],
+		sourceFileNames: [problem.sourceFileName],
+		anchorNodeIds: problem.anchorNodeIds,
+		roles: ["problem-stem"],
+		contentTypes: ["question"],
+		primaryDocumentId: problem.documentId,
+		primarySourceFileName: problem.sourceFileName,
+		difficultyBand: problem.difficulty,
+	}));
+}
+
 function chooseTestItems(context: BuilderContext<"build-test">, focus: string | null, itemCount: number) {
-	const concepts = buildConceptEntries(context, focus);
-	const problems = buildProblemEntries(context, focus);
+	const groupedUnitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames)
+		.filter((entry) => matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets], focus));
+	const unitEntries = groupedUnitEntries.length > 0 ? groupedUnitEntries : buildProblemBackedAssessmentEntries(context, focus);
+	const conceptEntries = buildConceptEntries(context, focus);
+	const conceptNames = conceptEntries.map((entry) => entry.concept);
+	const effectiveConceptNames = conceptNames.length > 0
+		? conceptNames
+		: unique(unitEntries.flatMap((entry) => entry.unit.concepts.length > 0 ? entry.unit.concepts : ["general"]));
 	const itemsByConcept = new Map<string, TestItem[]>();
+	const emittedPromptKeys = new Set<string>();
 	let emitted = 0;
 
-	for (const conceptEntry of concepts) {
-		for (const problem of problems.filter((entry) => entry.concepts.includes(conceptEntry.concept))) {
+	for (const concept of effectiveConceptNames) {
+		const conceptUnits = prioritizeAssessmentUnits(unitEntries.filter((entry) =>
+			concept === "general"
+				? true
+				: entry.unit.concepts.includes(concept) || matchesFocus([entry.text, ...entry.unit.learningTargets], concept),
+		));
+		for (const unitEntry of conceptUnits) {
 			if (emitted >= itemCount) {
 				break;
 			}
-			const item: TestItem = {
-				itemId: `item-${problem.problemId}`,
-				prompt: problem.text,
-				concept: conceptEntry.concept,
-				sourceDocumentId: problem.documentId,
-				sourceFileName: problem.sourceFileName,
-				difficulty: problem.difficulty,
-				cognitiveDemand: problem.cognitiveDemand,
-				answerGuidance: `Look for accurate reasoning about ${conceptEntry.concept}${problem.representations.length > 0 ? ` using ${joinList(problem.representations)}` : ""}.`,
-			};
-			itemsByConcept.set(conceptEntry.concept, [...(itemsByConcept.get(conceptEntry.concept) ?? []), item]);
-			emitted += 1;
+
+			for (const [promptIndex, prompt] of buildAssessmentPrompts(unitEntry, concept).entries()) {
+				if (emitted >= itemCount) {
+					break;
+				}
+				const promptKey = `${unitEntry.unit.unitId}:${prompt}`;
+				if (emittedPromptKeys.has(promptKey)) {
+					continue;
+				}
+				const item: TestItem = {
+					itemId: `item-${unitEntry.unit.unitId}-${promptIndex + 1}`,
+					prompt,
+					concept,
+					sourceDocumentId: unitEntry.primaryDocumentId,
+					sourceFileName: unitEntry.primarySourceFileName,
+					difficulty: unitEntry.difficultyBand,
+					cognitiveDemand: inferUnitCognitiveDemand(unitEntry),
+					answerGuidance: unitEntry.unit.learningTargets.length > 0
+						? `Look for evidence that the student can ${joinList(unitEntry.unit.learningTargets).toLowerCase()}.`
+						: `Look for accurate reasoning about ${concept}.`,
+				};
+				itemsByConcept.set(concept, [...(itemsByConcept.get(concept) ?? []), item]);
+				emittedPromptKeys.add(promptKey);
+				emitted += 1;
+			}
 		}
+
+		if (conceptUnits.length === 0 && emitted < itemCount) {
+			const sourceDocument = conceptEntries.find((entry) => entry.concept === concept)?.documentIds[0] ?? context.analyzedDocuments[0]?.document.id ?? "unknown-document";
+			const sourceFileName = conceptEntries.find((entry) => entry.concept === concept)?.sourceFileNames[0]
+				?? context.sourceFileNames[sourceDocument]
+				?? context.analyzedDocuments[0]?.document.sourceFileName
+				?? "Unknown source";
+			const fallbackKey = `concept-fallback:${concept}`;
+			if (!emittedPromptKeys.has(fallbackKey)) {
+				const item: TestItem = {
+					itemId: `item-concept-${concept.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "general"}`,
+					prompt: `Explain ${concept} and show how you would apply it.`,
+					concept,
+					sourceDocumentId: sourceDocument,
+					sourceFileName,
+					difficulty: "medium",
+					cognitiveDemand: "conceptual",
+					answerGuidance: `Look for accurate reasoning about ${concept} and a valid application example.`,
+				};
+				itemsByConcept.set(concept, [...(itemsByConcept.get(concept) ?? []), item]);
+				emittedPromptKeys.add(fallbackKey);
+				emitted += 1;
+			}
+		}
+
 		if (emitted >= itemCount) {
 			break;
 		}
@@ -389,8 +547,8 @@ function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadB
 		focus,
 		title: focus ? `Assessment Draft: ${focus}` : "Assessment Draft",
 		overview: totalItemCount > 0
-			? `This draft assessment pulls ${totalItemCount} items from the analyzed documents and groups them by concept.`
-			: "No extracted problems were available to build an assessment draft.",
+			? `This draft assessment pulls ${totalItemCount} items from grouped instructional units and organizes them by concept.`
+			: "No grouped instructional units were available to build an assessment draft.",
 		estimatedDurationMinutes: Math.max(5, totalItemCount * 3),
 		sections,
 		totalItemCount,
@@ -486,42 +644,38 @@ function mergeProblemEntries(context: BuilderContext<"merge-documents">, focus: 
 
 function mergeFragmentEntries(context: BuilderContext<"merge-documents">, focus: string | null) {
 	const merged = new Map<string, MergeDocumentsProduct["mergedFragments"][number]>();
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 
-	for (const analyzed of context.analyzedDocuments) {
-		for (const fragment of analyzed.fragments) {
-			const text = fragment.anchors
-				.map((anchor) => analyzed.document.nodes.find((node) => node.id === anchor.nodeId)?.text?.trim() ?? "")
-				.filter(Boolean)
-				.join(" ");
+	for (const entry of unitEntries) {
+		if (!entry.text || !matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets, ...entry.roles], focus)) {
+			continue;
+		}
 
-			if (!text || !matchesFocus([text, fragment.instructionalRole, fragment.contentType], focus)) {
-				continue;
-			}
+		const key = `${entry.text.toLowerCase()}::${entry.roles.slice().sort().join("|")}::${entry.contentTypes.slice().sort().join("|")}::${entry.unit.concepts.slice().sort().join("|")}`;
+		const existing = merged.get(key);
+		const sourceAnchors = entry.documentIds.map((documentId) => ({
+			documentId,
+			anchorNodeIds: unique(entry.unit.fragments.filter((fragment) => fragment.documentId === documentId).flatMap((fragment) => fragment.anchors.map((anchor) => anchor.nodeId))),
+		}));
 
-			const key = `${text.toLowerCase()}::${fragment.instructionalRole}::${fragment.contentType}`;
-			const existing = merged.get(key);
-			const sourceAnchor = {
-				documentId: fragment.documentId,
-				anchorNodeIds: unique(fragment.anchors.map((anchor) => anchor.nodeId)),
-			};
+		if (!existing) {
+			merged.set(key, {
+				mergedFragmentId: `merged-fragment-${entry.unit.unitId}`,
+				text: entry.text,
+				instructionalRole: entry.roles[0] ?? "other",
+				contentType: entry.contentTypes[0] ?? "text",
+				sourceDocumentIds: entry.documentIds,
+				sourceAnchors,
+			});
+			continue;
+		}
 
-			if (!existing) {
-				merged.set(key, {
-					mergedFragmentId: `merged-fragment-${fragment.id}`,
-					text,
-					instructionalRole: fragment.instructionalRole,
-					contentType: fragment.contentType,
-					sourceDocumentIds: [fragment.documentId],
-					sourceAnchors: [sourceAnchor],
-				});
-				continue;
-			}
-
-			existing.sourceDocumentIds = unique([...existing.sourceDocumentIds, fragment.documentId]);
-			existing.sourceAnchors = existing.sourceAnchors.some((entry) => entry.documentId === sourceAnchor.documentId)
-				? existing.sourceAnchors.map((entry) => entry.documentId === sourceAnchor.documentId
-					? { ...entry, anchorNodeIds: unique([...entry.anchorNodeIds, ...sourceAnchor.anchorNodeIds]).sort() }
-					: entry)
+		existing.sourceDocumentIds = unique([...existing.sourceDocumentIds, ...entry.documentIds]);
+		for (const sourceAnchor of sourceAnchors) {
+			existing.sourceAnchors = existing.sourceAnchors.some((existingAnchor) => existingAnchor.documentId === sourceAnchor.documentId)
+				? existing.sourceAnchors.map((existingAnchor) => existingAnchor.documentId === sourceAnchor.documentId
+					? { ...existingAnchor, anchorNodeIds: unique([...existingAnchor.anchorNodeIds, ...sourceAnchor.anchorNodeIds]).sort() }
+					: existingAnchor)
 				: [...existing.sourceAnchors, sourceAnchor];
 		}
 	}
@@ -564,9 +718,12 @@ function buildMergeDocumentsProduct(context: BuilderContext<"merge-documents">):
 
 function buildSequenceProduct(context: BuilderContext<"build-sequence">): SequenceProduct {
 	const focus = getFocus(context.request.options);
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
-		const leftDifficulty = average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
-		const rightDifficulty = average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const leftDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
+			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const rightDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.difficulty * 3))
+			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
 		if (leftDifficulty !== rightDifficulty) {
 			return leftDifficulty - rightDifficulty;
 		}
@@ -580,7 +737,10 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 	const allMissingPrerequisites = new Set<string>();
 
 	const recommendedOrder = orderedDocuments.map((analyzed, index) => {
-		const currentConcepts = analyzed.insights.concepts.filter((concept) => matchesFocus([concept], focus));
+		const currentConcepts = unique(unitEntries
+			.filter((entry) => entry.documentIds.includes(analyzed.document.id))
+			.flatMap((entry) => entry.unit.concepts))
+			.filter((concept) => matchesFocus([concept], focus));
 		const bridgingConcepts = currentConcepts.filter((concept) => seenConcepts.has(concept));
 		const missingPrerequisites = currentConcepts.filter((concept) => !seenConcepts.has(concept) && (context.collectionAnalysis.conceptToDocumentMap[concept] ?? []).length === 1);
 
@@ -603,10 +763,9 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 				: `Start here because the document has lighter difficulty and an instructional density of ${analyzed.insights.instructionalDensity}.`,
 			bridgingConcepts,
 			missingPrerequisites,
-			anchorNodeIds: unique([
-				...analyzed.problems.flatMap((problem) => problem.anchors.map((anchor) => anchor.nodeId)),
-				...analyzed.fragments.flatMap((fragment) => fragment.anchors.map((anchor) => anchor.nodeId)),
-			]).slice(0, 12),
+			anchorNodeIds: unique(unitEntries
+				.filter((entry) => entry.documentIds.includes(analyzed.document.id))
+				.flatMap((entry) => entry.anchorNodeIds)).slice(0, 12),
 		};
 	});
 
@@ -622,24 +781,22 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 }
 
 function buildLessonSegments(args: {
-	fragments: ReturnType<typeof collectFragmentEntries>;
+	units: InstructionalUnitEntry[];
 	problems: ProblemExtractionEntry[];
 	role: string;
 	title: string;
 	limit: number;
-	sourceFileName: string;
-	sourceDocumentId: string;
 }) {
-	const matchingFragments = args.fragments
-		.filter((entry) => entry.fragment.instructionalRole === args.role && entry.text.length > 0)
+	const matchingFragments = args.units
+		.filter((entry) => entry.roles.includes(args.role) && entry.text.length > 0)
 		.slice(0, args.limit)
 		.map((entry, index) => ({
 			title: `${args.title} ${index + 1}`,
 			description: entry.text,
-			documentId: entry.documentId,
-			sourceFileName: entry.sourceFileName,
+			documentId: entry.primaryDocumentId,
+			sourceFileName: entry.primarySourceFileName,
 			anchorNodeIds: entry.anchorNodeIds,
-			concepts: entry.fragment.prerequisiteConcepts ?? [],
+			concepts: entry.unit.concepts,
 		}));
 
 	if (matchingFragments.length > 0) {
@@ -659,20 +816,20 @@ function buildLessonSegments(args: {
 function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProduct {
 	const focus = getFocus(context.request.options);
 	const analyzed = context.analyzedDocuments[0]!;
-	const fragmentEntries = collectFragmentEntries([analyzed], context.sourceFileNames).filter((entry) => matchesFocus([entry.text, ...(entry.fragment.prerequisiteConcepts ?? [])], focus));
-	const problemEntries = buildProblemEntries(context as BuilderContext<"extract-problems">, focus);
-	const objectiveEntries = fragmentEntries.filter((entry) => entry.fragment.learningObjective).map((entry) => entry.fragment.learningObjective!).filter(Boolean);
-	const prerequisiteConcepts = unique(fragmentEntries.flatMap((entry) => entry.fragment.prerequisiteConcepts ?? []).filter(Boolean));
-	const misconceptionTriggers = unique(fragmentEntries.flatMap((entry) => entry.fragment.misconceptionTriggers ?? []).filter(Boolean));
-	const scaffoldEntries = fragmentEntries
-		.filter((entry) => entry.fragment.scaffoldLevel)
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, [analyzed], context.sourceFileNames)
+		.filter((entry) => matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets], focus));
+	const problemEntries = buildProblemEntries(context, focus);
+	const objectiveEntries = unique(unitEntries.flatMap((entry) => entry.unit.learningTargets));
+	const prerequisiteConcepts = unique(unitEntries.flatMap((entry) => entry.unit.concepts).filter(Boolean));
+	const misconceptionTriggers = unique(unitEntries.flatMap((entry) => entry.unit.misconceptions).filter(Boolean));
+	const scaffoldEntries = unitEntries
 		.map((entry) => ({
-			level: entry.fragment.scaffoldLevel!,
-			strategy: entry.text || `Scaffold ${entry.fragment.scaffoldLevel}`,
-			documentIds: [entry.documentId],
+			level: entry.difficultyBand === "high" ? "low" as const : entry.difficultyBand === "low" ? "high" as const : "medium" as const,
+			strategy: entry.text || entry.unit.title || `Scaffold ${entry.difficultyBand}`,
+			documentIds: entry.documentIds,
 		}));
-	const noteEntries = fragmentEntries
-		.filter((entry) => entry.fragment.instructionalRole === "note" || entry.fragment.instructionalRole === "reflection" || entry.fragment.instructionalRole === "objective")
+	const noteEntries = unitEntries
+		.filter((entry) => entry.roles.includes("note") || entry.roles.includes("reflection") || entry.roles.includes("objective"))
 		.map((entry) => entry.text)
 		.filter(Boolean);
 
@@ -682,11 +839,11 @@ function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProd
 		title: focus ? `Lesson Builder: ${focus}` : `Lesson Builder: ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName}`,
 		learningObjectives: objectiveEntries.length > 0 ? objectiveEntries : analyzed.insights.concepts.slice(0, 3).map((concept) => `Students will explain and apply ${concept}.`),
 		prerequisiteConcepts,
-		warmUp: buildLessonSegments({ fragments: fragmentEntries, problems: problemEntries, role: "objective", title: "Warm-Up", limit: 1, sourceFileName: analyzed.document.sourceFileName, sourceDocumentId: analyzed.document.id }),
-		conceptIntroduction: buildLessonSegments({ fragments: fragmentEntries, problems: problemEntries, role: "explanation", title: "Concept Introduction", limit: 2, sourceFileName: analyzed.document.sourceFileName, sourceDocumentId: analyzed.document.id }),
-		guidedPractice: buildLessonSegments({ fragments: fragmentEntries, problems: problemEntries, role: "example", title: "Guided Practice", limit: 2, sourceFileName: analyzed.document.sourceFileName, sourceDocumentId: analyzed.document.id }),
-		independentPractice: buildLessonSegments({ fragments: fragmentEntries, problems: problemEntries, role: "problem-stem", title: "Independent Practice", limit: 3, sourceFileName: analyzed.document.sourceFileName, sourceDocumentId: analyzed.document.id }),
-		exitTicket: buildLessonSegments({ fragments: fragmentEntries, problems: problemEntries.slice(-1), role: "reflection", title: "Exit Ticket", limit: 1, sourceFileName: analyzed.document.sourceFileName, sourceDocumentId: analyzed.document.id }),
+		warmUp: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "objective", title: "Warm-Up", limit: 1 }),
+		conceptIntroduction: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "explanation", title: "Concept Introduction", limit: 2 }),
+		guidedPractice: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "example", title: "Guided Practice", limit: 2 }),
+		independentPractice: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "problem-stem", title: "Independent Practice", limit: 3 }),
+		exitTicket: buildLessonSegments({ units: unitEntries, problems: problemEntries.slice(-1), role: "reflection", title: "Exit Ticket", limit: 1 }),
 		misconceptions: misconceptionTriggers.map((trigger) => ({
 			trigger,
 			correction: `Address ${trigger.toLowerCase()} with a quick model and a corrected example.`,
@@ -702,30 +859,41 @@ function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProd
 
 function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 	const focus = getFocus(context.request.options);
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
-		const leftScore = average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
-		const rightScore = average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const leftScore = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
+			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const rightScore = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.difficulty * 3))
+			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
 		return leftScore - rightScore || left.document.id.localeCompare(right.document.id);
 	});
-	const fragmentEntries = collectFragmentEntries(context.analyzedDocuments, context.sourceFileNames);
-	const lessonSequence = orderedDocuments.map((analyzed, index) => ({
-		position: index + 1,
-		documentId: analyzed.document.id,
-		sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-		focusConcepts: analyzed.insights.concepts,
-		rationale: index === 0
-			? `Open the unit with ${joinList(analyzed.insights.concepts.slice(0, 2)) || "core concepts"} because this document has the lowest difficulty profile.`
-			: `Place this after earlier documents to build from ${joinList(analyzed.insights.concepts.filter((concept) => orderedDocuments.slice(0, index).some((previous) => previous.insights.concepts.includes(concept)))) || "the prior concepts"}.`,
-		anchorNodeIds: collectSourceAnchors([analyzed])[0]?.anchorNodeIds ?? [],
-	}));
+	const lessonSequence = orderedDocuments.map((analyzed, index) => {
+		const documentUnitEntries = unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id));
+		const focusConcepts = unique(documentUnitEntries.flatMap((entry) => entry.unit.concepts));
+		const priorDocumentIds = orderedDocuments.slice(0, index).map((document) => document.document.id);
+		const priorConcepts = unique(unitEntries
+			.filter((entry) => entry.documentIds.some((documentId) => priorDocumentIds.includes(documentId)))
+			.flatMap((entry) => entry.unit.concepts));
+
+		return {
+			position: index + 1,
+			documentId: analyzed.document.id,
+			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
+			focusConcepts,
+			rationale: index === 0
+				? `Open the unit with ${joinList(focusConcepts.slice(0, 2)) || "core concepts"} because this document has the lowest difficulty profile.`
+				: `Place this after earlier documents to build from ${joinList(focusConcepts.filter((concept) => priorConcepts.includes(concept))) || "the prior concepts"}.`,
+			anchorNodeIds: unique(documentUnitEntries.flatMap((entry) => entry.anchorNodeIds)),
+		};
+	});
 	const conceptMap = Object.entries(context.collectionAnalysis.conceptToDocumentMap).map(([concept, documentIds]) => ({
 		concept,
 		documentIds,
-		prerequisites: unique(fragmentEntries.filter((entry) => (entry.fragment.prerequisiteConcepts ?? []).includes(concept)).flatMap((entry) => entry.fragment.prerequisiteConcepts ?? []).filter((item) => item !== concept)),
+		prerequisites: unique(unitEntries.filter((entry) => entry.unit.concepts.includes(concept)).flatMap((entry) => entry.unit.concepts).filter((item) => item !== concept)),
 	}));
 	const misconceptionMap = Object.entries(context.collectionAnalysis.conceptToDocumentMap).map(([concept, documentIds]) => ({
 		concept,
-		triggers: unique(fragmentEntries.filter((entry) => entry.text.toLowerCase().includes(concept.toLowerCase()) || (entry.fragment.prerequisiteConcepts ?? []).includes(concept)).flatMap((entry) => entry.fragment.misconceptionTriggers ?? [])).slice(0, 3),
+		triggers: unique(unitEntries.filter((entry) => entry.text.toLowerCase().includes(concept.toLowerCase()) || entry.unit.concepts.includes(concept)).flatMap((entry) => entry.unit.misconceptions)).slice(0, 3),
 		documentIds,
 	})).filter((entry) => entry.triggers.length > 0);
 
@@ -738,7 +906,8 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 		difficultyCurve: orderedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			averageDifficultyScore: average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
+			averageDifficultyScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.difficulty * 3))
+				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
 		})),
 		representationCurve: orderedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
@@ -746,9 +915,15 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 			representations: analyzed.insights.representations,
 		})),
 		misconceptionMap,
-		suggestedAssessments: context.analyzedDocuments.map((analyzed) => `Assessment checkpoint from ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} on ${joinList(analyzed.insights.concepts.slice(0, 2)) || "key ideas"}.`).slice(0, 3),
+		suggestedAssessments: orderedDocuments.map((analyzed) => {
+			const documentUnitEntries = unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id));
+			return `Assessment checkpoint from ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} on ${joinList(unique(documentUnitEntries.flatMap((entry) => entry.unit.concepts)).slice(0, 2)) || "key ideas"}.`;
+		}).slice(0, 3),
 		suggestedReviews: context.collectionAnalysis.conceptGaps.slice(0, 3).map((concept) => `Review ${concept} before moving to the next lesson.`),
-		suggestedPracticeSets: orderedDocuments.map((analyzed) => `Practice set using ${analyzed.problems.length} problem(s) from ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName}.`).slice(0, 3),
+		suggestedPracticeSets: orderedDocuments.map((analyzed) => {
+			const documentUnitCount = unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).length;
+			return `Practice set using ${documentUnitCount || analyzed.problems.length} instructional block(s) from ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName}.`;
+		}).slice(0, 3),
 		sourceAnchors: collectSourceAnchors(context.analyzedDocuments),
 		generatedAt: new Date().toISOString(),
 	};
@@ -756,19 +931,19 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 
 function buildInstructionalMapProduct(context: BuilderContext<"build-instructional-map">): InstructionalMapProduct {
 	const focus = getFocus(context.request.options);
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 	const filteredConceptEntries = Object.entries(context.collectionAnalysis.conceptToDocumentMap)
 		.filter(([concept]) => matchesFocus([concept], focus))
 		.map(([concept, documentIds]) => ({ node: concept, documentIds }));
-	const representationBuckets = unique(context.analyzedDocuments.flatMap((analyzed) => analyzed.insights.representations))
+	const representationBuckets = unique(unitEntries.flatMap((entry) => entry.contentTypes))
 		.map((representation) => ({
 			node: representation,
-			documentIds: context.analyzedDocuments.filter((analyzed) => analyzed.insights.representations.includes(representation)).map((analyzed) => analyzed.document.id),
+			documentIds: unique(unitEntries.filter((entry) => entry.contentTypes.includes(representation)).flatMap((entry) => entry.documentIds)),
 		}));
-	const fragmentEntries = collectFragmentEntries(context.analyzedDocuments, context.sourceFileNames);
-	const misconceptionBuckets = unique(fragmentEntries.flatMap((entry) => entry.fragment.misconceptionTriggers ?? []))
+	const misconceptionBuckets = unique(unitEntries.flatMap((entry) => entry.unit.misconceptions))
 		.map((trigger) => ({
 			node: trigger,
-			documentIds: fragmentEntries.filter((entry) => (entry.fragment.misconceptionTriggers ?? []).includes(trigger)).map((entry) => entry.documentId),
+			documentIds: unique(unitEntries.filter((entry) => entry.unit.misconceptions.includes(trigger)).flatMap((entry) => entry.documentIds)),
 		}));
 
 	return {
@@ -789,12 +964,13 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 		difficultyCurve: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			averageDifficultyScore: average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
+			averageDifficultyScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.difficulty * 3))
+				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
 		})),
 		documentConceptAlignment: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			concepts: analyzed.insights.concepts,
+			concepts: unique(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).flatMap((entry) => entry.unit.concepts)),
 		})),
 		problemConceptAlignment: context.analyzedDocuments.flatMap((analyzed) => analyzed.problems.map((problem) => ({
 			problemId: problem.id,
@@ -805,8 +981,10 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 		instructionalRoleDistribution: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			roles: analyzed.fragments.reduce<Record<string, number>>((acc, fragment) => {
-				acc[fragment.instructionalRole] = (acc[fragment.instructionalRole] ?? 0) + 1;
+			roles: unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).reduce<Record<string, number>>((acc, entry) => {
+				for (const role of entry.roles) {
+					acc[role] = (acc[role] ?? 0) + 1;
+				}
 				return acc;
 			}, {}),
 		})),
@@ -861,8 +1039,8 @@ export function isBuiltIntentType(intentType: IntentRequest["intentType"]): inte
 	return SUPPORTED_INTENTS.includes(intentType as BuiltIntentType);
 }
 
-async function loadBuilderContext<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }): Promise<BuilderContext<T>> {
-	const session = getDocumentSession(request.sessionId);
+function buildBuilderContext<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, context: PrismSessionContext): BuilderContext<T> {
+	const session = context.session;
 	if (!session) {
 		throw new IntentBuildError(404, "Session not found");
 	}
@@ -884,51 +1062,31 @@ async function loadBuilderContext<T extends BuiltIntentType>(request: IntentRequ
 		}
 	}
 
-	const registeredDocuments = request.documentIds.map((documentId) => {
-		const document = getRegisteredDocument(documentId);
-		if (!document) {
-			throw new IntentBuildError(404, `Document ${documentId} not found`);
+	const analyzedDocuments = request.documentIds.map((documentId) => {
+		const analyzedDocument = context.analyzedDocuments.find((document) => document.document.id === documentId);
+		if (!analyzedDocument) {
+			throw new IntentBuildError(404, `Document ${documentId} has not been analyzed`);
 		}
-		return document;
+		return analyzedDocument;
 	});
-
-	const analyzedDocuments = await Promise.all(registeredDocuments.map(async (document) => {
-		const existing = getAnalyzedDocument(document.documentId);
-		if (existing) {
-			return existing;
-		}
-
-		return saveAnalyzedDocument(await analyzeRegisteredDocument({
-			documentId: document.documentId,
-			sourceFileName: document.sourceFileName,
-			sourceMimeType: document.sourceMimeType,
-			rawBinary: document.rawBinary,
-			azureExtract: document.azureExtract,
-			canonicalDocument: document.canonicalDocument,
-		}));
-	}));
-
-	const collectionAnalysis = getCollectionAnalysis(request.sessionId)
-		?? buildDocumentCollectionAnalysis(request.sessionId)
-		?? buildDefaultCollectionAnalysis(request.sessionId);
-
-	if (!collectionAnalysis) {
-		throw new IntentBuildError(500, "Collection analysis could not be built");
-	}
-
-	const sourceFileNames = Object.fromEntries(registeredDocuments.map((document) => [document.documentId, document.sourceFileName]));
+	const instructionalUnits = groupFragments(
+		context.groupedUnits
+			.flatMap((unit) => unit.fragments)
+			.filter((fragment) => request.documentIds.includes(fragment.documentId)),
+	);
 
 	return {
 		request,
 		analyzedDocuments,
-		collectionAnalysis,
-		sourceFileNames,
-		documentSummaries: buildDocumentSummaries(analyzedDocuments, sourceFileNames),
+		instructionalUnits,
+		collectionAnalysis: context.collectionAnalysis,
+		sourceFileNames: context.sourceFileNames,
+		documentSummaries: buildDocumentSummaries(analyzedDocuments, context.sourceFileNames),
 	};
 }
 
-export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }): Promise<IntentPayloadByType[T]> {
-	const context = await loadBuilderContext(request);
+export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {
+	const context = buildBuilderContext(request, prismSessionContext);
 	return BUILDERS[request.intentType](context as BuilderContext<T>);
 }
 

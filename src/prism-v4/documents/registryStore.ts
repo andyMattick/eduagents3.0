@@ -1,9 +1,11 @@
 import { supabaseRest } from "../../../lib/supabase";
+import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragments } from "./analysis";
 import {
 	addDocumentToSession,
-	createDocumentSession,
+	buildDefaultCollectionAnalysis,
 	getAnalyzedDocument,
 	getAnalyzedDocumentsForSession,
+	getCollectionAnalysis,
 	getDocumentSession,
 	getIntentProduct,
 	getRegisteredDocument,
@@ -19,13 +21,56 @@ import {
 } from "./registry";
 import type { DocumentSession, DocumentRole, SessionRole } from "../schema/domain";
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
-import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../schema/semantic";
+import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../schema/semantic";
 
 const SESSIONS_TABLE = "prism_v4_sessions";
 const DOCUMENTS_TABLE = "prism_v4_documents";
 const ANALYZED_DOCUMENTS_TABLE = "prism_v4_analyzed_documents";
 const COLLECTION_ANALYSES_TABLE = "prism_v4_collection_analyses";
+const SESSION_SNAPSHOTS_TABLE = "prism_v4_session_snapshots";
 const INTENT_PRODUCTS_TABLE = "prism_v4_intent_products";
+
+export interface PrismSessionContext {
+	session: DocumentSession;
+	registeredDocuments: RegisteredDocument[];
+	analyzedDocuments: AnalyzedDocument[];
+	collectionAnalysis: DocumentCollectionAnalysis;
+	sourceFileNames: Record<string, string>;
+	groupedUnits: InstructionalUnit[];
+}
+
+export interface PrismDocumentAnalysisTarget {
+	sessionId: string | null;
+	registeredDocument: RegisteredDocument;
+	analyzedDocument: AnalyzedDocument | null;
+}
+
+export interface PrismSessionSnapshotDocument {
+	documentId: string;
+	sourceFileName: string;
+	sourceMimeType: string;
+	createdAt: string;
+	canonicalDocument?: RegisteredDocument["canonicalDocument"];
+	azureExtract?: RegisteredDocument["azureExtract"];
+}
+
+export interface PersistedPrismSessionContext {
+	session: DocumentSession;
+	registeredDocuments: PrismSessionSnapshotDocument[];
+	analyzedDocuments: AnalyzedDocument[];
+	collectionAnalysis: DocumentCollectionAnalysis;
+	sourceFileNames: Record<string, string>;
+}
+
+export interface PrismSessionSnapshot {
+	sessionId: string;
+	context: PersistedPrismSessionContext;
+	createdAt: string;
+}
+
+const prismSessionContextCache = new Map<string, Promise<PrismSessionContext | null>>();
+const prismSessionSnapshotStore = new Map<string, PrismSessionSnapshot>();
+const staleCollectionAnalysisSessions = new Set<string>();
 
 type SessionRow = {
 	session_id: string;
@@ -60,6 +105,12 @@ type CollectionAnalysisRow = {
 	updated_at: string;
 };
 
+type SessionSnapshotRow = {
+	session_id: string;
+	snapshot_json: PersistedPrismSessionContext;
+	created_at: string;
+};
+
 type IntentProductRow = {
 	product_id: string;
 	session_id: string;
@@ -91,6 +142,55 @@ function now() {
 
 function unique(values: string[]) {
 	return [...new Set(values)];
+}
+
+function hasSameDocumentIds(left: string[], right: string[]) {
+	if (left.length !== right.length) {
+		return false;
+	}
+	const leftSet = new Set(left);
+	return right.every((value) => leftSet.has(value));
+}
+
+function shouldRebuildCollectionAnalysis(
+	session: DocumentSession,
+	analyzedDocuments: AnalyzedDocument[],
+	analysis: DocumentCollectionAnalysis | null,
+) {
+	if (staleCollectionAnalysisSessions.has(session.sessionId)) {
+		return true;
+	}
+
+	if (!analysis) {
+		return true;
+	}
+
+	if (!hasSameDocumentIds(session.documentIds, analysis.documentIds)) {
+		return true;
+	}
+
+	return analyzedDocuments.some((document) => document.updatedAt > analysis.updatedAt);
+}
+
+function invalidatePrismSessionContext(sessionId: string | null | undefined) {
+	if (!sessionId) {
+		return;
+	}
+	prismSessionContextCache.delete(sessionId);
+}
+
+function markCollectionAnalysisStale(sessionId: string | null | undefined) {
+	if (!sessionId) {
+		return;
+	}
+	staleCollectionAnalysisSessions.add(sessionId);
+}
+
+function clearCollectionAnalysisStale(sessionId: string | null | undefined) {
+	if (!sessionId) {
+		return;
+	}
+	staleCollectionAnalysisSessions.delete(sessionId);
 }
 
 function defaultDocumentRoles(documentIds: string[]) {
@@ -161,6 +261,77 @@ function fromIntentProductRow(row: IntentProductRow): IntentProduct {
 	} as IntentProduct;
 }
 
+function serializePrismSessionContext(context: PrismSessionContext): PersistedPrismSessionContext {
+	return {
+		session: context.session,
+		registeredDocuments: context.registeredDocuments.map((document) => ({
+			documentId: document.documentId,
+			sourceFileName: document.sourceFileName,
+			sourceMimeType: document.sourceMimeType,
+			createdAt: document.createdAt,
+			canonicalDocument: document.canonicalDocument,
+			azureExtract: document.azureExtract,
+		})),
+		analyzedDocuments: context.analyzedDocuments,
+		collectionAnalysis: context.collectionAnalysis,
+		sourceFileNames: context.sourceFileNames,
+	};
+}
+
+function enrichPrismSessionContext(baseContext: {
+	session: DocumentSession;
+	registeredDocuments: Array<PersistedPrismSessionContext["registeredDocuments"][number] | RegisteredDocument>;
+	analyzedDocuments: AnalyzedDocument[];
+	collectionAnalysis: DocumentCollectionAnalysis;
+	sourceFileNames: Record<string, string>;
+}): PrismSessionContext {
+	return {
+		session: baseContext.session,
+		registeredDocuments: baseContext.registeredDocuments.map((document) => ({ ...document })),
+		analyzedDocuments: baseContext.analyzedDocuments,
+		collectionAnalysis: baseContext.collectionAnalysis,
+		sourceFileNames: baseContext.sourceFileNames,
+		groupedUnits: groupFragments(baseContext.analyzedDocuments.flatMap((document) => document.fragments)),
+	};
+}
+
+function restorePrismSessionContext(snapshotContext: PersistedPrismSessionContext): PrismSessionContext {
+	return enrichPrismSessionContext(snapshotContext);
+}
+
+function applyPrismSessionContextToRegistry(context: PrismSessionContext) {
+	upsertDocumentSession({
+		sessionId: context.session.sessionId,
+		documentIds: context.session.documentIds,
+		documentRoles: context.session.documentRoles,
+		sessionRoles: context.session.sessionRoles,
+		createdAt: context.session.createdAt,
+	});
+
+	for (const document of context.registeredDocuments) {
+		const existing = getRegisteredDocument(document.documentId);
+		saveRegisteredDocument({
+			...existing,
+			...document,
+		});
+	}
+
+	for (const analyzedDocument of context.analyzedDocuments) {
+		saveAnalyzedDocument(analyzedDocument);
+	}
+
+	saveCollectionAnalysis(context.collectionAnalysis);
+	clearCollectionAnalysisStale(context.session.sessionId);
+}
+
+function fromSessionSnapshotRow(row: SessionSnapshotRow): PrismSessionSnapshot {
+	return {
+		sessionId: row.session_id,
+		context: row.snapshot_json,
+		createdAt: row.created_at,
+	};
+}
+
 async function updateDocumentSessionIds(sessionId: string, documentIds: string[]) {
 	if (!canUseSupabase() || documentIds.length === 0) {
 		return;
@@ -183,9 +354,68 @@ async function updateDocumentSessionIds(sessionId: string, documentIds: string[]
 	]);
 }
 
+export async function savePrismSessionSnapshot(sessionId: string, context: PrismSessionContext) {
+	const snapshot: PrismSessionSnapshot = {
+		sessionId,
+		context: serializePrismSessionContext(context),
+		createdAt: now(),
+	};
+
+	if (!canUseSupabase()) {
+		prismSessionSnapshotStore.set(sessionId, snapshot);
+		return snapshot;
+	}
+
+	await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+		method: "POST",
+		body: {
+			session_id: snapshot.sessionId,
+			snapshot_json: snapshot.context,
+			created_at: snapshot.createdAt,
+		},
+		prefer: "resolution=merge-duplicates,return=minimal",
+	});
+
+	return snapshot;
+}
+
+export async function loadPrismSessionSnapshot(sessionId: string): Promise<PrismSessionSnapshot | null> {
+	if (!canUseSupabase()) {
+		return prismSessionSnapshotStore.get(sessionId) ?? null;
+	}
+
+	const rows = await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+		select: "session_id,snapshot_json,created_at",
+		filters: { session_id: `eq.${sessionId}` },
+	});
+	const row = Array.isArray(rows) ? rows[0] as SessionSnapshotRow | undefined : undefined;
+	return row ? fromSessionSnapshotRow(row) : null;
+}
+
+export async function invalidatePrismSessionSnapshot(sessionId: string | null | undefined) {
+	if (!sessionId) {
+		return;
+	}
+
+	if (!canUseSupabase()) {
+		prismSessionSnapshotStore.delete(sessionId);
+		return;
+	}
+
+	await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+		method: "DELETE",
+		filters: { session_id: `eq.${sessionId}` },
+		prefer: "return=minimal",
+	});
+}
+
 export async function registerDocumentsStore(entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>, sessionId: string | null = null) {
 	if (!canUseSupabase()) {
-		return registerDocuments(entries);
+		const registered = registerDocuments(entries);
+		markCollectionAnalysisStale(sessionId);
+		invalidatePrismSessionContext(sessionId);
+		await invalidatePrismSessionSnapshot(sessionId);
+		return registered;
 	}
 
 	const createdAt = now();
@@ -204,6 +434,9 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 		body: registered.map((document) => toDocumentRow(document, sessionId)),
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
+	markCollectionAnalysisStale(sessionId);
+	invalidatePrismSessionContext(sessionId);
+	await invalidatePrismSessionSnapshot(sessionId);
 
 	return registered;
 }
@@ -223,12 +456,16 @@ export async function getDocumentSessionStore(sessionId: string) {
 
 export async function createDocumentSessionStore(documentIds: string[], sessionId = createId("session")) {
 	if (!canUseSupabase()) {
-		return upsertDocumentSession({
+		const created = upsertDocumentSession({
 			sessionId,
 			documentIds,
 			documentRoles: defaultDocumentRoles(documentIds),
 			sessionRoles: defaultSessionRoles(documentIds),
 		});
+		markCollectionAnalysisStale(sessionId);
+		invalidatePrismSessionContext(sessionId);
+		await invalidatePrismSessionSnapshot(sessionId);
+		return created;
 	}
 
 	const session: DocumentSession = {
@@ -246,6 +483,9 @@ export async function createDocumentSessionStore(documentIds: string[], sessionI
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	await updateDocumentSessionIds(sessionId, documentIds);
+	markCollectionAnalysisStale(sessionId);
+	invalidatePrismSessionContext(sessionId);
+	await invalidatePrismSessionSnapshot(sessionId);
 	return session;
 }
 
@@ -253,18 +493,25 @@ export async function ensureSessionDocumentsStore(sessionId: string, documentIds
 	if (!canUseSupabase()) {
 		const existing = getDocumentSession(sessionId);
 		if (!existing) {
-			return upsertDocumentSession({
+			const created = upsertDocumentSession({
 				sessionId,
 				documentIds,
 				documentRoles: defaultDocumentRoles(documentIds),
 				sessionRoles: defaultSessionRoles(documentIds),
 			});
+			markCollectionAnalysisStale(sessionId);
+			invalidatePrismSessionContext(sessionId);
+			await invalidatePrismSessionSnapshot(sessionId);
+			return created;
 		}
 
 		let current = existing;
 		for (const documentId of documentIds) {
 			current = addDocumentToSession(sessionId, documentId) ?? current;
 		}
+		markCollectionAnalysisStale(sessionId);
+		invalidatePrismSessionContext(sessionId);
+		await invalidatePrismSessionSnapshot(sessionId);
 		return current;
 	}
 
@@ -294,12 +541,19 @@ export async function ensureSessionDocumentsStore(sessionId: string, documentIds
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	await updateDocumentSessionIds(sessionId, documentIds);
+	markCollectionAnalysisStale(sessionId);
+	invalidatePrismSessionContext(sessionId);
+	await invalidatePrismSessionSnapshot(sessionId);
 	return nextSession;
 }
 
 export async function upsertDocumentSessionStore(session: Omit<DocumentSession, "createdAt" | "updatedAt"> & Partial<Pick<DocumentSession, "createdAt">>) {
 	if (!canUseSupabase()) {
-		return upsertDocumentSession(session);
+		const updated = upsertDocumentSession(session);
+		markCollectionAnalysisStale(session.sessionId);
+		invalidatePrismSessionContext(session.sessionId);
+		await invalidatePrismSessionSnapshot(session.sessionId);
+		return updated;
 	}
 
 	const existing = await getDocumentSessionStore(session.sessionId);
@@ -318,10 +572,13 @@ export async function upsertDocumentSessionStore(session: Omit<DocumentSession, 
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	await updateDocumentSessionIds(nextSession.sessionId, nextSession.documentIds);
+	markCollectionAnalysisStale(nextSession.sessionId);
+	invalidatePrismSessionContext(nextSession.sessionId);
+	await invalidatePrismSessionSnapshot(nextSession.sessionId);
 	return nextSession;
 }
 
-export async function getRegisteredDocumentStore(documentId: string) {
+async function loadRegisteredDocumentStore(documentId: string) {
 	if (!canUseSupabase()) {
 		return getRegisteredDocument(documentId);
 	}
@@ -334,7 +591,7 @@ export async function getRegisteredDocumentStore(documentId: string) {
 	return row ? fromDocumentRow(row) : null;
 }
 
-export async function getDocumentSessionIdStore(documentId: string) {
+async function loadDocumentSessionIdStore(documentId: string) {
 	if (!canUseSupabase()) {
 		return null;
 	}
@@ -359,7 +616,7 @@ export async function getSessionDocumentsStore(sessionId: string) {
 	return ((rows as DocumentRow[] | null) ?? []).map((row) => fromDocumentRow(row));
 }
 
-export async function getAnalyzedDocumentStore(documentId: string) {
+async function loadAnalyzedDocumentStore(documentId: string) {
 	if (!canUseSupabase()) {
 		return getAnalyzedDocument(documentId);
 	}
@@ -370,6 +627,52 @@ export async function getAnalyzedDocumentStore(documentId: string) {
 	});
 	const row = Array.isArray(rows) ? rows[0] as AnalyzedDocumentRow | undefined : undefined;
 	return row?.analyzed_document ?? null;
+}
+
+export async function loadPrismDocumentAnalysisTarget(documentId: string, sessionId?: string | null): Promise<PrismDocumentAnalysisTarget | null> {
+	const resolvedSessionId = sessionId ?? await loadDocumentSessionIdStore(documentId);
+
+	if (resolvedSessionId) {
+		const context = await loadPrismSessionContextCached(resolvedSessionId);
+		if (context) {
+			const registeredDocument = context.registeredDocuments.find((document) => document.documentId === documentId) ?? null;
+			if (registeredDocument) {
+				const analyzedDocument = context.analyzedDocuments.find((document) => document.document.id === documentId) ?? null;
+				return {
+					sessionId: resolvedSessionId,
+					registeredDocument,
+					analyzedDocument,
+				};
+			}
+		}
+
+		const fallbackSessionId = await loadDocumentSessionIdStore(documentId);
+		if (fallbackSessionId && fallbackSessionId !== resolvedSessionId) {
+			const fallbackContext = await loadPrismSessionContextCached(fallbackSessionId);
+			if (fallbackContext) {
+				const registeredDocument = fallbackContext.registeredDocuments.find((document) => document.documentId === documentId) ?? null;
+				if (registeredDocument) {
+					const analyzedDocument = fallbackContext.analyzedDocuments.find((document) => document.document.id === documentId) ?? null;
+					return {
+						sessionId: fallbackSessionId,
+						registeredDocument,
+						analyzedDocument,
+					};
+				}
+			}
+		}
+	}
+
+	const registeredDocument = await loadRegisteredDocumentStore(documentId);
+	if (!registeredDocument) {
+		return null;
+	}
+
+	return {
+		sessionId: null,
+		registeredDocument,
+		analyzedDocument: await loadAnalyzedDocumentStore(documentId),
+	};
 }
 
 export async function getAnalyzedDocumentsForSessionStore(sessionId: string) {
@@ -384,9 +687,24 @@ export async function getAnalyzedDocumentsForSessionStore(sessionId: string) {
 	return ((rows as AnalyzedDocumentRow[] | null) ?? []).map((row) => row.analyzed_document);
 }
 
-export async function saveAnalyzedDocumentStore(analyzedDocument: AnalyzedDocument, sessionId: string | null) {
+export async function saveAnalyzedDocumentStore(
+	analyzedDocument: AnalyzedDocument,
+	sessionId: string | null,
+	options: { invalidateSessionCache?: boolean; invalidateSnapshot?: boolean } = {},
+) {
+	const invalidateSessionCache = options.invalidateSessionCache ?? true;
+	const invalidateSnapshot = options.invalidateSnapshot ?? true;
+
 	if (!canUseSupabase()) {
-		return saveAnalyzedDocument(analyzedDocument);
+		const saved = saveAnalyzedDocument(analyzedDocument);
+		markCollectionAnalysisStale(sessionId);
+		if (invalidateSessionCache) {
+			invalidatePrismSessionContext(sessionId);
+		}
+		if (invalidateSnapshot) {
+			await invalidatePrismSessionSnapshot(sessionId);
+		}
+		return saved;
 	}
 
 	await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
@@ -406,13 +724,34 @@ export async function saveAnalyzedDocumentStore(analyzedDocument: AnalyzedDocume
 		body: { canonical_document: analyzedDocument.document },
 		prefer: "return=minimal",
 	});
+	markCollectionAnalysisStale(sessionId);
+	if (invalidateSessionCache) {
+		invalidatePrismSessionContext(sessionId);
+	}
+	if (invalidateSnapshot) {
+		await invalidatePrismSessionSnapshot(sessionId);
+	}
 
 	return analyzedDocument;
 }
 
-export async function saveCollectionAnalysisStore(analysis: DocumentCollectionAnalysis) {
+export async function saveCollectionAnalysisStore(
+	analysis: DocumentCollectionAnalysis,
+	options: { invalidateSessionCache?: boolean; invalidateSnapshot?: boolean } = {},
+) {
+	const invalidateSessionCache = options.invalidateSessionCache ?? true;
+	const invalidateSnapshot = options.invalidateSnapshot ?? true;
+
 	if (!canUseSupabase()) {
-		return saveCollectionAnalysis(analysis);
+		const saved = saveCollectionAnalysis(analysis);
+		clearCollectionAnalysisStale(analysis.sessionId);
+		if (invalidateSessionCache) {
+			invalidatePrismSessionContext(analysis.sessionId);
+		}
+		if (invalidateSnapshot) {
+			await invalidatePrismSessionSnapshot(analysis.sessionId);
+		}
+		return saved;
 	}
 
 	await supabaseRest(COLLECTION_ANALYSES_TABLE, {
@@ -424,6 +763,13 @@ export async function saveCollectionAnalysisStore(analysis: DocumentCollectionAn
 		},
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
+	clearCollectionAnalysisStale(analysis.sessionId);
+	if (invalidateSessionCache) {
+		invalidatePrismSessionContext(analysis.sessionId);
+	}
+	if (invalidateSnapshot) {
+		await invalidatePrismSessionSnapshot(analysis.sessionId);
+	}
 
 	return analysis;
 }
@@ -500,15 +846,17 @@ export async function listIntentProductsForSessionStore(sessionId: string) {
 	return ((rows as IntentProductRow[] | null) ?? []).map((row) => fromIntentProductRow(row));
 }
 
-export async function hydrateSessionToRegistryStore(sessionId: string) {
+export async function loadPrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
+	const start = Date.now();
 	const session = await getDocumentSessionStore(sessionId);
 	if (!session) {
 		return null;
 	}
 
-	const [documents, analyzedDocuments] = await Promise.all([
+	const [registeredDocuments, storedAnalyzedDocuments, storedCollectionAnalysis] = await Promise.all([
 		getSessionDocumentsStore(sessionId),
 		getAnalyzedDocumentsForSessionStore(sessionId),
+		getCollectionAnalysisStore(sessionId),
 	]);
 
 	upsertDocumentSession({
@@ -519,17 +867,95 @@ export async function hydrateSessionToRegistryStore(sessionId: string) {
 		createdAt: session.createdAt,
 	});
 
-	for (const document of documents) {
+	for (const document of registeredDocuments) {
 		saveRegisteredDocument(document);
 	}
 
-	for (const analyzedDocument of analyzedDocuments) {
+	for (const analyzedDocument of storedAnalyzedDocuments) {
 		saveAnalyzedDocument(analyzedDocument);
 	}
 
-	return {
+	const analyzedDocumentsById = new Map(storedAnalyzedDocuments.map((analyzedDocument) => [analyzedDocument.document.id, analyzedDocument]));
+	const missingDocuments = registeredDocuments.filter((document) => !analyzedDocumentsById.has(document.documentId));
+
+	const analyzedDocuments = [...storedAnalyzedDocuments];
+	if (missingDocuments.length > 0) {
+		const generatedAnalyses = await Promise.all(missingDocuments.map(async (document) => {
+			const analyzedDocument = await analyzeRegisteredDocument({
+				documentId: document.documentId,
+				sourceFileName: document.sourceFileName,
+				sourceMimeType: document.sourceMimeType,
+				rawBinary: document.rawBinary,
+				azureExtract: document.azureExtract,
+				canonicalDocument: document.canonicalDocument,
+			});
+			const saved = saveAnalyzedDocument(analyzedDocument);
+			await saveAnalyzedDocumentStore(saved, sessionId, { invalidateSessionCache: false, invalidateSnapshot: false });
+			return saved;
+		}));
+		analyzedDocuments.push(...generatedAnalyses);
+	}
+
+	const existingCollectionAnalysis = storedCollectionAnalysis ?? getCollectionAnalysis(sessionId);
+	let collectionAnalysis = shouldRebuildCollectionAnalysis(session, analyzedDocuments, existingCollectionAnalysis)
+		? buildDocumentCollectionAnalysis(sessionId) ?? buildDefaultCollectionAnalysis(sessionId)
+		: existingCollectionAnalysis;
+
+	if (!collectionAnalysis) {
+		throw new Error(`Collection analysis could not be built for session ${sessionId}`);
+	}
+
+	if (!existingCollectionAnalysis || existingCollectionAnalysis.updatedAt !== collectionAnalysis.updatedAt) {
+		collectionAnalysis = await saveCollectionAnalysisStore(collectionAnalysis, { invalidateSessionCache: false, invalidateSnapshot: false });
+	} else {
+		clearCollectionAnalysisStale(sessionId);
+	}
+
+	const sourceFileNames = Object.fromEntries(registeredDocuments.map((document) => [document.documentId, document.sourceFileName]));
+
+	console.log("loadPrismSessionContext", {
+		sessionId,
+		duration: Date.now() - start,
+		docCount: registeredDocuments.length,
+		analyzedCount: analyzedDocuments.length,
+		conceptCount: Object.keys(collectionAnalysis.conceptToDocumentMap).length,
+	});
+
+	return enrichPrismSessionContext({
 		session,
-		documents,
+		registeredDocuments,
 		analyzedDocuments,
-	};
+		collectionAnalysis,
+		sourceFileNames,
+	});
 }
+
+export function loadPrismSessionContextCached(sessionId: string): Promise<PrismSessionContext | null> {
+	if (!prismSessionContextCache.has(sessionId)) {
+		prismSessionContextCache.set(sessionId, (async () => {
+			const snapshot = await loadPrismSessionSnapshot(sessionId);
+			if (snapshot) {
+				const context = restorePrismSessionContext(snapshot.context);
+				applyPrismSessionContextToRegistry(context);
+				return context;
+			}
+
+			const context = await loadPrismSessionContext(sessionId);
+			if (context) {
+				await savePrismSessionSnapshot(sessionId, context);
+			}
+			return context;
+		})());
+	}
+	return prismSessionContextCache.get(sessionId)!;
+}
+
+export function resetPrismSessionContextCache() {
+	prismSessionContextCache.clear();
+	staleCollectionAnalysisSessions.clear();
+}
+
+export function resetPrismSessionSnapshotStore() {
+	prismSessionSnapshotStore.clear();
+}
+

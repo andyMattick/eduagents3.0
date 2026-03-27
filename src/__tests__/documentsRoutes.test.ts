@@ -5,6 +5,7 @@ import intentHandler from "../../api/v4/documents/intent";
 import sessionAnalysisHandler from "../../api/v4/documents/session/[sessionId]/analysis";
 import sessionHandler from "../../api/v4/documents/session";
 import uploadHandler from "../../api/v4/documents/upload";
+import { loadPrismSessionContext } from "../prism-v4/documents/registryStore";
 import { resetDocumentRegistryState } from "../prism-v4/documents/registry";
 
 function createResponse() {
@@ -257,6 +258,10 @@ describe("v4 documents routes", () => {
 
 		const sessionId = uploadRes.body.sessionId;
 		const documentIds = uploadRes.body.documentIds;
+		const context = await loadPrismSessionContext(sessionId);
+		expect(context).not.toBeNull();
+		expect(context?.groupedUnits.length ?? 0).toBeGreaterThan(0);
+		expect(context?.groupedUnits.some((unit) => unit.fragments.length > 1)).toBe(true);
 
 		const lessonRes = createResponse();
 		await intentHandler({
@@ -271,6 +276,7 @@ describe("v4 documents routes", () => {
 		expect(lessonRes.statusCode).toBe(200);
 		expect(lessonRes.body.schemaVersion).toBe("wave5-v1");
 		expect(lessonRes.body.payload.kind).toBe("lesson");
+		expect(lessonRes.body.payload.learningObjectives.length).toBeGreaterThan(0);
 		expect(lessonRes.body.payload.warmUp.length).toBeGreaterThan(0);
 
 		const unitRes = createResponse();
@@ -286,6 +292,7 @@ describe("v4 documents routes", () => {
 		expect(unitRes.statusCode).toBe(200);
 		expect(unitRes.body.payload.kind).toBe("unit");
 		expect(unitRes.body.payload.lessonSequence).toHaveLength(3);
+		expect(unitRes.body.payload.suggestedPracticeSets.some((entry: string) => entry.includes("instructional block"))).toBe(true);
 
 		const mapRes = createResponse();
 		await intentHandler({

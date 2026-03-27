@@ -31,7 +31,7 @@ export interface FragmentSemanticRecord {
 	isInstructional: boolean;
 	instructionalRole: InstructionalRole;
 	contentType: ContentType;
-	learningObjective?: string | null;
+	learningTarget?: string | null;
 	prerequisiteConcepts?: string[];
 	scaffoldLevel?: "low" | "medium" | "high";
 	exampleType?: "worked" | "non-worked" | "counterexample";

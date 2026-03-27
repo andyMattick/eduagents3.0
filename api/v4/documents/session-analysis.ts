@@ -1,11 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { buildDocumentCollectionAnalysis } from "../../../src/prism-v4/documents/analysis";
-import { buildDefaultCollectionAnalysis } from "../../../src/prism-v4/documents/registry";
 import {
 	getDocumentSessionStore,
-	hydrateSessionToRegistryStore,
-	saveCollectionAnalysisStore,
+	loadPrismSessionContextCached,
 } from "../../../src/prism-v4/documents/registryStore";
 
 export const runtime = "nodejs";
@@ -25,11 +22,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return res.status(404).json({ error: "Session not found" });
 	}
 
-	await hydrateSessionToRegistryStore(sessionId);
-	const analysis = buildDocumentCollectionAnalysis(sessionId) ?? buildDefaultCollectionAnalysis(sessionId);
-	if (analysis) {
-		await saveCollectionAnalysisStore(analysis);
+	const context = await loadPrismSessionContextCached(sessionId);
+	if (!context) {
+		return res.status(404).json({ error: "Session not found" });
 	}
 
-	return res.status(200).json({ session, analysis });
+	return res.status(200).json({ session, analysis: context.collectionAnalysis });
 }

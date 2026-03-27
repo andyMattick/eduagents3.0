@@ -15,6 +15,15 @@ vi.mock("../../../prism-v4/semantic/pipeline/runSemanticPipeline", () => ({
 
 import { DocumentUpload } from "../DocumentUpload";
 
+function jsonResponse(payload: unknown, ok = true) {
+  const body = JSON.stringify(payload);
+  return {
+    ok,
+    text: async () => body,
+    json: async () => payload,
+  };
+}
+
 function buildSemanticOutput(overridesApplied = false) {
   const firstVector = {
     subject: "math",
@@ -144,7 +153,7 @@ function buildAnalyzedDocument(documentId: string, sourceFileName: string, conce
       isInstructional: true,
       instructionalRole: "example",
       contentType: "text",
-      learningObjective: `Understand ${concept}`,
+      learningTarget: `Understand ${concept}`,
       prerequisiteConcepts: [concept],
       scaffoldLevel: "medium",
       exampleType: "worked",
@@ -254,37 +263,34 @@ describe("DocumentUpload", () => {
       if (input === "/api/v4/documents/upload") {
         const nextDocument = documents[uploadCount]!;
         uploadCount += 1;
-        return {
-          ok: true,
-          json: async () => ({ documentId: nextDocument.documentId, documentIds: [nextDocument.documentId], sessionId: "session-1", registered: [nextDocument] }),
-        };
+        return jsonResponse({ documentId: nextDocument.documentId, documentIds: [nextDocument.documentId], sessionId: "session-1", registered: [nextDocument] });
       }
 
       if (input === "/api/v4/documents/session" && init?.method === "POST") {
-        return { ok: true, json: async () => session };
+        return jsonResponse(session);
       }
 
       if (input === "/api/v4/documents/analyze") {
         const body = JSON.parse(String(init?.body ?? "{}"));
         const analyzedDocument = analyzedDocuments.find((entry) => entry.document.id === body.documentId)!;
-        return { ok: true, json: async () => ({ documentId: body.documentId, status: "ready", analyzedDocument }) };
+        return jsonResponse({ documentId: body.documentId, status: "ready", analyzedDocument });
       }
 
       if (input === "/api/v4/documents/session?sessionId=session-1") {
-        return { ok: true, json: async () => ({ session, documents, analyzedDocuments }) };
+        return jsonResponse({ session, documents, analyzedDocuments });
       }
 
-      if (input === "/api/v4/documents/session/session-1/analysis?sessionId=session-1") {
-        return { ok: true, json: async () => ({ session, analysis: collectionAnalysis }) };
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ session, analysis: collectionAnalysis });
       }
 
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return { ok: true, json: async () => ({ sessionId: "session-1", products: productHistory }) };
+        return jsonResponse({ sessionId: "session-1", products: productHistory });
       }
 
       if (input === "/api/v4/documents/intent" && init?.method === "POST") {
         productHistory = [unitProduct];
-        return { ok: true, json: async () => unitProduct };
+        return jsonResponse(unitProduct);
       }
 
       throw new Error(`Unexpected fetch call: ${input}`);
@@ -340,27 +346,25 @@ describe("DocumentUpload", () => {
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         uploadCount += 1;
-        return { ok: true, json: async () => ({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] }) };
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
       }
       if (input === "/api/v4/documents/session" && init?.method === "POST") {
-        return { ok: true, json: async () => session };
+        return jsonResponse(session);
       }
       if (input === "/api/v4/documents/analyze") {
-        return { ok: true, json: async () => ({ documentId: "doc-1", status: "ready", analyzedDocument }) };
+        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument });
       }
       if (input === "/api/v4/documents/session?sessionId=session-1") {
-        return { ok: true, json: async () => ({ session, documents: [document], analyzedDocuments: [analyzedDocument] }) };
+        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
       }
-      if (input === "/api/v4/documents/session/session-1/analysis?sessionId=session-1") {
-        return { ok: true, json: async () => ({ session, analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } }) };
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ session, analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return { ok: true, json: async () => ({ sessionId: "session-1", products: [] }) };
+        return jsonResponse({ sessionId: "session-1", products: [] });
       }
       if (input === "/api/v4-ingest") {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse({
             documentId: "doc-1",
             fileName: "lesson-notes.docx",
             azureExtract: {
@@ -371,18 +375,14 @@ describe("DocumentUpload", () => {
               tables: [],
               readingOrder: ["1. What is 2 + 2?"],
             },
-          }),
-        };
+          });
       }
       if (input === "/api/v4/narrate-problem") {
-        return {
-          ok: true,
-          json: async () => ({
+        return jsonResponse({
             lens: "what-is-this-asking",
             blocks: { taskEssence: { summary: "determine what the prompt is asking and solve it with clear reasoning", evidence: "What is 2 + 2?" } },
             narrative: "This problem asks students to determine what the prompt is asking and solve it with clear reasoning.",
-          }),
-        };
+          });
       }
       throw new Error(`Unexpected fetch call: ${input}`);
     });

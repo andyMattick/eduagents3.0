@@ -4,7 +4,7 @@ function unique<T>(values: T[]) {
 	return [...new Set(values)];
 }
 
-function extractLearningObjective(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
+function extractLearningTarget(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
 	if (instructionalRole !== "objective") {
 		return null;
 	}
@@ -147,7 +147,7 @@ export function classifyFragments(document: CanonicalDocument): FragmentSemantic
 		const text = node.normalizedText ?? node.text ?? "";
 		const contentType = inferContentType(node.nodeType, text);
 		const classification = classifyRole(text, contentType);
-		const learningObjective = extractLearningObjective(text, classification.instructionalRole);
+		const learningTarget = extractLearningTarget(text, classification.instructionalRole);
 		const prerequisiteConcepts = extractPrerequisiteConcepts(text);
 		const scaffoldLevel = inferScaffoldLevel(text, classification.instructionalRole);
 		const exampleType = inferExampleType(text, classification.instructionalRole);
@@ -159,7 +159,7 @@ export function classifyFragments(document: CanonicalDocument): FragmentSemantic
 			isInstructional: classification.isInstructional,
 			instructionalRole: classification.instructionalRole,
 			contentType,
-			learningObjective,
+			learningTarget,
 			prerequisiteConcepts,
 			scaffoldLevel,
 			exampleType,
@@ -171,7 +171,7 @@ export function classifyFragments(document: CanonicalDocument): FragmentSemantic
 			semanticTags: classification.isInstructional
 				? unique([
 					classification.instructionalRole,
-					...(learningObjective ? ["learning-objective"] : []),
+					...(learningTarget ? ["learning-target"] : []),
 					...(prerequisiteConcepts.length > 0 ? ["prerequisite"] : []),
 					...(misconceptionTriggers.length > 0 ? ["misconception-trigger"] : []),
 				])
