@@ -71,6 +71,7 @@ export interface PrismSessionSnapshot {
 const prismSessionContextCache = new Map<string, Promise<PrismSessionContext | null>>();
 const prismSessionSnapshotStore = new Map<string, PrismSessionSnapshot>();
 const staleCollectionAnalysisSessions = new Set<string>();
+let prismSessionSnapshotsSupported = true;
 
 type SessionRow = {
 	session_id: string;
@@ -126,6 +127,23 @@ function canUseSupabase() {
 	return typeof window === "undefined"
 		&& Boolean(process.env.SUPABASE_URL)
 		&& Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function isMissingSnapshotTableError(error: unknown) {
+	const message = String(error instanceof Error ? error.message : error).toLowerCase();
+	return message.includes("pgrst205")
+		|| (message.includes("schema cache") && message.includes(SESSION_SNAPSHOTS_TABLE))
+		|| message.includes(`could not find the table 'public.${SESSION_SNAPSHOTS_TABLE}'`);
+}
+
+function disablePersistedSnapshots(error: unknown) {
+	if (!isMissingSnapshotTableError(error)) {
+		throw error;
+	}
+	if (prismSessionSnapshotsSupported) {
+		console.warn(`[registryStore] ${SESSION_SNAPSHOTS_TABLE} missing in Supabase schema cache; falling back to in-memory snapshots.`);
+	}
+	prismSessionSnapshotsSupported = false;
 }
 
 function createId(prefix: string) {
@@ -366,15 +384,25 @@ export async function savePrismSessionSnapshot(sessionId: string, context: Prism
 		return snapshot;
 	}
 
-	await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
-		method: "POST",
-		body: {
-			session_id: snapshot.sessionId,
-			snapshot_json: snapshot.context,
-			created_at: snapshot.createdAt,
-		},
-		prefer: "resolution=merge-duplicates,return=minimal",
-	});
+	if (!prismSessionSnapshotsSupported) {
+		prismSessionSnapshotStore.set(sessionId, snapshot);
+		return snapshot;
+	}
+
+	try {
+		await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+			method: "POST",
+			body: {
+				session_id: snapshot.sessionId,
+				snapshot_json: snapshot.context,
+				created_at: snapshot.createdAt,
+			},
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} catch (error) {
+		disablePersistedSnapshots(error);
+		prismSessionSnapshotStore.set(sessionId, snapshot);
+	}
 
 	return snapshot;
 }
@@ -384,29 +412,46 @@ export async function loadPrismSessionSnapshot(sessionId: string): Promise<Prism
 		return prismSessionSnapshotStore.get(sessionId) ?? null;
 	}
 
-	const rows = await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
-		select: "session_id,snapshot_json,created_at",
-		filters: { session_id: `eq.${sessionId}` },
-	});
-	const row = Array.isArray(rows) ? rows[0] as SessionSnapshotRow | undefined : undefined;
-	return row ? fromSessionSnapshotRow(row) : null;
+	if (!prismSessionSnapshotsSupported) {
+		return prismSessionSnapshotStore.get(sessionId) ?? null;
+	}
+
+	try {
+		const rows = await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+			select: "session_id,snapshot_json,created_at",
+			filters: { session_id: `eq.${sessionId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] as SessionSnapshotRow | undefined : undefined;
+		return row ? fromSessionSnapshotRow(row) : null;
+	} catch (error) {
+		disablePersistedSnapshots(error);
+		return prismSessionSnapshotStore.get(sessionId) ?? null;
+	}
 }
 
 export async function invalidatePrismSessionSnapshot(sessionId: string | null | undefined) {
 	if (!sessionId) {
 		return;
 	}
+	prismSessionSnapshotStore.delete(sessionId);
 
 	if (!canUseSupabase()) {
-		prismSessionSnapshotStore.delete(sessionId);
 		return;
 	}
 
-	await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
-		method: "DELETE",
-		filters: { session_id: `eq.${sessionId}` },
-		prefer: "return=minimal",
-	});
+	if (!prismSessionSnapshotsSupported) {
+		return;
+	}
+
+	try {
+		await supabaseRest(SESSION_SNAPSHOTS_TABLE, {
+			method: "DELETE",
+			filters: { session_id: `eq.${sessionId}` },
+			prefer: "return=minimal",
+		});
+	} catch (error) {
+		disablePersistedSnapshots(error);
+	}
 }
 
 export async function registerDocumentsStore(entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>, sessionId: string | null = null) {
@@ -957,5 +1002,6 @@ export function resetPrismSessionContextCache() {
 
 export function resetPrismSessionSnapshotStore() {
 	prismSessionSnapshotStore.clear();
+	prismSessionSnapshotsSupported = true;
 }
 

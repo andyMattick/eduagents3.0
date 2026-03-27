@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import intentHandler from "../../../api/v4/documents/intent";
+import * as supabaseModule from "../../../lib/supabase";
 import {
 	createDocumentSessionStore,
+	invalidatePrismSessionSnapshot,
 	loadPrismSessionContextCached,
 	loadPrismSessionSnapshot,
 	registerDocumentsStore,
 	resetPrismSessionContextCache,
 	resetPrismSessionSnapshotStore,
+	savePrismSessionSnapshot,
 	saveAnalyzedDocumentStore,
 	saveCollectionAnalysisStore,
 } from "./registryStore";
@@ -192,5 +195,78 @@ describe("Prism session snapshots", () => {
 
 		expect(secondRes.statusCode).toBe(200);
 		expect(logSpy.mock.calls.filter(([message]) => message === "loadPrismSessionContext")).toHaveLength(0);
+	});
+
+	it("falls back to in-memory snapshots when the Supabase snapshot table is missing", async () => {
+		const previousUrl = process.env.SUPABASE_URL;
+		const previousAnonKey = process.env.SUPABASE_ANON_KEY;
+		process.env.SUPABASE_URL = "https://example.supabase.co";
+		process.env.SUPABASE_ANON_KEY = "test-anon-key";
+
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const restSpy = vi.spyOn(supabaseModule, "supabaseRest").mockRejectedValue(
+			new Error(`Supabase REST DELETE prism_v4_session_snapshots failed (404): {"code":"PGRST205","message":"Could not find the table 'public.prism_v4_session_snapshots' in the schema cache"}`),
+		);
+
+		const sessionId = "session-snapshot-missing-table";
+		const context = {
+			session: {
+				sessionId,
+				documentIds: ["doc-1"],
+				documentRoles: { "doc-1": ["unknown"] },
+				sessionRoles: { "doc-1": ["source-material"] },
+				createdAt: "2026-03-27T00:00:00.000Z",
+				updatedAt: "2026-03-27T00:00:00.000Z",
+			},
+			registeredDocuments: [],
+			analyzedDocuments: [],
+			collectionAnalysis: {
+				sessionId,
+				documentIds: ["doc-1"],
+				conceptOverlap: {},
+				conceptGaps: [],
+				difficultyProgression: {},
+				representationProgression: {},
+				redundancy: { "doc-1": [] },
+				coverageSummary: {
+					totalConcepts: 0,
+					docsPerConcept: {},
+					perDocument: {
+						"doc-1": {
+							documentId: "doc-1",
+							conceptCount: 0,
+							problemCount: 0,
+							instructionalDensity: 0,
+							representations: [],
+							dominantDifficulty: "low",
+						},
+					},
+				},
+				documentSimilarity: [],
+				conceptToDocumentMap: {},
+				updatedAt: "2026-03-27T00:00:00.000Z",
+			},
+			sourceFileNames: {},
+			groupedUnits: [],
+		} as const;
+
+		await expect(savePrismSessionSnapshot(sessionId, context)).resolves.toBeTruthy();
+		await expect(loadPrismSessionSnapshot(sessionId)).resolves.toMatchObject({ sessionId });
+		await expect(invalidatePrismSessionSnapshot(sessionId)).resolves.toBeUndefined();
+		expect(await loadPrismSessionSnapshot(sessionId)).toBeNull();
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("falling back to in-memory snapshots"));
+
+		restSpy.mockRestore();
+		warnSpy.mockRestore();
+		if (previousUrl === undefined) {
+			delete process.env.SUPABASE_URL;
+		} else {
+			process.env.SUPABASE_URL = previousUrl;
+		}
+		if (previousAnonKey === undefined) {
+			delete process.env.SUPABASE_ANON_KEY;
+		} else {
+			process.env.SUPABASE_ANON_KEY = previousAnonKey;
+		}
 	});
 });
