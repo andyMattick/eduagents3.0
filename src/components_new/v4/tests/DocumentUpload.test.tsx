@@ -386,7 +386,7 @@ describe("DocumentUpload", () => {
     expect(screen.getByText("Generated products")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Print" }));
-    expect(openMock).toHaveBeenCalledWith("/print/product-1", "_blank", "noopener,noreferrer");
+    expect(openMock).toHaveBeenCalledWith("/print/product-1?returnTo=%2F", "_blank", "noopener,noreferrer");
   });
 
   it("opens the semantic viewer as a supporting panel for an uploaded document", async () => {

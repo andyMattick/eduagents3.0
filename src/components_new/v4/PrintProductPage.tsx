@@ -50,6 +50,17 @@ function getProductIdFromPath(pathname: string) {
   return productId.length > 0 ? decodeURIComponent(productId) : null;
 }
 
+function getReturnToPath(search: string) {
+  const params = new URLSearchParams(search);
+  const returnTo = params.get("returnTo");
+
+  if (!returnTo || !returnTo.startsWith("/")) {
+    return "/";
+  }
+
+  return returnTo;
+}
+
 async function fetchJson<T>(input: string) {
   const response = await fetch(input);
   const rawBody = await response.text();
@@ -83,6 +94,17 @@ export function PrintProductPage() {
   const [showAnswerGuidance, setShowAnswerGuidance] = useState(false);
 
   const productId = useMemo(() => getProductIdFromPath(window.location.pathname), []);
+  const returnTo = useMemo(() => getReturnToPath(window.location.search), []);
+
+  function handleBackClick() {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    window.history.replaceState({}, "", returnTo);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
 
   useEffect(() => {
     let isCancelled = false;
@@ -150,7 +172,7 @@ export function PrintProductPage() {
                 <span>Show answer guidance</span>
               </label>
             )}
-            <button className="v4-button v4-button-secondary" type="button" onClick={() => window.history.back()}>
+            <button className="v4-button v4-button-secondary" type="button" onClick={handleBackClick}>
               Back
             </button>
             <button className="v4-button" type="button" onClick={() => window.print()} disabled={!product}>

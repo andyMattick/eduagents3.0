@@ -537,7 +537,8 @@ export function DocumentUpload() {
       return;
     }
 
-    window.open(`/print/${encodeURIComponent(currentProduct.productId)}`, "_blank", "noopener,noreferrer");
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.open(`/print/${encodeURIComponent(currentProduct.productId)}?returnTo=${encodeURIComponent(returnTo)}`, "_blank", "noopener,noreferrer");
   }
 
   const currentIntentConfig = getIntentConfig(selectedIntent);

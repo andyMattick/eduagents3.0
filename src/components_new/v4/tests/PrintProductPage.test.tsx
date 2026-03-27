@@ -24,7 +24,7 @@ describe("PrintProductPage", () => {
   });
 
   it("loads a product by productId and opens the browser print dialog", async () => {
-    window.history.replaceState({}, "", "/print/product-test-1");
+    window.history.replaceState({}, "", "/print/product-test-1?returnTo=%2F");
     const printMock = vi.fn();
     vi.stubGlobal("print", printMock);
 
@@ -92,5 +92,55 @@ describe("PrintProductPage", () => {
     expect(printMock).toHaveBeenCalledTimes(1);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v4/documents/intent?productId=product-test-1"));
+  });
+
+  it("returns to the provided path when the print tab has no history", async () => {
+    window.history.replaceState({}, "", "/print/product-test-1?returnTo=%2F");
+
+    const testProduct = {
+      sessionId: "session-1",
+      intentType: "build-test",
+      documentIds: ["doc-1"],
+      productId: "product-test-1",
+      productType: "build-test",
+      schemaVersion: "wave3-v1",
+      payload: {
+        kind: "test",
+        focus: null,
+        title: "Assessment Draft",
+        overview: "This draft assessment pulls 1 item from grouped instructional units.",
+        estimatedDurationMinutes: 10,
+        totalItemCount: 1,
+        sections: [
+          {
+            concept: "photosynthesis",
+            sourceDocumentIds: ["doc-1"],
+            items: [
+              {
+                itemId: "item-1",
+                prompt: "What organelle performs photosynthesis?",
+                concept: "photosynthesis",
+                sourceDocumentId: "doc-1",
+                sourceFileName: "lesson-notes.docx",
+                difficulty: "medium",
+                cognitiveDemand: "conceptual",
+                answerGuidance: "Look for chloroplast.",
+              },
+            ],
+          },
+        ],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(testProduct)));
+    vi.spyOn(window.history, "length", "get").mockReturnValue(1);
+
+    render(<PrintProductPage />);
+
+    expect((await screen.findAllByRole("heading", { name: "Assessment Draft" })).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(window.location.pathname).toBe("/");
   });
 });
