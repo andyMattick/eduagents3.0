@@ -195,6 +195,55 @@ describe("DocumentUpload", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows disabled-state reasons for build, export, and regenerate actions", async () => {
+    const document = { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" };
+    const analyzedDocument = buildAnalyzedDocument("doc-1", "lesson-notes.docx", "fractions");
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1"],
+      documentRoles: { "doc-1": ["notes"] },
+      sessionRoles: { "doc-1": ["unit-member"] },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [] });
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    expect(screen.getByText("Choose one or more files to build a workspace.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Build document workspace" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Source documents"), {
+      target: { files: [new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
+
+    expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
+    expect(screen.getByText("Generate a product before exporting it.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Regenerate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Regenerate" })).toHaveAttribute("title", "Generate a product once before using regenerate.");
+  });
+
   it("builds a multi-document workspace, creates a session, and generates an intent product", async () => {
     let uploadCount = 0;
     let productHistory: any[] = [];
@@ -608,6 +657,59 @@ describe("DocumentUpload", () => {
     ));
     expect(await screen.findByLabelText("Last dispatched request payload")).toHaveTextContent('"intentType": "build-sequence"');
     expect(await screen.findAllByText((_, element) => element?.textContent?.includes("Start with concept introduction.") ?? false)).not.toHaveLength(0);
+  });
+
+  it("disables instructional-map generation and shows the reason when only one document exists", async () => {
+    const document = { documentId: "doc-1", sourceFileName: "test 3271.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" };
+    const analyzedDocument = buildAnalyzedDocument("doc-1", "test 3271.pdf", "fractions");
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1"],
+      documentRoles: { "doc-1": ["worksheet"] },
+      sessionRoles: { "doc-1": ["unit-member"] },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [] });
+      }
+      if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        throw new Error("Instructional map should not dispatch for a single-document workspace");
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    fireEvent.change(screen.getByLabelText("Source documents"), {
+      target: { files: [new File(["pdf"], "test 3271.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
+
+    expect(await screen.findByText("test 3271.pdf")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-instructional-map" } });
+
+    expect(screen.getByText("Instructional Map requires at least 2 documents in the workspace.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate product" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/v4/documents/intent",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("renders assessment prompts instead of only section counts", async () => {

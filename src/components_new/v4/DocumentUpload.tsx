@@ -171,6 +171,47 @@ function getIntentScopeLabel(scope: IntentConfig["scope"]) {
   return "flexible";
 }
 
+function getIntentBlockedReason(workspace: SessionWorkspace | null, intentType: IntentType, documentIds: string[]) {
+  if (!workspace) {
+    return "Build a document workspace before generating a product.";
+  }
+
+  const config = getIntentConfig(intentType);
+  if (documentIds.length === 0) {
+    return "Select the document scope before generating a product.";
+  }
+
+  if (config.scope === "multi" && documentIds.length < 2) {
+    return `${config.label} requires at least 2 documents in the workspace.`;
+  }
+
+  return null;
+}
+
+function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean) {
+  if (isUploading) {
+    return "Workspace creation is already running.";
+  }
+
+  if (selectedFileCount === 0) {
+    return "Choose one or more files to build a workspace.";
+  }
+
+  return null;
+}
+
+function getExportBlockedReason(currentProduct: IntentProduct | null) {
+  return currentProduct ? null : "Generate a product before exporting it.";
+}
+
+function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null, isGenerating: boolean) {
+  if (isGenerating) {
+    return "Wait for the current generation request to finish.";
+  }
+
+  return lastIntentRequest ? null : "Generate a product once before using regenerate.";
+}
+
 function getProductTitle(product: IntentProduct) {
   const payload = product.payload as IntentProductPayload;
   if ("title" in payload && typeof payload.title === "string") {
@@ -826,6 +867,10 @@ export function DocumentUpload() {
 
   const currentIntentConfig = getIntentConfig(selectedIntent);
   const actionDocumentIds = getActionDocumentIds();
+  const intentBlockedReason = getIntentBlockedReason(workspace, selectedIntent, actionDocumentIds);
+  const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
+  const exportBlockedReason = getExportBlockedReason(currentProduct);
+  const regenerateBlockedReason = getRegenerateBlockedReason(lastIntentRequest, isGenerating);
   const actionDocuments = workspace
     ? actionDocumentIds
       .map((documentId) => workspace.documents.find((entry) => entry.documentId === documentId))
@@ -857,11 +902,13 @@ export function DocumentUpload() {
             </label>
 
             <div className="v4-upload-actions">
-              <button className="v4-button" type="submit" disabled={isUploading}>
+              <button className="v4-button" type="submit" disabled={Boolean(uploadBlockedReason)} title={uploadBlockedReason ?? undefined}>
                 {isUploading ? "Building workspace..." : "Build document workspace"}
               </button>
               {selectedFiles.length > 0 && <span className="v4-upload-name">{selectedFiles.length} file(s) selected</span>}
             </div>
+
+            {uploadBlockedReason && !error && <p className="v4-body-copy">{uploadBlockedReason}</p>}
 
             {selectedFiles.length > 0 && (
               <ul className="v4-inline-list" aria-label="Selected files">
@@ -996,6 +1043,7 @@ export function DocumentUpload() {
                 <p><strong>Intent:</strong> {currentIntentConfig.label}</p>
                 <p><strong>Scope mode:</strong> {getIntentScopeLabel(currentIntentConfig.scope)}</p>
                 <p><strong>Documents in request:</strong> {actionDocuments.length > 0 ? actionDocuments.map((document) => document.sourceFileName).join(", ") : "None selected"}</p>
+                {intentBlockedReason && <p className="v4-error">{intentBlockedReason}</p>}
                 {lastIntentRequest && (
                   <>
                     <p><strong>Last dispatched request:</strong></p>
@@ -1004,7 +1052,7 @@ export function DocumentUpload() {
                 )}
               </div>
               <div className="v4-upload-actions">
-                <button className="v4-button" type="button" onClick={() => void generateProduct()} disabled={isGenerating}>
+                <button className="v4-button" type="button" onClick={() => void generateProduct()} disabled={isGenerating || Boolean(intentBlockedReason)} title={intentBlockedReason ?? undefined}>
                   {isGenerating ? "Generating..." : "Generate product"}
                 </button>
               </div>
@@ -1017,10 +1065,15 @@ export function DocumentUpload() {
                   <h2>{currentProduct ? getProductTitle(currentProduct) : "No product yet"}</h2>
                 </div>
                 <div className="v4-upload-actions">
-                  <button className="v4-button v4-button-secondary" type="button" onClick={exportCurrentProduct} disabled={!currentProduct}>Export</button>
-                  <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={!lastIntentRequest || isGenerating}>Regenerate</button>
+                  <button className="v4-button v4-button-secondary" type="button" onClick={exportCurrentProduct} disabled={Boolean(exportBlockedReason)} title={exportBlockedReason ?? undefined}>Export</button>
+                  <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={Boolean(regenerateBlockedReason)} title={regenerateBlockedReason ?? undefined}>Regenerate</button>
                 </div>
               </div>
+              {(exportBlockedReason || regenerateBlockedReason) && (
+                <p className="v4-body-copy">
+                  {exportBlockedReason ?? regenerateBlockedReason}
+                </p>
+              )}
               {currentProduct ? (
                 <>
                   {renderProductPayload(currentProduct, {
