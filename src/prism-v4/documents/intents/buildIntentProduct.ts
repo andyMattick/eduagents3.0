@@ -1120,11 +1120,12 @@ function buildBuilderContext<T extends BuiltIntentType>(request: IntentRequest &
 		}
 		return analyzedDocument;
 	});
-	const instructionalUnits = groupFragments(
-		context.groupedUnits
-			.flatMap((unit) => unit.fragments)
-			.filter((fragment) => request.documentIds.includes(fragment.documentId)),
-	);
+	const instructionalUnits = context.groupedUnits
+		.filter((unit) => unit.fragments.some((fragment) => request.documentIds.includes(fragment.documentId)))
+		.map((unit) => ({
+			...unit,
+			fragments: unit.fragments.filter((fragment) => request.documentIds.includes(fragment.documentId)),
+		}));
 
 	return {
 		request,

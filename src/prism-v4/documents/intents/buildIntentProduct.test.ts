@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildIntentPayload } from "./buildIntentProduct";
 import { createDocumentSession, registerDocuments, resetDocumentRegistryState, saveAnalyzedDocument } from "../registry";
 import { loadPrismSessionContext } from "../registryStore";
+import { buildInstructionalUnitOverrideId, resetTeacherFeedbackState, saveTeacherFeedback } from "../../teacherFeedback";
 import type { AnalyzedDocument } from "../../schema/semantic";
 
 function buildAnalyzedDocument(args: {
@@ -348,6 +349,7 @@ function buildConceptOnlyAnalyzedDocument(args: {
 describe("buildIntentPayload", () => {
 	afterEach(() => {
 		resetDocumentRegistryState();
+		resetTeacherFeedbackState();
 	});
 
 	it("builds the Wave 3, Wave 4, and Wave 5 intent payloads from analyzed documents", async () => {
@@ -598,6 +600,66 @@ describe("buildIntentPayload", () => {
 			expect.objectContaining({
 				unitId: expect.stringMatching(/^unit-/),
 				concepts: expect.arrayContaining(["photosynthesis", "chloroplast"]),
+			}),
+		]));
+	});
+
+	it("build-instructional-map uses hydrated unit concept overrides instead of regrouped fragment concepts", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "notes-a.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "notes-b.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "notes-a.pdf",
+			concept: "fractions",
+			problemText: "Use fractions to compare shaded parts.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "notes-b.pdf",
+			concept: "fractions",
+			problemText: "Explain why the fractions are equivalent.",
+		}));
+
+		const initialContext = await loadPrismSessionContext(session.sessionId);
+		if (!initialContext) {
+			throw new Error("Expected Prism session context");
+		}
+		const unitId = initialContext.groupedUnits[0]?.unitId;
+		if (!unitId) {
+			throw new Error("Expected grouped instructional unit");
+		}
+
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: session.sessionId,
+			canonicalProblemId: buildInstructionalUnitOverrideId(session.sessionId, unitId),
+			target: "concepts",
+			aiValue: { fractions: 1 },
+			teacherValue: { photosynthesis: 1, chloroplast: 0.8 },
+		});
+
+		const overriddenContext = await loadPrismSessionContext(session.sessionId);
+		if (!overriddenContext) {
+			throw new Error("Expected overridden Prism session context");
+		}
+
+		const instructionalMap = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-instructional-map",
+		}, overriddenContext);
+
+		expect(instructionalMap.kind).toBe("instructional-map");
+		expect(instructionalMap.conceptGraph.nodes).toEqual(expect.arrayContaining(["photosynthesis", "chloroplast"]));
+		expect(instructionalMap.conceptGraph.nodes).not.toContain("fractions");
+		expect(instructionalMap.unitConceptAlignment).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				unitId,
+				concepts: ["photosynthesis", "chloroplast"],
 			}),
 		]));
 	});
