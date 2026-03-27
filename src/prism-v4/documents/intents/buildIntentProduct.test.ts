@@ -409,6 +409,7 @@ describe("buildIntentPayload", () => {
 		}, context);
 		expect(extractConcepts.kind).toBe("concept-extraction");
 		expect(extractConcepts.concepts[0].concept).toBe("fractions");
+		expect(extractConcepts.concepts[0]?.sampleProblemTexts.length).toBeGreaterThan(0);
 
 		const summary = await buildIntentPayload({
 			sessionId: session.sessionId,
@@ -417,6 +418,8 @@ describe("buildIntentPayload", () => {
 		}, context);
 		expect(summary.kind).toBe("summary");
 		expect(summary.documents).toHaveLength(2);
+		expect(summary.overallSummary.toLowerCase()).toContain("fractions");
+		expect(summary.documents[0]?.keyConcepts).toContain("fractions");
 
 		const review = await buildIntentPayload({
 			sessionId: session.sessionId,
@@ -425,6 +428,7 @@ describe("buildIntentPayload", () => {
 		}, context);
 		expect(review.kind).toBe("review");
 		expect(review.sections.length).toBeGreaterThan(0);
+		expect(review.sections[0]?.concept).toBe("fractions");
 
 		const test = await buildIntentPayload({
 			sessionId: session.sessionId,
@@ -443,6 +447,7 @@ describe("buildIntentPayload", () => {
 		expect(compare.kind).toBe("compare-documents");
 		expect(compare.documents).toHaveLength(2);
 		expect(compare.documentSimilarity.length).toBeGreaterThan(0);
+		expect(compare.sharedConcepts).toContain("fractions");
 
 		const merge = await buildIntentPayload({
 			sessionId: session.sessionId,
@@ -480,6 +485,7 @@ describe("buildIntentPayload", () => {
 		expect(unit.lessonSequence).toHaveLength(3);
 		expect(unit.conceptMap.length).toBeGreaterThan(0);
 		expect(unit.misconceptionMap.length).toBeGreaterThan(0);
+		expect(unit.conceptMap.some((entry) => entry.concept === "fractions")).toBe(true);
 
 		const instructionalMap = await buildIntentPayload({
 			sessionId: session.sessionId,
@@ -497,6 +503,7 @@ describe("buildIntentPayload", () => {
 		}, context);
 		expect(alignment.kind).toBe("curriculum-alignment");
 		expect(alignment.standardsCoverage.length).toBeGreaterThan(0);
+		expect(alignment.standardsCoverage.some((entry) => entry.concept === "fractions")).toBe(true);
 	});
 
 	it("build-test drafts items from grouped units even when no extracted problems exist", async () => {

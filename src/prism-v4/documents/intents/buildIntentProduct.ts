@@ -111,12 +111,13 @@ function matchesFocus(textParts: string[], focus: string | null) {
 	return textParts.some((value) => value.toLowerCase().includes(normalizedFocus));
 }
 
-function buildDocumentSummaries(analyzedDocuments: AnalyzedDocument[], sourceFileNames: Record<string, string>): ProductDocumentSummary[] {
+function buildDocumentSummaries(analyzedDocuments: AnalyzedDocument[], sourceFileNames: Record<string, string>, unitEntries: InstructionalUnitEntry[] = []): ProductDocumentSummary[] {
+	const effectiveDocumentConceptMap = buildEffectiveDocumentConceptMap({ analyzedDocuments, sourceFileNames }, unitEntries);
 	return analyzedDocuments.map((analyzed) => ({
 		documentId: analyzed.document.id,
 		sourceFileName: sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
 		problemCount: analyzed.problems.length,
-		concepts: analyzed.insights.concepts,
+		concepts: effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts,
 		instructionalProfile: {
 			exampleCount: analyzed.insights.exampleCount,
 			explanationCount: analyzed.insights.explanationCount,
@@ -179,6 +180,46 @@ function collectInstructionalUnitEntries(units: InstructionalUnit[], analyzedDoc
 			difficultyBand: toDifficultyBand(unit.difficulty),
 		};
 	});
+}
+
+function buildEffectiveDocumentConceptMap(context: { analyzedDocuments: AnalyzedDocument[]; sourceFileNames: Record<string, string> }, unitEntries: InstructionalUnitEntry[]) {
+	const byDocument = new Map<string, string[]>();
+
+	for (const analyzed of context.analyzedDocuments) {
+		const unitConcepts = unique(unitEntries
+			.filter((entry) => entry.documentIds.includes(analyzed.document.id))
+			.flatMap((entry) => entry.unit.concepts));
+		byDocument.set(analyzed.document.id, unitConcepts.length > 0 ? unitConcepts : analyzed.insights.concepts);
+	}
+
+	return byDocument;
+}
+
+function buildEffectiveConceptToDocumentMap(context: { analyzedDocuments: AnalyzedDocument[] }, unitEntries: InstructionalUnitEntry[], collectionAnalysis: DocumentCollectionAnalysis) {
+	const conceptToDocumentMap = new Map<string, string[]>();
+
+	for (const entry of unitEntries) {
+		for (const concept of entry.unit.concepts) {
+			conceptToDocumentMap.set(concept, unique([...(conceptToDocumentMap.get(concept) ?? []), ...entry.documentIds]));
+		}
+	}
+
+	if (conceptToDocumentMap.size > 0) {
+		return Object.fromEntries([...conceptToDocumentMap.entries()].sort((left, right) => left[0].localeCompare(right[0])));
+	}
+
+	if (Object.keys(collectionAnalysis.conceptToDocumentMap).length > 0) {
+		return collectionAnalysis.conceptToDocumentMap;
+	}
+
+	const fallback = new Map<string, string[]>();
+	for (const analyzed of context.analyzedDocuments) {
+		for (const concept of analyzed.insights.concepts) {
+			fallback.set(concept, unique([...(fallback.get(concept) ?? []), analyzed.document.id]));
+		}
+	}
+
+	return Object.fromEntries([...fallback.entries()].sort((left, right) => left[0].localeCompare(right[0])));
 }
 
 function toStandardId(concept: string) {
@@ -272,8 +313,32 @@ function buildProblemEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 	);
 }
 
-	function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; sourceFileNames: Record<string, string> }, focus: string | null) {
+function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; sourceFileNames: Record<string, string>; instructionalUnits?: InstructionalUnit[] }, focus: string | null) {
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits ?? [], context.analyzedDocuments, context.sourceFileNames);
 	const concepts = new Map<string, ConceptExtractionEntry>();
+
+	for (const entry of unitEntries) {
+		for (const concept of entry.unit.concepts) {
+			if (!matchesFocus([concept], focus)) {
+				continue;
+			}
+
+			const existing = concepts.get(concept);
+			concepts.set(concept, {
+				concept,
+				frequency: (existing?.frequency ?? 0) + entry.documentIds.length,
+				documentIds: unique([...(existing?.documentIds ?? []), ...entry.documentIds]),
+				sourceFileNames: unique([...(existing?.sourceFileNames ?? []), ...entry.sourceFileNames]),
+				representations: unique([...(existing?.representations ?? []), ...entry.contentTypes]),
+				difficulties: unique([...(existing?.difficulties ?? []), entry.difficultyBand]),
+				sampleProblemTexts: unique([...(existing?.sampleProblemTexts ?? []), ...entry.questionTexts, entry.text]).filter(Boolean).slice(0, 3),
+			});
+		}
+	}
+
+	if (concepts.size > 0) {
+		return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || left.concept.localeCompare(right.concept));
+	}
 
 	for (const analyzed of context.analyzedDocuments) {
 		for (const concept of analyzed.insights.concepts) {
@@ -317,17 +382,18 @@ function buildExtractConceptsProduct(context: BuilderContext<"extract-concepts">
 	const focus = getFocus(context.request.options);
 	const maxConcepts = getPositiveNumberOption(context.request.options, "maxConcepts", Number.MAX_SAFE_INTEGER);
 	const concepts = buildConceptEntries(context, focus).slice(0, maxConcepts);
+	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis);
 
 	return {
 		kind: "concept-extraction",
 		focus,
 		totalConceptCount: concepts.length,
 		coverageSummary: {
-			totalConcepts: context.collectionAnalysis.coverageSummary.totalConcepts,
+			totalConcepts: Object.keys(effectiveConceptToDocumentMap).length,
 			conceptGaps: focus
 				? context.collectionAnalysis.conceptGaps.filter((concept) => concept.toLowerCase().includes(focus.toLowerCase()))
 				: context.collectionAnalysis.conceptGaps,
-			docsPerConcept: context.collectionAnalysis.coverageSummary.docsPerConcept,
+			docsPerConcept: Object.fromEntries(Object.entries(effectiveConceptToDocumentMap).map(([concept, documentIds]) => [concept, documentIds.length])),
 		},
 		concepts,
 		generatedAt: new Date().toISOString(),
@@ -339,6 +405,7 @@ function buildSummaryProduct(context: BuilderContext<"summarize">): IntentPayloa
 	const conceptEntries = buildConceptEntries(context, focus);
 	const topConcepts = conceptEntries.slice(0, 3).map((entry) => entry.concept);
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
+	const effectiveDocumentConceptMap = buildEffectiveDocumentConceptMap(context, unitEntries);
 
 	return {
 		kind: "summary",
@@ -351,9 +418,9 @@ function buildSummaryProduct(context: BuilderContext<"summarize">): IntentPayloa
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
 			summary:
 				analyzed.problems.length > 0
-					? `${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} covers ${joinList(analyzed.insights.concepts.slice(0, 3)) || "the uploaded material"} through ${analyzed.problems.length} extracted problems.`
+					? `${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} covers ${joinList((effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts).slice(0, 3)) || "the uploaded material"} through ${analyzed.problems.length} extracted problems.`
 					: `${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} is mainly explanatory material with ${analyzed.insights.exampleCount} examples and ${analyzed.insights.explanationCount} explanations.`,
-			keyConcepts: analyzed.insights.concepts,
+			keyConcepts: effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts,
 			problemCount: analyzed.problems.length,
 			instructionalProfile: {
 				exampleCount: analyzed.insights.exampleCount,
@@ -585,6 +652,9 @@ function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadB
 }
 
 function buildCompareMetricEntries(context: BuilderContext<"compare-documents">) {
+	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
+	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
+	const effectiveDocumentConceptMap = buildEffectiveDocumentConceptMap(context, unitEntries);
 	return context.analyzedDocuments.map((analyzed) => ({
 		documentId: analyzed.document.id,
 		sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
@@ -593,15 +663,15 @@ function buildCompareMetricEntries(context: BuilderContext<"compare-documents">)
 		averageDifficultyScore: average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
 		representations: analyzed.insights.representations,
 		instructionalDensity: analyzed.insights.instructionalDensity,
-		uniqueConcepts: analyzed.insights.concepts.filter((concept) => (context.collectionAnalysis.conceptToDocumentMap[concept] ?? []).length === 1),
-		sharedConcepts: analyzed.insights.concepts.filter((concept) => (context.collectionAnalysis.conceptToDocumentMap[concept] ?? []).length >= 2),
+		uniqueConcepts: (effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts).filter((concept) => (effectiveConceptToDocumentMap[concept] ?? []).length === 1),
+		sharedConcepts: (effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts).filter((concept) => (effectiveConceptToDocumentMap[concept] ?? []).length >= 2),
 	}));
 }
 
 function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents">): CompareDocumentsProduct {
 	const focus = getFocus(context.request.options);
 	const metrics = buildCompareMetricEntries(context);
-	const filteredOverlap = Object.entries(context.collectionAnalysis.conceptOverlap)
+	const filteredOverlap = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis))
 		.filter(([concept]) => matchesFocus([concept], focus))
 		.map(([concept, documentIds]) => ({ concept, documentIds }));
 
@@ -715,22 +785,23 @@ function buildMergeDocumentsProduct(context: BuilderContext<"merge-documents">):
 	const focus = getFocus(context.request.options);
 	const mergedProblems = mergeProblemEntries(context, focus);
 	const mergedFragments = mergeFragmentEntries(context, focus);
+	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis);
 
 	return {
 		kind: "merge-documents",
 		focus,
-		mergedConcepts: Object.keys(context.collectionAnalysis.conceptToDocumentMap).filter((concept) => matchesFocus([concept], focus)).sort(),
+		mergedConcepts: Object.keys(effectiveConceptToDocumentMap).filter((concept) => matchesFocus([concept], focus)).sort(),
 		mergedProblems,
 		mergedFragments,
 		mergedInsights: {
 			totalDocuments: context.analyzedDocuments.length,
 			totalProblems: mergedProblems.length,
 			totalFragments: mergedFragments.length,
-			totalConcepts: Object.keys(context.collectionAnalysis.conceptToDocumentMap).length,
+			totalConcepts: Object.keys(effectiveConceptToDocumentMap).length,
 			coverageSummary: {
-				totalConcepts: context.collectionAnalysis.coverageSummary.totalConcepts,
+				totalConcepts: Object.keys(effectiveConceptToDocumentMap).length,
 				conceptGaps: context.collectionAnalysis.conceptGaps,
-				docsPerConcept: context.collectionAnalysis.coverageSummary.docsPerConcept,
+				docsPerConcept: Object.fromEntries(Object.entries(effectiveConceptToDocumentMap).map(([concept, documentIds]) => [concept, documentIds.length])),
 			},
 		},
 		mergedCanonicalOrder: context.analyzedDocuments.map((analyzed) => ({
@@ -747,6 +818,7 @@ function buildMergeDocumentsProduct(context: BuilderContext<"merge-documents">):
 function buildSequenceProduct(context: BuilderContext<"build-sequence">): SequenceProduct {
 	const focus = getFocus(context.request.options);
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
+	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
 		const leftDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
 			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
@@ -770,7 +842,7 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 			.flatMap((entry) => entry.unit.concepts))
 			.filter((concept) => matchesFocus([concept], focus));
 		const bridgingConcepts = currentConcepts.filter((concept) => seenConcepts.has(concept));
-		const missingPrerequisites = currentConcepts.filter((concept) => !seenConcepts.has(concept) && (context.collectionAnalysis.conceptToDocumentMap[concept] ?? []).length === 1);
+		const missingPrerequisites = currentConcepts.filter((concept) => !seenConcepts.has(concept) && (effectiveConceptToDocumentMap[concept] ?? []).length === 1);
 
 		for (const concept of bridgingConcepts) {
 			allBridgingConcepts.add(concept);
@@ -888,6 +960,7 @@ function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProd
 function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 	const focus = getFocus(context.request.options);
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
+	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
 		const leftScore = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
 			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
@@ -914,12 +987,12 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 			anchorNodeIds: unique(documentUnitEntries.flatMap((entry) => entry.anchorNodeIds)),
 		};
 	});
-	const conceptMap = Object.entries(context.collectionAnalysis.conceptToDocumentMap).map(([concept, documentIds]) => ({
+	const conceptMap = Object.entries(effectiveConceptToDocumentMap).map(([concept, documentIds]) => ({
 		concept,
 		documentIds,
 		prerequisites: unique(unitEntries.filter((entry) => entry.unit.concepts.includes(concept)).flatMap((entry) => entry.unit.concepts).filter((item) => item !== concept)),
 	}));
-	const misconceptionMap = Object.entries(context.collectionAnalysis.conceptToDocumentMap).map(([concept, documentIds]) => ({
+	const misconceptionMap = Object.entries(effectiveConceptToDocumentMap).map(([concept, documentIds]) => ({
 		concept,
 		triggers: unique(unitEntries.filter((entry) => entry.text.toLowerCase().includes(concept.toLowerCase()) || entry.unit.concepts.includes(concept)).flatMap((entry) => entry.unit.misconceptions)).slice(0, 3),
 		documentIds,
@@ -1046,7 +1119,7 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 
 function buildCurriculumAlignmentProduct(context: BuilderContext<"curriculum-alignment">): CurriculumAlignmentProduct {
 	const focus = getFocus(context.request.options);
-	const concepts = Object.entries(context.collectionAnalysis.conceptToDocumentMap).filter(([concept]) => matchesFocus([concept], focus));
+	const concepts = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis)).filter(([concept]) => matchesFocus([concept], focus));
 	const standardsCoverage = concepts.map(([concept, documentIds]) => ({
 		standardId: toStandardId(concept),
 		concept,
@@ -1133,7 +1206,7 @@ function buildBuilderContext<T extends BuiltIntentType>(request: IntentRequest &
 		instructionalUnits,
 		collectionAnalysis: context.collectionAnalysis,
 		sourceFileNames: context.sourceFileNames,
-		documentSummaries: buildDocumentSummaries(analyzedDocuments, context.sourceFileNames),
+		documentSummaries: buildDocumentSummaries(analyzedDocuments, context.sourceFileNames, collectInstructionalUnitEntries(instructionalUnits, analyzedDocuments, context.sourceFileNames)),
 	};
 }
 
