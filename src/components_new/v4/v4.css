@@ -475,6 +475,20 @@
   margin: 0.35rem 0 0;
 }
 
+.v4-viewer .v4-request-preview {
+  margin: 0.75rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  background: rgba(247, 241, 232, 0.92);
+  color: #433228;
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .v4-viewer .v4-document-controls label,
 .v4-viewer .v4-intent-grid label {
   display: grid;

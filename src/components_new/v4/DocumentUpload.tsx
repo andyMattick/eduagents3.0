@@ -159,6 +159,18 @@ function resolveIntentDocumentIds(workspace: SessionWorkspace | null, intentType
   return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
 }
 
+function getIntentScopeLabel(scope: IntentConfig["scope"]) {
+  if (scope === "single") {
+    return "single-document";
+  }
+
+  if (scope === "multi") {
+    return "multi-document";
+  }
+
+  return "flexible";
+}
+
 function getProductTitle(product: IntentProduct) {
   const payload = product.payload as IntentProductPayload;
   if ("title" in payload && typeof payload.title === "string") {
@@ -814,6 +826,11 @@ export function DocumentUpload() {
 
   const currentIntentConfig = getIntentConfig(selectedIntent);
   const actionDocumentIds = getActionDocumentIds();
+  const actionDocuments = workspace
+    ? actionDocumentIds
+      .map((documentId) => workspace.documents.find((entry) => entry.documentId === documentId))
+      .filter((entry): entry is RegisteredDocumentSummary => Boolean(entry))
+    : [];
 
   return (
     <div className="v4-viewer">
@@ -973,6 +990,19 @@ export function DocumentUpload() {
                 )}
               </div>
               <p className="v4-body-copy">{currentIntentConfig.description}</p>
+              <div className="v4-product-card v4-product-span">
+                <h3>Intent request preview</h3>
+                <p><strong>Endpoint:</strong> POST /api/v4/documents/intent</p>
+                <p><strong>Intent:</strong> {currentIntentConfig.label}</p>
+                <p><strong>Scope mode:</strong> {getIntentScopeLabel(currentIntentConfig.scope)}</p>
+                <p><strong>Documents in request:</strong> {actionDocuments.length > 0 ? actionDocuments.map((document) => document.sourceFileName).join(", ") : "None selected"}</p>
+                {lastIntentRequest && (
+                  <>
+                    <p><strong>Last dispatched request:</strong></p>
+                    <pre className="v4-request-preview" aria-label="Last dispatched request payload">{JSON.stringify(lastIntentRequest, null, 2)}</pre>
+                  </>
+                )}
+              </div>
               <div className="v4-upload-actions">
                 <button className="v4-button" type="button" onClick={() => void generateProduct()} disabled={isGenerating}>
                   {isGenerating ? "Generating..." : "Generate product"}

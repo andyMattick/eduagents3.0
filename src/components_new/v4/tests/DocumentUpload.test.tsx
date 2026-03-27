@@ -313,6 +313,7 @@ describe("DocumentUpload", () => {
     expect(screen.getAllByText("lesson-notes.docx").length).toBeGreaterThan(0);
     expect(screen.getAllByText("practice.pdf").length).toBeGreaterThan(0);
     expect(screen.getByText("session-1")).toBeInTheDocument();
+    expect(screen.getByText("POST /api/v4/documents/intent")).toBeInTheDocument();
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       "/api/v4/documents/session",
@@ -327,6 +328,7 @@ describe("DocumentUpload", () => {
       expect.objectContaining({ method: "POST" }),
     ));
 
+    expect(await screen.findByLabelText("Last dispatched request payload")).toHaveTextContent('"intentType": "build-unit"');
     expect((await screen.findAllByText("Unit Builder: Fractions")).length).toBeGreaterThan(0);
     expect(screen.getByText("Generated products")).toBeInTheDocument();
   });
@@ -497,10 +499,12 @@ describe("DocumentUpload", () => {
 
     expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-instructional-map" } });
+    expect(screen.getByText("POST /api/v4/documents/intent")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate product" }));
 
     expect(await screen.findByText("Instructional Units")).toBeInTheDocument();
     expect(screen.getByText("Inferred concepts")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Last dispatched request payload")).toHaveTextContent('"intentType": "build-instructional-map"');
 
     fireEvent.change(screen.getByLabelText("Concepts for Instructional Unit: fractions"), { target: { value: "ratios, equivalence" } });
     fireEvent.click(screen.getByRole("button", { name: "Save concepts" }));
@@ -592,6 +596,7 @@ describe("DocumentUpload", () => {
     const includeCheckboxes = await screen.findAllByRole("checkbox", { name: "Include" });
     fireEvent.click(includeCheckboxes[1]!);
     fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-sequence" } });
+    expect(screen.getByText("multi-document")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate product" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
@@ -601,6 +606,7 @@ describe("DocumentUpload", () => {
         body: JSON.stringify({ sessionId: "session-1", documentIds: ["doc-1", "doc-2"], intentType: "build-sequence" }),
       }),
     ));
+    expect(await screen.findByLabelText("Last dispatched request payload")).toHaveTextContent('"intentType": "build-sequence"');
     expect(await screen.findAllByText((_, element) => element?.textContent?.includes("Start with concept introduction.") ?? false)).not.toHaveLength(0);
   });
 
