@@ -137,6 +137,28 @@ function getIntentConfig(intentType: IntentType) {
   return INTENT_CONFIG[intentType] ?? { label: intentType, description: "Generate a product from the selected documents.", scope: "flex" as const };
 }
 
+function resolveIntentDocumentIds(workspace: SessionWorkspace | null, intentType: IntentType, selectedDocumentIds: string[], primaryDocumentId: string | null) {
+  if (!workspace) {
+    return [];
+  }
+
+  const config = getIntentConfig(intentType);
+  const allDocumentIds = workspace.documents.map((entry) => entry.documentId);
+
+  if (config.scope === "single") {
+    return primaryDocumentId ? [primaryDocumentId] : [];
+  }
+
+  if (config.scope === "multi") {
+    if (selectedDocumentIds.length >= 2) {
+      return selectedDocumentIds;
+    }
+    return allDocumentIds.length >= 2 ? allDocumentIds : selectedDocumentIds;
+  }
+
+  return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
+}
+
 function getProductTitle(product: IntentProduct) {
   const payload = product.payload as IntentProductPayload;
   if ("title" in payload && typeof payload.title === "string") {
@@ -367,6 +389,7 @@ function renderProductPayload(product: IntentProduct, options?: { sessionId: str
         <div className="v4-product-card">
           <h3>Concept Graph</h3>
           <p>{payload.conceptGraph.nodes.length} nodes, {payload.conceptGraph.edges.length} edges</p>
+          <ul>{payload.conceptGraph.nodes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
         </div>
         <div className="v4-product-card">
           <h3>Representation Graph</h3>
@@ -409,7 +432,28 @@ function renderProductPayload(product: IntentProduct, options?: { sessionId: str
   }
 
   if (payload.kind === "sequence") {
-    return <div className="v4-product-card"><h3>Recommended Order</h3><ol>{payload.recommendedOrder.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}</li>)}</ol></div>;
+    return (
+      <div className="v4-product-grid">
+        <div className="v4-product-card v4-product-span">
+          <h3>Recommended Order</h3>
+          <ol>
+            {payload.recommendedOrder.map((entry) => (
+              <li key={entry.documentId}>
+                <strong>{entry.sourceFileName}</strong>: {entry.rationale}
+              </li>
+            ))}
+          </ol>
+        </div>
+        <div className="v4-product-card">
+          <h3>Bridging Concepts</h3>
+          <ul>{payload.bridgingConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+        </div>
+        <div className="v4-product-card">
+          <h3>Missing Prerequisites</h3>
+          <ul>{payload.missingPrerequisites.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+        </div>
+      </div>
+    );
   }
 
   if (payload.kind === "review") {
@@ -417,7 +461,20 @@ function renderProductPayload(product: IntentProduct, options?: { sessionId: str
   }
 
   if (payload.kind === "test") {
-    return <div className="v4-product-card"><h3>Assessment Sections</h3><ul>{payload.sections.map((entry) => <li key={entry.concept}>{entry.concept}: {entry.items.length} item(s)</li>)}</ul></div>;
+    return (
+      <div className="v4-product-grid">
+        <div className="v4-product-card v4-product-span">
+          <h3>Assessment Sections</h3>
+          <p>{payload.overview}</p>
+          {payload.sections.map((entry) => (
+            <div key={entry.concept} className="v4-segment-card">
+              <strong>{entry.concept}</strong>
+              <ul>{entry.items.map((item) => <li key={item.itemId}>{item.prompt}</li>)}</ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (payload.kind === "problem-extraction") {
@@ -646,16 +703,7 @@ export function DocumentUpload() {
   }
 
   function getActionDocumentIds() {
-    if (!workspace) {
-      return [];
-    }
-
-    const config = getIntentConfig(selectedIntent);
-    if (config.scope === "single") {
-      return primaryDocumentId ? [primaryDocumentId] : [];
-    }
-
-    return selectedDocumentIds.length > 0 ? selectedDocumentIds : workspace.documents.map((entry) => entry.documentId);
+    return resolveIntentDocumentIds(workspace, selectedIntent, selectedDocumentIds, primaryDocumentId);
   }
 
   function buildIntentOptions() {
@@ -678,8 +726,16 @@ export function DocumentUpload() {
       return;
     }
 
-    if (documentIds.length === 0) {
+    const normalizedDocumentIds = resolveIntentDocumentIds(workspace, intentType, documentIds, primaryDocumentId);
+    const config = getIntentConfig(intentType);
+
+    if (normalizedDocumentIds.length === 0) {
       setError("Select the document scope before generating a product.");
+      return;
+    }
+
+    if (config.scope === "multi" && normalizedDocumentIds.length < 2) {
+      setError(`${config.label} requires at least 2 documents in the workspace.`);
       return;
     }
 
@@ -689,10 +745,10 @@ export function DocumentUpload() {
       const product = await fetchJson<IntentProduct>("/api/v4/documents/intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: workspace.sessionId, documentIds, intentType, options }),
+        body: JSON.stringify({ sessionId: workspace.sessionId, documentIds: normalizedDocumentIds, intentType, options }),
       });
       setCurrentProduct(product);
-      setLastIntentRequest({ intentType, documentIds, options });
+      setLastIntentRequest({ intentType, documentIds: normalizedDocumentIds, options });
       await refreshWorkspace(workspace.sessionId);
     } catch (generationError) {
       setError(generationError instanceof Error ? generationError.message : "Product generation failed.");

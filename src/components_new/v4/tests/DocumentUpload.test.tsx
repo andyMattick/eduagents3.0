@@ -411,13 +411,19 @@ describe("DocumentUpload", () => {
   });
 
   it("saves instructional-unit concept overrides from the instructional map view", async () => {
-    const document = { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" };
-    const analyzedDocument = buildAnalyzedDocument("doc-1", "lesson-notes.docx", "fractions");
+    const documents = [
+      { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" },
+      { documentId: "doc-2", sourceFileName: "practice.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
+    ];
+    const analyzedDocuments = [
+      buildAnalyzedDocument("doc-1", "lesson-notes.docx", "fractions"),
+      buildAnalyzedDocument("doc-2", "practice.pdf", "equivalence"),
+    ];
     const session = {
       sessionId: "session-1",
-      documentIds: ["doc-1"],
-      documentRoles: { "doc-1": ["notes"] },
-      sessionRoles: { "doc-1": ["unit-member"] },
+      documentIds: ["doc-1", "doc-2"],
+      documentRoles: { "doc-1": ["notes"], "doc-2": ["worksheet"] },
+      sessionRoles: { "doc-1": ["unit-member"], "doc-2": ["unit-member"] },
       createdAt: "2025-01-01T00:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
     };
@@ -447,19 +453,21 @@ describe("DocumentUpload", () => {
 
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
+        const uploadCount = fetchMock.mock.calls.filter(([url]) => url === "/api/v4/documents/upload").length - 1;
+        const document = documents[uploadCount] ?? documents[0];
         return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
       }
       if (input === "/api/v4/documents/session" && init?.method === "POST") {
         return jsonResponse(session);
       }
       if (input === "/api/v4/documents/analyze") {
-        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument });
+        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument: analyzedDocuments[0] });
       }
       if (input === "/api/v4/documents/session?sessionId=session-1") {
-        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
+        return jsonResponse({ session, documents, analyzedDocuments });
       }
       if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
-        return jsonResponse({ session, analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+        return jsonResponse({ session, analysis: { sessionId: "session-1", documentIds: ["doc-1", "doc-2"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [], "doc-2": [] }, coverageSummary: { totalConcepts: 2, docsPerConcept: { fractions: 1, equivalence: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" }, "doc-2": { documentId: "doc-2", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"], equivalence: ["doc-2"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
         return jsonResponse({ sessionId: "session-1", products: [instructionalMapProduct] });
@@ -480,7 +488,10 @@ describe("DocumentUpload", () => {
     render(<DocumentUpload />);
 
     fireEvent.change(screen.getByLabelText("Source documents"), {
-      target: { files: [new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })] },
+      target: { files: [
+        new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+        new File(["pdf"], "practice.pdf", { type: "application/pdf" }),
+      ] },
     });
     fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
 
@@ -498,5 +509,179 @@ describe("DocumentUpload", () => {
       "/api/v4/teacher-feedback",
       expect.objectContaining({ method: "POST" }),
     ));
+  });
+
+  it("uses all workspace documents for multi-document intents when only one document is selected", async () => {
+    const documents = [
+      { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" },
+      { documentId: "doc-2", sourceFileName: "practice.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
+    ];
+    const analyzedDocuments = [
+      buildAnalyzedDocument("doc-1", "lesson-notes.docx", "photosynthesis"),
+      buildAnalyzedDocument("doc-2", "practice.pdf", "glucose"),
+    ];
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1", "doc-2"],
+      documentRoles: { "doc-1": ["notes"], "doc-2": ["worksheet"] },
+      sessionRoles: { "doc-1": ["unit-member"], "doc-2": ["unit-member"] },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+    const sequenceProduct = {
+      sessionId: "session-1",
+      intentType: "build-sequence",
+      documentIds: ["doc-1", "doc-2"],
+      productId: "product-sequence-1",
+      productType: "build-sequence",
+      schemaVersion: "wave4-v1",
+      payload: {
+        kind: "sequence",
+        focus: null,
+        recommendedOrder: [
+          { position: 1, documentId: "doc-1", sourceFileName: "lesson-notes.docx", rationale: "Start with concept introduction.", bridgingConcepts: [], missingPrerequisites: ["photosynthesis"], anchorNodeIds: ["doc-1-node-1"] },
+          { position: 2, documentId: "doc-2", sourceFileName: "practice.pdf", rationale: "Then reinforce glucose.", bridgingConcepts: ["photosynthesis"], missingPrerequisites: [], anchorNodeIds: ["doc-2-node-1"] },
+        ],
+        bridgingConcepts: ["photosynthesis"],
+        missingPrerequisites: ["glucose"],
+        sourceAnchors: [{ documentId: "doc-1", anchorNodeIds: ["doc-1-node-1"] }, { documentId: "doc-2", anchorNodeIds: ["doc-2-node-1"] }],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        const currentIndex = fetchMock.mock.calls.filter(([url]) => url === "/api/v4/documents/upload").length - 1;
+        const document = documents[currentIndex] ?? documents[0];
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents, analyzedDocuments });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ analysis: { sessionId: "session-1", documentIds: ["doc-1", "doc-2"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [], "doc-2": [] }, coverageSummary: { totalConcepts: 2, docsPerConcept: { photosynthesis: 1, glucose: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" }, "doc-2": { documentId: "doc-2", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { photosynthesis: ["doc-1"], glucose: ["doc-2"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [sequenceProduct] });
+      }
+      if (input === "/api/v4/documents/analyze") {
+        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument: analyzedDocuments[0] });
+      }
+      if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        return jsonResponse(sequenceProduct);
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    fireEvent.change(screen.getByLabelText("Source documents"), {
+      target: { files: [
+        new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+        new File(["pdf"], "practice.pdf", { type: "application/pdf" }),
+      ] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
+
+    expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
+    const includeCheckboxes = await screen.findAllByRole("checkbox", { name: "Include" });
+    fireEvent.click(includeCheckboxes[1]!);
+    fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-sequence" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate product" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v4/documents/intent",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sessionId: "session-1", documentIds: ["doc-1", "doc-2"], intentType: "build-sequence" }),
+      }),
+    ));
+    expect(await screen.findAllByText((_, element) => element?.textContent?.includes("Start with concept introduction.") ?? false)).not.toHaveLength(0);
+  });
+
+  it("renders assessment prompts instead of only section counts", async () => {
+    const document = { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" };
+    const analyzedDocument = buildAnalyzedDocument("doc-1", "lesson-notes.docx", "photosynthesis");
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1"],
+      documentRoles: { "doc-1": ["notes"] },
+      sessionRoles: { "doc-1": ["unit-member"] },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+    const testProduct = {
+      sessionId: "session-1",
+      intentType: "build-test",
+      documentIds: ["doc-1"],
+      productId: "product-test-1",
+      productType: "build-test",
+      schemaVersion: "wave3-v1",
+      payload: {
+        kind: "test",
+        focus: null,
+        title: "Assessment Draft",
+        overview: "This draft assessment pulls 2 items from grouped instructional units and organizes them by concept.",
+        estimatedDurationMinutes: 10,
+        totalItemCount: 2,
+        sections: [
+          {
+            concept: "photosynthesis",
+            sourceDocumentIds: ["doc-1"],
+            items: [
+              { itemId: "item-1", prompt: "What organelle performs photosynthesis?", concept: "photosynthesis", sourceDocumentId: "doc-1", sourceFileName: "lesson-notes.docx", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "Look for chloroplast." },
+              { itemId: "item-2", prompt: "Why is sunlight necessary for photosynthesis?", concept: "photosynthesis", sourceDocumentId: "doc-1", sourceFileName: "lesson-notes.docx", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "Look for light-dependent reactions." },
+            ],
+          },
+        ],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/analyze") {
+        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument });
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { photosynthesis: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { photosynthesis: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [testProduct] });
+      }
+      if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        return jsonResponse(testProduct);
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    fireEvent.change(screen.getByLabelText("Source documents"), {
+      target: { files: [new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
+
+    expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate product" }));
+
+    expect(await screen.findByText("What organelle performs photosynthesis?")).toBeInTheDocument();
+    expect(screen.getByText("Why is sunlight necessary for photosynthesis?")).toBeInTheDocument();
   });
 });
