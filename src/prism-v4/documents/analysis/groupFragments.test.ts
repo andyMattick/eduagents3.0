@@ -82,7 +82,7 @@ describe("groupFragments", () => {
 		expect(firstRun.map((unit) => unit.unitId)).toEqual(secondRun.map((unit) => unit.unitId));
 		expect(firstRun[0]?.unitId).toMatch(/^unit-/);
 		expect(firstRun.map((unit) => unit.fragments.map((fragment) => fragment.id))).toEqual([
-			["fragment-1", "fragment-2"],
+			["fragment-1", "fragment-2", "fragment-3"],
 		]);
 		expect(firstRun.map((unit) => unit.learningTargets)).toEqual([
 			["Compare fractions"],

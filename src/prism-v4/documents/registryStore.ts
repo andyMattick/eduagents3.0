@@ -1,5 +1,6 @@
 import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragments } from "./analysis";
+import { buildInstructionalUnitOverrideId, getProblemOverride } from "../teacherFeedback";
 import {
 	addDocumentToSession,
 	buildDefaultCollectionAnalysis,
@@ -296,7 +297,7 @@ function serializePrismSessionContext(context: PrismSessionContext): PersistedPr
 	};
 }
 
-function enrichPrismSessionContext(baseContext: {
+function buildBasePrismSessionContext(baseContext: {
 	session: DocumentSession;
 	registeredDocuments: Array<PersistedPrismSessionContext["registeredDocuments"][number] | RegisteredDocument>;
 	analyzedDocuments: AnalyzedDocument[];
@@ -314,7 +315,50 @@ function enrichPrismSessionContext(baseContext: {
 }
 
 function restorePrismSessionContext(snapshotContext: PersistedPrismSessionContext): PrismSessionContext {
-	return enrichPrismSessionContext(snapshotContext);
+	return buildBasePrismSessionContext(snapshotContext);
+}
+
+function toInstructionalUnitConcepts(concepts: Record<string, number>) {
+	return Object.entries(concepts)
+		.filter(([, weight]) => typeof weight === "number" && Number.isFinite(weight) && weight > 0)
+		.sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+		.map(([concept]) => concept);
+}
+
+function deriveInstructionalUnitTitle(unit: InstructionalUnit, concepts: string[]) {
+	const learningTargetTitle = unit.learningTargets[0]?.trim();
+	if (learningTargetTitle) {
+		return learningTargetTitle;
+	}
+	if (concepts.length === 0) {
+		return undefined;
+	}
+	return `Instructional Unit: ${concepts.slice(0, 2).join(", ")}`;
+}
+
+async function applyInstructionalUnitOverrides(context: PrismSessionContext): Promise<PrismSessionContext> {
+	if (context.groupedUnits.length === 0) {
+		return context;
+	}
+
+	const groupedUnits = await Promise.all(context.groupedUnits.map(async (unit) => {
+		const override = await getProblemOverride(buildInstructionalUnitOverrideId(context.session.sessionId, unit.unitId));
+		if (!override || !Object.prototype.hasOwnProperty.call(override, "concepts") || !override.concepts) {
+			return unit;
+		}
+
+		const concepts = toInstructionalUnitConcepts(override.concepts);
+		return {
+			...unit,
+			concepts,
+			title: deriveInstructionalUnitTitle(unit, concepts),
+		};
+	}));
+
+	return {
+		...context,
+		groupedUnits,
+	};
 }
 
 function applyPrismSessionContextToRegistry(context: PrismSessionContext) {
@@ -891,7 +935,7 @@ export async function listIntentProductsForSessionStore(sessionId: string) {
 	return ((rows as IntentProductRow[] | null) ?? []).map((row) => fromIntentProductRow(row));
 }
 
-export async function loadPrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
+async function loadBasePrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
 	const start = Date.now();
 	const session = await getDocumentSessionStore(sessionId);
 	if (!session) {
@@ -966,13 +1010,21 @@ export async function loadPrismSessionContext(sessionId: string): Promise<PrismS
 		conceptCount: Object.keys(collectionAnalysis.conceptToDocumentMap).length,
 	});
 
-	return enrichPrismSessionContext({
+	return buildBasePrismSessionContext({
 		session,
 		registeredDocuments,
 		analyzedDocuments,
 		collectionAnalysis,
 		sourceFileNames,
 	});
+}
+
+export async function loadPrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
+	const context = await loadBasePrismSessionContext(sessionId);
+	if (!context) {
+		return null;
+	}
+	return applyInstructionalUnitOverrides(context);
 }
 
 export function loadPrismSessionContextCached(sessionId: string): Promise<PrismSessionContext | null> {
@@ -985,14 +1037,20 @@ export function loadPrismSessionContextCached(sessionId: string): Promise<PrismS
 				return context;
 			}
 
-			const context = await loadPrismSessionContext(sessionId);
+			const context = await loadBasePrismSessionContext(sessionId);
 			if (context) {
 				await savePrismSessionSnapshot(sessionId, context);
 			}
 			return context;
 		})());
 	}
-	return prismSessionContextCache.get(sessionId)!;
+
+	return prismSessionContextCache.get(sessionId)!.then((context) => {
+		if (!context) {
+			return null;
+		}
+		return applyInstructionalUnitOverrides(context);
+	});
 }
 
 export function resetPrismSessionContextCache() {

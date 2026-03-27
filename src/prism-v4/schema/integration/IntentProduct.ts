@@ -363,6 +363,14 @@ export interface InstructionalMapProduct {
 		sourceFileName: string;
 		concepts: string[];
 	}>;
+	unitConceptAlignment: Array<{
+		unitId: string;
+		title: string;
+		concepts: string[];
+		documentIds: string[];
+		sourceFileNames: string[];
+		anchorNodeIds: string[];
+	}>;
 	problemConceptAlignment: Array<{
 		problemId: string;
 		documentId: string;

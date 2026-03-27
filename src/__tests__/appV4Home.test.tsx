@@ -92,7 +92,7 @@ describe("App v4 home shell", () => {
   it("lands teachers on the v4 ingestion home and hides legacy navigation", () => {
     render(<App />);
 
-    expect(screen.getByText("PRISM v4 Home")).toBeInTheDocument();
+    expect(screen.getByText("Agents of Education: Home")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Document Ingestion" })).toBeInTheDocument();
     expect(screen.getByText("Document Upload Screen")).toBeInTheDocument();
     expect(screen.queryByText("Templates")).not.toBeInTheDocument();

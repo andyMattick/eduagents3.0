@@ -86,7 +86,7 @@ describe("pipeline stability", () => {
     delete process.env.GEMINI_API_KEY;
 
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const { retrieveRelevantChunks } = await import("../../lib/rag");
+    const { retrieveRelevantChunks } = await import("../../../../lib/rag");
 
     await expect(
       retrieveRelevantChunks({
@@ -127,7 +127,7 @@ describe("pipeline stability", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.stubGlobal("fetch", fetchMock);
 
-    const { storeDocument } = await import("../../lib/rag");
+    const { storeDocument } = await import("../../../../lib/rag");
     const docId = await storeDocument({
       userId: "user-1",
       title: "Test",

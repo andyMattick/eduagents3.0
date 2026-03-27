@@ -15,6 +15,7 @@ import {
 	saveCollectionAnalysisStore,
 } from "./registryStore";
 import { resetDocumentRegistryState } from "./registry";
+import { buildInstructionalUnitOverrideId, resetTeacherFeedbackState, saveTeacherFeedback } from "../teacherFeedback";
 import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../schema/semantic";
 
 function createResponse() {
@@ -69,6 +70,7 @@ function buildAnalyzedDocument(args: {
 				contentType: "question",
 				confidence: 0.95,
 				classifierVersion: "wave3-test",
+				prerequisiteConcepts: [args.concept],
 				strategy: "rule-based",
 			},
 		],
@@ -106,6 +108,7 @@ describe("Prism session snapshots", () => {
 		resetPrismSessionContextCache();
 		resetPrismSessionSnapshotStore();
 		resetDocumentRegistryState();
+		resetTeacherFeedbackState();
 		vi.restoreAllMocks();
 	});
 
@@ -165,6 +168,34 @@ describe("Prism session snapshots", () => {
 		};
 		await saveCollectionAnalysisStore(nextAnalysis);
 		expect(await loadPrismSessionSnapshot(session.sessionId)).toBeNull();
+	});
+
+	it("rehydrates snapshot-backed grouped units with live concept overrides", async () => {
+		const [document] = await registerDocumentsStore([{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" }]);
+		const session = await createDocumentSessionStore([document!.documentId], "session-snapshot-unit-override");
+		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
+			documentId: document!.documentId,
+			sourceFileName: "notes.pdf",
+			concept: "fractions",
+			problemText: "Solve 1/2 + 1/4.",
+		}), session.sessionId);
+
+		const firstContext = await loadPrismSessionContextCached(session.sessionId);
+		const unit = firstContext?.groupedUnits[0];
+		expect(await loadPrismSessionSnapshot(session.sessionId)).not.toBeNull();
+
+		resetPrismSessionContextCache();
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: session.sessionId,
+			canonicalProblemId: buildInstructionalUnitOverrideId(session.sessionId, unit!.unitId),
+			target: "concepts",
+			aiValue: { fractions: 1 },
+			teacherValue: { ratios: 1 },
+		});
+
+		const secondContext = await loadPrismSessionContextCached(session.sessionId);
+		expect(secondContext?.groupedUnits[0]?.concepts).toEqual(["ratios"]);
 	});
 
 	it("lets the intent route reuse a persisted snapshot on the second request after cache reset", async () => {

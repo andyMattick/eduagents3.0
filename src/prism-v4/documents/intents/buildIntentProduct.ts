@@ -206,6 +206,34 @@ function buildGraphEdgesFromBuckets(buckets: Array<{ node: string; documentIds: 
 	return edges;
 }
 
+function buildConceptBuckets(context: BuilderContext<"build-instructional-map">, unitEntries: InstructionalUnitEntry[], focus: string | null) {
+	const unitBuckets = unique(unitEntries.flatMap((entry) => entry.unit.concepts))
+		.filter((concept) => matchesFocus([concept], focus))
+		.map((concept) => ({
+			node: concept,
+			documentIds: unique(unitEntries.filter((entry) => entry.unit.concepts.includes(concept)).flatMap((entry) => entry.documentIds)),
+		}));
+	if (unitBuckets.length > 0) {
+		return unitBuckets;
+	}
+
+	const collectionBuckets = Object.entries(context.collectionAnalysis.conceptToDocumentMap)
+		.filter(([concept]) => matchesFocus([concept], focus))
+		.map(([concept, documentIds]) => ({ node: concept, documentIds }));
+	if (collectionBuckets.length > 0) {
+		return collectionBuckets;
+	}
+
+	return unique(context.analyzedDocuments.flatMap((analyzed) => analyzed.insights.concepts))
+		.filter((concept) => matchesFocus([concept], focus))
+		.map((concept) => ({
+			node: concept,
+			documentIds: context.analyzedDocuments
+				.filter((analyzed) => analyzed.insights.concepts.includes(concept))
+				.map((analyzed) => analyzed.document.id),
+		}));
+}
+
 function collectSourceAnchors(analyzedDocuments: AnalyzedDocument[]): ProductSourceAnchor[] {
 	return analyzedDocuments.map((analyzed) => ({
 		documentId: analyzed.document.id,
@@ -932,9 +960,18 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 function buildInstructionalMapProduct(context: BuilderContext<"build-instructional-map">): InstructionalMapProduct {
 	const focus = getFocus(context.request.options);
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
-	const filteredConceptEntries = Object.entries(context.collectionAnalysis.conceptToDocumentMap)
-		.filter(([concept]) => matchesFocus([concept], focus))
-		.map(([concept, documentIds]) => ({ node: concept, documentIds }));
+	const filteredConceptEntries = buildConceptBuckets(context, unitEntries, focus);
+	const resolveUnitAlignmentConcepts = (entry: InstructionalUnitEntry) => {
+		const directConcepts = entry.unit.concepts.filter((concept) => matchesFocus([concept], focus));
+		if (directConcepts.length > 0) {
+			return directConcepts;
+		}
+
+		return unique(context.analyzedDocuments
+			.filter((analyzed) => entry.documentIds.includes(analyzed.document.id))
+			.flatMap((analyzed) => analyzed.insights.concepts)
+			.filter((concept) => matchesFocus([concept], focus)));
+	};
 	const representationBuckets = unique(unitEntries.flatMap((entry) => entry.contentTypes))
 		.map((representation) => ({
 			node: representation,
@@ -970,7 +1007,21 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 		documentConceptAlignment: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			concepts: unique(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).flatMap((entry) => entry.unit.concepts)),
+			concepts: (() => {
+				const unitConcepts = unique(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).flatMap((entry) => entry.unit.concepts));
+				if (unitConcepts.length > 0) {
+					return unitConcepts;
+				}
+				return analyzed.insights.concepts.filter((concept) => matchesFocus([concept], focus));
+			})(),
+		})),
+		unitConceptAlignment: unitEntries.map((entry) => ({
+			unitId: entry.unit.unitId,
+			title: entry.unit.title ?? entry.text,
+			concepts: resolveUnitAlignmentConcepts(entry),
+			documentIds: entry.documentIds,
+			sourceFileNames: entry.sourceFileNames,
+			anchorNodeIds: entry.anchorNodeIds,
 		})),
 		problemConceptAlignment: context.analyzedDocuments.flatMap((analyzed) => analyzed.problems.map((problem) => ({
 			problemId: problem.id,

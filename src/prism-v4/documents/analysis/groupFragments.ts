@@ -269,7 +269,11 @@ function addCandidate(unit: MutableInstructionalUnit, candidate: FragmentCandida
 		&& lastCandidate.primarySection === candidate.primarySection
 		&& Math.abs(lastCandidate.firstNodeOrder - candidate.firstNodeOrder) <= 1,
 	);
-	if (!(isDedupableRole(candidate.fragment.instructionalRole) && unit.dedupeFingerprints.has(candidate.dedupeFingerprint) && !preserveAdjacentFragment)) {
+	const preserveCrossDocumentFragment = Boolean(
+		lastCandidate
+		&& lastCandidate.primaryDocumentId !== candidate.primaryDocumentId,
+	);
+	if (!(isDedupableRole(candidate.fragment.instructionalRole) && unit.dedupeFingerprints.has(candidate.dedupeFingerprint) && !preserveAdjacentFragment && !preserveCrossDocumentFragment)) {
 		unit.fragments.push(candidate.fragment);
 	}
 	for (const concept of candidate.concepts) {
@@ -311,7 +315,7 @@ function hashStable(value: string) {
 
 function toInstructionalUnit(unit: MutableInstructionalUnit): InstructionalUnit {
 	const sortedFragments = [...unit.fragments].sort((left, right) => buildCandidate(left).anchorOrderKey.localeCompare(buildCandidate(right).anchorOrderKey));
-	const concepts = [...unit.concepts].sort((left, right) => left.localeCompare(right));
+	const concepts = uniqueSorted([...unit.concepts, ...sortedFragments.flatMap((fragment) => fragmentConcepts(fragment))]);
 	const learningTargets = [...unit.learningTargets].sort((left, right) => left.localeCompare(right));
 	const skills = [...unit.skills].sort((left, right) => left.localeCompare(right));
 	const misconceptions = [...unit.misconceptions].sort((left, right) => left.localeCompare(right));

@@ -1,10 +1,11 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { DocumentRole, DocumentSession, SessionRole } from "../../prism-v4/schema/domain";
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, TaggingPipelineInput } from "../../prism-v4/schema/semantic";
+import { buildInstructionalUnitOverrideId } from "../../prism-v4/teacherFeedback";
 
 import { SemanticViewer } from "./SemanticViewer";
 import "./v4.css";
@@ -162,7 +163,136 @@ function getProductTitle(product: IntentProduct) {
   return getIntentConfig(product.intentType).label;
 }
 
-function renderProductPayload(product: IntentProduct) {
+function parseConceptList(value: string) {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function toConceptWeights(concepts: string[]) {
+  return concepts.reduce<Record<string, number>>((accumulator, concept) => {
+    accumulator[concept] = 1;
+    return accumulator;
+  }, {});
+}
+
+function InstructionalMapConceptEditor(props: {
+  sessionId: string;
+  product: Extract<IntentProductPayload, { kind: "instructional-map" }>;
+  onRefresh: () => Promise<void>;
+}) {
+  const { sessionId, product, onRefresh } = props;
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(product.unitConceptAlignment.map((entry) => [entry.unitId, entry.concepts.join(", ")])));
+  const [provenance, setProvenance] = useState<Record<string, "inferred" | "teacher-adjusted">>({});
+  const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
+  const [statusByUnitId, setStatusByUnitId] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(product.unitConceptAlignment.map((entry) => [entry.unitId, entry.concepts.join(", ")])));
+  }, [product]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadProvenance() {
+      const results = await Promise.all(product.unitConceptAlignment.map(async (entry) => {
+        try {
+          const response = await fetch(`/api/v4/problem-overrides/${encodeURIComponent(buildInstructionalUnitOverrideId(sessionId, entry.unitId))}`);
+          if (!response.ok) {
+            return [entry.unitId, "inferred"] as const;
+          }
+          const payload = await response.json().catch(() => ({}));
+          return [entry.unitId, payload?.overrides?.concepts ? "teacher-adjusted" : "inferred"] as const;
+        } catch {
+          return [entry.unitId, "inferred"] as const;
+        }
+      }));
+
+      if (!isCancelled) {
+        setProvenance(Object.fromEntries(results));
+      }
+    }
+
+    void loadProvenance();
+    return () => {
+      isCancelled = true;
+    };
+  }, [product, sessionId]);
+
+  async function saveUnitConcepts(unitId: string, currentConcepts: string[]) {
+    setSavingUnitId(unitId);
+    setStatusByUnitId((current) => ({ ...current, [unitId]: "" }));
+
+    try {
+      const concepts = parseConceptList(drafts[unitId] ?? "");
+      const response = await fetch("/api/v4/teacher-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacherId: "00000000-0000-4000-8000-000000000001",
+          documentId: sessionId,
+          sessionId,
+          unitId,
+          scope: "instructional-unit",
+          target: "concepts",
+          aiValue: toConceptWeights(currentConcepts),
+          teacherValue: toConceptWeights(concepts),
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error ?? "Failed to save unit concepts.");
+      }
+
+      setProvenance((current) => ({ ...current, [unitId]: "teacher-adjusted" }));
+      setStatusByUnitId((current) => ({ ...current, [unitId]: "Saved" }));
+      await onRefresh();
+    } catch (error) {
+      setStatusByUnitId((current) => ({ ...current, [unitId]: error instanceof Error ? error.message : "Failed to save unit concepts." }));
+    } finally {
+      setSavingUnitId(null);
+    }
+  }
+
+  return (
+    <div className="v4-product-card v4-product-span">
+      <h3>Instructional Units</h3>
+      <div className="v4-document-list">
+        {product.unitConceptAlignment.map((entry) => (
+          <article key={entry.unitId} className="v4-document-card">
+            <div className="v4-document-card-header">
+              <div>
+                <h4>{entry.title}</h4>
+                <p>{entry.sourceFileNames.join(", ")}</p>
+              </div>
+              <span className="v4-pill">{provenance[entry.unitId] === "teacher-adjusted" ? "Teacher-adjusted concepts" : "Inferred concepts"}</span>
+            </div>
+            <label className="v4-upload-field">
+              <span>Concepts</span>
+              <input
+                aria-label={`Concepts for ${entry.title}`}
+                value={drafts[entry.unitId] ?? ""}
+                onChange={(event) => setDrafts((current) => ({ ...current, [entry.unitId]: event.target.value }))}
+                placeholder="concept.one, concept.two"
+              />
+            </label>
+            <p className="v4-body-copy">Anchors: {entry.anchorNodeIds.length}. Documents: {entry.documentIds.length}.</p>
+            <div className="v4-upload-actions">
+              <button className="v4-button v4-button-secondary" type="button" onClick={() => void saveUnitConcepts(entry.unitId, entry.concepts)} disabled={savingUnitId === entry.unitId}>
+                {savingUnitId === entry.unitId ? "Saving..." : "Save concepts"}
+              </button>
+              {statusByUnitId[entry.unitId] ? <span className="v4-upload-name">{statusByUnitId[entry.unitId]}</span> : null}
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function renderProductPayload(product: IntentProduct, options?: { sessionId: string; onInstructionalMapRefresh: () => Promise<void> }) {
   const payload = product.payload as IntentProductPayload;
 
   if (payload.kind === "lesson") {
@@ -246,6 +376,7 @@ function renderProductPayload(product: IntentProduct) {
           <h3>Document Alignment</h3>
           <ul>{payload.documentConceptAlignment.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.concepts.join(", ") || "No concepts extracted"}</li>)}</ul>
         </div>
+        {options ? <InstructionalMapConceptEditor sessionId={options.sessionId} product={payload} onRefresh={options.onInstructionalMapRefresh} /> : null}
       </div>
     );
   }
@@ -806,7 +937,14 @@ export function DocumentUpload() {
               </div>
               {currentProduct ? (
                 <>
-                  {renderProductPayload(currentProduct)}
+                  {renderProductPayload(currentProduct, {
+                    sessionId: workspace.sessionId,
+                    onInstructionalMapRefresh: async () => {
+                      const payload = currentProduct.payload as IntentProductPayload;
+                      const options = payload.focus ? { focus: payload.focus } : undefined;
+                      await generateProduct(currentProduct.intentType as IntentType, currentProduct.documentIds, options);
+                    },
+                  })}
                   <div className="v4-product-card v4-product-span">
                     <h3>Supporting semantics</h3>
                     <p>{workspace.analysis?.coverageSummary.totalConcepts ?? 0} concepts in session analysis.</p>

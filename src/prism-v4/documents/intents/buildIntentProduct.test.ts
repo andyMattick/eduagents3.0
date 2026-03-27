@@ -287,6 +287,64 @@ function buildQuestionUnitWithMismatchedProblem(args: {
 	};
 }
 
+function buildConceptOnlyAnalyzedDocument(args: {
+	documentId: string;
+	sourceFileName: string;
+	concepts: string[];
+	description: string;
+}): AnalyzedDocument {
+	return {
+		document: {
+			id: args.documentId,
+			sourceFileName: args.sourceFileName,
+			sourceMimeType: "application/pdf",
+			surfaces: [{ id: `${args.documentId}-surface-1`, surfaceType: "page", index: 0, label: "Page 1" }],
+			nodes: [
+				{
+					id: `${args.documentId}-node-1`,
+					documentId: args.documentId,
+					surfaceId: `${args.documentId}-surface-1`,
+					nodeType: "paragraph",
+					orderIndex: 0,
+					text: args.description,
+					normalizedText: args.description,
+				},
+			],
+			createdAt: new Date().toISOString(),
+		},
+		fragments: [
+			{
+				id: `${args.documentId}-fragment-1`,
+				documentId: args.documentId,
+				anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-1` }],
+				isInstructional: true,
+				instructionalRole: "explanation",
+				contentType: "text",
+				learningTarget: "Explain the science process.",
+				prerequisiteConcepts: [],
+				scaffoldLevel: "medium",
+				misconceptionTriggers: [],
+				confidence: 0.9,
+				classifierVersion: "wave5-test",
+				strategy: "rule-based",
+			},
+		],
+		problems: [],
+		insights: {
+			concepts: args.concepts,
+			conceptFrequencies: Object.fromEntries(args.concepts.map((concept) => [concept, 1])),
+			representations: ["text"],
+			difficultyDistribution: { low: 0, medium: 1, high: 0 },
+			misconceptionThemes: [],
+			instructionalDensity: 1,
+			problemCount: 0,
+			exampleCount: 0,
+			explanationCount: 1,
+		},
+		updatedAt: new Date().toISOString(),
+	};
+}
+
 describe("buildIntentPayload", () => {
 	afterEach(() => {
 		resetDocumentRegistryState();
@@ -500,5 +558,47 @@ describe("buildIntentPayload", () => {
 		expect(test.totalItemCount).toBe(1);
 		expect(test.sections[0]?.items[0]?.prompt).toContain("area model");
 		expect(test.sections[0]?.items[0]?.prompt).not.toContain("RAW PROBLEM TEXT SHOULD NOT BE USED");
+	});
+
+	it("build-instructional-map falls back to analyzed concepts when grouped units have no concept tags", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "science-notes.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "lab-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildConceptOnlyAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "science-notes.pdf",
+			concepts: ["photosynthesis", "chloroplast"],
+			description: "Plants use photosynthesis in the chloroplast to convert light into stored energy.",
+		}));
+		saveAnalyzedDocument(buildConceptOnlyAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "lab-notes.pdf",
+			concepts: ["glucose", "calvin cycle"],
+			description: "The Calvin cycle produces glucose after plants capture light energy.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const instructionalMap = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-instructional-map",
+		}, context);
+
+		expect(instructionalMap.kind).toBe("instructional-map");
+		expect(instructionalMap.conceptGraph.nodes).toEqual(expect.arrayContaining(["photosynthesis", "chloroplast", "glucose", "calvin cycle"]));
+		expect(instructionalMap.documentConceptAlignment[0]?.concepts).toEqual(expect.arrayContaining(["photosynthesis", "chloroplast"]));
+		expect(instructionalMap.unitConceptAlignment).toEqual(expect.arrayContaining([
+			expect.objectContaining({
+				unitId: expect.stringMatching(/^unit-/),
+				concepts: expect.arrayContaining(["photosynthesis", "chloroplast"]),
+			}),
+		]));
 	});
 });

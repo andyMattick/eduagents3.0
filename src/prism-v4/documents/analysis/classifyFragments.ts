@@ -4,6 +4,143 @@ function unique<T>(values: T[]) {
 	return [...new Set(values)];
 }
 
+const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern: RegExp }>> = {
+	algebra: [
+		{ concept: "linear equations", pattern: /\blinear equation(s)?\b/ },
+		{ concept: "slope", pattern: /\bslope\b/ },
+		{ concept: "y-intercept", pattern: /\by[- ]intercept\b/ },
+		{ concept: "systems of equations", pattern: /\bsystem(s)? of equation(s)?\b/ },
+		{ concept: "inequalities", pattern: /\binequalit(y|ies)\b/ },
+		{ concept: "factoring", pattern: /\bfactor(ing|ed)?\b/ },
+		{ concept: "quadratic equations", pattern: /\bquadratic( equation(s)?)?\b/ },
+		{ concept: "exponents", pattern: /\bexponent(s)?\b/ },
+		{ concept: "functions", pattern: /\bfunction(s)?\b/ },
+		{ concept: "domain and range", pattern: /\bdomain and range\b/ },
+		{ concept: "proportional relationships", pattern: /\bproportional relationship(s)?\b/ },
+		{ concept: "rate of change", pattern: /\brate of change\b/ },
+		{ concept: "variable isolation", pattern: /\bvariable isolation\b/ },
+		{ concept: "distributive property", pattern: /\bdistributive property\b/ },
+		{ concept: "solving for x", pattern: /\bsolv(e|ing) for x\b/ },
+		{ concept: "equation solving", pattern: /\bequation(s)?\b|\binverse operation(s)?\b/ },
+		{ concept: "isolate variable", pattern: /\bisolate (the )?variable\b|\bsolve for the variable\b/ },
+	],
+	geometry: [
+		{ concept: "angles", pattern: /\bangle(s)?\b/ },
+		{ concept: "triangles", pattern: /\btriangle(s)?\b/ },
+		{ concept: "congruence", pattern: /\bcongruen(t|ce)\b/ },
+		{ concept: "similarity", pattern: /\bsimilarit(y|ies)\b|\bsimilar figures\b/ },
+		{ concept: "Pythagorean theorem", pattern: /\bpythagorean theorem\b|\bpythagorean\b/ },
+		{ concept: "area", pattern: /\barea\b/ },
+		{ concept: "perimeter", pattern: /\bperimeter\b/ },
+		{ concept: "volume", pattern: /\bvolume\b/ },
+		{ concept: "transformations", pattern: /\btransformation(s)?\b/ },
+		{ concept: "symmetry", pattern: /\bsymmetr(y|ical)\b/ },
+		{ concept: "circles", pattern: /\bcircle(s)?\b/ },
+		{ concept: "radius and diameter", pattern: /\bradius\b|\bdiameter\b/ },
+		{ concept: "polygons", pattern: /\bpolygon(s)?\b/ },
+		{ concept: "coordinate geometry", pattern: /\bcoordinate geometry\b|\bcoordinate plane\b/ },
+		{ concept: "proofs", pattern: /\bproof(s)?\b/ },
+	],
+	biology: [
+		{ concept: "photosynthesis", pattern: /\bphotosynthesis\b/ },
+		{ concept: "cellular respiration", pattern: /\bcellular respiration\b/ },
+		{ concept: "chloroplast", pattern: /\bchloroplast(s)?\b/ },
+		{ concept: "mitochondria", pattern: /\bmitochondria\b|\bmitochondrion\b/ },
+		{ concept: "cell membrane", pattern: /\bcell membrane\b/ },
+		{ concept: "DNA", pattern: /\bdna\b/ },
+		{ concept: "mitosis", pattern: /\bmitosis\b/ },
+		{ concept: "osmosis", pattern: /\bosmosis\b/ },
+		{ concept: "diffusion", pattern: /\bdiffusion\b/ },
+		{ concept: "enzymes", pattern: /\benzyme(s)?\b/ },
+		{ concept: "ecosystems", pattern: /\becosystem(s)?\b/ },
+		{ concept: "food chains", pattern: /\bfood chain(s)?\b/ },
+		{ concept: "producers and consumers", pattern: /\bproducer(s)?\b|\bconsumer(s)?\b/ },
+		{ concept: "energy transfer", pattern: /\benergy transfer\b/ },
+		{ concept: "homeostasis", pattern: /\bhomeostasis\b/ },
+	],
+	earth_science: [
+		{ concept: "water cycle", pattern: /\bwater cycle\b/ },
+		{ concept: "evaporation", pattern: /\bevaporation\b/ },
+		{ concept: "condensation", pattern: /\bcondensation\b/ },
+		{ concept: "precipitation", pattern: /\bprecipitation\b/ },
+		{ concept: "weathering", pattern: /\bweathering\b/ },
+		{ concept: "erosion", pattern: /\berosion\b/ },
+		{ concept: "plate tectonics", pattern: /\bplate tectonics\b/ },
+		{ concept: "rock cycle", pattern: /\brock cycle\b/ },
+		{ concept: "atmosphere", pattern: /\batmosphere\b/ },
+		{ concept: "climate", pattern: /\bclimate\b/ },
+		{ concept: "weather patterns", pattern: /\bweather pattern(s)?\b/ },
+		{ concept: "ocean currents", pattern: /\bocean current(s)?\b/ },
+		{ concept: "carbon cycle", pattern: /\bcarbon cycle\b/ },
+		{ concept: "renewable energy", pattern: /\brenewable energy\b/ },
+		{ concept: "natural resources", pattern: /\bnatural resource(s)?\b/ },
+	],
+	chemistry: [
+		{ concept: "atoms", pattern: /\batom(s)?\b/ },
+		{ concept: "molecules", pattern: /\bmolecule(s)?\b/ },
+		{ concept: "chemical reactions", pattern: /\bchemical reaction(s)?\b/ },
+		{ concept: "periodic table", pattern: /\bperiodic table\b/ },
+		{ concept: "valence electrons", pattern: /\bvalence electron(s)?\b|\bvalence\b/ },
+		{ concept: "ionic bonds", pattern: /\bionic bond(s)?\b/ },
+		{ concept: "covalent bonds", pattern: /\bcovalent bond(s)?\b/ },
+		{ concept: "pH", pattern: /\bph\b/ },
+		{ concept: "acids and bases", pattern: /\bacid(s)?\b|\bbase(s)?\b/ },
+		{ concept: "solutions", pattern: /\bsolution(s)?\b/ },
+		{ concept: "mixtures", pattern: /\bmixture(s)?\b/ },
+		{ concept: "conservation of mass", pattern: /\bconservation of mass\b/ },
+		{ concept: "endothermic reactions", pattern: /\bendothermic\b/ },
+		{ concept: "exothermic reactions", pattern: /\bexothermic\b/ },
+		{ concept: "states of matter", pattern: /\bstate(s)? of matter\b/ },
+	],
+	ela: [
+		{ concept: "main idea", pattern: /\bmain idea\b/ },
+		{ concept: "theme", pattern: /\btheme\b/ },
+		{ concept: "inference", pattern: /\binference(s)?\b|\binfer\b/ },
+		{ concept: "character analysis", pattern: /\bcharacter analysis\b|\bcharacter trait(s)?\b/ },
+		{ concept: "plot structure", pattern: /\bplot structure\b|\bplot\b/ },
+		{ concept: "conflict", pattern: /\bconflict\b/ },
+		{ concept: "setting", pattern: /\bsetting\b/ },
+		{ concept: "author's purpose", pattern: /\bauthor['’]s purpose\b/ },
+		{ concept: "figurative language", pattern: /\bfigurative language\b/ },
+		{ concept: "tone", pattern: /\btone\b/ },
+		{ concept: "summarizing", pattern: /\bsummar(y|ize|izing)\b/ },
+		{ concept: "text evidence", pattern: /\btext evidence\b/ },
+	],
+	social_studies: [
+		{ concept: "government branches", pattern: /\bbranch(es)? of government\b|\bgovernment branch(es)?\b/ },
+		{ concept: "constitution", pattern: /\bconstitution\b/ },
+		{ concept: "democracy", pattern: /\bdemocrac(y|ies)\b/ },
+		{ concept: "economy", pattern: /\beconom(y|ic)\b/ },
+		{ concept: "supply and demand", pattern: /\bsupply and demand\b/ },
+		{ concept: "geography", pattern: /\bgeograph(y|ic)\b/ },
+		{ concept: "culture", pattern: /\bculture\b/ },
+		{ concept: "historical events", pattern: /\bhistorical event(s)?\b|\bhistory\b/ },
+		{ concept: "primary sources", pattern: /\bprimary source(s)?\b/ },
+		{ concept: "secondary sources", pattern: /\bsecondary source(s)?\b/ },
+		{ concept: "citizenship", pattern: /\bcitizenship\b/ },
+		{ concept: "rights and responsibilities", pattern: /\bright(s)?\b|\bresponsibilit(y|ies)\b/ },
+		{ concept: "global trade", pattern: /\bglobal trade\b|\btrade\b/ },
+		{ concept: "conflict and cooperation", pattern: /\bconflict\b|\bcooperation\b/ },
+		{ concept: "timelines", pattern: /\btimeline(s)?\b/ },
+	],
+};
+
+const CONCEPT_PATTERNS: Array<{ concept: string; pattern: RegExp }> = [
+	...Object.values(SUBJECT_CONCEPT_PATTERNS).flat(),
+	{ concept: "fractions", pattern: /\bfraction(s)?\b/ },
+	{ concept: "equivalent fractions", pattern: /\bequivalent\b/ },
+	{ concept: "number line reasoning", pattern: /\bnumber line\b/ },
+	{ concept: "equation solving", pattern: /\bequation(s)?\b|\binverse operation(s)?\b/ },
+	{ concept: "common denominators", pattern: /\bdenominator(s)?\b/ },
+	{ concept: "linear equations", pattern: /\blinear equation(s)?\b/ },
+	{ concept: "isolate variable", pattern: /\bisolate (the )?variable\b|\bsolve for the variable\b/ },
+	{ concept: "photosynthesis", pattern: /\bphotosynthesis\b/ },
+	{ concept: "chloroplast", pattern: /\bchloroplast(s)?\b/ },
+	{ concept: "glucose", pattern: /\bglucose\b/ },
+	{ concept: "light-dependent reactions", pattern: /\blight[- ]dependent\b/ },
+	{ concept: "calvin cycle", pattern: /\bcalvin cycle\b/ },
+];
+
 function extractLearningTarget(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {
 	if (instructionalRole !== "objective") {
 		return null;
@@ -16,22 +153,9 @@ function extractLearningTarget(text: string, instructionalRole: FragmentSemantic
 
 function extractPrerequisiteConcepts(text: string) {
 	const lower = text.toLowerCase();
-	const concepts: string[] = [];
-	if (/fraction/.test(lower)) {
-		concepts.push("fractions");
-	}
-	if (/equivalent/.test(lower)) {
-		concepts.push("equivalent fractions");
-	}
-	if (/number line/.test(lower)) {
-		concepts.push("number line reasoning");
-	}
-	if (/equation|inverse operation/.test(lower)) {
-		concepts.push("equation solving");
-	}
-	if (/denominator/.test(lower)) {
-		concepts.push("common denominators");
-	}
+	const concepts = CONCEPT_PATTERNS
+		.filter(({ pattern }) => pattern.test(lower))
+		.map(({ concept }) => concept);
 	if (/review|before|prior|remember/.test(lower)) {
 		return unique(concepts.length > 0 ? concepts : [text.trim().slice(0, 48)]);
 	}

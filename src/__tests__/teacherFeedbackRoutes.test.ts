@@ -97,4 +97,26 @@ describe("teacher feedback routes", () => {
 		expect(res.status).toHaveBeenCalledWith(400);
 		expect(res.body.error).toContain("difficulty must be in [0,1]");
 	});
+
+	it("accepts instructional-unit scoped feedback and stores it under the derived override id", async () => {
+		const req: any = {
+			method: "POST",
+			body: {
+				teacherId: "teacher-1",
+				documentId: "session-1",
+				sessionId: "session-1",
+				unitId: "unit-abc",
+				scope: "instructional-unit",
+				target: "concepts",
+				aiValue: { fractions: 1 },
+				teacherValue: { ratios: 1 },
+			},
+		};
+		const res = createResponse();
+
+		await teacherFeedbackHandler(req, res);
+
+		expect(res.status).toHaveBeenCalledWith(200);
+		expect(res.body.feedback.canonicalProblemId).toBe("session-1::instructional-unit::unit-abc");
+	});
 });

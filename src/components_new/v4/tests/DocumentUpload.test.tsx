@@ -409,4 +409,94 @@ describe("DocumentUpload", () => {
     expect(await screen.findByText("Teacher narratives")).toBeInTheDocument();
     expect(uploadCount).toBe(1);
   });
+
+  it("saves instructional-unit concept overrides from the instructional map view", async () => {
+    const document = { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" };
+    const analyzedDocument = buildAnalyzedDocument("doc-1", "lesson-notes.docx", "fractions");
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1"],
+      documentRoles: { "doc-1": ["notes"] },
+      sessionRoles: { "doc-1": ["unit-member"] },
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+    const instructionalMapProduct = {
+      sessionId: "session-1",
+      intentType: "build-instructional-map",
+      documentIds: ["doc-1"],
+      productId: "product-map-1",
+      productType: "build-instructional-map",
+      schemaVersion: "wave5-v1",
+      payload: {
+        kind: "instructional-map",
+        focus: null,
+        conceptGraph: { nodes: ["fractions"], edges: [] },
+        representationGraph: { nodes: ["text"], edges: [] },
+        misconceptionGraph: { nodes: [], edges: [] },
+        difficultyCurve: [{ documentId: "doc-1", sourceFileName: "lesson-notes.docx", averageDifficultyScore: 2 }],
+        documentConceptAlignment: [{ documentId: "doc-1", sourceFileName: "lesson-notes.docx", concepts: ["fractions"] }],
+        unitConceptAlignment: [{ unitId: "unit-1", title: "Instructional Unit: fractions", concepts: ["fractions"], documentIds: ["doc-1"], sourceFileNames: ["lesson-notes.docx"], anchorNodeIds: ["doc-1-node-1"] }],
+        problemConceptAlignment: [{ problemId: "doc-1-problem-1", documentId: "doc-1", concepts: ["fractions"], anchorNodeIds: ["doc-1-node-1"] }],
+        instructionalRoleDistribution: [{ documentId: "doc-1", sourceFileName: "lesson-notes.docx", roles: { example: 1 } }],
+        sourceAnchors: [{ documentId: "doc-1", anchorNodeIds: ["doc-1-node-1"] }],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/analyze") {
+        return jsonResponse({ documentId: "doc-1", status: "ready", analyzedDocument });
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents: [document], analyzedDocuments: [analyzedDocument] });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse({ session, analysis: { sessionId: "session-1", documentIds: ["doc-1"], conceptOverlap: {}, conceptGaps: [], difficultyProgression: {}, representationProgression: {}, redundancy: { "doc-1": [] }, coverageSummary: { totalConcepts: 1, docsPerConcept: { fractions: 1 }, perDocument: { "doc-1": { documentId: "doc-1", conceptCount: 1, problemCount: 1, instructionalDensity: 0.75, representations: ["text"], dominantDifficulty: "medium" } } }, documentSimilarity: [], conceptToDocumentMap: { fractions: ["doc-1"] }, updatedAt: "2025-01-01T00:00:00.000Z" } });
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [instructionalMapProduct] });
+      }
+      if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        return jsonResponse(instructionalMapProduct);
+      }
+      if (typeof input === "string" && input.includes("/api/v4/problem-overrides/")) {
+        return jsonResponse({ overrides: null });
+      }
+      if (input === "/api/v4/teacher-feedback" && init?.method === "POST") {
+        return jsonResponse({ ok: true, feedback: { canonicalProblemId: "session-1::instructional-unit::unit-1" } });
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    fireEvent.change(screen.getByLabelText("Source documents"), {
+      target: { files: [new File(["docx"], "lesson-notes.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Build document workspace" }));
+
+    expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Intent selection"), { target: { value: "build-instructional-map" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate product" }));
+
+    expect(await screen.findByText("Instructional Units")).toBeInTheDocument();
+    expect(screen.getByText("Inferred concepts")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Concepts for Instructional Unit: fractions"), { target: { value: "ratios, equivalence" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save concepts" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v4/teacher-feedback",
+      expect.objectContaining({ method: "POST" }),
+    ));
+  });
 });

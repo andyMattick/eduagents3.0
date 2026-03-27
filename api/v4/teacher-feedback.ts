@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { saveTeacherFeedback } from "../../src/prism-v4/teacherFeedback";
+import { buildInstructionalUnitOverrideId, saveTeacherFeedback } from "../../src/prism-v4/teacherFeedback";
 
 export const runtime = "nodejs";
 
@@ -23,11 +23,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	try {
 		const payload = req.body ?? {};
-		if (!payload.teacherId || !payload.documentId || !payload.canonicalProblemId || !payload.target) {
+		const canonicalProblemId = typeof payload.canonicalProblemId === "string" && payload.canonicalProblemId.trim().length > 0
+			? payload.canonicalProblemId
+			: payload.scope === "instructional-unit" && typeof payload.sessionId === "string" && typeof payload.unitId === "string"
+				? buildInstructionalUnitOverrideId(payload.sessionId, payload.unitId)
+				: null;
+		if (!payload.teacherId || !payload.documentId || !canonicalProblemId || !payload.target) {
 			return res.status(400).json({ error: "Missing required teacher feedback fields." });
 		}
 
-		const result = await saveTeacherFeedback(payload);
+		const result = await saveTeacherFeedback({
+			...payload,
+			canonicalProblemId,
+		});
 		return res.status(200).json(result);
 	} catch (error) {
 		if (error instanceof Error && error.message.startsWith("INVALID_OVERRIDE:")) {

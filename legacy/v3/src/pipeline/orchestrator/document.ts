@@ -6,7 +6,7 @@ import {
   UnifiedTemplateProfile
 } from "../schema/unifiedSchema";
 import type { DocumentInsights } from "pipeline/contracts";
-import { buildDocumentInsightsFromInput } from "pipeline/agents/document/insights";
+import { buildDocumentInsightsFromInput } from "../agents/document/insights";
 
 import { mapToUnifiedSchema } from "../mapper/mapToUnifiedSchema";
 import { mapToDifficultyProfile } from "../mapper/mapToDifficultyProfile";

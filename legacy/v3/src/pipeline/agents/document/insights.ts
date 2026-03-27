@@ -3,4 +3,4 @@ export {
   analyzeDocumentText,
   buildDocumentInsights,
   buildDocumentInsightsFromInput,
-} from "pipeline/agents/documentAnalyzer";
+} from "../documentAnalyzer";

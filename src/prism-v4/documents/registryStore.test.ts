@@ -11,6 +11,7 @@ import {
 	saveCollectionAnalysisStore,
 } from "./registryStore";
 import { resetDocumentRegistryState } from "./registry";
+import { buildInstructionalUnitOverrideId, resetTeacherFeedbackState, saveTeacherFeedback } from "../teacherFeedback";
 import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../schema/semantic";
 
 function buildAnalyzedDocument(args: {
@@ -55,6 +56,7 @@ function buildAnalyzedDocument(args: {
 				contentType: "question",
 				confidence: 0.95,
 				classifierVersion: "wave3-test",
+				prerequisiteConcepts: [args.concept],
 				strategy: "rule-based",
 			},
 		],
@@ -96,6 +98,7 @@ describe("loadPrismSessionContextCached invalidation", () => {
 		resetPrismSessionContextCache();
 		resetPrismSessionSnapshotStore();
 		resetDocumentRegistryState();
+		resetTeacherFeedbackState();
 	});
 
 	it("returns fresh session context when a document is uploaded into the session", async () => {
@@ -191,5 +194,35 @@ describe("loadPrismSessionContextCached invalidation", () => {
 		const secondContext = await secondContextPromise;
 		expect(secondContext?.collectionAnalysis.conceptGaps).toEqual(["custom gap"]);
 		expect(secondContext?.collectionAnalysis.updatedAt).toBe("2026-03-27T00:10:00.000Z");
+	});
+
+	it("applies unit concept overrides without invalidating the cached base context", async () => {
+		const [document] = await registerDocumentsStore([
+			{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = await createDocumentSessionStore([document!.documentId], "session-unit-override-cache");
+		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
+			documentId: document!.documentId,
+			sourceFileName: "notes.pdf",
+			concept: "fractions",
+			problemText: "Solve 1/2 + 1/4.",
+		}), session.sessionId);
+
+		const firstContext = await loadPrismSessionContextCached(session.sessionId);
+		const unit = firstContext?.groupedUnits[0];
+		expect(unit?.concepts).toEqual(["fractions"]);
+
+		await saveTeacherFeedback({
+			teacherId: "teacher-1",
+			documentId: session.sessionId,
+			canonicalProblemId: buildInstructionalUnitOverrideId(session.sessionId, unit!.unitId),
+			target: "concepts",
+			aiValue: { fractions: 1 },
+			teacherValue: { decimals: 1, equivalence: 0.7 },
+		});
+
+		const secondContext = await loadPrismSessionContextCached(session.sessionId);
+		expect(secondContext?.groupedUnits[0]?.concepts).toEqual(["decimals", "equivalence"]);
+		expect(secondContext?.groupedUnits[0]?.unitId).toBe(unit?.unitId);
 	});
 });

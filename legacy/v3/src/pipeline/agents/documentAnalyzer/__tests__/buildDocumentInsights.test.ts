@@ -27,6 +27,10 @@ describe("buildDocumentInsights", () => {
     expect(insights.flags.unreadable).toBe(false);
     expect(insights.concepts.length).toBeGreaterThan(0);
     expect(insights.examples.length).toBeGreaterThan(0);
-    expect(insights.metadata.gradeEstimate).toBeTruthy();
+    expect(insights.metadata).toEqual(expect.objectContaining({
+      gradeEstimate: null,
+      subjectEstimate: null,
+      topicCandidates: expect.any(Array),
+    }));
   });
 });
