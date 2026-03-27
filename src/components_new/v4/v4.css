@@ -556,8 +556,285 @@
   overflow: auto;
 }
 
+.v4-viewer .v4-print-shell-inner {
+  max-width: 8.5in;
+  margin: 0 auto;
+}
+
+.v4-viewer.v4-print-shell .v4-shell {
+  min-height: auto;
+  padding: 2rem 1.5rem 3rem;
+  background: #eee8dd;
+  color: #1f1a17;
+}
+
+.v4-viewer .v4-print-toolbar,
+.v4-viewer .v4-print-document,
+.v4-viewer .v4-print-header {
+  display: block;
+  gap: 1rem;
+}
+
+.v4-viewer .v4-print-toolbar {
+  margin-bottom: 1.5rem;
+}
+
+.v4-viewer .v4-print-toolbar h1,
+.v4-viewer .v4-print-document-title {
+  margin: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.v4-viewer .v4-print-header {
+  margin-bottom: 24px;
+  text-align: center;
+  border-top: 2px solid #4f4339;
+  border-bottom: 2px solid #4f4339;
+  padding: 16px 0;
+}
+
+.v4-viewer .v4-print-document {
+  background: #ffffff;
+  padding: 1in;
+  border: 1px solid rgba(31, 26, 23, 0.12);
+  box-shadow: 0 12px 30px rgba(31, 26, 23, 0.08);
+  overflow: visible;
+  font-family: "Georgia", "Times New Roman", serif;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.v4-viewer .v4-print-product {
+  display: block;
+  overflow: visible;
+}
+
+.v4-viewer .v4-print-section {
+  display: block;
+  overflow: visible;
+}
+
+.v4-viewer .v4-print-section + .v4-print-section {
+  margin-top: 24px;
+}
+
+.v4-viewer .v4-print-major-section {
+  padding-top: 16px;
+  border-top: 1px solid rgba(86, 57, 32, 0.14);
+}
+
+.v4-viewer .v4-print-section-title,
+.v4-viewer .v4-print-subsection-title {
+  margin: 0;
+  font-family: "Georgia", "Times New Roman", serif;
+  color: #1f1a17;
+  font-weight: 700;
+}
+
+.v4-viewer .v4-print-section-title {
+  font-size: 15px;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.v4-viewer .v4-print-subsection-title {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+
+.v4-viewer .v4-print-document-meta,
+.v4-viewer .v4-print-paragraph,
+.v4-viewer .v4-print-meta,
+.v4-viewer .v4-print-question,
+.v4-viewer .v4-print-answer-guidance,
+.v4-viewer .v4-print-footer p {
+  margin: 0;
+  line-height: 1.35;
+  color: #1f1a17;
+}
+
+.v4-viewer .v4-print-document-meta {
+  margin-top: 6px;
+  color: #5d4a3e;
+  font-size: 12px;
+}
+
+.v4-viewer .v4-print-meta,
+.v4-viewer .v4-print-footer p {
+  color: #5d4a3e;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.v4-viewer .v4-print-list,
+.v4-viewer .v4-print-numbered {
+  margin: 0;
+  padding-left: 1.35rem;
+  display: block;
+}
+
+.v4-viewer .v4-print-list li,
+.v4-viewer .v4-print-numbered li {
+  margin-bottom: 10px;
+}
+
+.v4-viewer .v4-print-item {
+  display: block;
+  margin-bottom: 12px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.v4-viewer .v4-print-response-lines {
+  display: block;
+  margin-top: 8px;
+}
+
+.v4-viewer .v4-print-response-line {
+  border-bottom: 1px solid rgba(31, 26, 23, 0.32);
+  min-height: 18px;
+  margin-top: 10px;
+}
+
+.v4-viewer .v4-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.v4-viewer .v4-print-table th,
+.v4-viewer .v4-print-table td {
+  border: 1px solid rgba(31, 26, 23, 0.18);
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.v4-viewer .v4-print-table th {
+  font-family: "Georgia", "Times New Roman", serif;
+  background: rgba(156, 77, 43, 0.03);
+}
+
+.v4-viewer .v4-print-footer {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(31, 26, 23, 0.16);
+}
+
+.v4-viewer .v4-print-answer-guidance,
+.v4-viewer .v4-print-teacher-section .v4-print-section-title {
+  color: #57483d;
+  font-style: italic;
+}
+
+.v4-viewer .v4-print-test-answer-key {
+  margin-top: 28px;
+}
+
+.v4-viewer .v4-print-review-rationale,
+.v4-viewer .v4-print-review-points,
+.v4-viewer .v4-print-review-practice {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.v4-viewer .v4-print-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.print-hidden {
+  display: block;
+}
+
 @media (max-width: 900px) {
   .v4-viewer .v4-workspace-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  @page {
+    margin: 1in;
+  }
+
+  html,
+  body {
+    background: #ffffff;
+    margin: 0;
+  }
+
+  .print-hidden,
+  .app-header,
+  .logout-button,
+  [data-testid="api-call-notifier"] {
+    display: none !important;
+  }
+
+  .v4-viewer,
+  .v4-viewer.v4-print-shell,
+  .v4-viewer .v4-shell,
+  .v4-viewer .v4-print-shell-inner,
+  .v4-viewer .v4-print-document,
+  .v4-viewer .v4-print-product,
+  .v4-viewer .v4-print-section {
+    background: #ffffff;
+    box-shadow: none;
+    overflow: visible !important;
+  }
+
+  .v4-viewer .v4-shell {
+    padding: 0;
+    font-family: "Georgia", "Times New Roman", serif;
+  }
+
+  .v4-viewer .v4-print-document {
+    border: none;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .v4-viewer .v4-print-major-section {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .v4-viewer .v4-print-product-test .v4-print-test-section + .v4-print-test-section {
+    break-before: page;
+  }
+
+  .v4-viewer .v4-print-product-lesson .v4-print-lesson-section,
+  .v4-viewer .v4-print-product-review .v4-print-review-section,
+  .v4-viewer .v4-print-product-unit .v4-print-section,
+  .v4-viewer .v4-print-product-instructional-map .v4-print-section {
+    break-inside: avoid-page;
+  }
+
+  .v4-viewer .v4-print-product-lesson .v4-print-lesson-section + .v4-print-lesson-section,
+  .v4-viewer .v4-print-product-unit .v4-print-unit-concept-map,
+  .v4-viewer .v4-print-product-unit .v4-print-unit-assessments,
+  .v4-viewer .v4-print-product-instructional-map .v4-print-map-units,
+  .v4-viewer .v4-print-product-instructional-map .v4-print-map-anchors,
+  .v4-viewer .v4-print-product-instructional-map .v4-print-map-relationships,
+  .v4-viewer .v4-print-product-review .v4-print-review-points,
+  .v4-viewer .v4-print-product-review .v4-print-review-practice {
+    break-before: page;
+  }
+
+  .v4-viewer .v4-print-product-instructional-map .v4-print-table,
+  .v4-viewer .v4-print-product-instructional-map .v4-print-map-units,
+  .v4-viewer .v4-print-product-test .v4-print-item {
+    break-inside: avoid-page;
+  }
+
+  .v4-viewer .v4-print-table th {
+    background: transparent;
   }
 }

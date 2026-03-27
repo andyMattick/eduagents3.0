@@ -9,6 +9,7 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
 import { DocumentUpload } from './components_new/v4/DocumentUpload';
+import { PrintProductPage } from './components_new/v4/PrintProductPage';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
@@ -16,6 +17,10 @@ console.log("ENV CHECK", import.meta.env);
 type AuthPage = 'signin' | 'signup';
 
 const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic']);
+
+function isAllowedV4Path(pathname: string) {
+  return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
+}
 
 export interface AssignmentContext {
   assignmentId: string;
@@ -42,7 +47,7 @@ function TeacherAppContent() {
   }, []);
 
   useEffect(() => {
-    if (ACTIVE_V4_PATHS.has(pathname)) {
+    if (isAllowedV4Path(pathname)) {
       return;
     }
 
@@ -58,7 +63,7 @@ function TeacherAppContent() {
         <div className="app-header-content v4-home-header-content">
           <div className="v4-home-brand">
             <p className="v4-home-kicker">Agents of Education: Home</p>
-            <h1>Document Ingestion</h1>
+            <h1>{pathname.startsWith('/print/') ? 'Printable Product' : 'Document Ingestion'}</h1>
 
           </div>
 
@@ -72,7 +77,7 @@ function TeacherAppContent() {
       </header>
 
       <main className="app-content app-content--v4">
-        <DocumentUpload />
+        {pathname.startsWith('/print/') ? <PrintProductPage /> : <DocumentUpload />}
       </main>
     </div>
   );

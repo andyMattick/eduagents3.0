@@ -240,11 +240,15 @@ describe("DocumentUpload", () => {
     expect(await screen.findByText("lesson-notes.docx")).toBeInTheDocument();
     expect(screen.getByText("Generate a product before exporting it.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Print" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Regenerate" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Regenerate" })).toHaveAttribute("title", "Generate a product once before using regenerate.");
+    expect(screen.getByRole("button", { name: "Print" })).toHaveAttribute("title", "Generate a product before opening print view.");
   });
 
   it("builds a multi-document workspace, creates a session, and generates an intent product", async () => {
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
     let uploadCount = 0;
     let productHistory: any[] = [];
     const documents = [
@@ -380,6 +384,9 @@ describe("DocumentUpload", () => {
     expect(await screen.findByLabelText("Last dispatched request payload")).toHaveTextContent('"intentType": "build-unit"');
     expect((await screen.findAllByText("Unit Builder: Fractions")).length).toBeGreaterThan(0);
     expect(screen.getByText("Generated products")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Print" }));
+    expect(openMock).toHaveBeenCalledWith("/print/product-1", "_blank", "noopener,noreferrer");
   });
 
   it("opens the semantic viewer as a supporting panel for an uploaded document", async () => {

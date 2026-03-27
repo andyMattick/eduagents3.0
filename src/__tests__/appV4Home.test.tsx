@@ -67,6 +67,10 @@ vi.mock("../components_new/v4/DocumentUpload", () => ({
   DocumentUpload: () => <div>Document Upload Screen</div>,
 }));
 
+vi.mock("../components_new/v4/PrintProductPage", () => ({
+  PrintProductPage: () => <div>Print Product Screen</div>,
+}));
+
 import App from "../App";
 
 describe("App v4 home shell", () => {
@@ -109,5 +113,15 @@ describe("App v4 home shell", () => {
       expect(window.location.pathname).toBe("/");
     });
     expect(screen.getByText("Document Upload Screen")).toBeInTheDocument();
+  });
+
+  it("allows printable product routes without redirecting back home", () => {
+    window.history.replaceState({}, "", "/print/product-123");
+
+    render(<App />);
+
+    expect(window.location.pathname).toBe("/print/product-123");
+    expect(screen.getByRole("heading", { name: "Printable Product" })).toBeInTheDocument();
+    expect(screen.getByText("Print Product Screen")).toBeInTheDocument();
   });
 });

@@ -1,12 +1,12 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { DocumentRole, DocumentSession, SessionRole } from "../../prism-v4/schema/domain";
-import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
+import type { IntentProduct } from "../../prism-v4/schema/integration/IntentProduct";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, TaggingPipelineInput } from "../../prism-v4/schema/semantic";
-import { buildInstructionalUnitOverrideId } from "../../prism-v4/teacherFeedback";
 
+import { ProductViewer, getProductTitle } from "./ProductViewer";
 import { SemanticViewer } from "./SemanticViewer";
 import "./v4.css";
 
@@ -210,339 +210,6 @@ function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType;
   }
 
   return lastIntentRequest ? null : "Generate a product once before using regenerate.";
-}
-
-function getProductTitle(product: IntentProduct) {
-  const payload = product.payload as IntentProductPayload;
-  if ("title" in payload && typeof payload.title === "string") {
-    return payload.title;
-  }
-  if (payload.kind === "summary") {
-    return "Summary";
-  }
-  if (payload.kind === "compare-documents") {
-    return "Document Comparison";
-  }
-  if (payload.kind === "merge-documents") {
-    return "Merged Document Set";
-  }
-  if (payload.kind === "sequence") {
-    return "Instructional Sequence";
-  }
-  if (payload.kind === "curriculum-alignment") {
-    return "Curriculum Alignment";
-  }
-  if (payload.kind === "instructional-map") {
-    return "Instructional Map";
-  }
-  return getIntentConfig(product.intentType).label;
-}
-
-function parseConceptList(value: string) {
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function toConceptWeights(concepts: string[]) {
-  return concepts.reduce<Record<string, number>>((accumulator, concept) => {
-    accumulator[concept] = 1;
-    return accumulator;
-  }, {});
-}
-
-function InstructionalMapConceptEditor(props: {
-  sessionId: string;
-  product: Extract<IntentProductPayload, { kind: "instructional-map" }>;
-  onRefresh: () => Promise<void>;
-}) {
-  const { sessionId, product, onRefresh } = props;
-  const [drafts, setDrafts] = useState<Record<string, string>>(() => Object.fromEntries(product.unitConceptAlignment.map((entry) => [entry.unitId, entry.concepts.join(", ")])));
-  const [provenance, setProvenance] = useState<Record<string, "inferred" | "teacher-adjusted">>({});
-  const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
-  const [statusByUnitId, setStatusByUnitId] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    setDrafts(Object.fromEntries(product.unitConceptAlignment.map((entry) => [entry.unitId, entry.concepts.join(", ")])));
-  }, [product]);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadProvenance() {
-      const results = await Promise.all(product.unitConceptAlignment.map(async (entry) => {
-        try {
-          const response = await fetch(`/api/v4/problem-overrides/${encodeURIComponent(buildInstructionalUnitOverrideId(sessionId, entry.unitId))}`);
-          if (!response.ok) {
-            return [entry.unitId, "inferred"] as const;
-          }
-          const payload = await response.json().catch(() => ({}));
-          return [entry.unitId, payload?.overrides?.concepts ? "teacher-adjusted" : "inferred"] as const;
-        } catch {
-          return [entry.unitId, "inferred"] as const;
-        }
-      }));
-
-      if (!isCancelled) {
-        setProvenance(Object.fromEntries(results));
-      }
-    }
-
-    void loadProvenance();
-    return () => {
-      isCancelled = true;
-    };
-  }, [product, sessionId]);
-
-  async function saveUnitConcepts(unitId: string, currentConcepts: string[]) {
-    setSavingUnitId(unitId);
-    setStatusByUnitId((current) => ({ ...current, [unitId]: "" }));
-
-    try {
-      const concepts = parseConceptList(drafts[unitId] ?? "");
-      const response = await fetch("/api/v4/teacher-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teacherId: "00000000-0000-4000-8000-000000000001",
-          documentId: sessionId,
-          sessionId,
-          unitId,
-          scope: "instructional-unit",
-          target: "concepts",
-          aiValue: toConceptWeights(currentConcepts),
-          teacherValue: toConceptWeights(concepts),
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Failed to save unit concepts.");
-      }
-
-      setProvenance((current) => ({ ...current, [unitId]: "teacher-adjusted" }));
-      setStatusByUnitId((current) => ({ ...current, [unitId]: "Saved" }));
-      await onRefresh();
-    } catch (error) {
-      setStatusByUnitId((current) => ({ ...current, [unitId]: error instanceof Error ? error.message : "Failed to save unit concepts." }));
-    } finally {
-      setSavingUnitId(null);
-    }
-  }
-
-  return (
-    <div className="v4-product-card v4-product-span">
-      <h3>Instructional Units</h3>
-      <div className="v4-document-list">
-        {product.unitConceptAlignment.map((entry) => (
-          <article key={entry.unitId} className="v4-document-card">
-            <div className="v4-document-card-header">
-              <div>
-                <h4>{entry.title}</h4>
-                <p>{entry.sourceFileNames.join(", ")}</p>
-              </div>
-              <span className="v4-pill">{provenance[entry.unitId] === "teacher-adjusted" ? "Teacher-adjusted concepts" : "Inferred concepts"}</span>
-            </div>
-            <label className="v4-upload-field">
-              <span>Concepts</span>
-              <input
-                aria-label={`Concepts for ${entry.title}`}
-                value={drafts[entry.unitId] ?? ""}
-                onChange={(event) => setDrafts((current) => ({ ...current, [entry.unitId]: event.target.value }))}
-                placeholder="concept.one, concept.two"
-              />
-            </label>
-            <p className="v4-body-copy">Anchors: {entry.anchorNodeIds.length}. Documents: {entry.documentIds.length}.</p>
-            <div className="v4-upload-actions">
-              <button className="v4-button v4-button-secondary" type="button" onClick={() => void saveUnitConcepts(entry.unitId, entry.concepts)} disabled={savingUnitId === entry.unitId}>
-                {savingUnitId === entry.unitId ? "Saving..." : "Save concepts"}
-              </button>
-              {statusByUnitId[entry.unitId] ? <span className="v4-upload-name">{statusByUnitId[entry.unitId]}</span> : null}
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function renderProductPayload(product: IntentProduct, options?: { sessionId: string; onInstructionalMapRefresh: () => Promise<void> }) {
-  const payload = product.payload as IntentProductPayload;
-
-  if (payload.kind === "lesson") {
-    const lessonSections: Array<{ label: string; segments: typeof payload.warmUp }> = [
-      { label: "Warm-up", segments: payload.warmUp },
-      { label: "Concept Introduction", segments: payload.conceptIntroduction },
-      { label: "Guided Practice", segments: payload.guidedPractice },
-      { label: "Independent Practice", segments: payload.independentPractice },
-      { label: "Exit Ticket", segments: payload.exitTicket },
-    ];
-
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card">
-          <h3>Learning Objectives</h3>
-          <ul>{payload.learningObjectives.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Prerequisites</h3>
-          <ul>{payload.prerequisiteConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card v4-product-span">
-          <h3>Lesson Flow</h3>
-          <div className="v4-segment-grid">
-            {lessonSections.map((section) => (
-              <div key={section.label} className="v4-segment-column">
-                <h4>{section.label}</h4>
-                {section.segments.map((segment) => (
-                  <div key={segment.title} className="v4-segment-card">
-                    <strong>{segment.title}</strong>
-                    <p>{segment.description}</p>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="v4-product-card">
-          <h3>Misconceptions</h3>
-          <ul>{payload.misconceptions.map((entry) => <li key={entry.trigger}>{entry.trigger}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Scaffolds</h3>
-          <ul>{payload.scaffolds.map((entry) => <li key={`${entry.level}-${entry.strategy}`}>{entry.level}: {entry.strategy}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "unit") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Lesson Sequence</h3>
-          <ol>{payload.lessonSequence.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.rationale}</li>)}</ol>
-        </div>
-        <div className="v4-product-card">
-          <h3>Concept Map</h3>
-          <ul>{payload.conceptMap.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Assessments</h3>
-          <ul>{payload.suggestedAssessments.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "instructional-map") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card">
-          <h3>Concept Graph</h3>
-          <p>{payload.conceptGraph.nodes.length} nodes, {payload.conceptGraph.edges.length} edges</p>
-          <ul>{payload.conceptGraph.nodes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Representation Graph</h3>
-          <p>{payload.representationGraph.nodes.length} nodes, {payload.representationGraph.edges.length} edges</p>
-        </div>
-        <div className="v4-product-card v4-product-span">
-          <h3>Document Alignment</h3>
-          <ul>{payload.documentConceptAlignment.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.concepts.join(", ") || "No concepts extracted"}</li>)}</ul>
-        </div>
-        {options ? <InstructionalMapConceptEditor sessionId={options.sessionId} product={payload} onRefresh={options.onInstructionalMapRefresh} /> : null}
-      </div>
-    );
-  }
-
-  if (payload.kind === "curriculum-alignment") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Standards Coverage</h3>
-          <ul>{payload.standardsCoverage.map((entry) => <li key={entry.standardId}>{entry.standardId}: {entry.coverage}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Gaps</h3>
-          <ul>{payload.gaps.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Suggested Fixes</h3>
-          <ul>{payload.suggestedFixes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "compare-documents") {
-    return <div className="v4-product-card"><h3>Shared Concepts</h3><ul>{payload.sharedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "merge-documents") {
-    return <div className="v4-product-card"><h3>Merged Concepts</h3><ul>{payload.mergedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "sequence") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Recommended Order</h3>
-          <ol>
-            {payload.recommendedOrder.map((entry) => (
-              <li key={entry.documentId}>
-                <strong>{entry.sourceFileName}</strong>: {entry.rationale}
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div className="v4-product-card">
-          <h3>Bridging Concepts</h3>
-          <ul>{payload.bridgingConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Missing Prerequisites</h3>
-          <ul>{payload.missingPrerequisites.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "review") {
-    return <div className="v4-product-card"><h3>Review Sections</h3><ul>{payload.sections.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "test") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Assessment Sections</h3>
-          <p>{payload.overview}</p>
-          {payload.sections.map((entry) => (
-            <div key={entry.concept} className="v4-segment-card">
-              <strong>{entry.concept}</strong>
-              <ul>{entry.items.map((item) => <li key={item.itemId}>{item.prompt}</li>)}</ul>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "problem-extraction") {
-    return <div className="v4-product-card"><h3>Problems</h3><ul>{payload.problems.map((entry) => <li key={entry.problemId}>{entry.text}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "concept-extraction") {
-    return <div className="v4-product-card"><h3>Concepts</h3><ul>{payload.concepts.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "summary") {
-    return <div className="v4-product-card"><h3>Summary</h3><p>{payload.overallSummary}</p></div>;
-  }
-
-  return <pre className="v4-debug-block">{JSON.stringify(payload, null, 2)}</pre>;
 }
 
 export function DocumentUpload() {
@@ -865,12 +532,21 @@ export function DocumentUpload() {
     window.URL.revokeObjectURL(objectUrl);
   }
 
+  function openPrintView() {
+    if (!currentProduct || typeof window === "undefined") {
+      return;
+    }
+
+    window.open(`/print/${encodeURIComponent(currentProduct.productId)}`, "_blank", "noopener,noreferrer");
+  }
+
   const currentIntentConfig = getIntentConfig(selectedIntent);
   const actionDocumentIds = getActionDocumentIds();
   const intentBlockedReason = getIntentBlockedReason(workspace, selectedIntent, actionDocumentIds);
   const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
   const exportBlockedReason = getExportBlockedReason(currentProduct);
   const regenerateBlockedReason = getRegenerateBlockedReason(lastIntentRequest, isGenerating);
+  const printBlockedReason = currentProduct ? null : "Generate a product before opening print view.";
   const actionDocuments = workspace
     ? actionDocumentIds
       .map((documentId) => workspace.documents.find((entry) => entry.documentId === documentId))
@@ -1066,24 +742,25 @@ export function DocumentUpload() {
                 </div>
                 <div className="v4-upload-actions">
                   <button className="v4-button v4-button-secondary" type="button" onClick={exportCurrentProduct} disabled={Boolean(exportBlockedReason)} title={exportBlockedReason ?? undefined}>Export</button>
+                  <button className="v4-button v4-button-secondary" type="button" onClick={openPrintView} disabled={Boolean(printBlockedReason)} title={printBlockedReason ?? undefined}>Print</button>
                   <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={Boolean(regenerateBlockedReason)} title={regenerateBlockedReason ?? undefined}>Regenerate</button>
                 </div>
               </div>
-              {(exportBlockedReason || regenerateBlockedReason) && (
+              {(exportBlockedReason || printBlockedReason || regenerateBlockedReason) && (
                 <p className="v4-body-copy">
-                  {exportBlockedReason ?? regenerateBlockedReason}
+                  {exportBlockedReason ?? printBlockedReason ?? regenerateBlockedReason}
                 </p>
               )}
               {currentProduct ? (
                 <>
-                  {renderProductPayload(currentProduct, {
-                    sessionId: workspace.sessionId,
-                    onInstructionalMapRefresh: async () => {
-                      const payload = currentProduct.payload as IntentProductPayload;
-                      const options = payload.focus ? { focus: payload.focus } : undefined;
+                  <ProductViewer
+                    product={currentProduct}
+                    sessionId={workspace.sessionId}
+                    onInstructionalMapRefresh={async () => {
+                      const options = currentProduct.payload.focus ? { focus: currentProduct.payload.focus } : undefined;
                       await generateProduct(currentProduct.intentType as IntentType, currentProduct.documentIds, options);
-                    },
-                  })}
+                    }}
+                  />
                   <div className="v4-product-card v4-product-span">
                     <h3>Supporting semantics</h3>
                     <p>{workspace.analysis?.coverageSummary.totalConcepts ?? 0} concepts in session analysis.</p>
