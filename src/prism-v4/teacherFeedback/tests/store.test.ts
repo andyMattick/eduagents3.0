@@ -346,4 +346,40 @@ describe("teacher feedback fingerprint store", () => {
 		expect(updated?.flowProfile.sectionOrder).toEqual(["hypothesis-testing", "simulation-based-inference"]);
 		expect(teacher?.globalConceptProfiles.map((profile) => profile.conceptId)).toContain("simulation-based-inference");
 	});
+
+	it("applies explicit bloom distribution overrides through assessment fingerprint edits", async () => {
+		await saveAssessmentFingerprint(buildAssessmentFingerprint({
+			teacherId: "teacher-1",
+			assessmentId: "assessment-distribution",
+			unitId: "unit-a",
+			product: buildProduct({
+				concept: "Hypothesis Testing",
+				prompts: [
+					"State the null hypothesis and alternative hypothesis.",
+					"Interpret the p-value and make the decision at alpha = 0.05.",
+				],
+				assessmentTitle: "Distribution Override",
+			}),
+			now: "2026-03-28T00:00:00.000Z",
+		}));
+
+		const updated = await updateAssessmentFingerprint({
+			assessmentId: "assessment-distribution",
+			edits: {
+				bloomDistributions: {
+					"hypothesis-testing": {
+						understand: 0.25,
+						apply: 0.75,
+					},
+				},
+			},
+		});
+
+		expect(updated?.assessment.conceptProfiles[0]?.bloomDistribution).toMatchObject({
+			remember: 0,
+			understand: 0.25,
+			apply: 0.75,
+		});
+		expect(updated?.assessment.conceptProfiles[0]?.maxBloomLevel).toBe("apply");
+	});
 });

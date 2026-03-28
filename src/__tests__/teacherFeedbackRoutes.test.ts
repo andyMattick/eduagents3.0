@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import assessmentBlueprintHandler from "../../api/v4/teacher-feedback/assessment-blueprint";
 import teacherFeedbackHandler from "../../api/v4/teacher-feedback";
 import teacherFeedbackByProblemHandler from "../../api/v4/teacher-feedback/[canonicalProblemId]";
 import teacherTemplatesHandler from "../../api/v4/teacher-feedback/templates";
 import problemOverridesHandler from "../../api/v4/problem-overrides/[canonicalProblemId]";
-import { resetTeacherFeedbackState } from "../prism-v4/teacherFeedback";
+import { buildAssessmentFingerprint, resetTeacherFeedbackState, saveAssessmentFingerprint } from "../prism-v4/teacherFeedback";
 
 function createResponse() {
 	const res: any = {};
@@ -118,5 +119,94 @@ describe("teacher feedback routes", () => {
 
 		expect(res.status).toHaveBeenCalledWith(200);
 		expect(res.body.feedback.canonicalProblemId).toBe("session-1::instructional-unit::unit-abc");
+	});
+
+	it("updates and fetches assessment blueprint state through the backend route", async () => {
+		await saveAssessmentFingerprint(buildAssessmentFingerprint({
+			teacherId: "teacher-1",
+			assessmentId: "assessment-blueprint",
+			unitId: "unit-a",
+			product: {
+				kind: "test",
+				focus: null,
+				title: "Blueprint Seed",
+				overview: "Blueprint Seed overview.",
+				estimatedDurationMinutes: 6,
+				sections: [
+					{
+						concept: "Hypothesis Testing",
+						sourceDocumentIds: ["doc-1"],
+						items: [
+							{ itemId: "item-1", prompt: "State the null hypothesis.", concept: "Hypothesis Testing", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "State it." },
+						],
+					},
+				],
+				totalItemCount: 1,
+				generatedAt: "2026-03-28T00:00:00.000Z",
+			},
+		}));
+
+		const postRes = createResponse();
+		await assessmentBlueprintHandler({
+			method: "POST",
+			body: {
+				assessmentId: "assessment-blueprint",
+				edits: {
+					addConcepts: [{ displayName: "Simulation-Based Inference", absoluteItemHint: 1 }],
+					sectionOrder: ["hypothesis-testing", "simulation-based-inference"],
+				},
+			},
+		} as any, postRes);
+
+		expect(postRes.status).toHaveBeenCalledWith(200);
+		expect(postRes.body.assessment.conceptProfiles.map((profile: { conceptId: string }) => profile.conceptId)).toContain("simulation-based-inference");
+		expect(postRes.body.explanation).toBeTruthy();
+
+		const getRes = createResponse();
+		await assessmentBlueprintHandler({ method: "GET", query: { assessmentId: "assessment-blueprint" } } as any, getRes);
+		expect(getRes.status).toHaveBeenCalledWith(200);
+		expect(getRes.body.assessment.flowProfile.sectionOrder).toEqual(["hypothesis-testing", "simulation-based-inference"]);
+	});
+
+	it("seeds and saves an assessment blueprint when no stored fingerprint exists yet", async () => {
+		const postRes = createResponse();
+		await assessmentBlueprintHandler({
+			method: "POST",
+			body: {
+				assessmentId: "assessment-seeded",
+				teacherId: "teacher-1",
+				product: {
+					kind: "test",
+					focus: null,
+					title: "Seeded Blueprint",
+					overview: "Seeded overview.",
+					estimatedDurationMinutes: 8,
+					sections: [
+						{
+							concept: "Decimal Operations",
+							sourceDocumentIds: ["doc-1"],
+							items: [
+								{ itemId: "item-1", prompt: "Compare 0.4 and 0.35.", concept: "Decimal Operations", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "Use place value." },
+							],
+						},
+					],
+					totalItemCount: 1,
+					generatedAt: "2026-03-28T00:00:00.000Z",
+				},
+				edits: {
+					itemCountOverrides: { "decimal-operations": 2 },
+					sectionOrder: ["decimal-operations"],
+				},
+			},
+		} as any, postRes);
+
+		expect(postRes.status).toHaveBeenCalledWith(200);
+		expect(postRes.body.assessment.assessmentId).toBe("assessment-seeded");
+		expect(postRes.body.assessment.conceptProfiles[0].absoluteItemHint).toBe(2);
+
+		const getRes = createResponse();
+		await assessmentBlueprintHandler({ method: "GET", query: { assessmentId: "assessment-seeded" } } as any, getRes);
+		expect(getRes.status).toHaveBeenCalledWith(200);
+		expect(getRes.body.assessment.conceptProfiles[0].conceptId).toBe("decimal-operations");
 	});
 });

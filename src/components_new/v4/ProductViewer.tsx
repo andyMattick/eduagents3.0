@@ -1,8 +1,55 @@
 import { useEffect, useState } from "react";
 
+import type {
+  ConceptBlueprint,
+  ConceptBlueprintBloomLevel,
+  ConceptBlueprintScenarioType,
+  TestProduct,
+} from "../../prism-v4/schema/integration";
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
-import { buildInstructionalUnitOverrideId } from "../../prism-v4/teacherFeedback";
+import { buildInstructionalUnitOverrideId, canonicalConceptId, type AssessmentFingerprint } from "../../prism-v4/teacherFeedback";
 import { cleanupProductPayload } from "./utils/cleanup";
+
+const BLOOM_LEVEL_OPTIONS: ConceptBlueprintBloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
+const SCENARIO_TYPE_OPTIONS: ConceptBlueprintScenarioType[] = ["real-world", "simulation", "data-table", "graphical", "abstract-symbolic"];
+const LOCAL_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
+
+type SectionBlueprintDraft = {
+  concept: string;
+  itemCount: number;
+  included: boolean;
+  bloomCeiling: ConceptBlueprintBloomLevel | "";
+  scenarioPatterns: ConceptBlueprintScenarioType[];
+  bloomDistribution: Partial<Record<ConceptBlueprintBloomLevel, number>>;
+};
+
+type AddedConceptDraft = {
+  id: string;
+  displayName: string;
+  conceptId: string;
+  absoluteItemHint: number;
+  maxBloomLevel: ConceptBlueprintBloomLevel | "";
+  scenarioPatterns: ConceptBlueprintScenarioType[];
+};
+
+type MergeConceptDraft = {
+  id: string;
+  conceptIdsText: string;
+  mergedConceptId: string;
+  displayName: string;
+};
+
+type AssessmentDraftSummaryEntry = {
+  conceptId: string;
+  label: string;
+  sourceLabels: string[];
+  itemCount: number;
+  bloomCeiling: ConceptBlueprintBloomLevel | "";
+  bloomDistribution: Partial<Record<ConceptBlueprintBloomLevel, number>>;
+  scenarioPatterns: ConceptBlueprintScenarioType[];
+  isAdded: boolean;
+  isMerged: boolean;
+};
 
 function groupLessonScaffolds(scaffolds: Array<{ concept: string; level: "low" | "medium" | "high"; strategy: string }>) {
   return scaffolds.reduce<Map<string, typeof scaffolds>>((map, scaffold) => {
@@ -20,11 +67,968 @@ function parseConceptList(value: string) {
     .filter(Boolean);
 }
 
+function toTitleLabel(value: string) {
+  return value
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .map((entry) => entry.charAt(0).toUpperCase() + entry.slice(1))
+    .join(" ");
+}
+
+function createSectionBlueprintDraft(section: TestProduct["sections"][number]): SectionBlueprintDraft {
+  return {
+    concept: section.concept,
+    itemCount: section.items.length,
+    included: true,
+    bloomCeiling: "",
+    scenarioPatterns: [],
+    bloomDistribution: {},
+  };
+}
+
+function createAddedConceptDraft(index: number): AddedConceptDraft {
+  return {
+    id: `added-concept-${index}`,
+    displayName: "",
+    conceptId: "",
+    absoluteItemHint: 1,
+    maxBloomLevel: "",
+    scenarioPatterns: [],
+  };
+}
+
+function createMergeConceptDraft(index: number): MergeConceptDraft {
+  return {
+    id: `merge-concept-${index}`,
+    conceptIdsText: "",
+    mergedConceptId: "",
+    displayName: "",
+  };
+}
+
+function toggleScenarioPattern<T extends string>(current: T[], value: T) {
+  return current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value];
+}
+
+function normalizeBloomDistribution(distribution: Partial<Record<ConceptBlueprintBloomLevel, number>>) {
+  const entries = Object.entries(distribution).flatMap(([level, count]) => {
+    if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) {
+      return [];
+    }
+    return [[level, Math.floor(count)] as const];
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) as Partial<Record<ConceptBlueprintBloomLevel, number>> : undefined;
+}
+
+function highestBloomLevel(levels: Array<ConceptBlueprintBloomLevel | "">) {
+  return levels.reduce<ConceptBlueprintBloomLevel | "">((current, level) => {
+    if (!level) {
+      return current;
+    }
+    if (!current) {
+      return level;
+    }
+    return BLOOM_LEVEL_OPTIONS.indexOf(level) > BLOOM_LEVEL_OPTIONS.indexOf(current) ? level : current;
+  }, "");
+}
+
+function uniqueValues<T>(values: T[]) {
+  return [...new Set(values)];
+}
+
+function sumBloomDistributions(entries: Partial<Record<ConceptBlueprintBloomLevel, number>>[]) {
+  return Object.fromEntries(BLOOM_LEVEL_OPTIONS.flatMap((level) => {
+    const total = entries.reduce((sum, entry) => sum + (entry[level] ?? 0), 0);
+    return total > 0 ? [[level, total] as const] : [];
+  })) as Partial<Record<ConceptBlueprintBloomLevel, number>>;
+}
+
+function formatBloomDistributionSummary(distribution: Partial<Record<ConceptBlueprintBloomLevel, number>>) {
+  const entries = BLOOM_LEVEL_OPTIONS.flatMap((level) => {
+    const count = distribution[level];
+    return typeof count === "number" && count > 0 ? [`${toTitleLabel(level)} x${count}`] : [];
+  });
+  return entries.length > 0 ? entries.join(", ") : "Builder default";
+}
+
+function formatScenarioSummary(scenarios: ConceptBlueprintScenarioType[]) {
+  return scenarios.length > 0 ? scenarios.map((scenario) => toTitleLabel(scenario)).join(", ") : "Builder default";
+}
+
+function buildAssessmentDraftSummary(
+  sectionDrafts: SectionBlueprintDraft[],
+  addedConceptDrafts: AddedConceptDraft[],
+  mergeDrafts: MergeConceptDraft[],
+) {
+  const entries = new Map<string, AssessmentDraftSummaryEntry>();
+  let order = sectionDrafts
+    .filter((entry) => entry.included)
+    .map((entry) => {
+      const conceptId = canonicalConceptId(entry.concept);
+      entries.set(conceptId, {
+        conceptId,
+        label: entry.concept,
+        sourceLabels: [entry.concept],
+        itemCount: Math.max(1, Math.floor(entry.itemCount)),
+        bloomCeiling: entry.bloomCeiling,
+        bloomDistribution: normalizeBloomDistribution(entry.bloomDistribution) ?? {},
+        scenarioPatterns: [...entry.scenarioPatterns],
+        isAdded: false,
+        isMerged: false,
+      });
+      return conceptId;
+    });
+
+  for (const entry of addedConceptDrafts) {
+    const displayName = entry.displayName.trim();
+    if (!displayName) {
+      continue;
+    }
+    const conceptId = canonicalConceptId(entry.conceptId.trim() || displayName);
+    entries.set(conceptId, {
+      conceptId,
+      label: displayName,
+      sourceLabels: [displayName],
+      itemCount: Math.max(1, Math.floor(entry.absoluteItemHint)),
+      bloomCeiling: entry.maxBloomLevel,
+      bloomDistribution: {},
+      scenarioPatterns: [...entry.scenarioPatterns],
+      isAdded: true,
+      isMerged: false,
+    });
+    if (!order.includes(conceptId)) {
+      order.push(conceptId);
+    }
+  }
+
+  for (const merge of mergeDrafts) {
+    const sourceIds = uniqueValues(parseConceptList(merge.conceptIdsText).map((entry) => canonicalConceptId(entry)));
+    const mergedConceptId = merge.mergedConceptId.trim() ? canonicalConceptId(merge.mergedConceptId) : "";
+    if (sourceIds.length < 2 || !mergedConceptId) {
+      continue;
+    }
+
+    const sourceEntries = sourceIds.flatMap((conceptId) => {
+      const entry = entries.get(conceptId);
+      return entry ? [entry] : [];
+    });
+    const existingMerged = !sourceIds.includes(mergedConceptId) ? entries.get(mergedConceptId) : undefined;
+    if (existingMerged) {
+      sourceEntries.push(existingMerged);
+    }
+    if (sourceEntries.length === 0) {
+      continue;
+    }
+
+    const mergedEntry: AssessmentDraftSummaryEntry = {
+      conceptId: mergedConceptId,
+      label: merge.displayName.trim() || sourceEntries[0]?.label || merge.mergedConceptId.trim(),
+      sourceLabels: uniqueValues(sourceEntries.flatMap((entry) => entry.sourceLabels)),
+      itemCount: sourceEntries.reduce((sum, entry) => sum + Math.max(1, entry.itemCount), 0),
+      bloomCeiling: highestBloomLevel(sourceEntries.map((entry) => entry.bloomCeiling)),
+      bloomDistribution: sumBloomDistributions(sourceEntries.map((entry) => entry.bloomDistribution)),
+      scenarioPatterns: uniqueValues(sourceEntries.flatMap((entry) => entry.scenarioPatterns)),
+      isAdded: false,
+      isMerged: true,
+    };
+
+    for (const conceptId of sourceIds) {
+      entries.delete(conceptId);
+    }
+    if (existingMerged) {
+      entries.delete(mergedConceptId);
+    }
+    entries.set(mergedConceptId, mergedEntry);
+
+    const nextOrder: string[] = [];
+    for (const conceptId of order) {
+      if (sourceIds.includes(conceptId) || conceptId === mergedConceptId) {
+        if (!nextOrder.includes(mergedConceptId)) {
+          nextOrder.push(mergedConceptId);
+        }
+        continue;
+      }
+      if (!nextOrder.includes(conceptId)) {
+        nextOrder.push(conceptId);
+      }
+    }
+    if (!nextOrder.includes(mergedConceptId)) {
+      nextOrder.push(mergedConceptId);
+    }
+    order = nextOrder;
+  }
+
+  const orderedEntries = order.flatMap((conceptId) => {
+    const entry = entries.get(conceptId);
+    return entry ? [entry] : [];
+  });
+
+  return {
+    entries: orderedEntries,
+    finalOrderLabels: orderedEntries.map((entry) => entry.label),
+    totalItemCount: orderedEntries.reduce((sum, entry) => sum + Math.max(1, entry.itemCount), 0),
+  };
+}
+
+function moveDraftSection(drafts: SectionBlueprintDraft[], concept: string, direction: -1 | 1) {
+  const index = drafts.findIndex((entry) => entry.concept === concept);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= drafts.length) {
+    return drafts;
+  }
+  const next = [...drafts];
+  const [entry] = next.splice(index, 1);
+  next.splice(nextIndex, 0, entry);
+  return next;
+}
+
 function toConceptWeights(concepts: string[]) {
   return concepts.reduce<Record<string, number>>((accumulator, concept) => {
     accumulator[concept] = 1;
     return accumulator;
   }, {});
+}
+
+function buildAssessmentConceptBlueprintEdits(
+  product: Extract<IntentProductPayload, { kind: "test" }>,
+  sectionDrafts: SectionBlueprintDraft[],
+  addedConceptDrafts: AddedConceptDraft[],
+  mergeDrafts: MergeConceptDraft[],
+): ConceptBlueprint["edits"] {
+  const includedDrafts = sectionDrafts.filter((entry) => entry.included);
+  const itemCountOverrides = Object.fromEntries(includedDrafts.map((entry) => [entry.concept, Math.max(1, Math.floor(entry.itemCount))]));
+  const bloomCeilings = Object.fromEntries(includedDrafts.flatMap((entry) => entry.bloomCeiling ? [[entry.concept, entry.bloomCeiling] as const] : []));
+  const scenarioOverrides = Object.fromEntries(includedDrafts.flatMap((entry) => entry.scenarioPatterns.length > 0 ? [[entry.concept, entry.scenarioPatterns] as const] : []));
+  const bloomDistributions = Object.fromEntries(includedDrafts.flatMap((entry) => {
+    const normalized = normalizeBloomDistribution(entry.bloomDistribution);
+    return normalized ? [[entry.concept, normalized] as const] : [];
+  }));
+  const addConcepts = addedConceptDrafts.flatMap((entry) => {
+    const displayName = entry.displayName.trim();
+    if (!displayName) {
+      return [];
+    }
+    const conceptId = entry.conceptId.trim();
+    return [{
+      displayName,
+      conceptId: conceptId || undefined,
+      absoluteItemHint: Math.max(1, Math.floor(entry.absoluteItemHint)),
+      maxBloomLevel: entry.maxBloomLevel || undefined,
+      scenarioPatterns: entry.scenarioPatterns.length > 0 ? entry.scenarioPatterns : undefined,
+    }];
+  });
+  const mergeConcepts = mergeDrafts.flatMap((entry) => {
+    const conceptIds = parseConceptList(entry.conceptIdsText);
+    const mergedConceptId = entry.mergedConceptId.trim();
+    if (conceptIds.length < 2 || !mergedConceptId) {
+      return [];
+    }
+    const displayName = entry.displayName.trim();
+    return [{
+      conceptIds,
+      mergedConceptId,
+      displayName: displayName || undefined,
+    }];
+  });
+
+  return {
+    removeConceptIds: sectionDrafts.filter((entry) => !entry.included).map((entry) => entry.concept),
+    itemCountOverrides,
+    bloomCeilings,
+    bloomDistributions,
+    scenarioOverrides,
+    addConcepts,
+    mergeConcepts,
+    sectionOrder: includedDrafts.length > 0 ? includedDrafts.map((entry) => entry.concept) : product.sections.map((section) => section.concept),
+  };
+}
+
+function buildAssessmentConceptBlueprint(
+  product: Extract<IntentProductPayload, { kind: "test" }>,
+  sectionDrafts: SectionBlueprintDraft[],
+  addedConceptDrafts: AddedConceptDraft[],
+  mergeDrafts: MergeConceptDraft[],
+): ConceptBlueprint {
+  return {
+    edits: buildAssessmentConceptBlueprintEdits(product, sectionDrafts, addedConceptDrafts, mergeDrafts),
+  };
+}
+
+function buildDefaultAssessmentDraftState(product: Extract<IntentProductPayload, { kind: "test" }>) {
+  return {
+    sectionDrafts: product.sections.map(createSectionBlueprintDraft),
+    addedConceptDrafts: [] as AddedConceptDraft[],
+    mergeDrafts: [] as MergeConceptDraft[],
+    nextAddedConceptId: 1,
+    nextMergeId: 1,
+  };
+}
+
+function buildAssessmentDraftStateFromFingerprint(product: Extract<IntentProductPayload, { kind: "test" }>, assessment: AssessmentFingerprint) {
+  const originalSections = new Map(product.sections.map((section) => [canonicalConceptId(section.concept), section] as const));
+  const profilesById = new Map(assessment.conceptProfiles.map((profile) => [profile.conceptId, profile] as const));
+  const orderedProfileIds = [...new Set([...assessment.flowProfile.sectionOrder, ...assessment.conceptProfiles.map((profile) => profile.conceptId)])];
+
+  const sectionDrafts: SectionBlueprintDraft[] = orderedProfileIds.flatMap((conceptId) => {
+    const profile = profilesById.get(conceptId);
+    if (!profile || !originalSections.has(conceptId)) {
+      return [];
+    }
+    return [{
+      concept: profile.displayName,
+      itemCount: Math.max(1, profile.absoluteItemHint ?? originalSections.get(conceptId)?.items.length ?? 1),
+      included: true,
+      bloomCeiling: profile.maxBloomLevel,
+      scenarioPatterns: [...profile.scenarioPatterns],
+      bloomDistribution: Object.fromEntries(BLOOM_LEVEL_OPTIONS.flatMap((level) => profile.bloomDistribution[level] > 0 ? [[level, profile.bloomDistribution[level]] as const] : [])),
+    }];
+  });
+
+  for (const section of product.sections) {
+    const conceptId = canonicalConceptId(section.concept);
+    if (!profilesById.has(conceptId)) {
+      sectionDrafts.push({
+        ...createSectionBlueprintDraft(section),
+        included: false,
+      });
+    }
+  }
+
+  const addedConceptDrafts = orderedProfileIds.flatMap((conceptId, index) => {
+    const profile = profilesById.get(conceptId);
+    if (!profile || originalSections.has(conceptId)) {
+      return [];
+    }
+    return [{
+      id: `loaded-added-concept-${index + 1}`,
+      displayName: profile.displayName,
+      conceptId: profile.conceptId,
+      absoluteItemHint: Math.max(1, profile.absoluteItemHint ?? 1),
+      maxBloomLevel: profile.maxBloomLevel,
+      scenarioPatterns: [...profile.scenarioPatterns],
+    }];
+  });
+
+  return {
+    sectionDrafts,
+    addedConceptDrafts,
+    mergeDrafts: [] as MergeConceptDraft[],
+    nextAddedConceptId: addedConceptDrafts.length + 1,
+    nextMergeId: 1,
+  };
+}
+
+function ItemExplanation(props: { item: Extract<TestProduct["sections"][number]["items"][number], { explanation?: unknown }> }) {
+  const { item } = props;
+  if (!item.explanation) {
+    return null;
+  }
+
+  return (
+    <div className="v4-item-explanation">
+      <p><strong>Concept:</strong> {item.explanation.conceptReason}</p>
+      <p><strong>Bloom:</strong> {item.explanation.bloomReason}</p>
+      <p><strong>Scenario:</strong> {item.explanation.scenarioReason}</p>
+      <p><strong>Item Mode:</strong> {item.explanation.itemModeReason}</p>
+    </div>
+  );
+}
+
+function AssessmentConceptVerificationPanel(props: {
+  sessionId?: string;
+  documentIds: string[];
+  assessmentId: string;
+  product: Extract<IntentProductPayload, { kind: "test" }>;
+}) {
+  const { sessionId, documentIds, assessmentId, product } = props;
+  const [sectionDrafts, setSectionDrafts] = useState<SectionBlueprintDraft[]>(() => buildDefaultAssessmentDraftState(product).sectionDrafts);
+  const [addedConceptDrafts, setAddedConceptDrafts] = useState<AddedConceptDraft[]>([]);
+  const [mergeDrafts, setMergeDrafts] = useState<MergeConceptDraft[]>([]);
+  const [nextAddedConceptId, setNextAddedConceptId] = useState(1);
+  const [nextMergeId, setNextMergeId] = useState(1);
+  const [preview, setPreview] = useState<Extract<IntentProductPayload, { kind: "test" }> | null>(null);
+  const [previewNarrative, setPreviewNarrative] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [hasStoredDraft, setHasStoredDraft] = useState(false);
+
+  function resetDraftState() {
+    const next = buildDefaultAssessmentDraftState(product);
+    setSectionDrafts(next.sectionDrafts);
+    setAddedConceptDrafts(next.addedConceptDrafts);
+    setMergeDrafts(next.mergeDrafts);
+    setNextAddedConceptId(next.nextAddedConceptId);
+    setNextMergeId(next.nextMergeId);
+  }
+
+  function applyLoadedDraftState(next: ReturnType<typeof buildDefaultAssessmentDraftState>) {
+    setSectionDrafts(next.sectionDrafts);
+    setAddedConceptDrafts(next.addedConceptDrafts);
+    setMergeDrafts(next.mergeDrafts);
+    setNextAddedConceptId(next.nextAddedConceptId);
+    setNextMergeId(next.nextMergeId);
+  }
+
+  useEffect(() => {
+    resetDraftState();
+    setPreview(null);
+    setPreviewNarrative(null);
+    setStatus(null);
+    setHasStoredDraft(false);
+  }, [product]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadStoredBlueprint(silent: boolean) {
+      setBusyAction("load-draft");
+      try {
+        const response = await fetch(`/api/v4/teacher-feedback/assessment-blueprint?assessmentId=${encodeURIComponent(assessmentId)}`);
+        if (response.status === 404) {
+          if (!isCancelled) {
+            setHasStoredDraft(false);
+            applyLoadedDraftState(buildDefaultAssessmentDraftState(product));
+            if (!silent) {
+              setStatus("No saved draft found.");
+            }
+          }
+          return;
+        }
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Failed to load saved draft.");
+        }
+        if (!isCancelled) {
+          applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
+          setHasStoredDraft(true);
+          if (!silent) {
+            setStatus("Saved draft loaded.");
+          }
+        }
+      } catch (error) {
+        if (!isCancelled && !silent) {
+          setStatus(error instanceof Error ? error.message : "Failed to load saved draft.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setBusyAction(null);
+        }
+      }
+    }
+
+    void loadStoredBlueprint(true);
+    return () => {
+      isCancelled = true;
+    };
+  }, [assessmentId, product]);
+
+  if (!sessionId) {
+    return (
+      <div className="v4-product-card">
+        <h3>Assessment Sections</h3>
+        <p>{product.overview}</p>
+        {product.sections.map((entry) => (
+          <div key={entry.concept} className="v4-segment-card">
+            <strong>{entry.concept}</strong>
+            <ul>{entry.items.map((item) => <li key={`${entry.concept}-${item.itemId}`}>{item.prompt}</li>)}</ul>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const effectiveProduct = preview ?? product;
+  const draftSummary = buildAssessmentDraftSummary(sectionDrafts, addedConceptDrafts, mergeDrafts);
+
+  function updateSectionDraft(concept: string, updater: (draft: SectionBlueprintDraft) => SectionBlueprintDraft) {
+    setSectionDrafts((current) => current.map((entry) => entry.concept === concept ? updater(entry) : entry));
+  }
+
+  function updateAddedConceptDraft(id: string, updater: (draft: AddedConceptDraft) => AddedConceptDraft) {
+    setAddedConceptDrafts((current) => current.map((entry) => entry.id === id ? updater(entry) : entry));
+  }
+
+  function updateMergeDraft(id: string, updater: (draft: MergeConceptDraft) => MergeConceptDraft) {
+    setMergeDrafts((current) => current.map((entry) => entry.id === id ? updater(entry) : entry));
+  }
+
+  async function handleLoadDraft() {
+    setStatus(null);
+    setBusyAction("load-draft");
+    try {
+      const response = await fetch(`/api/v4/teacher-feedback/assessment-blueprint?assessmentId=${encodeURIComponent(assessmentId)}`);
+      if (response.status === 404) {
+        setHasStoredDraft(false);
+        resetDraftState();
+        setStatus("No saved draft found.");
+        return;
+      }
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to load saved draft.");
+      }
+      applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
+      setHasStoredDraft(true);
+      setStatus("Saved draft loaded.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load saved draft.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleSaveDraft() {
+    setBusyAction("save-draft");
+    setStatus(null);
+    try {
+      const edits = buildAssessmentConceptBlueprintEdits(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
+      const response = await fetch("/api/v4/teacher-feedback/assessment-blueprint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assessmentId,
+          teacherId: LOCAL_TEACHER_ID,
+          product,
+          edits,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to save draft.");
+      }
+      applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
+      setHasStoredDraft(true);
+      setStatus("Draft saved.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to save draft.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handlePreview() {
+    setBusyAction("preview");
+    setStatus(null);
+    try {
+      const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
+      const response = await fetch("/api/v4/teacher-feedback/concept-verification-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          documentIds,
+          options: {
+            itemCount: product.totalItemCount,
+            conceptBlueprint,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Preview failed.");
+      }
+      setPreview(payload.preview as Extract<IntentProductPayload, { kind: "test" }>);
+      setPreviewNarrative(typeof payload.explanation?.narrative === "string" ? payload.explanation.narrative : null);
+      setStatus("Preview updated.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Preview failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRegenerateItem(concept: string, itemId: string, prompt: string) {
+    setBusyAction(`item:${itemId}`);
+    setStatus(null);
+    try {
+      const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
+      const response = await fetch("/api/v4/teacher-feedback/regenerate-item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          documentIds,
+          itemId,
+          concept,
+          prompt,
+          options: {
+            itemCount: effectiveProduct.totalItemCount,
+            conceptBlueprint,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Item regeneration failed.");
+      }
+      setPreview((current) => {
+        const base = current ?? product;
+        return {
+          ...base,
+          sections: base.sections.map((section) => section.concept !== concept
+            ? section
+            : {
+                ...section,
+                items: section.items.map((item) => item.itemId === itemId && item.prompt === prompt ? payload.replacementItem : item),
+              }),
+        };
+      });
+      setStatus("Item regenerated.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Item regeneration failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRegenerateSection(concept: string) {
+    setBusyAction(`section:${concept}`);
+    setStatus(null);
+    try {
+      const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
+      const response = await fetch("/api/v4/teacher-feedback/regenerate-section", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          documentIds,
+          concept,
+          options: {
+            itemCount: effectiveProduct.totalItemCount,
+            conceptBlueprint,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Section regeneration failed.");
+      }
+      setPreview((current) => {
+        const base = current ?? product;
+        return {
+          ...base,
+          sections: base.sections.map((section) => section.concept === concept ? payload.replacementSection : section),
+        };
+      });
+      setStatus("Section regenerated.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Section regeneration failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  return (
+    <div className="v4-product-grid">
+      <div className="v4-product-card">
+        <h3>Concept Verification</h3>
+        <p className="v4-body-copy">Reorder sections, tighten Bloom ceilings, shift scenario preferences, and stage concept merges before previewing a fingerprint-conditioned rebuild.</p>
+        <div className="v4-upload-actions">
+          <button className="v4-button v4-button-secondary" type="button" onClick={() => void handleLoadDraft()} disabled={busyAction !== null}>
+            {busyAction === "load-draft" ? "Loading..." : hasStoredDraft ? "Reload Saved Draft" : "Load Saved Draft"}
+          </button>
+          <button className="v4-button v4-button-secondary" type="button" onClick={() => void handleSaveDraft()} disabled={busyAction !== null}>
+            {busyAction === "save-draft" ? "Saving..." : "Save Draft"}
+          </button>
+          <button className="v4-button v4-button-secondary" type="button" onClick={() => void handlePreview()} disabled={busyAction !== null}>
+            {busyAction === "preview" ? "Previewing..." : "Preview Fingerprint Build"}
+          </button>
+          <button className="v4-button v4-button-secondary" type="button" onClick={resetDraftState} disabled={busyAction !== null}>
+            Reset Draft
+          </button>
+        </div>
+        {previewNarrative ? <p className="v4-body-copy">{previewNarrative}</p> : null}
+        {status ? <p className="v4-upload-name">{status}</p> : null}
+      </div>
+      <div className="v4-product-card v4-product-span">
+        <h3>Resulting Draft Summary</h3>
+        <p className="v4-body-copy">Final order: {draftSummary.finalOrderLabels.length > 0 ? draftSummary.finalOrderLabels.join(" -> ") : "No sections selected"}.</p>
+        <p className="v4-body-copy">Target items across resulting sections: {draftSummary.totalItemCount}.</p>
+        <div className="v4-document-list">
+          {draftSummary.entries.map((entry) => (
+            <article key={`summary-${entry.conceptId}`} className="v4-document-card">
+              <div className="v4-document-card-header">
+                <div>
+                  <h4>{entry.label}</h4>
+                  <p>Sources: {entry.sourceLabels.join(", ")}</p>
+                </div>
+                <div className="v4-upload-actions">
+                  {entry.isMerged ? <span className="v4-pill">Merged</span> : null}
+                  {entry.isAdded ? <span className="v4-pill">Added</span> : null}
+                </div>
+              </div>
+              <p>Target items: {entry.itemCount}.</p>
+              <p>Bloom ceiling: {entry.bloomCeiling ? toTitleLabel(entry.bloomCeiling) : "Builder default"}.</p>
+              <p>Bloom distribution: {formatBloomDistributionSummary(entry.bloomDistribution)}.</p>
+              <p>Scenario preferences: {formatScenarioSummary(entry.scenarioPatterns)}.</p>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div className="v4-product-card v4-product-span">
+        <h3>Section Blueprint</h3>
+        <div className="v4-document-list">
+          {sectionDrafts.map((sectionDraft, index) => (
+            <article key={sectionDraft.concept} className="v4-document-card">
+              <div className="v4-document-card-header">
+                <div>
+                  <h4>{sectionDraft.concept}</h4>
+                  <p>{sectionDraft.included ? `Order ${index + 1}. ${sectionDraft.itemCount} target item(s).` : "Excluded from the next preview build."}</p>
+                </div>
+                <div className="v4-upload-actions">
+                  <button
+                    className="v4-button v4-button-secondary"
+                    type="button"
+                    aria-label={`Move ${sectionDraft.concept} up`}
+                    onClick={() => setSectionDrafts((current) => moveDraftSection(current, sectionDraft.concept, -1))}
+                    disabled={busyAction !== null || index === 0}
+                  >
+                    Up
+                  </button>
+                  <button
+                    className="v4-button v4-button-secondary"
+                    type="button"
+                    aria-label={`Move ${sectionDraft.concept} down`}
+                    onClick={() => setSectionDrafts((current) => moveDraftSection(current, sectionDraft.concept, 1))}
+                    disabled={busyAction !== null || index === sectionDrafts.length - 1}
+                  >
+                    Down
+                  </button>
+                  <button
+                    className="v4-button v4-button-secondary"
+                    type="button"
+                    aria-label={sectionDraft.included ? `Exclude ${sectionDraft.concept}` : `Include ${sectionDraft.concept}`}
+                    onClick={() => updateSectionDraft(sectionDraft.concept, (current) => ({ ...current, included: !current.included }))}
+                    disabled={busyAction !== null}
+                  >
+                    {sectionDraft.included ? "Exclude" : "Include"}
+                  </button>
+                </div>
+              </div>
+              <label className="v4-upload-field">
+                <span>Item count</span>
+                <input
+                  aria-label={`${sectionDraft.concept} item count`}
+                  type="number"
+                  min={1}
+                  value={sectionDraft.itemCount}
+                  disabled={!sectionDraft.included}
+                  onChange={(event) => updateSectionDraft(sectionDraft.concept, (current) => ({
+                    ...current,
+                    itemCount: Math.max(1, Number(event.target.value) || 1),
+                  }))}
+                />
+              </label>
+              <label className="v4-upload-field">
+                <span>Bloom ceiling</span>
+                <select
+                  aria-label={`${sectionDraft.concept} bloom ceiling`}
+                  value={sectionDraft.bloomCeiling}
+                  disabled={!sectionDraft.included}
+                  onChange={(event) => updateSectionDraft(sectionDraft.concept, (current) => ({
+                    ...current,
+                    bloomCeiling: event.target.value as ConceptBlueprintBloomLevel | "",
+                  }))}
+                >
+                  <option value="">Keep current fingerprint</option>
+                  {BLOOM_LEVEL_OPTIONS.map((level) => <option key={level} value={level}>{toTitleLabel(level)}</option>)}
+                </select>
+              </label>
+              <div className="v4-upload-field">
+                <span>Scenario preferences</span>
+                <div className="v4-upload-actions">
+                  {SCENARIO_TYPE_OPTIONS.map((scenario) => {
+                    const active = sectionDraft.scenarioPatterns.includes(scenario);
+                    return (
+                      <button
+                        key={`${sectionDraft.concept}-${scenario}`}
+                        className={`v4-button v4-button-secondary${active ? " v4-button-active" : ""}`}
+                        type="button"
+                        aria-label={`${sectionDraft.concept} scenario ${scenario}`}
+                        aria-pressed={active}
+                        disabled={!sectionDraft.included || busyAction !== null}
+                        onClick={() => updateSectionDraft(sectionDraft.concept, (current) => ({
+                          ...current,
+                          scenarioPatterns: toggleScenarioPattern(current.scenarioPatterns, scenario),
+                        }))}
+                      >
+                        {toTitleLabel(scenario)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="v4-upload-field">
+                <span>Bloom distribution</span>
+                <div className="v4-product-grid">
+                  {BLOOM_LEVEL_OPTIONS.map((level) => (
+                    <label key={`${sectionDraft.concept}-${level}`} className="v4-upload-field">
+                      <span>{toTitleLabel(level)}</span>
+                      <input
+                        aria-label={`${sectionDraft.concept} bloom distribution ${level}`}
+                        type="number"
+                        min={0}
+                        value={sectionDraft.bloomDistribution[level] ?? 0}
+                        disabled={!sectionDraft.included}
+                        onChange={(event) => updateSectionDraft(sectionDraft.concept, (current) => ({
+                          ...current,
+                          bloomDistribution: {
+                            ...current.bloomDistribution,
+                            [level]: Math.max(0, Number(event.target.value) || 0),
+                          },
+                        }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+      <div className="v4-product-card">
+        <h3>New Concepts</h3>
+        <p className="v4-body-copy">Append brand-new sections when the current assessment misses a target concept.</p>
+        <div className="v4-document-list">
+          {addedConceptDrafts.map((entry, index) => (
+            <article key={entry.id} className="v4-document-card">
+              <div className="v4-document-card-header">
+                <h4>Added Concept {index + 1}</h4>
+                <button className="v4-button v4-button-secondary" type="button" onClick={() => setAddedConceptDrafts((current) => current.filter((draft) => draft.id !== entry.id))} disabled={busyAction !== null}>
+                  Remove
+                </button>
+              </div>
+              <label className="v4-upload-field">
+                <span>Display name</span>
+                <input aria-label={`Added concept ${index + 1} display name`} value={entry.displayName} onChange={(event) => updateAddedConceptDraft(entry.id, (current) => ({ ...current, displayName: event.target.value }))} />
+              </label>
+              <label className="v4-upload-field">
+                <span>Concept id</span>
+                <input aria-label={`Added concept ${index + 1} concept id`} value={entry.conceptId} onChange={(event) => updateAddedConceptDraft(entry.id, (current) => ({ ...current, conceptId: event.target.value }))} placeholder="optional canonical id" />
+              </label>
+              <label className="v4-upload-field">
+                <span>Target item count</span>
+                <input aria-label={`Added concept ${index + 1} item count`} type="number" min={1} value={entry.absoluteItemHint} onChange={(event) => updateAddedConceptDraft(entry.id, (current) => ({ ...current, absoluteItemHint: Math.max(1, Number(event.target.value) || 1) }))} />
+              </label>
+              <label className="v4-upload-field">
+                <span>Bloom ceiling</span>
+                <select aria-label={`Added concept ${index + 1} bloom ceiling`} value={entry.maxBloomLevel} onChange={(event) => updateAddedConceptDraft(entry.id, (current) => ({ ...current, maxBloomLevel: event.target.value as ConceptBlueprintBloomLevel | "" }))}>
+                  <option value="">Keep current fingerprint</option>
+                  {BLOOM_LEVEL_OPTIONS.map((level) => <option key={`${entry.id}-${level}`} value={level}>{toTitleLabel(level)}</option>)}
+                </select>
+              </label>
+              <div className="v4-upload-field">
+                <span>Scenario preferences</span>
+                <div className="v4-upload-actions">
+                  {SCENARIO_TYPE_OPTIONS.map((scenario) => {
+                    const active = entry.scenarioPatterns.includes(scenario);
+                    return (
+                      <button
+                        key={`${entry.id}-${scenario}`}
+                        className={`v4-button v4-button-secondary${active ? " v4-button-active" : ""}`}
+                        type="button"
+                        aria-label={`Added concept ${index + 1} scenario ${scenario}`}
+                        aria-pressed={active}
+                        disabled={busyAction !== null}
+                        onClick={() => updateAddedConceptDraft(entry.id, (current) => ({
+                          ...current,
+                          scenarioPatterns: toggleScenarioPattern(current.scenarioPatterns, scenario),
+                        }))}
+                      >
+                        {toTitleLabel(scenario)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+        <div className="v4-upload-actions">
+          <button
+            className="v4-button v4-button-secondary"
+            type="button"
+            onClick={() => {
+              setAddedConceptDrafts((current) => [...current, createAddedConceptDraft(nextAddedConceptId)]);
+              setNextAddedConceptId((current) => current + 1);
+            }}
+            disabled={busyAction !== null}
+          >
+            Add Concept
+          </button>
+        </div>
+      </div>
+      <div className="v4-product-card">
+        <h3>Concept Merges</h3>
+        <p className="v4-body-copy">Fuse overlapping sections into a single target concept before rebuilding the assessment.</p>
+        <div className="v4-document-list">
+          {mergeDrafts.map((entry, index) => (
+            <article key={entry.id} className="v4-document-card">
+              <div className="v4-document-card-header">
+                <h4>Merge {index + 1}</h4>
+                <button className="v4-button v4-button-secondary" type="button" onClick={() => setMergeDrafts((current) => current.filter((draft) => draft.id !== entry.id))} disabled={busyAction !== null}>
+                  Remove
+                </button>
+              </div>
+              <label className="v4-upload-field">
+                <span>Source concepts</span>
+                <input aria-label={`Merge ${index + 1} source concepts`} value={entry.conceptIdsText} onChange={(event) => updateMergeDraft(entry.id, (current) => ({ ...current, conceptIdsText: event.target.value }))} placeholder="concept.one, concept.two" />
+              </label>
+              <label className="v4-upload-field">
+                <span>Merged concept id</span>
+                <input aria-label={`Merge ${index + 1} merged concept id`} value={entry.mergedConceptId} onChange={(event) => updateMergeDraft(entry.id, (current) => ({ ...current, mergedConceptId: event.target.value }))} />
+              </label>
+              <label className="v4-upload-field">
+                <span>Display name</span>
+                <input aria-label={`Merge ${index + 1} display name`} value={entry.displayName} onChange={(event) => updateMergeDraft(entry.id, (current) => ({ ...current, displayName: event.target.value }))} placeholder="optional display name" />
+              </label>
+            </article>
+          ))}
+        </div>
+        <div className="v4-upload-actions">
+          <button
+            className="v4-button v4-button-secondary"
+            type="button"
+            onClick={() => {
+              setMergeDrafts((current) => [...current, createMergeConceptDraft(nextMergeId)]);
+              setNextMergeId((current) => current + 1);
+            }}
+            disabled={busyAction !== null}
+          >
+            Add Merge
+          </button>
+        </div>
+      </div>
+      <div className="v4-product-card v4-product-span">
+        <h3>Assessment Sections</h3>
+        <p>{effectiveProduct.overview}</p>
+        {effectiveProduct.sections.map((entry) => (
+          <div key={entry.concept} className="v4-segment-card">
+            <div className="v4-document-card-header">
+              <strong>{entry.concept}</strong>
+              <button className="v4-button v4-button-secondary" type="button" onClick={() => void handleRegenerateSection(entry.concept)} disabled={busyAction !== null}>
+                {busyAction === `section:${entry.concept}` ? "Regenerating..." : "Regenerate Section"}
+              </button>
+            </div>
+            <ul>
+              {entry.items.map((item) => (
+                <li key={`${entry.concept}-${item.itemId}`}>
+                  <p>{item.prompt}</p>
+                  <div className="v4-upload-actions">
+                    <button className="v4-button v4-button-secondary" type="button" onClick={() => void handleRegenerateItem(entry.concept, item.itemId, item.prompt)} disabled={busyAction !== null}>
+                      {busyAction === `item:${item.itemId}` ? "Regenerating..." : "Regenerate Item"}
+                    </button>
+                  </div>
+                  <ItemExplanation item={item} />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function InstructionalMapConceptEditor(props: {
@@ -676,20 +1680,7 @@ export function ProductViewer(props: ProductViewerProps) {
     }
 
     if (payload.kind === "test") {
-      return (
-        <div className="v4-product-grid">
-          <div className="v4-product-card v4-product-span">
-            <h3>Assessment Sections</h3>
-            <p>{payload.overview}</p>
-            {payload.sections.map((entry) => (
-              <div key={entry.concept} className="v4-segment-card">
-                <strong>{entry.concept}</strong>
-                <ul>{entry.items.map((item) => <li key={item.itemId}>{item.prompt}</li>)}</ul>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+      return <AssessmentConceptVerificationPanel assessmentId={product.productId} sessionId={sessionId ?? product.sessionId} documentIds={product.documentIds} product={payload} />;
     }
 
     if (payload.kind === "problem-extraction") {

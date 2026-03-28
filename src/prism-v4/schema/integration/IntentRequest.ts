@@ -1,3 +1,5 @@
+import type { IntentRequestOptions } from "./ConceptBlueprint";
+
 export type IntentType =
 	| "build-test"
 	| "build-review"
@@ -22,5 +24,5 @@ export interface IntentRequest {
 	sessionId: string;
 	documentIds: string[];
 	intentType: IntentType;
-	options?: Record<string, unknown>;
+	options?: IntentRequestOptions;
 }

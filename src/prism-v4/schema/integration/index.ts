@@ -1,5 +1,6 @@
 export * from "./ClassInput";
 export * from "./ClassProfile";
+export * from "./ConceptBlueprint";
 export * from "./DifficultyInference";
 export * from "./IntentProduct";
 export * from "./IntentRequest";

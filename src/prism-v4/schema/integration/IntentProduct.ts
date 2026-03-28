@@ -121,6 +121,18 @@ export interface ReviewProduct extends IntentProductMetadata {
 	generatedAt: string;
 }
 
+export interface TestItemExplanation {
+	conceptId: string;
+	conceptReason: string;
+	bloomLevel: ExtractedProblemCognitiveDemand | "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create";
+	bloomReason: string;
+	scenarioTypes: string[];
+	scenarioReason: string;
+	itemModes: string[];
+	itemModeReason: string;
+	narrative: string;
+}
+
 export interface TestItem {
 	itemId: string;
 	prompt: string;
@@ -130,6 +142,7 @@ export interface TestItem {
 	difficulty: ExtractedProblemDifficulty;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
+	explanation?: TestItemExplanation;
 }
 
 export interface TestSection {

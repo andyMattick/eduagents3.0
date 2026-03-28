@@ -4,6 +4,9 @@ import analyzeHandler from "../../api/v4/documents/analyze";
 import intentHandler from "../../api/v4/documents/intent";
 import sessionAnalysisHandler from "../../api/v4/documents/session/[sessionId]/analysis";
 import sessionHandler from "../../api/v4/documents/session";
+import conceptVerificationPreviewHandler from "../../api/v4/teacher-feedback/concept-verification-preview";
+import regenerateItemHandler from "../../api/v4/teacher-feedback/regenerate-item";
+import regenerateSectionHandler from "../../api/v4/teacher-feedback/regenerate-section";
 import uploadHandler from "../../api/v4/documents/upload";
 import { loadPrismSessionContext } from "../prism-v4/documents/registryStore";
 import { resetDocumentRegistryState } from "../prism-v4/documents/registry";
@@ -443,5 +446,126 @@ describe("v4 documents routes", () => {
 
 		expect(listProductsRes.statusCode).toBe(200);
 		expect(listProductsRes.body.products).toHaveLength(3);
+	});
+
+	it("builds a concept verification preview with a normalized concept blueprint contract", async () => {
+		const uploadReq: any = {
+			method: "POST",
+			body: {
+				documents: [
+					{ sourceFileName: "notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", azureExtract: { fileName: "notes.docx", content: "Example: Compare sampling distributions and interpret a p-value.", pages: [{ pageNumber: 1, text: "Example: Compare sampling distributions and interpret a p-value." }], paragraphs: [{ text: "Example: Compare sampling distributions and interpret a p-value.", pageNumber: 1 }], tables: [], readingOrder: ["Example: Compare sampling distributions and interpret a p-value."] } },
+					{ sourceFileName: "quiz.pdf", sourceMimeType: "application/pdf", azureExtract: { fileName: "quiz.pdf", content: "1. State the null hypothesis and interpret the p-value for a restaurant income study.", pages: [{ pageNumber: 1, text: "1. State the null hypothesis and interpret the p-value for a restaurant income study." }], paragraphs: [{ text: "1. State the null hypothesis and interpret the p-value for a restaurant income study.", pageNumber: 1 }], tables: [], readingOrder: ["1. State the null hypothesis and interpret the p-value for a restaurant income study."] } },
+				],
+			},
+		};
+		const uploadRes = createResponse();
+		await uploadHandler(uploadReq, uploadRes);
+
+		const sessionId = uploadRes.body.sessionId;
+		const documentIds = uploadRes.body.documentIds;
+
+		const previewRes = createResponse();
+		await conceptVerificationPreviewHandler({
+			method: "POST",
+			body: {
+				sessionId,
+				documentIds,
+				options: {
+					itemCount: 2,
+					conceptBlueprint: {
+						assessmentId: "preview-assessment",
+						edits: {
+							itemCountOverrides: {
+								"hypothesis-testing": 1,
+								"simulation-based-inference": 1,
+							},
+							bloomDistributions: {
+								"hypothesis-testing": {
+									understand: 1,
+								},
+							},
+							sectionOrder: ["hypothesis-testing", "simulation-based-inference"],
+						},
+					},
+				},
+			},
+		} as any, previewRes);
+
+		expect(previewRes.statusCode).toBe(200);
+		expect(previewRes.body.normalizedBlueprint.assessmentId).toBe("preview-assessment");
+		expect(previewRes.body.normalizedBlueprint.edits.sectionOrder).toEqual(["hypothesis-testing", "simulation-based-inference"]);
+		expect(previewRes.body.preview.kind).toBe("test");
+		expect(previewRes.body.preview.sections.map((section: { concept: string }) => section.concept)).toEqual(["hypothesis testing", "simulation-based inference"]);
+		expect(previewRes.body.previewFingerprint.assessmentId).toBe("preview-assessment");
+		expect(previewRes.body.explanation.narrative).toContain("teacher fingerprint");
+		expect(previewRes.body.preview.sections[0].items[0].explanation.bloomReason).toContain("understand");
+		expect(previewRes.body.preview.sections[0].items[0].explanation.scenarioReason.length).toBeGreaterThan(0);
+	});
+
+	it("regenerates a single item and a section using the same concept blueprint contract", async () => {
+		const uploadReq: any = {
+			method: "POST",
+			body: {
+				documents: [
+					{ sourceFileName: "stats-1.pdf", sourceMimeType: "application/pdf", azureExtract: { fileName: "stats-1.pdf", content: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.", pages: [{ pageNumber: 1, text: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value." }], paragraphs: [{ text: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.", pageNumber: 1 }], tables: [], readingOrder: ["A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value."] } },
+					{ sourceFileName: "stats-2.pdf", sourceMimeType: "application/pdf", azureExtract: { fileName: "stats-2.pdf", content: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.", pages: [{ pageNumber: 1, text: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05." }], paragraphs: [{ text: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.", pageNumber: 1 }], tables: [], readingOrder: ["A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05."] } },
+					{ sourceFileName: "stats-3.pdf", sourceMimeType: "application/pdf", azureExtract: { fileName: "stats-3.pdf", content: "Explain a Type I error and a Type II error in the construction zone speeds test.", pages: [{ pageNumber: 1, text: "Explain a Type I error and a Type II error in the construction zone speeds test." }], paragraphs: [{ text: "Explain a Type I error and a Type II error in the construction zone speeds test.", pageNumber: 1 }], tables: [], readingOrder: ["Explain a Type I error and a Type II error in the construction zone speeds test."] } },
+				],
+			},
+		};
+		const uploadRes = createResponse();
+		await uploadHandler(uploadReq, uploadRes);
+
+		const sessionId = uploadRes.body.sessionId;
+		const documentIds = uploadRes.body.documentIds;
+		const options = {
+			itemCount: 2,
+			conceptBlueprint: {
+				assessmentId: "regen-assessment",
+				edits: {
+					removeConceptIds: [
+						"hypothesis-testing",
+						"p-values-decision-rules",
+						"one-sample-proportion-test",
+						"simulation-based-inference",
+					],
+					itemCountOverrides: {
+						"type-i-and-type-ii-errors": 1,
+						"one-sample-mean-test": 1,
+					},
+					sectionOrder: ["type-i-and-type-ii-errors", "one-sample-mean-test"],
+				},
+			},
+		};
+
+		const previewRes = createResponse();
+		await conceptVerificationPreviewHandler({ method: "POST", body: { sessionId, documentIds, options } } as any, previewRes);
+		expect(previewRes.statusCode).toBe(200);
+
+		const targetItemId = previewRes.body.preview.sections[1].items[0].itemId;
+		const targetItemPrompt = previewRes.body.preview.sections[1].items[0].prompt;
+		const targetConcept = previewRes.body.preview.sections[1].concept;
+
+		const regenerateItemRes = createResponse();
+		await regenerateItemHandler({
+			method: "POST",
+			body: { sessionId, documentIds, itemId: targetItemId, concept: targetConcept, prompt: targetItemPrompt, options },
+		} as any, regenerateItemRes);
+
+		expect(regenerateItemRes.statusCode).toBe(200);
+		expect(regenerateItemRes.body.targetConcept).toBe(targetConcept);
+		expect(regenerateItemRes.body.replacementItem.prompt).not.toBe(targetItemPrompt);
+		expect(regenerateItemRes.body.replacementItem.explanation.narrative.length).toBeGreaterThan(0);
+
+		const regenerateSectionRes = createResponse();
+		await regenerateSectionHandler({
+			method: "POST",
+			body: { sessionId, documentIds, concept: targetConcept, options },
+		} as any, regenerateSectionRes);
+
+		expect(regenerateSectionRes.statusCode).toBe(200);
+		expect(regenerateSectionRes.body.replacementSection.concept).toBe(targetConcept);
+		expect(regenerateSectionRes.body.replacementSection.items.length).toBeGreaterThan(0);
+		expect(regenerateSectionRes.body.replacementSection.items[0].explanation.itemModeReason.length).toBeGreaterThan(0);
 	});
 });

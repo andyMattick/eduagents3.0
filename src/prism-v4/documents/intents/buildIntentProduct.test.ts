@@ -4,11 +4,14 @@ import { buildIntentPayload } from "./buildIntentProduct";
 import { createDocumentSession, registerDocuments, resetDocumentRegistryState, saveAnalyzedDocument } from "../registry";
 import { loadPrismSessionContext } from "../registryStore";
 import {
+	buildAssessmentFingerprint,
 	buildInstructionalUnitOverrideId,
 	classifyBloomLevel,
+	classifyItemModes,
 	classifyScenarioTypes,
 	getAssessmentFingerprint,
 	resetTeacherFeedbackState,
+	saveAssessmentFingerprint,
 	saveTeacherFeedback,
 	updateAssessmentFingerprint,
 } from "../../teacherFeedback";
@@ -1435,6 +1438,461 @@ describe("buildIntentPayload", () => {
 		expect(prompts.some((prompt) => prompt.includes("0.05"))).toBe(false);
 		expect(prompts.some((prompt) => /0\s*\.\s*06|0\s*\.\s*07/.test(prompt))).toBe(true);
 	});
+
+	it("build-test applies one-shot conceptBlueprint overrides without requiring persisted fingerprint edits", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "stats-blueprint-1.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-blueprint-2.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-blueprint-3.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "stats-blueprint-1.pdf",
+			concepts: ["kissing couples", "decimal operations", "inference"],
+			problemText: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "stats-blueprint-2.pdf",
+			concepts: ["restaurant income", "hypothesis testing", "p-values & decision rules"],
+			problemText: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.",
+			difficulty: "high",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[2]!.documentId,
+			sourceFileName: "stats-blueprint-3.pdf",
+			concepts: ["Type I and Type II Errors"],
+			problemText: "Explain a Type I error and a Type II error in the construction zone speeds test.",
+			difficulty: "high",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const blueprintDriven = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: {
+				itemCount: 2,
+				conceptBlueprint: {
+					edits: {
+						removeConceptIds: [
+							"hypothesis-testing",
+							"p-values-decision-rules",
+							"one-sample-proportion-test",
+							"simulation-based-inference",
+						],
+						itemCountOverrides: {
+							"type-i-and-type-ii-errors": 1,
+							"one-sample-mean-test": 1,
+						},
+						bloomDistributions: {
+							"type-i-and-type-ii-errors": {
+								understand: 1,
+							},
+						},
+						scenarioOverrides: {
+							"one-sample-mean-test": ["real-world"],
+						},
+						sectionOrder: ["type-i-and-type-ii-errors", "one-sample-mean-test"],
+					},
+				},
+			},
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		expect(blueprintDriven.kind).toBe("test");
+		expect(blueprintDriven.sections.map((section) => section.concept)).toEqual(["type i and type ii errors", "one-sample mean test"]);
+		expect(blueprintDriven.totalItemCount).toBe(2);
+		expect(blueprintDriven.sections[0]?.items).toHaveLength(1);
+		expect(blueprintDriven.sections[1]?.items).toHaveLength(1);
+		expect(blueprintDriven.sections[0]?.items.every((item) => classifyBloomLevel(item.prompt) === "understand")).toBe(true);
+		expect(blueprintDriven.sections[1]?.items.every((item) => classifyScenarioTypes(item.prompt).includes("real-world"))).toBe(true);
+	});
+
+	it("build-test prefers learned item modes when multiple prompts share the same bloom level", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "mode-1.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "mode-2.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "mode-3.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "mode-1.pdf",
+			concept: "decimal operations",
+			problemText: "State the decimal relationship between 0.4 and 0.35.",
+			difficulty: "medium",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "mode-2.pdf",
+			concept: "decimal operations",
+			problemText: "Explain decimal operations using place value reasoning.",
+			difficulty: "medium",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[2]!.documentId,
+			sourceFileName: "mode-3.pdf",
+			concept: "decimal operations",
+			problemText: "Identify the greater decimal in the list.",
+			difficulty: "low",
+		}));
+
+		await saveAssessmentFingerprint(buildAssessmentFingerprint({
+			teacherId: "teacher-item-modes",
+			assessmentId: "seed-item-modes",
+			product: {
+				kind: "test",
+				focus: null,
+				title: "Preferred Modes",
+				overview: "Preferred mode seed.",
+				estimatedDurationMinutes: 5,
+				sections: [{
+					concept: "decimal operations",
+					sourceDocumentIds: [registered[1]!.documentId],
+					items: [{
+						itemId: "seed-1",
+						prompt: "Explain decimal operations using place value reasoning.",
+						concept: "decimal operations",
+						sourceDocumentId: registered[1]!.documentId,
+						sourceFileName: "mode-2.pdf",
+						difficulty: "medium",
+						cognitiveDemand: "conceptual",
+						answerGuidance: "Look for place value reasoning.",
+					}],
+				}],
+				totalItemCount: 1,
+				generatedAt: "2026-03-28T00:00:00.000Z",
+			},
+			sourceType: "generated",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const generated = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 1, teacherId: "teacher-item-modes", assessmentId: "generated-item-modes" },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		expect(generated.kind).toBe("test");
+		expect(generated.sections).toHaveLength(1);
+		expect(generated.sections[0]?.items).toHaveLength(1);
+		expect(generated.sections[0]?.items[0]?.prompt).toContain("Explain decimal operations using place value reasoning");
+	});
+
+		it("build-test distributes preferred item modes across repeated bloom targets within a section", async () => {
+			const registered = registerDocuments([
+				{ sourceFileName: "mode-sequence-1.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "mode-sequence-2.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "mode-sequence-3.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "mode-sequence-4.pdf", sourceMimeType: "application/pdf" },
+			]);
+			const session = createDocumentSession(registered.map((document) => document.documentId));
+
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[0]!.documentId,
+				sourceFileName: "mode-sequence-1.pdf",
+				concept: "decimal operations",
+				problemText: "Identify the greater decimal in the list.",
+				difficulty: "low",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[1]!.documentId,
+				sourceFileName: "mode-sequence-2.pdf",
+				concept: "decimal operations",
+				problemText: "Explain decimal operations using place value reasoning.",
+				difficulty: "medium",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[2]!.documentId,
+				sourceFileName: "mode-sequence-3.pdf",
+				concept: "decimal operations",
+				problemText: "State the decimal relationship between 0.4 and 0.35.",
+				difficulty: "medium",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[3]!.documentId,
+				sourceFileName: "mode-sequence-4.pdf",
+				concept: "decimal operations",
+				problemText: "Explain how place value supports decimal comparison.",
+				difficulty: "medium",
+			}));
+
+			await saveAssessmentFingerprint(buildAssessmentFingerprint({
+				teacherId: "teacher-mode-sequence",
+				assessmentId: "seed-mode-sequence",
+				product: {
+					kind: "test",
+					focus: null,
+					title: "Mode Sequence Seed",
+					overview: "Seed preferred item modes.",
+					estimatedDurationMinutes: 10,
+					sections: [{
+						concept: "decimal operations",
+						sourceDocumentIds: [registered[0]!.documentId],
+						items: [
+							{
+								itemId: "seed-explain-1",
+								prompt: "Explain decimal operations using place value reasoning.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[1]!.documentId,
+								sourceFileName: "mode-sequence-2.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for place value reasoning.",
+							},
+							{
+								itemId: "seed-explain-2",
+								prompt: "Explain how place value supports decimal comparison.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[3]!.documentId,
+								sourceFileName: "mode-sequence-4.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for place value reasoning.",
+							},
+							{
+								itemId: "seed-explain-3",
+								prompt: "Explain why decimal operations depend on place value.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[1]!.documentId,
+								sourceFileName: "mode-sequence-2.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for place value reasoning.",
+							},
+							{
+								itemId: "seed-state-1",
+								prompt: "State the decimal relationship between 0.4 and 0.35.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[2]!.documentId,
+								sourceFileName: "mode-sequence-3.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for an accurate comparison statement.",
+							},
+							{
+								itemId: "seed-state-2",
+								prompt: "State whether 0.4 or 0.35 is greater.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[2]!.documentId,
+								sourceFileName: "mode-sequence-3.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for an accurate comparison statement.",
+							},
+							{
+								itemId: "seed-identify-1",
+								prompt: "Identify the greater decimal in the list.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[0]!.documentId,
+								sourceFileName: "mode-sequence-1.pdf",
+								difficulty: "low",
+								cognitiveDemand: "recall",
+								answerGuidance: "Look for the correct decimal.",
+							},
+						],
+					}],
+					totalItemCount: 6,
+					generatedAt: "2026-03-28T00:00:00.000Z",
+				},
+				sourceType: "generated",
+			}));
+
+			await updateAssessmentFingerprint({
+				assessmentId: "seed-mode-sequence",
+				edits: {
+					itemCountOverrides: { "decimal-operations": 4 },
+					bloomDistributions: {
+						"decimal-operations": {
+							remember: 1,
+							understand: 3,
+						},
+					},
+					sectionOrder: ["decimal-operations"],
+					now: "2026-03-28T00:00:00.000Z",
+				},
+			});
+
+			const context = await loadPrismSessionContext(session.sessionId);
+			if (!context) {
+				throw new Error("Expected Prism session context");
+			}
+
+			const generated = await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: registered.map((document) => document.documentId),
+				intentType: "build-test",
+				options: { itemCount: 4, teacherId: "teacher-mode-sequence", assessmentId: "generated-mode-sequence" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			expect(generated.kind).toBe("test");
+			expect(generated.sections).toHaveLength(1);
+			expect(generated.sections[0]?.items).toHaveLength(4);
+			const generatedModes = generated.sections[0]!.items.map((item) => classifyItemModes(item.prompt));
+			expect(generatedModes[0]).toContain("explain");
+			expect(generatedModes[1]).toContain("explain");
+			expect(generatedModes[2]).toContain("state");
+			expect(generatedModes[3]).toContain("identify");
+		});
+
+		it("build-test enforces explicit bloom ladder and difficulty progression within a fingerprinted section", async () => {
+			const registered = registerDocuments([
+				{ sourceFileName: "ladder-1.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "ladder-2.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "ladder-3.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "ladder-4.pdf", sourceMimeType: "application/pdf" },
+			]);
+			const session = createDocumentSession(registered.map((document) => document.documentId));
+
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[0]!.documentId,
+				sourceFileName: "ladder-1.pdf",
+				concept: "decimal operations",
+				problemText: "Identify the greater decimal in the list.",
+				difficulty: "high",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[1]!.documentId,
+				sourceFileName: "ladder-2.pdf",
+				concept: "decimal operations",
+				problemText: "Explain how place value supports decimal comparison.",
+				difficulty: "high",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[2]!.documentId,
+				sourceFileName: "ladder-3.pdf",
+				concept: "decimal operations",
+				problemText: "Apply decimal operations to solve 0.4 + 0.35.",
+				difficulty: "low",
+			}));
+			saveAnalyzedDocument(buildAnalyzedDocument({
+				documentId: registered[3]!.documentId,
+				sourceFileName: "ladder-4.pdf",
+				concept: "decimal operations",
+				problemText: "Analyze why the decimal strategy works.",
+				difficulty: "low",
+			}));
+
+			await saveAssessmentFingerprint(buildAssessmentFingerprint({
+				teacherId: "teacher-ladder-sequence",
+				assessmentId: "seed-ladder-sequence",
+				product: {
+					kind: "test",
+					focus: null,
+					title: "Ladder Seed",
+					overview: "Seed bloom ladder.",
+					estimatedDurationMinutes: 10,
+					sections: [{
+						concept: "decimal operations",
+						sourceDocumentIds: registered.map((document) => document.documentId),
+						items: [
+							{
+								itemId: "ladder-seed-1",
+								prompt: "Identify the greater decimal in the list.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[0]!.documentId,
+								sourceFileName: "ladder-1.pdf",
+								difficulty: "low",
+								cognitiveDemand: "recall",
+								answerGuidance: "Look for the correct decimal.",
+							},
+							{
+								itemId: "ladder-seed-2",
+								prompt: "Explain how place value supports decimal comparison.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[1]!.documentId,
+								sourceFileName: "ladder-2.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "conceptual",
+								answerGuidance: "Look for place value reasoning.",
+							},
+							{
+								itemId: "ladder-seed-3",
+								prompt: "Apply decimal operations to solve 0.4 + 0.35.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[2]!.documentId,
+								sourceFileName: "ladder-3.pdf",
+								difficulty: "medium",
+								cognitiveDemand: "procedural",
+								answerGuidance: "Look for accurate decimal computation.",
+							},
+							{
+								itemId: "ladder-seed-4",
+								prompt: "Analyze why the decimal strategy works.",
+								concept: "decimal operations",
+								sourceDocumentId: registered[3]!.documentId,
+								sourceFileName: "ladder-4.pdf",
+								difficulty: "high",
+								cognitiveDemand: "analysis",
+								answerGuidance: "Look for analysis of the strategy.",
+							},
+						],
+					}],
+					totalItemCount: 4,
+					generatedAt: "2026-03-28T00:00:00.000Z",
+				},
+				sourceType: "generated",
+			}));
+
+			await updateAssessmentFingerprint({
+				assessmentId: "seed-ladder-sequence",
+				edits: {
+					itemCountOverrides: { "decimal-operations": 4 },
+					bloomDistributions: {
+						"decimal-operations": {
+							remember: 1,
+							understand: 1,
+							apply: 1,
+							analyze: 1,
+						},
+					},
+					sectionOrder: ["decimal-operations"],
+					now: "2026-03-28T00:00:00.000Z",
+				},
+			});
+
+			const context = await loadPrismSessionContext(session.sessionId);
+			if (!context) {
+				throw new Error("Expected Prism session context");
+			}
+
+			const generated = await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: registered.map((document) => document.documentId),
+				intentType: "build-test",
+				options: { itemCount: 4, teacherId: "teacher-ladder-sequence", assessmentId: "generated-ladder-sequence" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			expect(generated.kind).toBe("test");
+			expect(generated.sections).toHaveLength(1);
+			expect(generated.sections[0]?.items).toHaveLength(4);
+			expect(generated.sections[0]!.items.map((item) => classifyBloomLevel(item.prompt))).toEqual(["remember", "understand", "apply", "analyze"]);
+			expect(generated.sections[0]!.items.map((item) => item.difficulty)).toEqual(["low", "low", "medium", "high"]);
+		});
 
 	it("build-lesson uses intentional minimal-content fallbacks for sparse sources", async () => {
 		const [registered] = registerDocuments([

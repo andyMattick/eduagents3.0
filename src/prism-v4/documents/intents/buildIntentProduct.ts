@@ -23,17 +23,23 @@ import type {
 	UnitProduct,
 } from "../../schema/integration";
 import {
+	applyAssessmentFingerprintEdits,
 	buildAssessmentFingerprint,
 	canonicalConceptId,
 	classifyBloomLevel,
+	classifyItemModes,
 	classifyScenarioTypes,
 	compareBloomLevels,
 	deriveItemCounts,
 	getTeacherFingerprint,
 	getUnitFingerprint,
+	mergeAssessmentIntoTeacherFingerprint,
+	mergeAssessmentIntoUnitFingerprint,
 	saveAssessmentFingerprint,
+	type AssessmentFingerprintEdits,
 	type BloomLevel,
 	type ConceptProfile,
+	type ItemMode,
 	type ScenarioDirective,
 	type TeacherFingerprint,
 	type UnitFingerprint,
@@ -98,6 +104,17 @@ const DIFFICULTY_SCORE: Record<"low" | "medium" | "high", number> = {
 	medium: 2,
 	high: 3,
 };
+const ITEM_MODE_TO_BLOOM: Record<ItemMode, BloomLevel> = {
+	identify: "remember",
+	state: "understand",
+	interpret: "apply",
+	compare: "analyze",
+	apply: "apply",
+	analyze: "analyze",
+	evaluate: "evaluate",
+	explain: "understand",
+	construct: "create",
+};
 
 
 
@@ -130,6 +147,199 @@ function getPositiveNumberOption(options: Record<string, unknown> | undefined, k
 function getStringOption(options: Record<string, unknown> | undefined, key: string) {
 	const value = options?.[key];
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function toStringArray(value: unknown) {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0).map((entry) => entry.trim());
+}
+
+function toPositiveIntegerRecord(value: unknown) {
+	if (!isRecord(value)) {
+		return undefined;
+	}
+	const normalized: Record<string, number> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry !== "number" || !Number.isFinite(entry) || entry <= 0) {
+			continue;
+		}
+		normalized[key] = Math.floor(entry);
+	}
+	return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function toStringRecord(value: unknown) {
+	if (!isRecord(value)) {
+		return undefined;
+	}
+	const normalized: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry !== "string" || entry.trim().length === 0) {
+			continue;
+		}
+		normalized[key] = entry.trim();
+	}
+	return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function toStringArrayRecord(value: unknown) {
+	if (!isRecord(value)) {
+		return undefined;
+	}
+	const normalized: Record<string, string[]> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		const values = toStringArray(entry);
+		if (values.length > 0) {
+			normalized[key] = values;
+		}
+	}
+	return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function toBloomDistributionRecord(value: unknown) {
+	if (!isRecord(value)) {
+		return undefined;
+	}
+	const normalized: Record<string, Partial<Record<BloomLevel, number>>> = {};
+	for (const [conceptId, entry] of Object.entries(value)) {
+		if (!isRecord(entry)) {
+			continue;
+		}
+		const distribution: Partial<Record<BloomLevel, number>> = {};
+		for (const [level, amount] of Object.entries(entry)) {
+			if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+				continue;
+			}
+			distribution[level as BloomLevel] = amount;
+		}
+		if (Object.keys(distribution).length > 0) {
+			normalized[conceptId] = distribution;
+		}
+	}
+	return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeConceptInput(value: unknown) {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const concepts = value.flatMap((entry) => {
+		if (!isRecord(entry)) {
+			return [];
+		}
+		const displayName = typeof entry.displayName === "string" && entry.displayName.trim().length > 0 ? entry.displayName.trim() : null;
+		if (!displayName) {
+			return [];
+		}
+		return [{
+			displayName,
+			conceptId: typeof entry.conceptId === "string" && entry.conceptId.trim().length > 0 ? entry.conceptId.trim() : undefined,
+			absoluteItemHint: typeof entry.absoluteItemHint === "number" && Number.isFinite(entry.absoluteItemHint) && entry.absoluteItemHint > 0 ? Math.floor(entry.absoluteItemHint) : undefined,
+			maxBloomLevel: typeof entry.maxBloomLevel === "string" ? entry.maxBloomLevel as BloomLevel : undefined,
+			scenarioPatterns: toStringArray(entry.scenarioPatterns) as Array<"real-world" | "simulation" | "data-table" | "graphical" | "abstract-symbolic">,
+			scenarioDirective: typeof entry.scenarioDirective === "string" ? entry.scenarioDirective as ScenarioDirective : undefined,
+			itemModes: toStringArray(entry.itemModes) as Array<"identify" | "state" | "interpret" | "compare" | "apply" | "analyze" | "evaluate" | "explain" | "construct">,
+		}];
+	});
+	return concepts.length > 0 ? concepts : undefined;
+}
+
+function normalizeMergeInput(value: unknown) {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+	const merges = value.flatMap((entry) => {
+		if (!isRecord(entry)) {
+			return [];
+		}
+		const conceptIds = toStringArray(entry.conceptIds);
+		const mergedConceptId = typeof entry.mergedConceptId === "string" && entry.mergedConceptId.trim().length > 0 ? entry.mergedConceptId.trim() : null;
+		if (!mergedConceptId || conceptIds.length === 0) {
+			return [];
+		}
+		return [{
+			conceptIds,
+			mergedConceptId,
+			displayName: typeof entry.displayName === "string" && entry.displayName.trim().length > 0 ? entry.displayName.trim() : undefined,
+		}];
+	});
+	return merges.length > 0 ? merges : undefined;
+}
+
+function normalizeAssessmentFingerprintEdits(value: unknown): AssessmentFingerprintEdits | null {
+	if (!isRecord(value)) {
+		return null;
+	}
+	const edits: AssessmentFingerprintEdits = {
+		removeConceptIds: toStringArray(value.removeConceptIds),
+		addConcepts: normalizeConceptInput(value.addConcepts),
+		mergeConcepts: normalizeMergeInput(value.mergeConcepts),
+		itemCountOverrides: toPositiveIntegerRecord(value.itemCountOverrides),
+		bloomDistributions: toBloomDistributionRecord(value.bloomDistributions),
+		bloomCeilings: toStringRecord(value.bloomCeilings) as Record<string, BloomLevel> | undefined,
+		bloomLevelAppends: toStringArrayRecord(value.bloomLevelAppends) as Record<string, BloomLevel[]> | undefined,
+		scenarioOverrides: toStringArrayRecord(value.scenarioOverrides) as Record<string, Array<"real-world" | "simulation" | "data-table" | "graphical" | "abstract-symbolic">> | undefined,
+		scenarioDirectives: toStringRecord(value.scenarioDirectives) as Record<string, ScenarioDirective> | undefined,
+		sectionOrder: toStringArray(value.sectionOrder),
+		now: typeof value.now === "string" && value.now.trim().length > 0 ? value.now.trim() : undefined,
+	};
+	return Object.values(edits).some((entry) => entry !== undefined && (!Array.isArray(entry) || entry.length > 0)) ? edits : null;
+}
+
+export function normalizeConceptBlueprintInput(raw: unknown) {
+	if (!isRecord(raw)) {
+		return null;
+	}
+	const edits = normalizeAssessmentFingerprintEdits(isRecord(raw.edits) ? raw.edits : raw);
+	if (!edits) {
+		return null;
+	}
+	const assessmentId = typeof raw.assessmentId === "string" && raw.assessmentId.trim().length > 0 ? raw.assessmentId.trim() : null;
+	const teacherId = typeof raw.teacherId === "string" && raw.teacherId.trim().length > 0 ? raw.teacherId.trim() : null;
+	const unitId = typeof raw.unitId === "string" && raw.unitId.trim().length > 0 ? raw.unitId.trim() : null;
+	return {
+		assessmentId,
+		teacherId,
+		unitId,
+		edits,
+	};
+}
+
+function getConceptBlueprintOption(options: Record<string, unknown> | undefined) {
+	const normalized = normalizeConceptBlueprintInput(options?.conceptBlueprint);
+	if (options?.conceptBlueprint && !normalized) {
+		throw new IntentBuildError(400, "conceptBlueprint must include at least one valid fingerprint edit");
+	}
+	return normalized;
+}
+
+function estimateBlueprintSeedItemCount(options: Record<string, unknown> | undefined, edits: AssessmentFingerprintEdits) {
+	const requested = getPositiveNumberOption(options, "itemCount", 5);
+	const itemOverrideTotal = Object.values(edits.itemCountOverrides ?? {}).reduce((sum, value) => sum + Math.max(0, value), 0);
+	const conceptTargets = [
+		edits.sectionOrder?.length ?? 0,
+		edits.addConcepts?.length ?? 0,
+		Object.keys(edits.bloomDistributions ?? {}).length,
+		Object.keys(edits.bloomCeilings ?? {}).length,
+		Object.keys(edits.scenarioOverrides ?? {}).length,
+	].reduce((max, value) => Math.max(max, value), 0);
+	return Math.max(requested, itemOverrideTotal, conceptTargets, 6);
+}
+
+function withItemCountOverride<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, itemCount: number) {
+	return {
+		...request,
+		options: {
+			...(request.options ?? {}),
+			itemCount,
+		},
+	};
 }
 
 function matchesFocus(textParts: string[], focus: string | null) {
@@ -294,6 +504,28 @@ function getFingerprintRequestedConceptCounts(context: BuilderContext<"build-tes
 	return normalized;
 }
 
+function getFingerprintCognitiveLadder(context: BuilderContext<"build-test">) {
+	return context.unitFingerprint?.flowProfile.cognitiveLadderShape?.length
+		? context.unitFingerprint.flowProfile.cognitiveLadderShape
+		: context.teacherFingerprint?.flowProfile.cognitiveLadderShape ?? [];
+}
+
+function getPreferredScenarioPatterns(context: BuilderContext<"build-test">, profile: ConceptProfile) {
+	return profile.scenarioPatterns.length > 0
+		? profile.scenarioPatterns
+		: context.teacherFingerprint?.defaultScenarioPreferences ?? [];
+}
+
+function getPreferredItemModes(context: BuilderContext<"build-test">, profile: ConceptProfile) {
+	return profile.itemModes.length > 0
+		? profile.itemModes
+		: context.teacherFingerprint?.defaultItemModes ?? [];
+}
+
+function getItemModeBloomLevel(mode: ItemMode) {
+	return ITEM_MODE_TO_BLOOM[mode];
+}
+
 function deriveRequestedBloomCounts(profile: ConceptProfile, requestedCount: number) {
 	const levels = Object.entries(profile.bloomDistribution) as Array<[BloomLevel, number]>;
 	const counts = Object.fromEntries(levels.map(([level]) => [level, 0])) as Record<BloomLevel, number>;
@@ -317,6 +549,147 @@ function deriveRequestedBloomCounts(profile: ConceptProfile, requestedCount: num
 		assigned += 1;
 	}
 	return counts;
+}
+
+function buildRequestedBloomSequence(context: BuilderContext<"build-test">, profile: ConceptProfile, requestedCount: number) {
+	const requestedBloomCounts = deriveRequestedBloomCounts(profile, requestedCount);
+	const ladder = getFingerprintCognitiveLadder(context)
+		.filter((level) => compareBloomLevels(level, profile.maxBloomLevel) <= 0);
+	const ladderIndex = new Map(ladder.map((level, index) => [level, index]));
+	return (Object.keys(requestedBloomCounts) as BloomLevel[])
+		.flatMap((level) => Array.from({ length: requestedBloomCounts[level] ?? 0 }, () => level))
+		.sort((left, right) => {
+			const leftIndex = ladderIndex.get(left);
+			const rightIndex = ladderIndex.get(right);
+			if (leftIndex !== undefined || rightIndex !== undefined) {
+				return (leftIndex ?? Number.MAX_SAFE_INTEGER) - (rightIndex ?? Number.MAX_SAFE_INTEGER) || compareBloomLevels(left, right);
+			}
+			return compareBloomLevels(left, right);
+		});
+}
+
+function buildRequestedItemModeSequence(preferredModes: ItemMode[], requestedBloomSequence: BloomLevel[]) {
+	if (preferredModes.length === 0) {
+		return requestedBloomSequence.map(() => null);
+	}
+	let nextPreferenceIndex = 0;
+	return requestedBloomSequence.map((targetBloom) => {
+		const orderedModes = preferredModes.map((_, offset) => preferredModes[(nextPreferenceIndex + offset) % preferredModes.length]!);
+		const matchedMode = orderedModes.find((mode) => compareBloomLevels(getItemModeBloomLevel(mode), targetBloom) <= 0) ?? orderedModes[0] ?? null;
+		if (!matchedMode) {
+			return null;
+		}
+		nextPreferenceIndex = (preferredModes.indexOf(matchedMode) + 1) % preferredModes.length;
+		return matchedMode;
+	});
+}
+
+function buildRequestedDifficultySequence(requestedBloomSequence: BloomLevel[]) {
+	return requestedBloomSequence.map((targetBloom, index) => inferTargetDifficulty(targetBloom, index, requestedBloomSequence.length || 1));
+}
+
+function buildFingerprintSequencePlan(context: BuilderContext<"build-test">, profile: ConceptProfile, requestedCount: number) {
+	const requestedBloomSequence = buildRequestedBloomSequence(context, profile, requestedCount);
+	const effectiveBloomSequence = requestedBloomSequence.length > 0
+		? requestedBloomSequence
+		: Array.from({ length: requestedCount }, () => profile.maxBloomLevel);
+	const preferredModes = getPreferredItemModes(context, profile);
+	const preferredScenarios = getPreferredScenarioPatterns(context, profile);
+	const requestedModeSequence = buildRequestedItemModeSequence(preferredModes, effectiveBloomSequence);
+	const requestedDifficultySequence = buildRequestedDifficultySequence(effectiveBloomSequence);
+	return effectiveBloomSequence.map((targetBloom, index) => ({
+		targetBloom,
+		targetMode: requestedModeSequence[index] ?? null,
+		targetDifficulty: requestedDifficultySequence[index] ?? inferTargetDifficulty(targetBloom, index, effectiveBloomSequence.length || requestedCount || 1),
+		preferredModes,
+		preferredScenarios,
+	}));
+}
+
+function inferTargetDifficulty(level: BloomLevel, index: number, requestedCount: number): TestItem["difficulty"] {
+	const progress = requestedCount <= 1 ? 1 : index / Math.max(1, requestedCount - 1);
+	const bloomWeight = Math.max(0, compareBloomLevels(level, "remember")) / 5;
+	const composite = (progress + bloomWeight) / 2;
+	if (composite >= 0.68) {
+		return "high";
+	}
+	if (composite >= 0.34) {
+		return "medium";
+	}
+	return "low";
+}
+
+function shapeSelectedDifficulty(item: TestItem, targetDifficulty: TestItem["difficulty"]) {
+	return item.difficulty === targetDifficulty ? item : { ...item, difficulty: targetDifficulty };
+}
+
+function modePreferenceRank(preferredModes: ItemMode[], item: TestItem) {
+	if (preferredModes.length === 0) {
+		return 0;
+	}
+	const itemModes = classifyItemModes(item.prompt);
+	const matchedIndex = preferredModes.reduce<number>((best, mode, index) => {
+		return itemModes.includes(mode) ? Math.min(best, index) : best;
+	}, Number.MAX_SAFE_INTEGER);
+	return matchedIndex === Number.MAX_SAFE_INTEGER ? preferredModes.length + 1 : matchedIndex;
+}
+
+function targetModeRank(targetMode: ItemMode | null, item: TestItem) {
+	if (!targetMode) {
+		return 0;
+	}
+	return classifyItemModes(item.prompt).includes(targetMode) ? 0 : 1;
+}
+
+function scenarioPreferenceRank(preferredScenarios: ReturnType<typeof getPreferredScenarioPatterns>, item: TestItem) {
+	if (preferredScenarios.length === 0) {
+		return 0;
+	}
+	const itemScenarios = classifyScenarioTypes(item.prompt);
+	const matchedIndex = preferredScenarios.reduce<number>((best, scenario, index) => {
+		return itemScenarios.includes(scenario) ? Math.min(best, index) : best;
+	}, Number.MAX_SAFE_INTEGER);
+	return matchedIndex === Number.MAX_SAFE_INTEGER ? preferredScenarios.length + 1 : matchedIndex;
+}
+
+function selectBestFingerprintCandidate(args: {
+	remaining: TestItem[];
+	targetMode: ItemMode | null;
+	preferredModes: ItemMode[];
+	preferredScenarios: ReturnType<typeof getPreferredScenarioPatterns>;
+	targetBloom: BloomLevel;
+	targetDifficulty: TestItem["difficulty"];
+}) {
+	let bestIndex = -1;
+	let bestScore: [number, number, number, number, number, number, string] | null = null;
+	for (const [index, item] of args.remaining.entries()) {
+		const itemBloom = classifyBloomLevel(item.prompt);
+		const score: [number, number, number, number, number, number, string] = [
+			Math.abs(compareBloomLevels(itemBloom, args.targetBloom)),
+			targetModeRank(args.targetMode, item),
+			modePreferenceRank(args.preferredModes, item),
+			scenarioPreferenceRank(args.preferredScenarios, item),
+			Math.abs(DIFFICULTY_SCORE[item.difficulty] - DIFFICULTY_SCORE[args.targetDifficulty]),
+			inferAssessmentPromptStage(item.prompt),
+			item.prompt,
+		];
+		if (!bestScore) {
+			bestIndex = index;
+			bestScore = score;
+			continue;
+		}
+		for (let scoreIndex = 0; scoreIndex < score.length; scoreIndex += 1) {
+			if (score[scoreIndex] === bestScore[scoreIndex]) {
+				continue;
+			}
+			if (score[scoreIndex] < bestScore[scoreIndex]) {
+				bestIndex = index;
+				bestScore = score;
+			}
+			break;
+		}
+	}
+	return bestIndex;
 }
 
 function rewritePromptNumberLiteral(value: string, occurrence: number) {
@@ -365,20 +738,42 @@ function selectFingerprintItemsForConcept(context: BuilderContext<"build-test">,
 	}
 	const remaining = [...items];
 	const selected: TestItem[] = [];
-	const requestedBloomCounts = deriveRequestedBloomCounts(profile, requestedCount);
-	for (const level of Object.keys(requestedBloomCounts) as BloomLevel[]) {
-		let needed = requestedBloomCounts[level] ?? 0;
-		while (needed > 0 && remaining.length > 0) {
-			const matchIndex = remaining.findIndex((item) => classifyBloomLevel(item.prompt) === level);
-			if (matchIndex < 0) {
-				break;
-			}
-			selected.push(applyScenarioDirectiveToItem(remaining.splice(matchIndex, 1)[0]!, profile.scenarioDirective));
-			needed -= 1;
+	const sequencePlan = buildFingerprintSequencePlan(context, profile, requestedCount);
+	for (const slot of sequencePlan) {
+		if (remaining.length === 0) {
+			break;
 		}
+		const matchIndex = selectBestFingerprintCandidate({
+			remaining,
+			targetMode: slot.targetMode,
+			preferredModes: slot.preferredModes,
+			preferredScenarios: slot.preferredScenarios,
+			targetBloom: slot.targetBloom,
+			targetDifficulty: slot.targetDifficulty,
+		});
+		if (matchIndex < 0) {
+			break;
+		}
+		selected.push(applyScenarioDirectiveToItem(shapeSelectedDifficulty(remaining.splice(matchIndex, 1)[0]!, slot.targetDifficulty), profile.scenarioDirective));
 	}
 	while (selected.length < requestedCount && remaining.length > 0) {
-		selected.push(applyScenarioDirectiveToItem(remaining.shift()!, profile.scenarioDirective));
+		const slot = sequencePlan[selected.length] ?? {
+			targetBloom: profile.maxBloomLevel,
+			targetMode: null,
+			targetDifficulty: inferTargetDifficulty(profile.maxBloomLevel, selected.length, requestedCount),
+			preferredModes: getPreferredItemModes(context, profile),
+			preferredScenarios: getPreferredScenarioPatterns(context, profile),
+		};
+		const matchIndex = selectBestFingerprintCandidate({
+			remaining,
+			targetMode: slot.targetMode,
+			preferredModes: slot.preferredModes,
+			preferredScenarios: slot.preferredScenarios,
+			targetBloom: slot.targetBloom,
+			targetDifficulty: slot.targetDifficulty,
+		});
+		const next = matchIndex >= 0 ? remaining.splice(matchIndex, 1)[0]! : remaining.shift()!;
+		selected.push(applyScenarioDirectiveToItem(shapeSelectedDifficulty(next, slot.targetDifficulty), profile.scenarioDirective));
 	}
 	return selected;
 }
@@ -1236,17 +1631,12 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 	if (allItems.length === 0) {
 		return buildFallbackTestSections(context, focus, itemCount, orderedConceptNames.length > 0 ? orderedConceptNames : focus ? [focus] : []);
 	}
-	// Sort deterministically: concept → difficulty → prompt
-		allItems.sort((a, b) => {
-				const c = conceptSortOrder(a.concept) - conceptSortOrder(b.concept) || a.concept.localeCompare(b.concept);
-			if (c !== 0) return c;
-				const s = inferAssessmentPromptStage(a.prompt) - inferAssessmentPromptStage(b.prompt);
-				if (s !== 0) return s;
-			const d = DIFFICULTY_SCORE[a.difficulty] - DIFFICULTY_SCORE[b.difficulty];
-			if (d !== 0) return d;
-			return a.prompt.localeCompare(b.prompt);
-		});
-	const limited = allItems.slice(0, itemCount);
+	const conceptOrder = new Map(sortAssessmentConceptNames(context, orderedConceptNames).map((concept, index) => [concept, index]));
+	const limited = allItems
+		.map((item, index) => ({ item, index }))
+		.sort((left, right) => (conceptOrder.get(left.item.concept) ?? Number.MAX_SAFE_INTEGER) - (conceptOrder.get(right.item.concept) ?? Number.MAX_SAFE_INTEGER) || left.index - right.index)
+		.slice(0, itemCount)
+		.map((entry) => entry.item);
 
 	// Re-group by concept
 	const grouped = new Map<string, TestItem[]>();
@@ -2126,14 +2516,53 @@ function buildBuilderContext<T extends BuiltIntentType>(
 export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {
 	const teacherId = getStringOption(request.options, "teacherId");
 	const unitId = getStringOption(request.options, "unitId");
+	const conceptBlueprint = request.intentType === "build-test" ? getConceptBlueprintOption(request.options) : null;
 	const preferences = request.intentType === "build-test" && teacherId
 		? {
 			teacherFingerprint: await getTeacherFingerprint(teacherId),
 			unitFingerprint: unitId ? await getUnitFingerprint(teacherId, unitId) : null,
 		}
 		: undefined;
-	const context = buildBuilderContext(request, prismSessionContext, preferences);
-	const payload = cleanupProductPayload(BUILDERS[request.intentType](context as BuilderContext<T>)) as IntentPayloadByType[T];
+	const initialRequest = request.intentType === "build-test" && conceptBlueprint
+		? withItemCountOverride(request, estimateBlueprintSeedItemCount(request.options, conceptBlueprint.edits))
+		: request;
+	const initialContext = buildBuilderContext(initialRequest, prismSessionContext, preferences);
+	let payload = cleanupProductPayload(BUILDERS[request.intentType](initialContext as BuilderContext<T>)) as IntentPayloadByType[T];
+
+	if (request.intentType === "build-test" && conceptBlueprint) {
+		const assessmentId = conceptBlueprint.assessmentId ?? getStringOption(request.options, "assessmentId") ?? `${request.sessionId}-concept-blueprint`;
+		const previewTeacherId = teacherId ?? conceptBlueprint.teacherId ?? "concept-blueprint-preview";
+		const previewUnitId = unitId ?? conceptBlueprint.unitId ?? undefined;
+		const previewAssessment = applyAssessmentFingerprintEdits({
+			assessment: buildAssessmentFingerprint({
+				teacherId: previewTeacherId,
+				assessmentId,
+				unitId: previewUnitId,
+				product: payload as TestProduct,
+				sourceType: "generated",
+			}),
+			edits: conceptBlueprint.edits,
+		});
+		const effectivePreferences = {
+			teacherFingerprint: mergeAssessmentIntoTeacherFingerprint({
+				previous: preferences?.teacherFingerprint ?? null,
+				assessment: previewAssessment,
+				alpha: 1,
+				now: previewAssessment.lastUpdated,
+			}),
+			unitFingerprint: previewUnitId || preferences?.unitFingerprint
+				? mergeAssessmentIntoUnitFingerprint({
+					previous: preferences?.unitFingerprint ?? null,
+					assessment: previewAssessment,
+					alpha: 1,
+					now: previewAssessment.lastUpdated,
+				})
+				: null,
+		};
+		const finalContext = buildBuilderContext(request, prismSessionContext, effectivePreferences);
+		payload = cleanupProductPayload(BUILDERS[request.intentType](finalContext as BuilderContext<T>)) as IntentPayloadByType[T];
+	}
+
 	if (request.intentType === "build-test" && teacherId) {
 		const assessmentId = getStringOption(request.options, "assessmentId") ?? `${request.sessionId}-generated-assessment`;
 		await saveAssessmentFingerprint(buildAssessmentFingerprint({

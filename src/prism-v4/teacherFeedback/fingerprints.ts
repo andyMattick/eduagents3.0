@@ -1,4 +1,4 @@
-import type { ExtractedProblemCognitiveDemand, TestProduct } from "../schema/integration/IntentProduct";
+import type { ExtractedProblemCognitiveDemand, TestItem, TestItemExplanation, TestProduct } from "../schema/integration/IntentProduct";
 
 export type BloomLevel =
 	| "remember"
@@ -101,6 +101,7 @@ export interface AssessmentFingerprintEdits {
 	addConcepts?: AssessmentFingerprintConceptInput[];
 	mergeConcepts?: AssessmentFingerprintMergeInput[];
 	itemCountOverrides?: Record<string, number>;
+	bloomDistributions?: Record<string, Partial<Record<BloomLevel, number>>>;
 	bloomCeilings?: Record<string, BloomLevel>;
 	bloomLevelAppends?: Record<string, BloomLevel[]>;
 	scenarioOverrides?: Record<string, ScenarioType[]>;
@@ -115,6 +116,11 @@ export interface FingerprintAlignmentExplanation {
 	bloomReason: string;
 	scenarioReason: string;
 	flowReason: string;
+}
+
+export interface TestProductItemAlignmentExplanation {
+	itemId: string;
+	explanation: TestItemExplanation;
 }
 
 const BLOOM_LEVELS: BloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
@@ -635,6 +641,26 @@ export function applyAssessmentFingerprintEdits(args: {
 		profiles.set(canonical, existing);
 	}
 
+	for (const [conceptId, override] of Object.entries(edits.bloomDistributions ?? {})) {
+		const canonical = canonicalConceptId(conceptId);
+		const existing = profiles.get(canonical) ?? createDefaultConceptProfile({ displayName: conceptId, conceptId: canonical });
+		const counts = createEmptyBloomDistribution();
+		let hasAnyLevel = false;
+		for (const level of BLOOM_LEVELS) {
+			const value = override[level];
+			if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+				counts[level] = value;
+				hasAnyLevel = true;
+			}
+		}
+		if (!hasAnyLevel) {
+			continue;
+		}
+		existing.bloomDistribution = normalizeDistribution(counts);
+		existing.maxBloomLevel = highestBloomLevel(existing.bloomDistribution);
+		profiles.set(canonical, existing);
+	}
+
 	for (const [conceptId, maxBloomLevel] of Object.entries(edits.bloomCeilings ?? {})) {
 		const canonical = canonicalConceptId(conceptId);
 		const existing = profiles.get(canonical) ?? createDefaultConceptProfile({ displayName: conceptId, conceptId: canonical, maxBloomLevel });
@@ -728,4 +754,63 @@ export function explainFingerprintAlignment(args: {
 		scenarioReason,
 		flowReason,
 	};
+}
+
+function explainEffectiveBloomLevel(item: TestItem) {
+	const promptLevel = classifyBloomLevel(item.prompt);
+	const demandLevel = bloomFromCognitiveDemand(item.cognitiveDemand);
+	return compareBloomLevels(promptLevel, demandLevel) >= 0 ? promptLevel : demandLevel;
+}
+
+export function explainTestItemAlignment(args: {
+	product: TestProduct;
+	teacherFingerprint: TeacherFingerprint;
+	unitFingerprint?: UnitFingerprint | null;
+}): TestProductItemAlignmentExplanation[] {
+	const sourceProfiles = args.unitFingerprint?.conceptProfiles ?? args.teacherFingerprint.globalConceptProfiles;
+	return args.product.sections.flatMap((section) => {
+		const conceptId = canonicalConceptId(section.concept);
+		const profile = sourceProfiles.find((entry) => entry.conceptId === conceptId);
+		const preferredScenarios = profile?.scenarioPatterns.length ? profile.scenarioPatterns : args.teacherFingerprint.defaultScenarioPreferences;
+		const preferredModes = profile?.itemModes.length ? profile.itemModes : args.teacherFingerprint.defaultItemModes;
+		const requestedCount = profile?.absoluteItemHint ?? section.items.length;
+
+		return section.items.map((item, index) => {
+			const bloomLevel = explainEffectiveBloomLevel(item);
+			const scenarioTypes = classifyScenarioTypes(item.prompt);
+			const itemModes = classifyItemModes(item.prompt);
+			const conceptReason = profile
+				? `${profile.displayName} appears here because the blueprint targets about ${requestedCount} item${requestedCount === 1 ? "" : "s"} for this concept.`
+				: `${section.concept} appears here because it remains part of the fingerprint-conditioned assessment coverage.`;
+			const bloomReason = profile
+				? `${bloomLevel} was selected because ${profile.displayName} tops out at ${profile.maxBloomLevel} and the stored distribution emphasizes ${Object.entries(profile.bloomDistribution).filter(([, weight]) => weight > 0).map(([level]) => level).join(", ")}.`
+				: `${bloomLevel} was inferred from the prompt and cognitive demand for this item.`;
+			const scenarioReason = preferredScenarios.length > 0
+				? `${scenarioTypes.join(", ") || "abstract-symbolic"} was kept because the fingerprint prefers ${preferredScenarios.join(", ")} scenarios for this concept.`
+				: `${scenarioTypes.join(", ") || "abstract-symbolic"} was inferred directly from the prompt context.`;
+			const itemModeReason = preferredModes.length > 0
+				? `${itemModes.join(", ")} fits the fingerprint preference for ${preferredModes.join(", ")} on ${profile?.displayName ?? section.concept}.`
+				: `${itemModes.join(", ")} was inferred from the verbs and structure of the prompt.`;
+			return {
+				itemId: item.itemId,
+				explanation: {
+					conceptId,
+					conceptReason,
+					bloomLevel,
+					bloomReason,
+					scenarioTypes,
+					scenarioReason,
+					itemModes,
+					itemModeReason,
+					narrative: [
+						conceptReason,
+						bloomReason,
+						scenarioReason,
+						itemModeReason,
+						`This is item ${index + 1} in the ${section.concept} section.`,
+					].join(" "),
+				},
+			};
+		});
+	});
 }
