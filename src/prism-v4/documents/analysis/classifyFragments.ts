@@ -4,8 +4,13 @@ function unique<T>(values: T[]) {
 	return [...new Set(values)];
 }
 
+function normalizeConceptName(value: string) {
+	return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern: RegExp }>> = {
 	algebra: [
+		{ concept: "algebra", pattern: /\balgebra\b/ },
 		{ concept: "linear equations", pattern: /\blinear equation(s)?\b/ },
 		{ concept: "slope", pattern: /\bslope\b/ },
 		{ concept: "y-intercept", pattern: /\by[- ]intercept\b/ },
@@ -23,6 +28,9 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "solving for x", pattern: /\bsolv(e|ing) for x\b/ },
 		{ concept: "equation solving", pattern: /\bequation(s)?\b|\binverse operation(s)?\b/ },
 		{ concept: "isolate variable", pattern: /\bisolate (the )?variable\b|\bsolve for the variable\b/ },
+		{ concept: "ratios", pattern: /\bratio(s)?\b/ },
+		{ concept: "decimal operations", pattern: /\bdecimal(s)?\b|\b0\.\d+/ },
+		{ concept: "operations", pattern: /\boperation(s)?\b|\badd\b|\bsubtract\b|\bmultiply\b|\bdivide\b/ },
 	],
 	geometry: [
 		{ concept: "angles", pattern: /\bangle(s)?\b/ },
@@ -42,6 +50,7 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "proofs", pattern: /\bproof(s)?\b/ },
 	],
 	biology: [
+		{ concept: "cells", pattern: /\bcell(s)?\b/ },
 		{ concept: "photosynthesis", pattern: /\bphotosynthesis\b/ },
 		{ concept: "cellular respiration", pattern: /\bcellular respiration\b/ },
 		{ concept: "chloroplast", pattern: /\bchloroplast(s)?\b/ },
@@ -55,8 +64,14 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "ecosystems", pattern: /\becosystem(s)?\b/ },
 		{ concept: "food chains", pattern: /\bfood chain(s)?\b/ },
 		{ concept: "producers and consumers", pattern: /\bproducer(s)?\b|\bconsumer(s)?\b/ },
+		{ concept: "decomposers", pattern: /\bdecomposer(s)?\b/ },
 		{ concept: "energy transfer", pattern: /\benergy transfer\b/ },
 		{ concept: "homeostasis", pattern: /\bhomeostasis\b/ },
+	],
+	physics: [
+		{ concept: "forces and motion", pattern: /\bforce(s)?\b|\bmotion\b/ },
+		{ concept: "gravity", pattern: /\bgravity\b/ },
+		{ concept: "speed and velocity", pattern: /\bspeed\b|\bvelocity\b/ },
 	],
 	earth_science: [
 		{ concept: "water cycle", pattern: /\bwater cycle\b/ },
@@ -107,6 +122,7 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "text evidence", pattern: /\btext evidence\b/ },
 	],
 	social_studies: [
+		{ concept: "government", pattern: /\bgovernment\b/ },
 		{ concept: "government branches", pattern: /\bbranch(es)? of government\b|\bgovernment branch(es)?\b/ },
 		{ concept: "constitution", pattern: /\bconstitution\b/ },
 		{ concept: "democracy", pattern: /\bdemocrac(y|ies)\b/ },
@@ -114,6 +130,7 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "supply and demand", pattern: /\bsupply and demand\b/ },
 		{ concept: "geography", pattern: /\bgeograph(y|ic)\b/ },
 		{ concept: "culture", pattern: /\bculture\b/ },
+		{ concept: "historical periods", pattern: /\bhistorical period(s)?\b|\bancient\b|\bmedieval\b|\bindustrial revolution\b/ },
 		{ concept: "historical events", pattern: /\bhistorical event(s)?\b|\bhistory\b/ },
 		{ concept: "primary sources", pattern: /\bprimary source(s)?\b/ },
 		{ concept: "secondary sources", pattern: /\bsecondary source(s)?\b/ },
@@ -155,7 +172,7 @@ function extractPrerequisiteConcepts(text: string) {
 	const lower = text.toLowerCase();
 	const concepts = CONCEPT_PATTERNS
 		.filter(({ pattern }) => pattern.test(lower))
-		.map(({ concept }) => concept);
+		.map(({ concept }) => normalizeConceptName(concept));
 	if (/review|before|prior|remember/.test(lower)) {
 		return unique(concepts.length > 0 ? concepts : [text.trim().slice(0, 48)]);
 	}

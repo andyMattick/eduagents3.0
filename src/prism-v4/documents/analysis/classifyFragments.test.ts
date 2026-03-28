@@ -44,21 +44,29 @@ describe("classifyFragments", () => {
 
 	it("extracts starter concepts across additional core subjects", () => {
 		const fragments = classifyFragments(buildDocument([
-			{ id: "node-1", nodeType: "paragraph", text: "Use slope and the y-intercept to graph the function and describe its rate of change." },
-			{ id: "node-2", nodeType: "paragraph", text: "Apply the Pythagorean theorem to triangles and justify the area of the polygon." },
-			{ id: "node-3", nodeType: "paragraph", text: "Explain the water cycle, including evaporation, condensation, and precipitation." },
-			{ id: "node-4", nodeType: "paragraph", text: "Describe how atoms form molecules during chemical reactions on the periodic table." },
-			{ id: "node-5", nodeType: "paragraph", text: "Find the main idea, support it with text evidence, and explain the author's purpose." },
-			{ id: "node-6", nodeType: "paragraph", text: "Compare democracy with the branches of government using primary sources and a timeline." },
+			{ id: "node-1", nodeType: "paragraph", text: "Use algebra to compare fractions, equivalent fractions, and decimal operations on a number line." },
+			{ id: "node-2", nodeType: "paragraph", text: "Use slope and the y-intercept to graph the function and describe its rate of change." },
+			{ id: "node-3", nodeType: "paragraph", text: "Apply the Pythagorean theorem to triangles and justify the area of the polygon." },
+			{ id: "node-4", nodeType: "paragraph", text: "Explain the water cycle, including evaporation, condensation, and precipitation." },
+			{ id: "node-5", nodeType: "paragraph", text: "Describe how atoms form molecules during chemical reactions on the periodic table." },
+			{ id: "node-6", nodeType: "paragraph", text: "Find the main idea, support it with text evidence, and explain the author's purpose." },
+			{ id: "node-7", nodeType: "paragraph", text: "Compare democracy with the branches of government using primary sources and a timeline." },
+			{ id: "node-8", nodeType: "paragraph", text: "Explain how cells in an ecosystem depend on producers, consumers, and decomposers." },
+			{ id: "node-9", nodeType: "paragraph", text: "Describe how geography, culture, and historical periods shape a society." },
 		]));
 
 		const concepts = [...new Set(fragments.flatMap((fragment) => fragment.prerequisiteConcepts ?? []))];
 		expect(concepts).toEqual(expect.arrayContaining([
+			"algebra",
+			"fractions",
+			"equivalent fractions",
+			"decimal operations",
+			"number line reasoning",
 			"slope",
 			"y-intercept",
 			"functions",
 			"rate of change",
-			"Pythagorean theorem",
+			"pythagorean theorem",
 			"triangles",
 			"area",
 			"polygons",
@@ -73,10 +81,18 @@ describe("classifyFragments", () => {
 			"main idea",
 			"text evidence",
 			"author's purpose",
+			"government",
 			"democracy",
 			"government branches",
 			"primary sources",
 			"timelines",
+			"cells",
+			"ecosystems",
+			"producers and consumers",
+			"decomposers",
+			"geography",
+			"culture",
+			"historical periods",
 		]));
 	});
 });

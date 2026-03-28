@@ -810,6 +810,167 @@ describe("buildIntentPayload", () => {
 		expect(test.sections[0]?.items[0]?.prompt).toContain("number line");
 	});
 
+	it("build-test generates fallback items when the requested focus is missing", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "notes.pdf",
+			concept: "fractions",
+			problemText: "Explain equivalent fractions with a visual model.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const fallbackContext = {
+			...context,
+			groupedUnits: [],
+		};
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 2, focus: "decimal operations" },
+		}, fallbackContext);
+
+		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
+		expect(test.totalItemCount).toBe(2);
+		expect(test.sections).toHaveLength(1);
+		expect(test.sections[0]?.concept).toBe("decimal operations");
+		expect(test.sections[0]?.items.every((item) => item.prompt.toLowerCase().includes("decimal operations"))).toBe(true);
+	});
+
+	it("build-test generates fallback items when no extracted problems remain", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "sparse-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildSparseAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "sparse-notes.pdf",
+			concept: "fractions",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const fallbackContext = {
+			...context,
+			groupedUnits: [],
+		};
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 2 },
+		}, fallbackContext);
+
+		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
+		expect(test.totalItemCount).toBe(2);
+		expect(test.sections).toHaveLength(1);
+		expect(test.sections[0]?.concept).toBe("fractions");
+		expect(new Set(test.sections[0]?.items.map((item) => item.prompt)).size).toBe(2);
+	});
+
+	it("build-test generates general fallback items for ambiguous-domain sessions", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "directions.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildSparseAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "directions.pdf",
+			concept: "warm-up",
+			minimalText: "Read the directions carefully before starting the task.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const fallbackContext = {
+			...context,
+			groupedUnits: [],
+		};
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 2 },
+		}, fallbackContext);
+
+		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("General Instruction");
+		expect(test.totalItemCount).toBe(2);
+		expect(test.sections).toHaveLength(1);
+		expect(test.sections[0]?.concept).toBe("warm-up");
+		expect(test.sections[0]?.items.every((item) => item.prompt.toLowerCase().includes("warm-up"))).toBe(true);
+	});
+
+	it("build-test slices deterministically across concepts when itemCount is smaller than total coverage", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "fractions.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "decimals.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "slope.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "fractions.pdf",
+			concept: "fractions",
+			problemText: "Explain equivalent fractions with an area model.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "decimals.pdf",
+			concept: "decimal operations",
+			problemText: "Compare decimal operations in a shopping example.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[2]!.documentId,
+			sourceFileName: "slope.pdf",
+			concept: "slope",
+			problemText: "Describe the slope of a line on a graph.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 2 },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		expect(test.kind).toBe("test");
+		expect(test.totalItemCount).toBe(2);
+		expect(test.sections.map((section) => section.concept)).toEqual(["decimal operations", "fractions"]);
+		expect(test.sections.flatMap((section) => section.items).length).toBe(2);
+	});
+
 	it("cleans duplicate test prompts before returning the built payload", async () => {
 		const registered = registerDocuments([
 			{ sourceFileName: "notes-a.pdf", sourceMimeType: "application/pdf" },

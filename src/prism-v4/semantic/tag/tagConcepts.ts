@@ -3,9 +3,17 @@ import { extractKeywords } from "../utils/textUtils";
 
 const CONCEPT_RULES: Array<{ terms: string[]; tag: string }> = [
   { terms: ["fraction", "fractions", "numerator", "denominator"], tag: "math.fractions" },
+  { terms: ["equivalent", "equivalent fractions"], tag: "math.equivalent-fractions" },
+  { terms: ["decimal", "decimals"], tag: "math.decimals" },
+  { terms: ["ratio", "ratios", "proportional"], tag: "math.ratios" },
+  { terms: ["equation", "equations", "algebra", "variable", "slope"], tag: "math.algebra" },
   { terms: ["infer", "inference", "evidence", "theme"], tag: "reading.inference" },
   { terms: ["area", "perimeter", "rectangle", "triangle"], tag: "math.geometry" },
+  { terms: ["ecosystem", "ecosystems", "producer", "consumer", "decomposer"], tag: "science.ecosystems" },
+  { terms: ["cell", "cells", "chloroplast", "photosynthesis"], tag: "science.cells" },
+  { terms: ["force", "forces", "motion"], tag: "science.forces" },
   { terms: ["experiment", "hypothesis", "variable"], tag: "science.inquiry" },
+  { terms: ["government", "culture", "timeline", "geography", "historical"], tag: "socialstudies.history" },
   { terms: ["source", "author", "document", "speech"], tag: "socialstudies.source-analysis" },
 ];
 

@@ -45,15 +45,16 @@ describe("PrintProductPage", () => {
         overview: "This draft assessment pulls 1 item from grouped instructional units.",
         estimatedDurationMinutes: 10,
         totalItemCount: 1,
+        debugRawFragments: ["RAW FRAGMENT TEXT SHOULD NOT APPEAR"],
         sections: [
           {
-            concept: "photosynthesis",
+            concept: "decimal operations",
             sourceDocumentIds: ["doc-1"],
             items: [
               {
                 itemId: "item-1",
                 prompt: "What organelle performs photosynthesis?",
-                concept: "photosynthesis",
+                concept: "decimal operations",
                 sourceDocumentId: "doc-1",
                 sourceFileName: "lesson-notes.docx",
                 difficulty: "medium",
@@ -83,11 +84,15 @@ describe("PrintProductPage", () => {
     expect(screen.getByText(/Life Science/)).toBeInTheDocument();
     expect(screen.getByText("Grade 7 • Mathematics")).toBeInTheDocument();
     expect(screen.getByText("What organelle performs photosynthesis?")).toBeInTheDocument();
+    expect(screen.getAllByText("What organelle performs photosynthesis?")).toHaveLength(1);
     expect(container.querySelector(".v4-print-product-test")).not.toBeNull();
     expect(screen.queryByText("Look for chloroplast.")).not.toBeInTheDocument();
+    expect(screen.queryByText("RAW FRAGMENT TEXT SHOULD NOT APPEAR")).not.toBeInTheDocument();
     expect(screen.getByText("Prepared from teacher documents.")).toBeInTheDocument();
+    expect(screen.getAllByText("Prepared from teacher documents.")).toHaveLength(1);
     expect(screen.getByText("Section 1")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Photosynthesis" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Decimal Operations" })).toBeInTheDocument();
+    expect(container.textContent).not.toContain("Assessment DraftAssessment Draft");
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Show answer guidance" }));
   expect(screen.getByText("Teacher Notes (Optional)")).toBeInTheDocument();

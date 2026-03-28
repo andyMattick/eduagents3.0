@@ -271,4 +271,127 @@ describe("intent utils", () => {
 
 		expect(domain).toBe("Mathematics");
 	});
+
+	it("inferDomainMerged infers life science from weighted concept and problem signals", () => {
+		const domain = inferDomainMerged(
+			{ ecosystems: ["doc-1"], cells: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["ecosystems", "cells"],
+					problemText: "Explain how cells in an ecosystem depend on producers and consumers.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Life Science");
+	});
+
+	it("inferDomainMerged keeps the dominant life science signal over a weaker math signal", () => {
+		const domain = inferDomainMerged(
+			{ ecosystems: ["doc-1", "doc-2"], producers: ["doc-1"], fractions: ["doc-3"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["ecosystems", "producers"],
+					problemText: "Explain how producers support an ecosystem.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+				buildAnalyzedDocument({
+					documentId: "doc-2",
+					concepts: ["ecosystems"],
+					problemText: "Describe how consumers and decomposers interact in an ecosystem.",
+					fragmentIdSuffix: "b",
+					problemIdSuffix: "b",
+				}),
+				buildAnalyzedDocument({
+					documentId: "doc-3",
+					concepts: ["fractions"],
+					problemText: "What is 1/2?",
+					fragmentIdSuffix: "c",
+					problemIdSuffix: "c",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Life Science");
+	});
+
+	it("inferDomainMerged detects social studies from humanities vocabulary", () => {
+		const domain = inferDomainMerged(
+			{ samurai: ["doc-1"], culture: ["doc-1"], geography: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["samurai", "culture", "geography"],
+					problemText: "Describe how samurai shaped feudal Japan and its social hierarchy.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Social Studies");
+	});
+
+	it("inferDomainMerged treats a single fraction problem as mathematics", () => {
+		const domain = inferDomainMerged(
+			{ fractions: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["fractions"],
+					problemText: "What is 1/2?",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Mathematics");
+	});
+
+	it("inferDomainMerged does not fall back to general instruction when any domain signal is present", () => {
+		const domain = inferDomainMerged(
+			{ government: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["government"],
+					problemText: "Explain how government structures decisions in a civics class example.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Social Studies");
+		expect(domain).not.toBe("General Instruction");
+	});
+
+	it("inferDomainMerged falls back to general instruction when all scores stay low", () => {
+		const domain = inferDomainMerged(
+			{},
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["warm-up"],
+					problemText: "Read the directions and complete the task.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("General Instruction");
+	});
 });

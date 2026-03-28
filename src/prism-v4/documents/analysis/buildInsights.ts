@@ -28,6 +28,12 @@ export function buildAnalyzedDocumentInsights(args: {
 
 	for (const fragment of args.fragments) {
 		representations.add(fragment.contentType);
+		for (const concept of fragment.prerequisiteConcepts ?? []) {
+			conceptFrequencies[concept] = (conceptFrequencies[concept] ?? 0) + 1;
+		}
+		for (const misconception of fragment.misconceptionTriggers ?? []) {
+			misconceptionThemes.add(misconception);
+		}
 	}
 
 	const instructionalCount = args.fragments.filter((fragment) => fragment.isInstructional).length;

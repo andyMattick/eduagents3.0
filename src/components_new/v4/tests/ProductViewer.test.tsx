@@ -48,4 +48,52 @@ describe("ProductViewer", () => {
     expect(screen.getByText(/General Instruction/)).toBeInTheDocument();
     expect(screen.getByText("Students are working on ecosystem interactions.")).toBeInTheDocument();
   });
+
+  it("renders test section headers in title case without exposing raw fragment text in print mode", () => {
+    const product = {
+      sessionId: "session-1",
+      intentType: "build-test",
+      documentIds: ["doc-1"],
+      productId: "product-test-1",
+      productType: "build-test",
+      schemaVersion: "wave3-v1",
+      payload: {
+        kind: "test",
+        focus: null,
+        domain: "Mathematics",
+        title: "Assessment Draft",
+        overview: "This draft assessment includes 1 item focused on Decimal Operations.",
+        estimatedDurationMinutes: 10,
+        totalItemCount: 1,
+        debugRawFragments: ["RAW FRAGMENT TEXT SHOULD NOT APPEAR"],
+        sections: [
+          {
+            concept: "decimal operations",
+            sourceDocumentIds: ["doc-1"],
+            items: [
+              {
+                itemId: "item-1",
+                prompt: "Compare the decimals 0.4 and 0.35.",
+                concept: "decimal operations",
+                sourceDocumentId: "doc-1",
+                sourceFileName: "decimals.pdf",
+                difficulty: "medium",
+                cognitiveDemand: "conceptual",
+                answerGuidance: "Look for place value reasoning.",
+              },
+            ],
+          },
+        ],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    } as IntentProduct;
+
+    render(<ProductViewer product={product} variant="print" />);
+
+    expect(screen.getByText("Section 1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Decimal Operations" })).toBeInTheDocument();
+    expect(screen.getAllByText(/Compare the decimals 0\.\s*4 and 0\.\s*35\./)).toHaveLength(1);
+    expect(screen.queryByText("RAW FRAGMENT TEXT SHOULD NOT APPEAR")).not.toBeInTheDocument();
+  });
 });

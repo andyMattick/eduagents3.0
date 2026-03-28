@@ -116,6 +116,113 @@ function matchesFocus(textParts: string[], focus: string | null) {
 	return textParts.some((value) => value.toLowerCase().includes(normalizedFocus));
 }
 
+function teacherFacingConceptLabel(value: string) {
+	return value
+		.replace(/[._-]+/g, " ")
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join(" ");
+}
+
+function inferFallbackConceptForDomain(domain: string | undefined, focus: string | null) {
+	if (focus) {
+		return focus;
+	}
+	if (domain === "Mathematics") {
+		return "problem solving";
+	}
+	if (domain === "Life Science") {
+		return "ecosystems";
+	}
+	if (domain === "Social Studies") {
+		return "historical understanding";
+	}
+	if (domain === "ELA") {
+		return "reading comprehension";
+	}
+	return "general understanding";
+}
+
+function buildFallbackPrompt(domain: string | undefined, concept: string, index: number) {
+	const normalizedConcept = concept.toLowerCase();
+	if (domain === "Life Science") {
+		return [
+			`Explain ${normalizedConcept} and give a concrete example from science.`,
+			`Describe how ${normalizedConcept} works in a real-world life science example.`,
+			`Use evidence from class learning to explain why ${normalizedConcept} matters.`,
+		][index % 3]!;
+	}
+	if (domain === "Mathematics") {
+		return [
+			`Create and solve a problem that uses ${normalizedConcept}. Show your reasoning.`,
+			`Explain how you would represent ${normalizedConcept} using words, numbers, or a model.`,
+			`Compare two examples involving ${normalizedConcept} and justify your thinking.`,
+		][index % 3]!;
+	}
+	if (domain === "Social Studies") {
+		return [
+			`Describe an example of ${normalizedConcept} and explain why it is important.`,
+			`Explain how ${normalizedConcept} connects to people, events, or decisions in history or civics.`,
+			`Use a specific example to show why ${normalizedConcept} matters in social studies.`,
+		][index % 3]!;
+	}
+	if (domain === "ELA") {
+		return [
+			`Write a short response that demonstrates your understanding of ${normalizedConcept}.`,
+			`Explain ${normalizedConcept} using evidence from a text or passage you have studied.`,
+			`Describe how a reader can show strong understanding of ${normalizedConcept}.`,
+		][index % 3]!;
+	}
+	return [
+		`Explain ${normalizedConcept} in your own words.`,
+		`Describe what ${normalizedConcept} means and give one clear example.`,
+		`Show your understanding of ${normalizedConcept} with a brief explanation.`,
+	][index % 3]!;
+}
+
+function buildFallbackTestSections(context: BuilderContext<"build-test">, focus: string | null, itemCount: number, conceptNames: string[] = []) {
+	const concepts = unique((conceptNames.length > 0 ? conceptNames : [inferFallbackConceptForDomain(context.domain, focus)]).map((concept) => concept.trim()).filter(Boolean));
+	const sourceDocumentId = context.analyzedDocuments[0]?.document.id ?? "unknown-document";
+	const sourceFileName = context.sourceFileNames[sourceDocumentId] ?? context.analyzedDocuments[0]?.document.sourceFileName ?? "Unknown source";
+	const items: TestItem[] = [];
+	const seenPrompts = new Set<string>();
+
+	for (let index = 0; index < itemCount; index += 1) {
+		const concept = concepts[index % concepts.length] ?? inferFallbackConceptForDomain(context.domain, focus);
+		const prompt = buildFallbackPrompt(context.domain, concept, index);
+		if (seenPrompts.has(prompt)) {
+			continue;
+		}
+		seenPrompts.add(prompt);
+		items.push({
+			itemId: `fallback-${sourceDocumentId}-${index + 1}`,
+			prompt,
+			concept,
+			sourceDocumentId,
+			sourceFileName,
+			difficulty: "medium",
+			cognitiveDemand: context.domain === "Mathematics" ? "procedural" : "conceptual",
+			answerGuidance: `Look for accurate reasoning about ${teacherFacingConceptLabel(concept)} and a concrete supporting example.`,
+		});
+	}
+
+	const grouped = new Map<string, TestItem[]>();
+	for (const item of items) {
+		const bucket = grouped.get(item.concept) ?? [];
+		bucket.push(item);
+		grouped.set(item.concept, bucket);
+	}
+
+	return [...grouped.entries()]
+		.map(([concept, groupedItems]) => ({
+			concept,
+			sourceDocumentIds: unique(groupedItems.map((item) => item.sourceDocumentId)),
+			items: groupedItems,
+		}))
+		.sort((left, right) => left.concept.localeCompare(right.concept));
+}
+
 function buildDocumentSummaries(analyzedDocuments: AnalyzedDocument[], sourceFileNames: Record<string, string>, unitEntries: InstructionalUnitEntry[] = []): ProductDocumentSummary[] {
 	const effectiveDocumentConceptMap = buildEffectiveDocumentConceptMap({ analyzedDocuments, sourceFileNames }, unitEntries);
 	return analyzedDocuments.map((analyzed) => ({
@@ -559,6 +666,9 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 		.filter((entry) => matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets], focus));
 	const unitEntries = groupedUnitEntries.length > 0 ? groupedUnitEntries : buildProblemBackedAssessmentEntries(context, focus);
 	const conceptEntries = buildConceptEntries(context, focus);
+	if (unitEntries.length === 0) {
+		return buildFallbackTestSections(context, focus, itemCount, focus ? [focus] : conceptEntries.map((entry) => entry.concept));
+	}
 	const conceptNames = conceptEntries.map((entry) => entry.concept);
 	const effectiveConceptNames = conceptNames.length > 0
 		? conceptNames
@@ -636,6 +746,9 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 	}
 
 	const allItems: TestItem[] = [...itemsByConcept.values()].flat();
+	if (allItems.length === 0) {
+		return buildFallbackTestSections(context, focus, itemCount, effectiveConceptNames.length > 0 ? effectiveConceptNames : focus ? [focus] : []);
+	}
 	// Sort deterministically: concept → difficulty → prompt
 		allItems.sort((a, b) => {
 			const c = a.concept.localeCompare(b.concept);
@@ -681,7 +794,7 @@ function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadB
 		domain: context.domain,
 		title: focus ? `Assessment Draft: ${focus}` : "Assessment Draft",
 		overview: totalItemCount > 0
-			? `This draft assessment pulls ${totalItemCount} items from grouped instructional units and organizes them by concept.`
+			? `This draft assessment includes ${totalItemCount} item${totalItemCount === 1 ? "" : "s"} focused on ${joinList(sections.map((section) => teacherFacingConceptLabel(section.concept)).slice(0, 3)) || "core concepts"}.`
 			: "No grouped instructional units were available to build an assessment draft.",
 		estimatedDurationMinutes: Math.max(5, totalItemCount * 3),
 		sections,
