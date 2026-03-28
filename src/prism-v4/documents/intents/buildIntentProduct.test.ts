@@ -514,6 +514,7 @@ describe("buildIntentPayload", () => {
 			intentType: "extract-problems",
 		}, context);
 		expect(extractProblems.kind).toBe("problem-extraction");
+		expect(extractProblems.domain).toBe("Mathematics");
 		expect(extractProblems.totalProblemCount).toBe(2);
 
 		const extractConcepts = await buildIntentPayload({
@@ -522,6 +523,7 @@ describe("buildIntentPayload", () => {
 			intentType: "extract-concepts",
 		}, context);
 		expect(extractConcepts.kind).toBe("concept-extraction");
+		expect(extractConcepts.domain).toBe("Mathematics");
 		expect(extractConcepts.concepts[0].concept).toBe("fractions");
 		expect(extractConcepts.concepts[0]?.sampleProblemTexts.length).toBeGreaterThan(0);
 
@@ -531,6 +533,7 @@ describe("buildIntentPayload", () => {
 			intentType: "summarize",
 		}, context);
 		expect(summary.kind).toBe("summary");
+		expect(summary.domain).toBe("Mathematics");
 		expect(summary.documents).toHaveLength(2);
 		expect(summary.overallSummary.toLowerCase()).toContain("fractions");
 		expect(summary.documents[0]?.keyConcepts).toContain("fractions");
@@ -541,6 +544,7 @@ describe("buildIntentPayload", () => {
 			intentType: "build-review",
 		}, context);
 		expect(review.kind).toBe("review");
+		expect(review.domain).toBe("Mathematics");
 		expect(review.sections.length).toBeGreaterThan(0);
 		expect(review.sections[0]?.concept).toBe("fractions");
 
@@ -551,6 +555,7 @@ describe("buildIntentPayload", () => {
 			options: { itemCount: 2 },
 		}, context);
 		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
 		expect(test.totalItemCount).toBe(2);
 
 		const compare = await buildIntentPayload({
@@ -559,6 +564,7 @@ describe("buildIntentPayload", () => {
 			intentType: "compare-documents",
 		}, context);
 		expect(compare.kind).toBe("compare-documents");
+		expect(compare.domain).toBe("Mathematics");
 		expect(compare.documents).toHaveLength(2);
 		expect(compare.documentSimilarity.length).toBeGreaterThan(0);
 		expect(compare.sharedConcepts).toContain("fractions");
@@ -569,6 +575,7 @@ describe("buildIntentPayload", () => {
 			intentType: "merge-documents",
 		}, context);
 		expect(merge.kind).toBe("merge-documents");
+		expect(merge.domain).toBe("Mathematics");
 		expect(merge.mergedInsights.totalDocuments).toBe(3);
 		expect(merge.mergedProblems.length).toBeGreaterThan(0);
 
@@ -578,6 +585,7 @@ describe("buildIntentPayload", () => {
 			intentType: "build-sequence",
 		}, context);
 		expect(sequence.kind).toBe("sequence");
+		expect(sequence.domain).toBe("Mathematics");
 		expect(sequence.recommendedOrder).toHaveLength(3);
 
 		const lesson = await buildIntentPayload({
@@ -586,6 +594,7 @@ describe("buildIntentPayload", () => {
 			intentType: "build-lesson",
 		}, context);
 		expect(lesson.kind).toBe("lesson");
+		expect(lesson.domain).toBe("Mathematics");
 		expect(lesson.learningObjectives.some((objective) => objective.toLowerCase().includes("fractions"))).toBe(true);
 		expect(lesson.conceptIntroduction.length).toBeGreaterThan(0);
 		expect(lesson.sourceAnchors).toHaveLength(1);
@@ -596,6 +605,7 @@ describe("buildIntentPayload", () => {
 			intentType: "build-unit",
 		}, context);
 		expect(unit.kind).toBe("unit");
+		expect(unit.domain).toBe("Mathematics");
 		expect(unit.lessonSequence).toHaveLength(3);
 		expect(unit.conceptMap.length).toBeGreaterThan(0);
 		expect(unit.misconceptionMap.length).toBeGreaterThan(0);
@@ -607,6 +617,7 @@ describe("buildIntentPayload", () => {
 			intentType: "build-instructional-map",
 		}, context);
 		expect(instructionalMap.kind).toBe("instructional-map");
+		expect(instructionalMap.domain).toBe("Mathematics");
 		expect(instructionalMap.documentConceptAlignment).toHaveLength(3);
 		expect(instructionalMap.problemConceptAlignment.length).toBeGreaterThan(0);
 
@@ -616,6 +627,7 @@ describe("buildIntentPayload", () => {
 			intentType: "curriculum-alignment",
 		}, context);
 		expect(alignment.kind).toBe("curriculum-alignment");
+		expect(alignment.domain).toBe("Mathematics");
 		expect(alignment.standardsCoverage.length).toBeGreaterThan(0);
 		expect(alignment.standardsCoverage.some((entry) => entry.concept === "fractions")).toBe(true);
 	});
@@ -646,6 +658,7 @@ describe("buildIntentPayload", () => {
 		}, context);
 
 		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
 		expect(test.totalItemCount).toBe(1);
 		expect(test.sections[0]?.items[0]?.prompt).toContain("equivalent");
 		expect(test.sections[0]?.items[0]?.answerGuidance.toLowerCase()).toContain("explain and apply fractions");
@@ -678,9 +691,123 @@ describe("buildIntentPayload", () => {
 		}, context);
 
 		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
 		expect(test.totalItemCount).toBe(1);
 		expect(test.sections[0]?.items[0]?.prompt).toContain("area model");
 		expect(test.sections[0]?.items[0]?.prompt).not.toContain("RAW PROBLEM TEXT SHOULD NOT BE USED");
+	});
+
+	it("build-test caps requested itemCount at the number of available items", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "single-problem.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "single-problem.pdf",
+			concept: "fractions",
+			problemText: "Explain why 2/4 is equivalent to 1/2.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 10 },
+		}, context);
+
+		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
+		expect(test.totalItemCount).toBe(1);
+		expect(test.totalItemCount).toBeLessThanOrEqual(10);
+	});
+
+	it("build-test returns only non-empty concept sections in deterministic order", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "fractions.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "slope.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "fractions.pdf",
+			concept: "fractions",
+			problemText: "Use a model to explain equivalent fractions.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "slope.pdf",
+			concept: "slope",
+			problemText: "Explain how slope changes on a graph.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 5 },
+		}, context);
+
+		const concepts = test.sections.map((section) => section.concept);
+		expect(test.kind).toBe("test");
+		expect(concepts).toEqual(["fractions", "slope"]);
+		expect(test.sections.every((section) => section.items.length > 0)).toBe(true);
+	});
+
+	it("build-test dedupes duplicate prompts across multi-document sessions when falling back to raw problems", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "notes-a.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "notes-b.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "notes-a.pdf",
+			concept: "fractions",
+			problemText: "Use a number line to explain 2/4 and 1/2.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "notes-b.pdf",
+			concept: "fractions",
+			problemText: "Use a number line to explain 2/4 and 1/2.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const duplicateContext = {
+			...context,
+			groupedUnits: [],
+		};
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 5 },
+		}, duplicateContext);
+
+		expect(test.kind).toBe("test");
+		expect(test.totalItemCount).toBe(1);
+		expect(test.sections).toHaveLength(1);
+		expect(test.sections[0]?.items).toHaveLength(1);
+		expect(test.sections[0]?.items[0]?.prompt).toContain("number line");
 	});
 
 	it("cleans duplicate test prompts before returning the built payload", async () => {
@@ -716,9 +843,11 @@ describe("buildIntentPayload", () => {
 		}, context);
 
 		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
 		expect(test.totalItemCount).toBe(1);
 		expect(test.sections).toHaveLength(1);
 		expect(test.sections[0]?.items).toHaveLength(1);
+		expect(new Set(test.sections.flatMap((section) => section.items.map((item) => item.prompt))).size).toBe(test.totalItemCount);
 	});
 
 	it("build-lesson uses intentional minimal-content fallbacks for sparse sources", async () => {
@@ -745,6 +874,7 @@ describe("buildIntentPayload", () => {
 		}, context);
 
 		expect(lesson.kind).toBe("lesson");
+		expect(lesson.domain).toBe("Mathematics");
 		expect(lesson.warmUp[0]?.title).toBe("Quick Check");
 		expect(lesson.conceptIntroduction.map((entry) => entry.title)).toEqual(["Key Idea 1", "Key Idea 2"]);
 		expect(lesson.guidedPractice[0]?.title).toBe("Worked Example 1");

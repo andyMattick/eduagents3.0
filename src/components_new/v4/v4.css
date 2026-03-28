@@ -52,6 +52,13 @@
   color: #433228;
 }
 
+.v4-viewer .v4-product-domain,
+.v4-viewer .v4-print-domain {
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  color: #433228;
+}
+
 .v4-viewer .v4-upload-form {
   display: grid;
   gap: 1rem;

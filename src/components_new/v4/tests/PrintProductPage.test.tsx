@@ -38,6 +38,7 @@ describe("PrintProductPage", () => {
       payload: {
         kind: "test",
         focus: null,
+        domain: "Life Science",
         title: "Assessment Draft",
         subject: "mathematics",
         gradeLevel: 7,
@@ -78,7 +79,9 @@ describe("PrintProductPage", () => {
     const { container } = render(<PrintProductPage />);
 
     expect((await screen.findAllByRole("heading", { name: "Assessment Draft" })).length).toBeGreaterThan(0);
-  expect(screen.getByText("Grade 7 • Mathematics")).toBeInTheDocument();
+    expect(screen.getByText("Domain:")).toBeInTheDocument();
+    expect(screen.getByText(/Life Science/)).toBeInTheDocument();
+    expect(screen.getByText("Grade 7 • Mathematics")).toBeInTheDocument();
     expect(screen.getByText("What organelle performs photosynthesis?")).toBeInTheDocument();
     expect(container.querySelector(".v4-print-product-test")).not.toBeNull();
     expect(screen.queryByText("Look for chloroplast.")).not.toBeInTheDocument();
@@ -109,6 +112,7 @@ describe("PrintProductPage", () => {
       payload: {
         kind: "test",
         focus: null,
+        domain: "Life Science",
         title: "Assessment Draft",
         overview: "This draft assessment pulls 1 item from grouped instructional units.",
         estimatedDurationMinutes: 10,

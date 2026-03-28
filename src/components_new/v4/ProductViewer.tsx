@@ -521,187 +521,200 @@ export function ProductViewer(props: ProductViewerProps) {
     return renderPrintProduct(payload, { showAnswerGuidance });
   }
 
-  if (payload.kind === "lesson") {
-    const scaffoldGroups = groupLessonScaffolds(payload.scaffolds);
-    const lessonSections: Array<{ label: string; segments: typeof payload.warmUp }> = [
-      { label: "Warm-up", segments: payload.warmUp },
-      { label: "Concept Introduction", segments: payload.conceptIntroduction },
-      { label: "Guided Practice", segments: payload.guidedPractice },
-      { label: "Independent Practice", segments: payload.independentPractice },
-      { label: "Exit Ticket", segments: payload.exitTicket },
-    ];
+  function renderAppProduct() {
+    if (payload.kind === "lesson") {
+      const scaffoldGroups = groupLessonScaffolds(payload.scaffolds);
+      const lessonSections: Array<{ label: string; segments: typeof payload.warmUp }> = [
+        { label: "Warm-up", segments: payload.warmUp },
+        { label: "Concept Introduction", segments: payload.conceptIntroduction },
+        { label: "Guided Practice", segments: payload.guidedPractice },
+        { label: "Independent Practice", segments: payload.independentPractice },
+        { label: "Exit Ticket", segments: payload.exitTicket },
+      ];
 
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card">
-          <h3>Learning Objectives</h3>
-          <ul>{payload.learningObjectives.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card">
+            <h3>Learning Objectives</h3>
+            <ul>{payload.learningObjectives.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Prerequisites</h3>
+            <ul>{payload.prerequisiteConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+          <div className="v4-product-card v4-product-span">
+            <h3>Lesson Flow</h3>
+            <div className="v4-segment-grid">
+              {lessonSections.map((section) => (
+                <div key={section.label} className="v4-segment-column">
+                  <h4>{section.label}</h4>
+                  {section.segments.map((segment) => (
+                    <div key={segment.title} className="v4-segment-card">
+                      <strong>{segment.title}</strong>
+                      <p>{segment.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="v4-product-card">
+            <h3>Misconceptions</h3>
+            <ul>{payload.misconceptions.map((entry) => <li key={entry.trigger}>{entry.trigger}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Scaffolds</h3>
+            {[...scaffoldGroups.entries()].map(([concept, entries]) => (
+              <div key={concept}>
+                <strong>{concept}</strong>
+                <ul>{entries.map((entry) => <li key={`${entry.concept}-${entry.level}-${entry.strategy}`}>{entry.strategy}</li>)}</ul>
+              </div>
+            ))}
+          </div>
+          <div className="v4-product-card">
+            <h3>Teacher Notes</h3>
+            <ul>{payload.teacherNotes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
         </div>
-        <div className="v4-product-card">
-          <h3>Prerequisites</h3>
-          <ul>{payload.prerequisiteConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+      );
+    }
+
+    if (payload.kind === "unit") {
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card v4-product-span">
+            <h3>Lesson Sequence</h3>
+            <ol>{payload.lessonSequence.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.rationale}</li>)}</ol>
+          </div>
+          <div className="v4-product-card">
+            <h3>Concept Map</h3>
+            <ul>{payload.conceptMap.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Assessments</h3>
+            <ul>{payload.suggestedAssessments.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
         </div>
-        <div className="v4-product-card v4-product-span">
-          <h3>Lesson Flow</h3>
-          <div className="v4-segment-grid">
-            {lessonSections.map((section) => (
-              <div key={section.label} className="v4-segment-column">
-                <h4>{section.label}</h4>
-                {section.segments.map((segment) => (
-                  <div key={segment.title} className="v4-segment-card">
-                    <strong>{segment.title}</strong>
-                    <p>{segment.description}</p>
-                  </div>
-                ))}
+      );
+    }
+
+    if (payload.kind === "instructional-map") {
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card">
+            <h3>Concept Graph</h3>
+            <p>{payload.conceptGraph.nodes.length} nodes, {payload.conceptGraph.edges.length} edges</p>
+            <ul>{payload.conceptGraph.nodes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Representation Graph</h3>
+            <p>{payload.representationGraph.nodes.length} nodes, {payload.representationGraph.edges.length} edges</p>
+          </div>
+          <div className="v4-product-card v4-product-span">
+            <h3>Document Alignment</h3>
+            <ul>{payload.documentConceptAlignment.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.concepts.join(", ") || "No concepts extracted"}</li>)}</ul>
+          </div>
+          {sessionId && onInstructionalMapRefresh ? <InstructionalMapConceptEditor sessionId={sessionId} product={payload} onRefresh={onInstructionalMapRefresh} /> : null}
+        </div>
+      );
+    }
+
+    if (payload.kind === "curriculum-alignment") {
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card v4-product-span">
+            <h3>Standards Coverage</h3>
+            <ul>{payload.standardsCoverage.map((entry) => <li key={entry.standardId}>{entry.standardId}: {entry.coverage}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Gaps</h3>
+            <ul>{payload.gaps.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Suggested Fixes</h3>
+            <ul>{payload.suggestedFixes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+        </div>
+      );
+    }
+
+    if (payload.kind === "compare-documents") {
+      return <div className="v4-product-card"><h3>Shared Concepts</h3><ul>{payload.sharedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
+    }
+
+    if (payload.kind === "merge-documents") {
+      return <div className="v4-product-card"><h3>Merged Concepts</h3><ul>{payload.mergedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
+    }
+
+    if (payload.kind === "sequence") {
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card v4-product-span">
+            <h3>Recommended Order</h3>
+            <ol>
+              {payload.recommendedOrder.map((entry) => (
+                <li key={entry.documentId}>
+                  <strong>{entry.sourceFileName}</strong>: {entry.rationale}
+                </li>
+              ))}
+            </ol>
+          </div>
+          <div className="v4-product-card">
+            <h3>Bridging Concepts</h3>
+            <ul>{payload.bridgingConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+          <div className="v4-product-card">
+            <h3>Missing Prerequisites</h3>
+            <ul>{payload.missingPrerequisites.map((entry) => <li key={entry}>{entry}</li>)}</ul>
+          </div>
+        </div>
+      );
+    }
+
+    if (payload.kind === "review") {
+      return <div className="v4-product-card"><h3>Review Sections</h3><ul>{payload.sections.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
+    }
+
+    if (payload.kind === "test") {
+      return (
+        <div className="v4-product-grid">
+          <div className="v4-product-card v4-product-span">
+            <h3>Assessment Sections</h3>
+            <p>{payload.overview}</p>
+            {payload.sections.map((entry) => (
+              <div key={entry.concept} className="v4-segment-card">
+                <strong>{entry.concept}</strong>
+                <ul>{entry.items.map((item) => <li key={item.itemId}>{item.prompt}</li>)}</ul>
               </div>
             ))}
           </div>
         </div>
-        <div className="v4-product-card">
-          <h3>Misconceptions</h3>
-          <ul>{payload.misconceptions.map((entry) => <li key={entry.trigger}>{entry.trigger}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Scaffolds</h3>
-          {[...scaffoldGroups.entries()].map(([concept, entries]) => (
-            <div key={concept}>
-              <strong>{concept}</strong>
-              <ul>{entries.map((entry) => <li key={`${entry.concept}-${entry.level}-${entry.strategy}`}>{entry.strategy}</li>)}</ul>
-            </div>
-          ))}
-        </div>
-        <div className="v4-product-card">
-          <h3>Teacher Notes</h3>
-          <ul>{payload.teacherNotes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
+      );
+    }
+
+    if (payload.kind === "problem-extraction") {
+      return <div className="v4-product-card"><h3>Problems</h3><ul>{payload.problems.map((entry) => <li key={entry.problemId}>{entry.text}</li>)}</ul></div>;
+    }
+
+    if (payload.kind === "concept-extraction") {
+      return <div className="v4-product-card"><h3>Concepts</h3><ul>{payload.concepts.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
+    }
+
+    if (payload.kind === "summary") {
+      return <div className="v4-product-card"><h3>Summary</h3><p>{payload.overallSummary}</p></div>;
+    }
+
+    return <pre className="v4-debug-block">{JSON.stringify(payload, null, 2)}</pre>;
   }
 
-  if (payload.kind === "unit") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Lesson Sequence</h3>
-          <ol>{payload.lessonSequence.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.rationale}</li>)}</ol>
+  return (
+    <>
+      {payload.domain ? (
+        <div className="v4-product-domain">
+          <strong>Domain:</strong> {payload.domain}
         </div>
-        <div className="v4-product-card">
-          <h3>Concept Map</h3>
-          <ul>{payload.conceptMap.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Assessments</h3>
-          <ul>{payload.suggestedAssessments.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "instructional-map") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card">
-          <h3>Concept Graph</h3>
-          <p>{payload.conceptGraph.nodes.length} nodes, {payload.conceptGraph.edges.length} edges</p>
-          <ul>{payload.conceptGraph.nodes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Representation Graph</h3>
-          <p>{payload.representationGraph.nodes.length} nodes, {payload.representationGraph.edges.length} edges</p>
-        </div>
-        <div className="v4-product-card v4-product-span">
-          <h3>Document Alignment</h3>
-          <ul>{payload.documentConceptAlignment.map((entry) => <li key={entry.documentId}>{entry.sourceFileName}: {entry.concepts.join(", ") || "No concepts extracted"}</li>)}</ul>
-        </div>
-        {sessionId && onInstructionalMapRefresh ? <InstructionalMapConceptEditor sessionId={sessionId} product={payload} onRefresh={onInstructionalMapRefresh} /> : null}
-      </div>
-    );
-  }
-
-  if (payload.kind === "curriculum-alignment") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Standards Coverage</h3>
-          <ul>{payload.standardsCoverage.map((entry) => <li key={entry.standardId}>{entry.standardId}: {entry.coverage}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Gaps</h3>
-          <ul>{payload.gaps.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Suggested Fixes</h3>
-          <ul>{payload.suggestedFixes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "compare-documents") {
-    return <div className="v4-product-card"><h3>Shared Concepts</h3><ul>{payload.sharedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "merge-documents") {
-    return <div className="v4-product-card"><h3>Merged Concepts</h3><ul>{payload.mergedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "sequence") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Recommended Order</h3>
-          <ol>
-            {payload.recommendedOrder.map((entry) => (
-              <li key={entry.documentId}>
-                <strong>{entry.sourceFileName}</strong>: {entry.rationale}
-              </li>
-            ))}
-          </ol>
-        </div>
-        <div className="v4-product-card">
-          <h3>Bridging Concepts</h3>
-          <ul>{payload.bridgingConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-        <div className="v4-product-card">
-          <h3>Missing Prerequisites</h3>
-          <ul>{payload.missingPrerequisites.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "review") {
-    return <div className="v4-product-card"><h3>Review Sections</h3><ul>{payload.sections.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "test") {
-    return (
-      <div className="v4-product-grid">
-        <div className="v4-product-card v4-product-span">
-          <h3>Assessment Sections</h3>
-          <p>{payload.overview}</p>
-          {payload.sections.map((entry) => (
-            <div key={entry.concept} className="v4-segment-card">
-              <strong>{entry.concept}</strong>
-              <ul>{entry.items.map((item) => <li key={item.itemId}>{item.prompt}</li>)}</ul>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (payload.kind === "problem-extraction") {
-    return <div className="v4-product-card"><h3>Problems</h3><ul>{payload.problems.map((entry) => <li key={entry.problemId}>{entry.text}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "concept-extraction") {
-    return <div className="v4-product-card"><h3>Concepts</h3><ul>{payload.concepts.map((entry) => <li key={entry.concept}>{entry.concept}</li>)}</ul></div>;
-  }
-
-  if (payload.kind === "summary") {
-    return <div className="v4-product-card"><h3>Summary</h3><p>{payload.overallSummary}</p></div>;
-  }
-
-  return <pre className="v4-debug-block">{JSON.stringify(payload, null, 2)}</pre>;
+      ) : null}
+      {renderAppProduct()}
+    </>
+  );
 }

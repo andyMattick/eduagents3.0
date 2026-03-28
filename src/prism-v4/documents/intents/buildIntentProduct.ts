@@ -1,3 +1,5 @@
+import { inferDomainMerged } from "./utils/inferDomain";
+import { mergeAnalyzedDocuments, mergeCollectionAnalysis, mergeInstructionalUnits } from "./utils/mergeSessionData";
 import { cleanupProductPayload, dedupeLines, dedupeParagraphs } from "./cleanupProductPayload";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../../schema/semantic";
 import type {
@@ -37,6 +39,8 @@ interface BuilderContext<T extends BuiltIntentType> {
 	collectionAnalysis: DocumentCollectionAnalysis;
 	sourceFileNames: Record<string, string>;
 	documentSummaries: ProductDocumentSummary[];
+	domain?: string;
+	requestedItemCount?: number;
 }
 
 interface InstructionalUnitEntry {
@@ -372,6 +376,7 @@ function buildExtractProblemsProduct(context: BuilderContext<"extract-problems">
 	return {
 		kind: "problem-extraction",
 		focus,
+		domain: context.domain,
 		totalProblemCount: problems.length,
 		documents: context.documentSummaries,
 		problems,
@@ -388,6 +393,7 @@ function buildExtractConceptsProduct(context: BuilderContext<"extract-concepts">
 	return {
 		kind: "concept-extraction",
 		focus,
+		domain: context.domain,
 		totalConceptCount: concepts.length,
 		coverageSummary: {
 			totalConcepts: Object.keys(effectiveConceptToDocumentMap).length,
@@ -411,6 +417,7 @@ function buildSummaryProduct(context: BuilderContext<"summarize">): IntentPayloa
 	return {
 		kind: "summary",
 		focus,
+		domain: context.domain,
 		overallSummary: topConcepts.length > 0
 			? `Selected documents emphasize ${joinList(topConcepts)} and contain ${context.analyzedDocuments.reduce((sum, analyzed) => sum + analyzed.problems.length, 0)} extracted problems across the session.`
 			: "Selected documents have been analyzed, but there is not enough problem structure yet to produce a concept-led summary.",
@@ -475,6 +482,7 @@ function buildReviewProduct(context: BuilderContext<"build-review">): IntentPayl
 	return {
 		kind: "review",
 		focus,
+		domain: context.domain,
 		title: conceptLabels.length > 0 ? `Review Pack: ${joinList(conceptLabels.slice(0, 3))}` : "Review Pack",
 		overview: sections.length > 0
 			? `This review plan targets ${sections.length} concept areas using the analyzed source documents, with emphasis on concepts that need reinforcement across the set.`
@@ -555,6 +563,8 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 	const effectiveConceptNames = conceptNames.length > 0
 		? conceptNames
 		: unique(unitEntries.flatMap((entry) => entry.unit.concepts.length > 0 ? entry.unit.concepts : ["general"]));
+		effectiveConceptNames.sort((a, b) => a.localeCompare(b));
+
 	const itemsByConcept = new Map<string, TestItem[]>();
 	const emittedPromptKeys = new Set<string>();
 	let emitted = 0;
@@ -625,22 +635,50 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 		}
 	}
 
-	return [...itemsByConcept.entries()].map(([concept, items]) => ({
-		concept,
-		sourceDocumentIds: unique(items.map((item) => item.sourceDocumentId)),
-		items,
-	}));
+	const allItems: TestItem[] = [...itemsByConcept.values()].flat();
+	// Sort deterministically: concept → difficulty → prompt
+		allItems.sort((a, b) => {
+			const c = a.concept.localeCompare(b.concept);
+			if (c !== 0) return c;
+			const d = DIFFICULTY_SCORE[a.difficulty] - DIFFICULTY_SCORE[b.difficulty];
+			if (d !== 0) return d;
+			return a.prompt.localeCompare(b.prompt);
+		});
+	const limited = allItems.slice(0, itemCount);
+
+	// Re-group by concept
+	const grouped = new Map<string, TestItem[]>();
+		for (const item of limited) {
+			const list = grouped.get(item.concept) ?? [];
+			list.push(item);
+			grouped.set(item.concept, list);
+		}
+	
+	// Remove empty concept sections (should not happen, but safe)
+	const sections = [...grouped.entries()]
+		.filter(([_, items]) => items.length > 0)
+		.map(([concept, items]) => ({
+			concept,
+			sourceDocumentIds: unique(items.map((i) => i.sourceDocumentId)),
+			items,
+		}));
+		sections.sort((a, b) => a.concept.localeCompare(b.concept));
+
+
+	return sections;
+
 }
 
 function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadByType["build-test"] {
 	const focus = getFocus(context.request.options);
-	const itemCount = getPositiveNumberOption(context.request.options, "itemCount", 5);
+	const itemCount = context.requestedItemCount ?? getPositiveNumberOption(context.request.options, "itemCount", 5);
 	const sections = chooseTestItems(context, focus, itemCount);
 	const totalItemCount = sections.reduce((sum, section) => sum + section.items.length, 0);
 
 	return {
 		kind: "test",
 		focus,
+		domain: context.domain,
 		title: focus ? `Assessment Draft: ${focus}` : "Assessment Draft",
 		overview: totalItemCount > 0
 			? `This draft assessment pulls ${totalItemCount} items from grouped instructional units and organizes them by concept.`
@@ -651,6 +689,7 @@ function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadB
 		generatedAt: new Date().toISOString(),
 	};
 }
+
 
 function buildCompareMetricEntries(context: BuilderContext<"compare-documents">) {
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
@@ -679,6 +718,7 @@ function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents
 	return {
 		kind: "compare-documents",
 		focus,
+		domain: context.domain,
 		sharedConcepts: filteredOverlap.map((entry) => entry.concept),
 		conceptOverlap: filteredOverlap,
 		documents: metrics,
@@ -791,6 +831,7 @@ function buildMergeDocumentsProduct(context: BuilderContext<"merge-documents">):
 	return {
 		kind: "merge-documents",
 		focus,
+		domain: context.domain,
 		mergedConcepts: Object.keys(effectiveConceptToDocumentMap).filter((concept) => matchesFocus([concept], focus)).sort(),
 		mergedProblems,
 		mergedFragments,
@@ -873,6 +914,7 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 	return {
 		kind: "sequence",
 		focus,
+		domain: context.domain,
 		recommendedOrder,
 		bridgingConcepts: [...allBridgingConcepts],
 		missingPrerequisites: [...allMissingPrerequisites],
@@ -1167,6 +1209,7 @@ function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProd
 	return {
 		kind: "lesson",
 		focus,
+		domain: context.domain,
 		title: focus ? `Lesson Builder: ${focus}` : `Lesson Builder: ${sourceFileName}`,
 		learningObjectives: objectiveEntries.length > 0 ? objectiveEntries : analyzed.insights.concepts.slice(0, 3).map((concept) => `Students will explain and apply ${concept}.`),
 		prerequisiteConcepts,
@@ -1232,6 +1275,7 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 	return {
 		kind: "unit",
 		focus,
+		domain: context.domain,
 		title: focus ? `Unit Builder: ${focus}` : `Unit Builder: ${context.analyzedDocuments.length} Documents`,
 		lessonSequence,
 		conceptMap,
@@ -1290,6 +1334,7 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 	return {
 		kind: "instructional-map",
 		focus,
+		domain: context.domain,
 		conceptGraph: {
 			nodes: filteredConceptEntries.map((entry) => entry.node),
 			edges: buildGraphEdgesFromBuckets(filteredConceptEntries),
@@ -1363,6 +1408,7 @@ function buildCurriculumAlignmentProduct(context: BuilderContext<"curriculum-ali
 	return {
 		kind: "curriculum-alignment",
 		focus,
+		domain: context.domain,
 		standardsCoverage,
 		gaps: context.collectionAnalysis.conceptGaps.map((concept) => `${toStandardId(concept)} has partial coverage for ${concept}.`),
 		redundancies: redundancies.slice(0, 5),
@@ -1394,51 +1440,78 @@ export function isBuiltIntentType(intentType: IntentRequest["intentType"]): inte
 	return SUPPORTED_INTENTS.includes(intentType as BuiltIntentType);
 }
 
-function buildBuilderContext<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, context: PrismSessionContext): BuilderContext<T> {
-	const session = context.session;
-	if (!session) {
-		throw new IntentBuildError(404, "Session not found");
-	}
+function buildBuilderContext<T extends BuiltIntentType>(
+    request: IntentRequest & { intentType: T },
+    context: PrismSessionContext,
+): BuilderContext<T> {
+    const session = context.session;
+    if (!session) {
+        throw new IntentBuildError(404, "Session not found");
+    }
 
-	if (SINGLE_DOCUMENT_INTENTS.includes(request.intentType) && request.documentIds.length !== 1) {
-		throw new IntentBuildError(400, `${request.intentType} requires exactly 1 document`);
-	}
+    if (SINGLE_DOCUMENT_INTENTS.includes(request.intentType) && request.documentIds.length !== 1) {
+        throw new IntentBuildError(400, `${request.intentType} requires exactly 1 document`);
+    }
 
-	if (MULTI_DOCUMENT_INTENTS.includes(request.intentType) && request.documentIds.length < 2) {
-		throw new IntentBuildError(400, `${request.intentType} requires at least 2 documents`);
-	}
+    if (MULTI_DOCUMENT_INTENTS.includes(request.intentType) && request.documentIds.length < 2) {
+        throw new IntentBuildError(400, `${request.intentType} requires at least 2 documents`);
+    }
 
-	for (const documentId of request.documentIds) {
-		if (!session.documentIds.includes(documentId)) {
-			throw new IntentBuildError(400, `Document ${documentId} is not part of session ${request.sessionId}`);
-		}
-		if ((session.sessionRoles[documentId] ?? []).length === 0) {
-			throw new IntentBuildError(400, `Document ${documentId} is missing session roles`);
-		}
-	}
+    for (const documentId of request.documentIds) {
+        if (!session.documentIds.includes(documentId)) {
+            throw new IntentBuildError(400, `Document ${documentId} is not part of session ${request.sessionId}`);
+        }
+        if ((session.sessionRoles[documentId] ?? []).length === 0) {
+            throw new IntentBuildError(400, `Document ${documentId} is missing session roles`);
+        }
+    }
 
-	const analyzedDocuments = request.documentIds.map((documentId) => {
-		const analyzedDocument = context.analyzedDocuments.find((document) => document.document.id === documentId);
-		if (!analyzedDocument) {
-			throw new IntentBuildError(404, `Document ${documentId} has not been analyzed`);
-		}
-		return analyzedDocument;
-	});
-	const instructionalUnits = context.groupedUnits
-		.filter((unit) => unit.fragments.some((fragment) => request.documentIds.includes(fragment.documentId)))
-		.map((unit) => ({
-			...unit,
-			fragments: unit.fragments.filter((fragment) => request.documentIds.includes(fragment.documentId)),
-		}));
+    const analyzedDocuments = request.documentIds.map((documentId) => {
+        const analyzedDocument = context.analyzedDocuments.find((document) => document.document.id === documentId);
+        if (!analyzedDocument) {
+            throw new IntentBuildError(404, `Document ${documentId} has not been analyzed`);
+        }
+        return analyzedDocument;
+    });
 
-	return {
-		request,
-		analyzedDocuments,
-		instructionalUnits,
-		collectionAnalysis: context.collectionAnalysis,
-		sourceFileNames: context.sourceFileNames,
-		documentSummaries: buildDocumentSummaries(analyzedDocuments, context.sourceFileNames, collectInstructionalUnitEntries(instructionalUnits, analyzedDocuments, context.sourceFileNames)),
-	};
+    const instructionalUnits = context.groupedUnits
+        .filter((unit) => unit.fragments.some((fragment) => request.documentIds.includes(fragment.documentId)))
+        .map((unit) => ({
+            ...unit,
+            fragments: unit.fragments.filter((fragment) => request.documentIds.includes(fragment.documentId)),
+        }));
+
+    // EPIC 4: merge multi-document intelligence
+    const mergedAnalyzedDocuments = mergeAnalyzedDocuments(analyzedDocuments);
+    const mergedInstructionalUnits = mergeInstructionalUnits(instructionalUnits);
+	const mergedCollectionAnalysis = mergeCollectionAnalysis(context.collectionAnalysis, mergedAnalyzedDocuments);
+
+    // EPIC 4: infer domain
+    const domain = inferDomainMerged(
+        mergedCollectionAnalysis.conceptToDocumentMap,
+        mergedAnalyzedDocuments,
+        mergedInstructionalUnits,
+    );
+
+    // EPIC 4: requested item count (for build-test)
+    const requestedItemCount = getPositiveNumberOption(request.options, "itemCount", 5);
+
+    const unitEntries = collectInstructionalUnitEntries(
+        mergedInstructionalUnits,
+        mergedAnalyzedDocuments,
+        context.sourceFileNames,
+    );
+
+    return {
+        request,
+        analyzedDocuments: mergedAnalyzedDocuments,
+        instructionalUnits: mergedInstructionalUnits,
+        collectionAnalysis: mergedCollectionAnalysis,
+        sourceFileNames: context.sourceFileNames,
+        documentSummaries: buildDocumentSummaries(mergedAnalyzedDocuments, context.sourceFileNames, unitEntries),
+        domain,
+        requestedItemCount,
+    };
 }
 
 export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {

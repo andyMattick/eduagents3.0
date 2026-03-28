@@ -32,6 +32,10 @@ export interface ProductDocumentSummary {
 	};
 }
 
+export interface IntentProductMetadata {
+	domain?: string;
+}
+
 export interface ProblemExtractionEntry {
 	problemId: string;
 	documentId: string;
@@ -45,7 +49,7 @@ export interface ProblemExtractionEntry {
 	anchorNodeIds: string[];
 }
 
-export interface ProblemExtractionProduct {
+export interface ProblemExtractionProduct extends IntentProductMetadata {
 	kind: "problem-extraction";
 	focus: string | null;
 	totalProblemCount: number;
@@ -64,7 +68,7 @@ export interface ConceptExtractionEntry {
 	sampleProblemTexts: string[];
 }
 
-export interface ConceptExtractionProduct {
+export interface ConceptExtractionProduct extends IntentProductMetadata {
 	kind: "concept-extraction";
 	focus: string | null;
 	totalConceptCount: number;
@@ -90,7 +94,7 @@ export interface SummaryDocumentEntry {
 	};
 }
 
-export interface SummaryProduct {
+export interface SummaryProduct extends IntentProductMetadata {
 	kind: "summary";
 	focus: string | null;
 	overallSummary: string;
@@ -108,7 +112,7 @@ export interface ReviewSection {
 	practicePrompts: string[];
 }
 
-export interface ReviewProduct {
+export interface ReviewProduct extends IntentProductMetadata {
 	kind: "review";
 	focus: string | null;
 	title: string;
@@ -134,7 +138,7 @@ export interface TestSection {
 	items: TestItem[];
 }
 
-export interface TestProduct {
+export interface TestProduct extends IntentProductMetadata {
 	kind: "test";
 	focus: string | null;
 	title: string;
@@ -162,7 +166,7 @@ export interface CompareDocumentMetricEntry {
 	sharedConcepts: string[];
 }
 
-export interface CompareDocumentsProduct {
+export interface CompareDocumentsProduct extends IntentProductMetadata {
 	kind: "compare-documents";
 	focus: string | null;
 	sharedConcepts: string[];
@@ -207,7 +211,7 @@ export interface MergedFragmentEntry {
 	sourceAnchors: ProductSourceAnchor[];
 }
 
-export interface MergeDocumentsProduct {
+export interface MergeDocumentsProduct extends IntentProductMetadata {
 	kind: "merge-documents";
 	focus: string | null;
 	mergedConcepts: string[];
@@ -244,7 +248,7 @@ export interface SequenceStep {
 	anchorNodeIds: string[];
 }
 
-export interface SequenceProduct {
+export interface SequenceProduct extends IntentProductMetadata {
 	kind: "sequence";
 	focus: string | null;
 	recommendedOrder: SequenceStep[];
@@ -263,7 +267,7 @@ export interface LessonSegment {
 	concepts: string[];
 }
 
-export interface LessonProduct {
+export interface LessonProduct extends IntentProductMetadata {
 	kind: "lesson";
 	focus: string | null;
 	title: string;
@@ -300,7 +304,7 @@ export interface UnitLessonEntry {
 	anchorNodeIds: string[];
 }
 
-export interface UnitProduct {
+export interface UnitProduct extends IntentProductMetadata {
 	kind: "unit";
 	focus: string | null;
 	title: string;
@@ -339,7 +343,7 @@ export interface GraphEdge {
 	sharedDocumentIds?: string[];
 }
 
-export interface InstructionalMapProduct {
+export interface InstructionalMapProduct extends IntentProductMetadata {
 	kind: "instructional-map";
 	focus: string | null;
 	conceptGraph: {
@@ -387,7 +391,7 @@ export interface InstructionalMapProduct {
 	generatedAt: string;
 }
 
-export interface CurriculumAlignmentProduct {
+export interface CurriculumAlignmentProduct extends IntentProductMetadata {
 	kind: "curriculum-alignment";
 	focus: string | null;
 	standardsCoverage: Array<{

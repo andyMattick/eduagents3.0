@@ -189,6 +189,11 @@ export function PrintProductPage() {
               <div className="v4-print-header">
                 <p className="v4-kicker">Teacher Document</p>
                 <h1 className="v4-print-document-title">{getProductTitle(product)}</h1>
+                {product.payload.domain ? (
+                  <div className="v4-print-domain">
+                    <strong>Domain:</strong> {product.payload.domain}
+                  </div>
+                ) : null}
                 {headerMetaLine ? <p className="v4-print-document-meta">{headerMetaLine}</p> : null}
                 <p className="v4-print-document-meta">Date generated: {generatedDate}</p>
               </div>
