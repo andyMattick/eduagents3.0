@@ -634,9 +634,18 @@
   font-weight: 700;
 }
 
+.v4-viewer .v4-print-section-kicker {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7b5d4c;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
 .v4-viewer .v4-print-section-title {
   font-size: 15px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -667,37 +676,56 @@
 .v4-viewer .v4-print-footer p {
   color: #5d4a3e;
   font-size: 12px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .v4-viewer .v4-print-list,
 .v4-viewer .v4-print-numbered {
   margin: 0;
-  padding-left: 1.35rem;
+  padding-left: 1.5rem;
   display: block;
 }
 
 .v4-viewer .v4-print-list li,
 .v4-viewer .v4-print-numbered li {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .v4-viewer .v4-print-item {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
+.v4-viewer .v4-print-product-test .v4-print-item,
+.v4-viewer .v4-print-product-lesson .v4-print-item {
+  padding-left: 0.1rem;
+}
+
+.v4-viewer .v4-print-product-test .v4-print-question,
+.v4-viewer .v4-print-product-lesson .v4-print-question {
+  text-indent: -0.05rem;
+}
+
 .v4-viewer .v4-print-response-lines {
   display: block;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .v4-viewer .v4-print-response-line {
   border-bottom: 1px solid rgba(31, 26, 23, 0.32);
-  min-height: 18px;
-  margin-top: 10px;
+  min-height: 20px;
+  margin-top: 12px;
+}
+
+.v4-viewer .v4-print-product-test .v4-print-response-lines {
+  margin-top: 12px;
+}
+
+.v4-viewer .v4-print-product-test .v4-print-response-line {
+  min-height: 22px;
+  margin-top: 14px;
 }
 
 .v4-viewer .v4-print-table {
@@ -722,8 +750,9 @@
 
 .v4-viewer .v4-print-footer {
   margin-top: 24px;
-  padding-top: 12px;
+  padding-top: 14px;
   border-top: 1px solid rgba(31, 26, 23, 0.16);
+  text-align: center;
 }
 
 .v4-viewer .v4-print-answer-guidance,

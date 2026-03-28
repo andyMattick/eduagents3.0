@@ -4,10 +4,9 @@ import { useRef, useState } from "react";
 import type { DocumentRole, DocumentSession, SessionRole } from "../../prism-v4/schema/domain";
 import type { IntentProduct } from "../../prism-v4/schema/integration/IntentProduct";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
-import type { AnalyzedDocument, DocumentCollectionAnalysis, TaggingPipelineInput } from "../../prism-v4/schema/semantic";
+import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../../prism-v4/schema/semantic";
 
 import { ProductViewer, getProductTitle } from "./ProductViewer";
-import { SemanticViewer } from "./SemanticViewer";
 import "./v4.css";
 
 const DEBUG_UPLOAD_TRACE = import.meta.env.DEV;
@@ -58,8 +57,6 @@ type IntentConfig = {
   };
 };
 
-const DOCUMENT_ROLE_OPTIONS: DocumentRole[] = ["notes", "slides", "article", "worksheet", "review", "test", "mixed", "unknown"];
-const SESSION_ROLE_OPTIONS: SessionRole[] = ["source-material", "target-assessment", "target-review", "unit-member", "comparison-target"];
 const SUPPORTED_INTENTS: IntentType[] = [
   "build-unit",
   "build-lesson",
@@ -76,18 +73,18 @@ const SUPPORTED_INTENTS: IntentType[] = [
 ];
 
 const INTENT_CONFIG: Record<IntentType, IntentConfig> = {
-  "build-unit": { label: "Build Unit", description: "Generate a multi-day sequence, concept map, and assessment plan.", scope: "multi" },
-  "build-lesson": { label: "Build Lesson", description: "Turn one source document into a structured lesson with scaffolds and misconceptions.", scope: "single" },
-  "build-instructional-map": { label: "Instructional Map", description: "Visualize concept, representation, misconception, and difficulty relationships.", scope: "multi" },
-  "curriculum-alignment": { label: "Curriculum Alignment", description: "Summarize standards-like coverage, gaps, redundancies, and suggested fixes.", scope: "flex" },
-  "compare-documents": { label: "Compare Documents", description: "Compare overlap, differences, density, and similarity across selected documents.", scope: "multi" },
-  "merge-documents": { label: "Merge Documents", description: "Combine problems, fragments, and concepts into one merged instructional artifact.", scope: "multi" },
-  "build-sequence": { label: "Build Sequence", description: "Recommend the best order for teaching across the selected documents.", scope: "multi" },
-  "build-review": { label: "Build Review", description: "Create a focused review pack from the selected documents.", scope: "flex", numericOption: { key: "maxSections", label: "Max sections", defaultValue: 3 } },
-  "build-test": { label: "Build Test", description: "Draft an assessment using the selected problems and concepts.", scope: "flex", numericOption: { key: "itemCount", label: "Item count", defaultValue: 5 } },
-  "extract-problems": { label: "Extract Problems", description: "List the selected problems with anchors back to the source documents.", scope: "flex", numericOption: { key: "maxItems", label: "Max problems", defaultValue: 10 } },
-  "extract-concepts": { label: "Extract Concepts", description: "List concept coverage and cross-document visibility.", scope: "flex", numericOption: { key: "maxConcepts", label: "Max concepts", defaultValue: 8 } },
-  "summarize": { label: "Summarize", description: "Create a concise product-oriented summary of the selected sources.", scope: "flex" },
+  "build-unit": { label: "Unit Plan", description: "Build a multi-day plan across your selected materials.", scope: "multi" },
+  "build-lesson": { label: "Lesson", description: "Turn one source into a ready-to-teach lesson plan.", scope: "single" },
+  "build-instructional-map": { label: "Instructional Map", description: "Show the key ideas, anchors, and relationships across documents.", scope: "multi" },
+  "curriculum-alignment": { label: "Curriculum Alignment", description: "Show where your materials align, overlap, or leave gaps.", scope: "flex" },
+  "compare-documents": { label: "Compare Materials", description: "Compare overlap and differences across selected materials.", scope: "multi" },
+  "merge-documents": { label: "Merge Materials", description: "Combine key ideas and questions from several documents.", scope: "multi" },
+  "build-sequence": { label: "Teaching Sequence", description: "Recommend the best order for teaching across the selected documents.", scope: "multi" },
+  "build-review": { label: "Review Plan", description: "Create a focused review plan from the selected materials.", scope: "flex", numericOption: { key: "maxSections", label: "Sections", defaultValue: 3 } },
+  "build-test": { label: "Assessment", description: "Draft a printable assessment from the selected materials.", scope: "flex", numericOption: { key: "itemCount", label: "Questions", defaultValue: 5 } },
+  "extract-problems": { label: "Questions From Your Materials", description: "Pull out the questions already present in your materials.", scope: "flex", numericOption: { key: "maxItems", label: "Max questions", defaultValue: 10 } },
+  "extract-concepts": { label: "Key Ideas", description: "Surface the main ideas already present in your materials.", scope: "flex", numericOption: { key: "maxConcepts", label: "Max ideas", defaultValue: 8 } },
+  "summarize": { label: "Summary", description: "Create a concise teaching summary of the selected sources.", scope: "flex" },
   "build-practice-set": { label: "Build Practice Set", description: "Not yet surfaced in the Wave 6 UI.", scope: "flex" },
   "rewrite": { label: "Rewrite", description: "Not yet surfaced in the Wave 6 UI.", scope: "flex" },
   "student-handout": { label: "Student Handout", description: "Not yet surfaced in the Wave 6 UI.", scope: "flex" },
@@ -133,6 +130,33 @@ function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
 
+function describeAnalyzedDocument(analyzed: AnalyzedDocument | undefined) {
+  if (!analyzed) {
+    return "Preparing a summary of this material.";
+  }
+
+  const conceptCount = analyzed.insights.concepts.length;
+  const problemCount = analyzed.problems.length;
+  const density = formatPercent(analyzed.insights.instructionalDensity);
+  return `${problemCount} question${problemCount === 1 ? "" : "s"}, ${conceptCount} key idea${conceptCount === 1 ? "" : "s"}, ${density} instructional density.`;
+}
+
+function formatScopeSummary(intentType: IntentType, documents: RegisteredDocumentSummary[]) {
+  const config = getIntentConfig(intentType);
+  const names = documents.map((document) => document.sourceFileName);
+  const description = names.length > 0 ? names.join(", ") : "the materials you select";
+
+  if (config.scope === "single") {
+    return `This will use one main source: ${description}.`;
+  }
+
+  if (config.scope === "multi") {
+    return `This will combine multiple materials: ${description}.`;
+  }
+
+  return `This can use one or more materials: ${description}.`;
+}
+
 function getIntentConfig(intentType: IntentType) {
   return INTENT_CONFIG[intentType] ?? { label: intentType, description: "Generate a product from the selected documents.", scope: "flex" as const };
 }
@@ -159,18 +183,6 @@ function resolveIntentDocumentIds(workspace: SessionWorkspace | null, intentType
   return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
 }
 
-function getIntentScopeLabel(scope: IntentConfig["scope"]) {
-  if (scope === "single") {
-    return "single-document";
-  }
-
-  if (scope === "multi") {
-    return "multi-document";
-  }
-
-  return "flexible";
-}
-
 function getIntentBlockedReason(workspace: SessionWorkspace | null, intentType: IntentType, documentIds: string[]) {
   if (!workspace) {
     return "Build a document workspace before generating a product.";
@@ -194,14 +206,10 @@ function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean)
   }
 
   if (selectedFileCount === 0) {
-    return "Choose one or more files to build a workspace.";
+    return "Choose one or more files to get started.";
   }
 
   return null;
-}
-
-function getExportBlockedReason(currentProduct: IntentProduct | null) {
-  return currentProduct ? null : "Generate a product before exporting it.";
 }
 
 function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null, isGenerating: boolean) {
@@ -209,12 +217,12 @@ function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType;
     return "Wait for the current generation request to finish.";
   }
 
-  return lastIntentRequest ? null : "Generate a product once before using regenerate.";
+  return lastIntentRequest ? null : "Create a document once before building again.";
 }
 
 export function DocumentUpload() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [uploadedFileMap, setUploadedFileMap] = useState<Record<string, File>>({});
+  const [uploadInputKey, setUploadInputKey] = useState(0);
   const [workspace, setWorkspace] = useState<SessionWorkspace | null>(null);
   const [currentProduct, setCurrentProduct] = useState<IntentProduct | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentType>("build-unit");
@@ -226,11 +234,6 @@ export function DocumentUpload() {
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastIntentRequest, setLastIntentRequest] = useState<{ intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null>(null);
-  const [showDebugViewer, setShowDebugViewer] = useState(false);
-  const [debugDocumentId, setDebugDocumentId] = useState<string | null>(null);
-  const [debugInput, setDebugInput] = useState<TaggingPipelineInput | null>(null);
-  const [debugError, setDebugError] = useState<string | null>(null);
-  const [isLoadingDebug, setIsLoadingDebug] = useState(false);
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
 
@@ -361,7 +364,6 @@ export function DocumentUpload() {
       // because the in-memory registry is not shared across invocations.
       logUploadTrace("analysis completed inline during upload", { documentCount: registered.length });
 
-      setUploadedFileMap((current) => ({ ...current, ...nextFileMap }));
       setSelectedDocumentIds(registered.map((entry) => entry.documentId));
       setPrimaryDocumentId(registered[0]?.documentId ?? null);
       setCurrentProduct(null);
@@ -379,47 +381,6 @@ export function DocumentUpload() {
       uploadInFlightRef.current = false;
       logUploadTrace("upload lock released");
     }
-  }
-
-  async function persistSession(nextSession: DocumentSession) {
-    await fetchJson("/api/v4/documents/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(nextSession),
-    });
-    await refreshWorkspace(nextSession.sessionId);
-  }
-
-  async function updateDocumentRole(documentId: string, role: DocumentRole) {
-    if (!workspace) {
-      return;
-    }
-
-    setError(null);
-    const nextSession: DocumentSession = {
-      ...workspace.session,
-      documentRoles: {
-        ...workspace.session.documentRoles,
-        [documentId]: [role],
-      },
-    };
-    await persistSession(nextSession);
-  }
-
-  async function updateSessionRole(documentId: string, role: SessionRole) {
-    if (!workspace) {
-      return;
-    }
-
-    setError(null);
-    const nextSession: DocumentSession = {
-      ...workspace.session,
-      sessionRoles: {
-        ...workspace.session.sessionRoles,
-        [documentId]: [role],
-      },
-    };
-    await persistSession(nextSession);
   }
 
   function getActionDocumentIds() {
@@ -482,54 +443,26 @@ export function DocumentUpload() {
     setError(null);
   }
 
+  function resetSession() {
+    setSelectedFiles([]);
+    setUploadInputKey((current) => current + 1);
+    setWorkspace(null);
+    setCurrentProduct(null);
+    setSelectedIntent("build-unit");
+    setSelectedDocumentIds([]);
+    setPrimaryDocumentId(null);
+    setFocus("");
+    setNumericOptionValue(String(getIntentConfig("build-unit").numericOption?.defaultValue ?? 5));
+    setError(null);
+    setLastIntentRequest(null);
+    lastUploadAttemptKeyRef.current = null;
+    uploadInFlightRef.current = false;
+  }
+
   function toggleSelectedDocument(documentId: string) {
     setSelectedDocumentIds((current) => current.includes(documentId)
       ? current.filter((entry) => entry !== documentId)
       : [...current, documentId]);
-  }
-
-  async function openDebugViewer(documentId: string) {
-    const file = uploadedFileMap[documentId];
-    if (!file) {
-      setDebugError("This document is no longer available in local memory for debug replay.");
-      setShowDebugViewer(true);
-      return;
-    }
-
-    setIsLoadingDebug(true);
-    setDebugError(null);
-    setDebugDocumentId(documentId);
-    setShowDebugViewer(true);
-    try {
-      const input = await fetchJson<TaggingPipelineInput>("/api/v4-ingest", {
-        method: "POST",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-          "x-file-name": file.name,
-        },
-        body: await file.arrayBuffer(),
-      });
-      setDebugInput(input);
-    } catch (debugLoadError) {
-      setDebugInput(null);
-      setDebugError(debugLoadError instanceof Error ? debugLoadError.message : "Debug semantic viewer failed.");
-    } finally {
-      setIsLoadingDebug(false);
-    }
-  }
-
-  function exportCurrentProduct() {
-    if (!currentProduct || typeof window === "undefined") {
-      return;
-    }
-
-    const blob = new Blob([JSON.stringify(currentProduct, null, 2)], { type: "application/json" });
-    const objectUrl = window.URL.createObjectURL(blob);
-    const anchor = window.document.createElement("a");
-    anchor.href = objectUrl;
-    anchor.download = `${currentProduct.productType}-${currentProduct.productId}.json`;
-    anchor.click();
-    window.URL.revokeObjectURL(objectUrl);
   }
 
   function openPrintView() {
@@ -545,7 +478,6 @@ export function DocumentUpload() {
   const actionDocumentIds = getActionDocumentIds();
   const intentBlockedReason = getIntentBlockedReason(workspace, selectedIntent, actionDocumentIds);
   const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
-  const exportBlockedReason = getExportBlockedReason(currentProduct);
   const regenerateBlockedReason = getRegenerateBlockedReason(lastIntentRequest, isGenerating);
   const printBlockedReason = currentProduct ? null : "Generate a product before opening print view.";
   const actionDocuments = workspace
@@ -559,17 +491,30 @@ export function DocumentUpload() {
       <div className="v4-shell">
         <section className="v4-panel v4-hero">
           <div>
-            <p className="v4-kicker">Document Ingestion</p>
-            <h1>What documents do you want to process?</h1>
+            <p className="v4-kicker">Teacher Workspace</p>
+            <h1>Upload your teaching materials</h1>
             <p className="v4-subtitle">
-              Upload multiple documents, assign roles, inspect analysis summaries, and route directly into the new intent-driven product engine.
+              Turn your materials into lessons, assessments, review plans, summaries, key ideas, and printable classroom documents.
             </p>
+          </div>
+
+          <div className="v4-product-card v4-product-span">
+            <h3>What you can build</h3>
+            <ul className="v4-inline-list" aria-label="Available classroom documents">
+              <li>Lesson</li>
+              <li>Assessment</li>
+              <li>Review Plan</li>
+              <li>Summary</li>
+              <li>Key Ideas</li>
+              <li>Questions From Your Materials</li>
+            </ul>
           </div>
 
           <form className="v4-upload-form" onSubmit={handleUpload}>
             <label className="v4-upload-field" htmlFor="v4-upload-input">
-              <span>Source documents</span>
+              <span>Teaching materials</span>
               <input
+                key={uploadInputKey}
                 id="v4-upload-input"
                 type="file"
                 multiple
@@ -580,8 +525,13 @@ export function DocumentUpload() {
 
             <div className="v4-upload-actions">
               <button className="v4-button" type="submit" disabled={Boolean(uploadBlockedReason)} title={uploadBlockedReason ?? undefined}>
-                {isUploading ? "Building workspace..." : "Build document workspace"}
+                {isUploading ? "Creating workspace..." : "Create workspace"}
               </button>
+              {(workspace || selectedFiles.length > 0 || currentProduct || error) && (
+                <button className="v4-button v4-button-secondary" type="button" onClick={resetSession} disabled={isUploading || isGenerating}>
+                  Start new session
+                </button>
+              )}
               {selectedFiles.length > 0 && <span className="v4-upload-name">{selectedFiles.length} file(s) selected</span>}
             </div>
 
@@ -602,34 +552,11 @@ export function DocumentUpload() {
             <section className="v4-panel">
               <div className="v4-section-heading">
                 <div>
-                  <p className="v4-kicker">Workspace</p>
-                  <h2>Document workspace</h2>
+                  <p className="v4-kicker">Your Materials</p>
+                  <h2>Your workspace</h2>
                 </div>
-                <span className="v4-pill">{workspace.sessionId}</span>
               </div>
-              <div className="v4-stat-grid">
-                <div className="v4-stat-card"><span className="v4-stat-label">Documents</span><strong>{workspace.documents.length}</strong></div>
-                <div className="v4-stat-card"><span className="v4-stat-label">Analyzed</span><strong>{workspace.analyzedDocuments.length}</strong></div>
-                <div className="v4-stat-card"><span className="v4-stat-label">Products</span><strong>{workspace.products.length}</strong></div>
-                <div className="v4-stat-card"><span className="v4-stat-label">Concepts</span><strong>{workspace.analysis?.coverageSummary.totalConcepts ?? 0}</strong></div>
-              </div>
-              {workspace.analysis && (
-                <div className="v4-analysis-summary">
-                  <h3>Analysis summary</h3>
-                  <p>{workspace.analysis.coverageSummary.totalConcepts} concepts across {workspace.analysis.documentIds.length} documents.</p>
-                  <p>{workspace.analysis.conceptGaps.length} concept gaps and {workspace.analysis.documentSimilarity.length} similarity edges detected.</p>
-                </div>
-              )}
-            </section>
-
-            <section className="v4-panel">
-              <div className="v4-section-heading">
-                <div>
-                  <p className="v4-kicker">Documents</p>
-                  <h2>Document list</h2>
-                </div>
-                <span className="v4-pill">Roles + summaries</span>
-              </div>
+              <p className="v4-body-copy">Choose which materials to use and pick one main source when a document needs to be built from a single file.</p>
               <div className="v4-document-list">
                 {workspace.documents.map((document) => {
                   const analyzed = workspace.analyzedDocuments.find((entry) => entry.document.id === document.documentId);
@@ -646,32 +573,17 @@ export function DocumentUpload() {
                             checked={selectedDocumentIds.includes(document.documentId)}
                             onChange={() => toggleSelectedDocument(document.documentId)}
                           />
-                          <span>Include</span>
+                          <span>Use in this build</span>
                         </label>
                       </div>
                       <div className="v4-document-controls">
-                        <label>
-                          <span>Document role</span>
-                          <select value={workspace.session.documentRoles[document.documentId]?.[0] ?? "unknown"} onChange={(event) => void updateDocumentRole(document.documentId, event.target.value as DocumentRole)}>
-                            {DOCUMENT_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
-                          </select>
-                        </label>
-                        <label>
-                          <span>Session role</span>
-                          <select value={workspace.session.sessionRoles[document.documentId]?.[0] ?? "unit-member"} onChange={(event) => void updateSessionRole(document.documentId, event.target.value as SessionRole)}>
-                            {SESSION_ROLE_OPTIONS.map((role) => <option key={role} value={role}>{role}</option>)}
-                          </select>
-                        </label>
                         <label className="v4-document-toggle">
                           <input type="radio" name="primary-document" checked={primaryDocumentId === document.documentId} onChange={() => setPrimaryDocumentId(document.documentId)} />
-                          <span>Primary</span>
+                          <span>Main source</span>
                         </label>
                       </div>
                       <div className="v4-document-summary">
-                        <p><strong>Analysis:</strong> {analyzed ? `${analyzed.problems.length} problems, ${analyzed.insights.concepts.length} concepts, ${formatPercent(analyzed.insights.instructionalDensity)} instructional density` : "Analyzing..."}</p>
-                        <button className="v4-button v4-button-secondary" type="button" onClick={() => void openDebugViewer(document.documentId)}>
-                          Inspect semantic viewer
-                        </button>
+                        <p>{describeAnalyzedDocument(analyzed)}</p>
                       </div>
                     </article>
                   );
@@ -682,16 +594,16 @@ export function DocumentUpload() {
             <section className="v4-panel">
               <div className="v4-section-heading">
                 <div>
-                  <p className="v4-kicker">Intent Router</p>
-                  <h2>What do you want to do with these documents?</h2>
+                  <p className="v4-kicker">Build</p>
+                  <h2>What would you like to build?</h2>
                 </div>
-                <span className="v4-pill">{actionDocumentIds.length} document(s) in scope</span>
+                <span className="v4-pill">{actionDocumentIds.length} material(s) selected</span>
               </div>
               <div className="v4-intent-grid">
                 <label className="v4-upload-field">
-                  <span>Intent selection</span>
+                  <span>Document type</span>
                   <select
-                    aria-label="Intent selection"
+                    aria-label="What would you like to build?"
                     value={selectedIntent}
                     onChange={(event) => {
                       const nextIntent = event.target.value as IntentType;
@@ -703,8 +615,8 @@ export function DocumentUpload() {
                   </select>
                 </label>
                 <label className="v4-upload-field">
-                  <span>Focus</span>
-                  <input aria-label="Focus" value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="fractions, equations, review, misconceptions..." />
+                  <span>Optional focus</span>
+                  <input aria-label="Optional focus" value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="fractions, equations, review, misconceptions..." />
                 </label>
                 {currentIntentConfig.numericOption && (
                   <label className="v4-upload-field">
@@ -715,22 +627,13 @@ export function DocumentUpload() {
               </div>
               <p className="v4-body-copy">{currentIntentConfig.description}</p>
               <div className="v4-product-card v4-product-span">
-                <h3>Intent request preview</h3>
-                <p><strong>Endpoint:</strong> POST /api/v4/documents/intent</p>
-                <p><strong>Intent:</strong> {currentIntentConfig.label}</p>
-                <p><strong>Scope mode:</strong> {getIntentScopeLabel(currentIntentConfig.scope)}</p>
-                <p><strong>Documents in request:</strong> {actionDocuments.length > 0 ? actionDocuments.map((document) => document.sourceFileName).join(", ") : "None selected"}</p>
+                <h3>Selected materials</h3>
+                <p>{formatScopeSummary(selectedIntent, actionDocuments)}</p>
                 {intentBlockedReason && <p className="v4-error">{intentBlockedReason}</p>}
-                {lastIntentRequest && (
-                  <>
-                    <p><strong>Last dispatched request:</strong></p>
-                    <pre className="v4-request-preview" aria-label="Last dispatched request payload">{JSON.stringify(lastIntentRequest, null, 2)}</pre>
-                  </>
-                )}
               </div>
               <div className="v4-upload-actions">
                 <button className="v4-button" type="button" onClick={() => void generateProduct()} disabled={isGenerating || Boolean(intentBlockedReason)} title={intentBlockedReason ?? undefined}>
-                  {isGenerating ? "Generating..." : "Generate product"}
+                  {isGenerating ? "Creating document..." : "Create document"}
                 </button>
               </div>
             </section>
@@ -738,18 +641,17 @@ export function DocumentUpload() {
             <section className="v4-panel">
               <div className="v4-section-heading">
                 <div>
-                  <p className="v4-kicker">Product Viewer</p>
-                  <h2>{currentProduct ? getProductTitle(currentProduct) : "No product yet"}</h2>
+                  <p className="v4-kicker">Your Document</p>
+                  <h2>{currentProduct ? getProductTitle(currentProduct) : "No document yet"}</h2>
                 </div>
                 <div className="v4-upload-actions">
-                  <button className="v4-button v4-button-secondary" type="button" onClick={exportCurrentProduct} disabled={Boolean(exportBlockedReason)} title={exportBlockedReason ?? undefined}>Export</button>
                   <button className="v4-button v4-button-secondary" type="button" onClick={openPrintView} disabled={Boolean(printBlockedReason)} title={printBlockedReason ?? undefined}>Print</button>
-                  <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={Boolean(regenerateBlockedReason)} title={regenerateBlockedReason ?? undefined}>Regenerate</button>
+                  <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={Boolean(regenerateBlockedReason)} title={regenerateBlockedReason ?? undefined}>Build again</button>
                 </div>
               </div>
-              {(exportBlockedReason || printBlockedReason || regenerateBlockedReason) && (
+              {(printBlockedReason || regenerateBlockedReason) && (
                 <p className="v4-body-copy">
-                  {exportBlockedReason ?? printBlockedReason ?? regenerateBlockedReason}
+                  {printBlockedReason ?? regenerateBlockedReason}
                 </p>
               )}
               {currentProduct ? (
@@ -762,22 +664,17 @@ export function DocumentUpload() {
                       await generateProduct(currentProduct.intentType as IntentType, currentProduct.documentIds, options);
                     }}
                   />
-                  <div className="v4-product-card v4-product-span">
-                    <h3>Supporting semantics</h3>
-                    <p>{workspace.analysis?.coverageSummary.totalConcepts ?? 0} concepts in session analysis.</p>
-                    <p>{currentProduct.documentIds.length} document(s) contributed to this product.</p>
-                  </div>
                 </>
               ) : (
-                <p className="v4-body-copy">Upload documents, choose an intent, and generate a typed product. The semantic viewer stays available as a supporting inspection surface.</p>
+                <p className="v4-body-copy">Upload your materials, choose what to build, and this is where your classroom document will appear.</p>
               )}
             </section>
 
             <section className="v4-panel">
               <div className="v4-section-heading">
                 <div>
-                  <p className="v4-kicker">History</p>
-                  <h2>Generated products</h2>
+                  <p className="v4-kicker">Recent Documents</p>
+                  <h2>Your recent builds</h2>
                 </div>
                 <span className="v4-pill">{workspace.products.length}</span>
               </div>
@@ -786,30 +683,12 @@ export function DocumentUpload() {
                   <li key={product.productId}>
                     <button className={`v4-history-item ${currentProduct?.productId === product.productId ? "v4-history-item-active" : ""}`} type="button" onClick={() => setCurrentProduct(product)}>
                       <strong>{getProductTitle(product)}</strong>
-                      <span>{product.schemaVersion}</span>
+                      <span>{new Date(product.createdAt ?? product.payload.generatedAt ?? Date.now()).toLocaleDateString()}</span>
                     </button>
                   </li>
                 ))}
               </ul>
             </section>
-          </div>
-        )}
-
-        {showDebugViewer && (
-          <div className="v4-modal-backdrop" role="dialog" aria-modal="true">
-            <div className="v4-modal v4-debug-modal">
-              <div className="v4-section-heading">
-                <div>
-                  <p className="v4-kicker">Supporting Panel</p>
-                  <h2>Semantic viewer</h2>
-                  <p className="v4-body-copy">Inspect the legacy semantic pipeline for {debugDocumentId ?? "the selected document"}.</p>
-                </div>
-                <button className="v4-button v4-button-secondary" type="button" onClick={() => setShowDebugViewer(false)}>Close</button>
-              </div>
-              {isLoadingDebug && <p className="v4-body-copy">Loading semantic viewer...</p>}
-              {debugError && <p className="v4-error">{debugError}</p>}
-              {debugInput && <SemanticViewer input={debugInput} />}
-            </div>
           </div>
         )}
       </div>

@@ -2,6 +2,16 @@ import { useEffect, useState } from "react";
 
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
 import { buildInstructionalUnitOverrideId } from "../../prism-v4/teacherFeedback";
+import { cleanupProductPayload } from "./utils/cleanup";
+
+function groupLessonScaffolds(scaffolds: Array<{ concept: string; level: "low" | "medium" | "high"; strategy: string }>) {
+  return scaffolds.reduce<Map<string, typeof scaffolds>>((map, scaffold) => {
+    const bucket = map.get(scaffold.concept) ?? [];
+    bucket.push(scaffold);
+    map.set(scaffold.concept, bucket);
+    return map;
+  }, new Map());
+}
 
 function parseConceptList(value: string) {
   return value
@@ -191,12 +201,20 @@ function getResponseLineCount(options: {
   cognitiveDemand?: "recall" | "procedural" | "conceptual" | "modeling" | "analysis" | string;
 }) {
   if (options.cognitiveDemand === "analysis" || options.cognitiveDemand === "modeling" || options.difficulty === "high") {
-    return 5;
+    return 6;
   }
   if (options.cognitiveDemand === "conceptual" || options.difficulty === "medium") {
-    return 4;
+    return 5;
   }
-  return 3;
+  return 4;
+}
+
+function toPrintHeading(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 }
 
 function renderPrintProduct(payload: IntentProductPayload, options: { showAnswerGuidance: boolean }) {
@@ -210,7 +228,8 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
         </section>
         {payload.sections.map((section, sectionIndex) => (
           <section key={section.concept} className="v4-print-section v4-print-major-section v4-print-test-section">
-            <h2 className="v4-print-section-title">Section {sectionIndex + 1}: {section.concept}</h2>
+            <p className="v4-print-section-kicker">Section {sectionIndex + 1}</p>
+            <h2 className="v4-print-section-title">{toPrintHeading(section.concept)}</h2>
             <ol className="v4-print-numbered">
               {section.items.map((item) => (
                 <li key={item.itemId} className="v4-print-item">
@@ -239,6 +258,7 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
   }
 
   if (payload.kind === "lesson") {
+    const scaffoldGroups = groupLessonScaffolds(payload.scaffolds);
     const lessonSections: Array<{ label: string; segments: typeof payload.warmUp }> = [
       { label: "Warm-Up", segments: payload.warmUp },
       { label: "Concept Introduction", segments: payload.conceptIntroduction },
@@ -279,7 +299,12 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
         {payload.scaffolds.length > 0 && (
           <section className="v4-print-section v4-print-teacher-section">
             <h2 className="v4-print-section-title">Scaffolds</h2>
-            <ul className="v4-print-list">{payload.scaffolds.map((entry) => <li key={`${entry.level}-${entry.strategy}`}>{entry.level}: {entry.strategy}</li>)}</ul>
+            {[...scaffoldGroups.entries()].map(([concept, entries]) => (
+              <div key={concept} className="v4-print-scaffold-group">
+                <h3 className="v4-print-subsection-title">{concept}</h3>
+                <ul className="v4-print-list">{entries.map((entry) => <li key={`${entry.concept}-${entry.level}-${entry.strategy}`}>{entry.strategy}</li>)}</ul>
+              </div>
+            ))}
           </section>
         )}
         {payload.misconceptions.length > 0 && (
@@ -490,13 +515,14 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
 
 export function ProductViewer(props: ProductViewerProps) {
   const { product, sessionId, onInstructionalMapRefresh, variant = "app", showAnswerGuidance = false } = props;
-  const payload = product.payload as IntentProductPayload;
+  const payload = cleanupProductPayload(product.payload as IntentProductPayload);
 
   if (variant === "print") {
     return renderPrintProduct(payload, { showAnswerGuidance });
   }
 
   if (payload.kind === "lesson") {
+    const scaffoldGroups = groupLessonScaffolds(payload.scaffolds);
     const lessonSections: Array<{ label: string; segments: typeof payload.warmUp }> = [
       { label: "Warm-up", segments: payload.warmUp },
       { label: "Concept Introduction", segments: payload.conceptIntroduction },
@@ -537,7 +563,16 @@ export function ProductViewer(props: ProductViewerProps) {
         </div>
         <div className="v4-product-card">
           <h3>Scaffolds</h3>
-          <ul>{payload.scaffolds.map((entry) => <li key={`${entry.level}-${entry.strategy}`}>{entry.level}: {entry.strategy}</li>)}</ul>
+          {[...scaffoldGroups.entries()].map(([concept, entries]) => (
+            <div key={concept}>
+              <strong>{concept}</strong>
+              <ul>{entries.map((entry) => <li key={`${entry.concept}-${entry.level}-${entry.strategy}`}>{entry.strategy}</li>)}</ul>
+            </div>
+          ))}
+        </div>
+        <div className="v4-product-card">
+          <h3>Teacher Notes</h3>
+          <ul>{payload.teacherNotes.map((entry) => <li key={entry}>{entry}</li>)}</ul>
         </div>
       </div>
     );

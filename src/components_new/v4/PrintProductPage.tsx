@@ -191,11 +191,10 @@ export function PrintProductPage() {
                 <h1 className="v4-print-document-title">{getProductTitle(product)}</h1>
                 {headerMetaLine ? <p className="v4-print-document-meta">{headerMetaLine}</p> : null}
                 <p className="v4-print-document-meta">Date generated: {generatedDate}</p>
-                <p className="v4-print-document-meta">Generated from teacher documents</p>
               </div>
               <ProductViewer product={product} variant="print" showAnswerGuidance={showAnswerGuidance} />
               <footer className="v4-print-footer">
-                <p>Generated from teacher documents.</p>
+                <p>Prepared from teacher documents.</p>
               </footer>
             </>
           )}

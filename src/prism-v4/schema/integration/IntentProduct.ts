@@ -280,6 +280,7 @@ export interface LessonProduct {
 		documentIds: string[];
 	}>;
 	scaffolds: Array<{
+		concept: string;
 		level: "low" | "medium" | "high";
 		strategy: string;
 		documentIds: string[];

@@ -288,6 +288,120 @@ function buildQuestionUnitWithMismatchedProblem(args: {
 	};
 }
 
+function buildSparseAnalyzedDocument(args: {
+	documentId: string;
+	sourceFileName: string;
+	concept: string;
+	minimalText?: string;
+}): AnalyzedDocument {
+	const minimalText = args.minimalText ?? `${args.concept} matters in this lesson. ${args.concept} matters in this lesson.`;
+
+	return {
+		document: {
+			id: args.documentId,
+			sourceFileName: args.sourceFileName,
+			sourceMimeType: "application/pdf",
+			surfaces: [{ id: `${args.documentId}-surface-1`, surfaceType: "page", index: 0, label: "Page 1" }],
+			nodes: [
+				{
+					id: `${args.documentId}-node-1`,
+					documentId: args.documentId,
+					surfaceId: `${args.documentId}-surface-1`,
+					nodeType: "heading",
+					orderIndex: 0,
+					text: `Learning target: Explain ${args.concept}.`,
+					normalizedText: `Learning target: Explain ${args.concept}.`,
+				},
+				{
+					id: `${args.documentId}-node-2`,
+					documentId: args.documentId,
+					surfaceId: `${args.documentId}-surface-1`,
+					nodeType: "paragraph",
+					orderIndex: 1,
+					text: minimalText,
+					normalizedText: minimalText,
+				},
+			],
+			createdAt: new Date().toISOString(),
+		},
+		fragments: [
+			{
+				id: `${args.documentId}-fragment-1`,
+				documentId: args.documentId,
+				anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-1` }],
+				isInstructional: true,
+				instructionalRole: "objective",
+				contentType: "heading",
+				learningTarget: `Explain ${args.concept}`,
+				prerequisiteConcepts: [args.concept],
+				scaffoldLevel: "medium",
+				misconceptionTriggers: [`a common error with ${args.concept}`],
+				confidence: 0.88,
+				classifierVersion: "wave5-test",
+				strategy: "rule-based",
+			},
+		],
+		problems: [],
+		insights: {
+			concepts: [args.concept],
+			conceptFrequencies: { [args.concept]: 1 },
+			representations: ["text"],
+			difficultyDistribution: { low: 1, medium: 0, high: 0 },
+			misconceptionThemes: [`a common error with ${args.concept}`],
+			instructionalDensity: 0.15,
+			problemCount: 0,
+			exampleCount: 0,
+			explanationCount: 0,
+		},
+		updatedAt: new Date().toISOString(),
+	};
+}
+
+function buildScaffoldRichAnalyzedDocument(args: {
+	documentId: string;
+	sourceFileName: string;
+	concepts: [string, string];
+}): AnalyzedDocument {
+	const [conceptA, conceptB] = args.concepts;
+
+	return {
+		document: {
+			id: args.documentId,
+			sourceFileName: args.sourceFileName,
+			sourceMimeType: "application/pdf",
+			surfaces: [{ id: `${args.documentId}-surface-1`, surfaceType: "page", index: 0, label: "Page 1" }],
+			nodes: [
+				{ id: `${args.documentId}-node-1`, documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeType: "heading", orderIndex: 0, text: `Learning target: Explain ${conceptA}.`, normalizedText: `Learning target: Explain ${conceptA}.` },
+				{ id: `${args.documentId}-node-2`, documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeType: "paragraph", orderIndex: 1, text: `${conceptA} can be shown with a visual model.`, normalizedText: `${conceptA} can be shown with a visual model.` },
+				{ id: `${args.documentId}-node-3`, documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeType: "heading", orderIndex: 2, text: `Learning target: Explain ${conceptB}.`, normalizedText: `Learning target: Explain ${conceptB}.` },
+				{ id: `${args.documentId}-node-4`, documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeType: "paragraph", orderIndex: 3, text: `${conceptB} requires careful comparison work.`, normalizedText: `${conceptB} requires careful comparison work.` },
+			],
+			createdAt: new Date().toISOString(),
+		},
+		fragments: [
+			{ id: `${args.documentId}-fragment-1`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-1` }], isInstructional: true, instructionalRole: "objective", contentType: "heading", learningTarget: `Explain ${conceptA}`, prerequisiteConcepts: [conceptA], scaffoldLevel: "medium", misconceptionTriggers: [`common error with ${conceptA}`], confidence: 0.9, classifierVersion: "wave5-test", strategy: "rule-based" },
+			{ id: `${args.documentId}-fragment-2`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }], isInstructional: true, instructionalRole: "example", contentType: "text", learningTarget: `Explain ${conceptA}`, prerequisiteConcepts: [conceptA], scaffoldLevel: "medium", misconceptionTriggers: [`common error with ${conceptA}`], confidence: 0.9, classifierVersion: "wave5-test", strategy: "rule-based" },
+			{ id: `${args.documentId}-fragment-3`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-3` }], isInstructional: true, instructionalRole: "objective", contentType: "heading", learningTarget: `Explain ${conceptB}`, prerequisiteConcepts: [conceptB], scaffoldLevel: "medium", misconceptionTriggers: [`common error with ${conceptB}`], confidence: 0.9, classifierVersion: "wave5-test", strategy: "rule-based" },
+			{ id: `${args.documentId}-fragment-4`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-4` }], isInstructional: true, instructionalRole: "explanation", contentType: "text", learningTarget: `Explain ${conceptB}`, prerequisiteConcepts: [conceptB], scaffoldLevel: "medium", misconceptionTriggers: [`common error with ${conceptB}`], confidence: 0.9, classifierVersion: "wave5-test", strategy: "rule-based" },
+		],
+		problems: [
+			{ id: `${args.documentId}-problem-1`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }], text: `Explain ${conceptA} with a diagram.`, extractionMode: "authored", concepts: [conceptA], representations: ["visual"], difficulty: "medium", misconceptions: [`common error with ${conceptA}`], cognitiveDemand: "conceptual" },
+		],
+		insights: {
+			concepts: [conceptA, conceptB],
+			conceptFrequencies: { [conceptA]: 1, [conceptB]: 1 },
+			representations: ["visual", "text"],
+			difficultyDistribution: { low: 0, medium: 1, high: 0 },
+			misconceptionThemes: [`common error with ${conceptA}`, `common error with ${conceptB}`],
+			instructionalDensity: 0.8,
+			problemCount: 1,
+			exampleCount: 1,
+			explanationCount: 1,
+		},
+		updatedAt: new Date().toISOString(),
+	};
+}
+
 function buildConceptOnlyAnalyzedDocument(args: {
 	documentId: string;
 	sourceFileName: string;
@@ -567,6 +681,203 @@ describe("buildIntentPayload", () => {
 		expect(test.totalItemCount).toBe(1);
 		expect(test.sections[0]?.items[0]?.prompt).toContain("area model");
 		expect(test.sections[0]?.items[0]?.prompt).not.toContain("RAW PROBLEM TEXT SHOULD NOT BE USED");
+	});
+
+	it("cleans duplicate test prompts before returning the built payload", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "notes-a.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "notes-b.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "notes-a.pdf",
+			concept: "fractions",
+			problemText: "Use the number line to explain why 2/4 equals 1/2.",
+		}));
+		saveAnalyzedDocument(buildAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "notes-b.pdf",
+			concept: "fractions",
+			problemText: "Use the number line to explain why 2/4 equals 1/2.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 2 },
+		}, context);
+
+		expect(test.kind).toBe("test");
+		expect(test.totalItemCount).toBe(1);
+		expect(test.sections).toHaveLength(1);
+		expect(test.sections[0]?.items).toHaveLength(1);
+	});
+
+	it("build-lesson uses intentional minimal-content fallbacks for sparse sources", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "sparse-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildSparseAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "sparse-notes.pdf",
+			concept: "fractions",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-lesson",
+		}, context);
+
+		expect(lesson.kind).toBe("lesson");
+		expect(lesson.warmUp[0]?.title).toBe("Quick Check");
+		expect(lesson.conceptIntroduction.map((entry) => entry.title)).toEqual(["Key Idea 1", "Key Idea 2"]);
+		expect(lesson.guidedPractice[0]?.title).toBe("Worked Example 1");
+		expect(lesson.independentPractice.length).toBeGreaterThanOrEqual(2);
+		expect(lesson.independentPractice.length).toBeLessThanOrEqual(3);
+		expect(lesson.exitTicket[0]?.title).toBe("Exit Prompt");
+		expect(JSON.stringify(lesson)).not.toContain("Section 1");
+	});
+
+	it("build-lesson rewrites concept introductions into short teacher-ready key ideas", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "concept-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildUnitOnlyAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "concept-notes.pdf",
+			concept: "photosynthesis",
+			description: "Photosynthesis happens in chloroplasts. Photosynthesis happens in chloroplasts. Plants use light energy to make glucose. Oxygen is released as a byproduct. Teachers often connect this to plant structure.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-lesson",
+		}, context);
+
+		expect(lesson.kind).toBe("lesson");
+		expect(lesson.conceptIntroduction.every((entry) => /^Key Idea \d+$/.test(entry.title))).toBe(true);
+		expect(lesson.conceptIntroduction[0]?.description).toContain("Photosynthesis happens in chloroplasts.");
+		expect(lesson.conceptIntroduction[0]?.description.match(/Photosynthesis happens in chloroplasts\./g)?.length ?? 0).toBe(1);
+		for (const entry of lesson.conceptIntroduction) {
+			const sentenceCount = entry.description.match(/[^.!?]+[.!?]/g)?.length ?? 0;
+			expect(sentenceCount).toBeGreaterThanOrEqual(2);
+			expect(sentenceCount).toBeLessThanOrEqual(4);
+		}
+	});
+
+	it("build-lesson creates distinct independent practice prompts and a clean exit ticket", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "practice-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildSparseAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "practice-notes.pdf",
+			concept: "equivalent fractions",
+			minimalText: "Equivalent fractions name the same amount. Equivalent fractions name the same amount.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-lesson",
+		}, context);
+
+		expect(lesson.kind).toBe("lesson");
+		expect(new Set(lesson.independentPractice.map((entry) => entry.description)).size).toBe(lesson.independentPractice.length);
+		expect(lesson.independentPractice.length).toBeGreaterThanOrEqual(2);
+		expect(lesson.independentPractice.length).toBeLessThanOrEqual(3);
+		expect(lesson.exitTicket).toHaveLength(1);
+		expect(lesson.exitTicket[0]?.description).toContain("In 2-3 sentences");
+	});
+
+	it("build-lesson groups scaffold bullets by concept and removes duplicates", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "scaffold-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildScaffoldRichAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "scaffold-notes.pdf",
+			concepts: ["fractions", "equivalent fractions"],
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-lesson",
+		}, context);
+
+		expect(lesson.kind).toBe("lesson");
+		expect(new Set(lesson.scaffolds.map((entry) => `${entry.concept}::${entry.strategy}`)).size).toBe(lesson.scaffolds.length);
+		expect(new Set(lesson.scaffolds.map((entry) => entry.concept))).toEqual(new Set(["Equivalent Fractions", "Fractions"]));
+	});
+
+	it("build-lesson limits teacher notes to actionable prerequisite and misconception guidance", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "teacher-notes.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildScaffoldRichAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "teacher-notes.pdf",
+			concepts: ["fractions", "equivalent fractions"],
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const lesson = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-lesson",
+		}, context);
+
+		expect(lesson.kind).toBe("lesson");
+		expect(lesson.teacherNotes.length).toBeGreaterThanOrEqual(2);
+		expect(lesson.teacherNotes.length).toBeLessThanOrEqual(3);
+		expect(lesson.teacherNotes.some((entry) => entry.includes("Check prerequisite understanding"))).toBe(true);
+		expect(lesson.teacherNotes.some((entry) => entry.includes("Watch for"))).toBe(true);
+		expect(lesson.teacherNotes.every((entry) => !entry.includes("Use teacher-notes.pdf as the core source"))).toBe(true);
 	});
 
 	it("build-instructional-map falls back to analyzed concepts when grouped units have no concept tags", async () => {

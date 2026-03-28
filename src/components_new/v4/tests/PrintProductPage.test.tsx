@@ -82,7 +82,9 @@ describe("PrintProductPage", () => {
     expect(screen.getByText("What organelle performs photosynthesis?")).toBeInTheDocument();
     expect(container.querySelector(".v4-print-product-test")).not.toBeNull();
     expect(screen.queryByText("Look for chloroplast.")).not.toBeInTheDocument();
-    expect(screen.getByText("Generated from teacher documents.")).toBeInTheDocument();
+    expect(screen.getByText("Prepared from teacher documents.")).toBeInTheDocument();
+    expect(screen.getByText("Section 1")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Photosynthesis" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Show answer guidance" }));
   expect(screen.getByText("Teacher Notes (Optional)")).toBeInTheDocument();

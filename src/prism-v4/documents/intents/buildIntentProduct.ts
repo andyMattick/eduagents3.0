@@ -1,4 +1,4 @@
-import { groupFragments } from "../analysis";
+import { cleanupProductPayload, dedupeLines, dedupeParagraphs } from "./cleanupProductPayload";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../../schema/semantic";
 import type {
 	BuiltIntentType,
@@ -8,6 +8,7 @@ import type {
 	IntentPayloadByType,
 	IntentRequest,
 	InstructionalMapProduct,
+	LessonSegment,
 	LessonProduct,
 	MergeDocumentsProduct,
 	ProductDocumentSummary,
@@ -880,78 +881,308 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 	};
 }
 
-function buildLessonSegments(args: {
-	units: InstructionalUnitEntry[];
-	problems: ProblemExtractionEntry[];
-	role: string;
-	title: string;
-	limit: number;
-}) {
-	const matchingFragments = args.units
-		.filter((entry) => entry.roles.includes(args.role) && entry.text.length > 0)
-		.slice(0, args.limit)
-		.map((entry, index) => ({
-			title: `${args.title} ${index + 1}`,
-			description: entry.text,
-			documentId: entry.primaryDocumentId,
-			sourceFileName: entry.primarySourceFileName,
-			anchorNodeIds: entry.anchorNodeIds,
-			concepts: entry.unit.concepts,
-		}));
-
-	if (matchingFragments.length > 0) {
-		return matchingFragments;
-	}
-
-	return args.problems.slice(0, args.limit).map((problem, index) => ({
-		title: `${args.title} ${index + 1}`,
-		description: problem.text,
-		documentId: problem.documentId,
-		sourceFileName: problem.sourceFileName,
-		anchorNodeIds: problem.anchorNodeIds,
-		concepts: problem.concepts,
-	}));
-}
-
 function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProduct {
 	const focus = getFocus(context.request.options);
 	const analyzed = context.analyzedDocuments[0]!;
+	const sourceFileName = context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName;
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, [analyzed], context.sourceFileNames)
 		.filter((entry) => matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets], focus));
 	const problemEntries = buildProblemEntries(context, focus);
 	const objectiveEntries = unique(unitEntries.flatMap((entry) => entry.unit.learningTargets));
 	const prerequisiteConcepts = unique(unitEntries.flatMap((entry) => entry.unit.concepts).filter(Boolean));
 	const misconceptionTriggers = unique(unitEntries.flatMap((entry) => entry.unit.misconceptions).filter(Boolean));
+	const coreConcepts = unique([...(focus ? [focus] : []), ...prerequisiteConcepts, ...analyzed.insights.concepts].filter(Boolean)).slice(0, 3);
+	const sourceAnchorNodeIds = unique([
+		...unitEntries.flatMap((entry) => entry.anchorNodeIds),
+		...problemEntries.flatMap((problem) => problem.anchorNodeIds),
+	]);
+	const isMinimalContentMode = analyzed.insights.instructionalDensity < 0.45
+		|| (analyzed.insights.exampleCount + analyzed.insights.explanationCount === 0 && problemEntries.length < 2)
+		|| (unitEntries.length < 3 && problemEntries.length < 2);
 	const scaffoldEntries = unitEntries
 		.map((entry) => ({
+			concepts: entry.unit.concepts.length > 0 ? entry.unit.concepts : coreConcepts,
 			level: entry.difficultyBand === "high" ? "low" as const : entry.difficultyBand === "low" ? "high" as const : "medium" as const,
 			strategy: entry.text || entry.unit.title || `Scaffold ${entry.difficultyBand}`,
 			documentIds: entry.documentIds,
+			roles: entry.roles,
+			misconceptions: entry.unit.misconceptions,
 		}));
 	const noteEntries = unitEntries
 		.filter((entry) => entry.roles.includes("note") || entry.roles.includes("reflection") || entry.roles.includes("objective"))
 		.map((entry) => entry.text)
 		.filter(Boolean);
 
+	function stripLessonLabel(text: string) {
+		return text
+			.replace(/^(section\s*\d+\s*[-:]\s*)/i, "")
+			.replace(/^(learning target|warm[- ]up|concept introduction|guided practice|independent practice|exit ticket|teacher notes?)\s*[:\-]\s*/i, "")
+			.trim();
+	}
+
+	function normalizeLessonText(text: string) {
+		return dedupeParagraphs(stripLessonLabel(text))
+			.split(/\n+/)
+			.map((line) => line.trim())
+			.filter(Boolean)
+			.join(" ")
+			.trim();
+	}
+
+	function splitLessonSentences(text: string) {
+		const normalized = normalizeLessonText(text);
+		if (!normalized) {
+			return [];
+		}
+
+		const matches = normalized.match(/[^.!?]+[.!?]?/g) ?? [normalized];
+		return dedupeLines(matches.map((sentence) => {
+			const trimmed = sentence.trim();
+			if (!trimmed) {
+				return "";
+			}
+			return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+		}).filter(Boolean));
+	}
+
+	function joinCoreConcepts(limit = 2) {
+		return joinList(coreConcepts.slice(0, limit)) || "the main concept";
+	}
+
+	function buildLessonSegment(title: string, description: string, options?: Partial<LessonSegment>): LessonSegment {
+		return {
+			title,
+			description: normalizeLessonText(description),
+			documentId: options?.documentId ?? analyzed.document.id,
+			sourceFileName: options?.sourceFileName ?? sourceFileName,
+			anchorNodeIds: options?.anchorNodeIds ?? sourceAnchorNodeIds,
+			concepts: options?.concepts ?? coreConcepts,
+		};
+	}
+
+	function ensureQuestion(text: string) {
+		const normalized = normalizeLessonText(text).replace(/[.!]+$/g, "").trim();
+		if (!normalized) {
+			return `What do you already know about ${joinCoreConcepts(1)}?`;
+		}
+		return /\?$/.test(normalized) ? normalized : `${normalized}?`;
+	}
+
+	function fallbackExplanationSentence() {
+		return coreConcepts.length > 1
+			? `Connect ${joinCoreConcepts(2)} before students move into independent practice.`
+			: `Connect ${joinCoreConcepts(1)} to a concrete example before students practice on their own.`;
+	}
+
+	const explanationEntries = unitEntries.filter((entry) => entry.roles.includes("explanation") && entry.text.trim().length > 0);
+	const exampleEntries = unitEntries.filter((entry) => entry.roles.includes("example") && entry.text.trim().length > 0);
+	const reflectionEntries = unitEntries.filter((entry) => entry.roles.includes("reflection") && entry.text.trim().length > 0);
+	const problemMisconceptions = dedupeLines(problemEntries.flatMap((problem) => problem.misconceptions).filter(Boolean));
+	const uniqueProblems = problemEntries.filter((problem, index, entries) => {
+		const normalized = normalizeLessonText(problem.text);
+		return normalized.length > 0 && entries.findIndex((entry) => normalizeLessonText(entry.text) === normalized) === index;
+	});
+
+	function titleCaseConcept(value: string) {
+		return value
+			.trim()
+			.replace(/[.!?]+$/g, "")
+			.split(/\s+/)
+			.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+			.join(" ");
+	}
+
+	function buildCuratedScaffolds() {
+		const grouped = new Map<string, { level: "low" | "medium" | "high"; strategies: string[]; documentIds: string[] }>();
+
+		for (const entry of scaffoldEntries) {
+			for (const concept of entry.concepts.length > 0 ? entry.concepts : coreConcepts) {
+				const normalizedConcept = normalizeLessonText(concept);
+				if (!normalizedConcept) {
+					continue;
+				}
+
+				const group = grouped.get(normalizedConcept) ?? {
+					level: entry.level,
+					strategies: [],
+					documentIds: [],
+				};
+
+				group.level = group.level === "medium" ? entry.level : group.level;
+				group.strategies = dedupeLines([
+					...group.strategies,
+					entry.roles.includes("example")
+						? `Model one concise example for ${normalizedConcept} before students try it independently.`
+						: "",
+					entry.roles.includes("explanation") || entry.roles.includes("objective")
+						? `Restate ${normalizedConcept} in student-friendly language and highlight the key vocabulary.`
+						: "",
+					entry.misconceptions[0]
+						? `Contrast ${normalizedConcept} with ${entry.misconceptions[0].toLowerCase()} before releasing students to practice.`
+						: "",
+					entry.strategy,
+				].filter(Boolean)).slice(0, 2);
+				group.documentIds = dedupeLines([...group.documentIds, ...entry.documentIds]);
+				grouped.set(normalizedConcept, group);
+			}
+		}
+
+		if (grouped.size === 0) {
+			for (const concept of coreConcepts.slice(0, 2)) {
+				grouped.set(concept, {
+					level: "medium",
+					strategies: [`Model one short example for ${concept} and name the strategy students should repeat.`],
+					documentIds: [analyzed.document.id],
+				});
+			}
+		}
+
+		return [...grouped.entries()]
+			.sort((left, right) => left[0].localeCompare(right[0]))
+			.flatMap(([concept, group]) => group.strategies.map((strategy) => ({
+				concept: titleCaseConcept(concept),
+				level: group.level,
+				strategy,
+				documentIds: group.documentIds,
+			})));
+	}
+
+	function buildTeacherNotes() {
+		return dedupeLines([
+			prerequisiteConcepts.length > 0
+				? `Check prerequisite understanding of ${joinList(prerequisiteConcepts.slice(0, 2))} before guided practice begins.`
+				: "",
+			(problemMisconceptions[0] || misconceptionTriggers[0])
+				? `Watch for ${String(problemMisconceptions[0] || misconceptionTriggers[0]).toLowerCase()} and correct it with a quick counterexample.`
+				: "",
+			coreConcepts.length > 0
+				? `Listen for students to explain ${joinCoreConcepts(2)} aloud during the exit ticket, not just produce an answer.`
+				: "",
+			...noteEntries.slice(0, 2).map((entry) => {
+				const sentence = splitLessonSentences(entry)[0];
+				return sentence ? `During instruction, ${sentence.charAt(0).toLowerCase()}${sentence.slice(1)}` : "";
+			}),
+		].filter(Boolean)).slice(0, 3);
+	}
+
+	const curatedScaffolds = buildCuratedScaffolds();
+	const curatedTeacherNotes = buildTeacherNotes();
+
+	const warmUp = [buildLessonSegment(
+		"Quick Check",
+		uniqueProblems[0]
+			? `Start with a short retrieval prompt: ${ensureQuestion(uniqueProblems[0].text)}`
+			: `Ask students to explain what ${joinCoreConcepts(1)} means and share one example they already know.`,
+		uniqueProblems[0]
+			? {
+				documentId: uniqueProblems[0].documentId,
+				sourceFileName: uniqueProblems[0].sourceFileName,
+				anchorNodeIds: uniqueProblems[0].anchorNodeIds,
+				concepts: uniqueProblems[0].concepts,
+			}
+			: undefined,
+	)];
+
+	const conceptIntroduction: LessonSegment[] = [];
+	for (const entry of explanationEntries) {
+		const sentences = splitLessonSentences(entry.text).slice(0, 4);
+		if (sentences.length === 0) {
+			continue;
+		}
+
+		if (sentences.length === 1) {
+			sentences.push(fallbackExplanationSentence());
+		}
+
+		while (sentences.length > 0 && conceptIntroduction.length < 2) {
+			const chunk = sentences.splice(0, sentences.length >= 4 ? 2 : Math.min(2, sentences.length));
+			if (chunk.length === 1) {
+				chunk.push(fallbackExplanationSentence());
+			}
+			conceptIntroduction.push(buildLessonSegment(`Key Idea ${conceptIntroduction.length + 1}`, chunk.slice(0, 4).join(" "), {
+				documentId: entry.primaryDocumentId,
+				sourceFileName: entry.primarySourceFileName,
+				anchorNodeIds: entry.anchorNodeIds,
+				concepts: entry.unit.concepts,
+			}));
+		}
+
+		if (conceptIntroduction.length >= 2) {
+			break;
+		}
+	}
+
+	if (conceptIntroduction.length === 0) {
+		conceptIntroduction.push(
+			buildLessonSegment("Key Idea 1", `${joinCoreConcepts(1)} is the central idea for this lesson. State the meaning clearly before students move into practice.`),
+			buildLessonSegment("Key Idea 2", fallbackExplanationSentence()),
+		);
+	}
+
+	const guidedPracticeCandidates = dedupeLines([
+		...exampleEntries.map((entry) => normalizeLessonText(entry.text)),
+		...uniqueProblems.map((problem) => normalizeLessonText(problem.text)),
+	].filter(Boolean));
+	const guidedPractice = guidedPracticeCandidates.slice(0, 2).map((text, index) => buildLessonSegment(
+		`Worked Example ${index + 1}`,
+		text.includes("?")
+			? `Model this together: ${ensureQuestion(text)}`
+			: `${text} Think aloud as students identify the strategy and justify each step.`,
+	));
+	if (guidedPractice.length === 0) {
+		guidedPractice.push(buildLessonSegment(
+			"Worked Example 1",
+			`Model one example about ${joinCoreConcepts(1)} and think aloud so students can hear the strategy before they practice independently.`,
+		));
+	}
+
+	const independentPracticePromptCount = isMinimalContentMode ? 2 : 3;
+	const independentPracticePrompts = dedupeLines([
+		...uniqueProblems.map((problem) => normalizeLessonText(problem.text)),
+		`Solve a new problem about ${joinCoreConcepts(1)} and show each step.`,
+		`Explain your reasoning about ${joinCoreConcepts(1)} using words, numbers, or a model.`,
+		coreConcepts[1]
+			? `Compare ${coreConcepts[0]} and ${coreConcepts[1]} in a short response and justify your thinking.`
+			: `Create your own example about ${joinCoreConcepts(1)} and explain why it works.`,
+	].filter(Boolean)).slice(0, independentPracticePromptCount);
+	const independentPractice = independentPracticePrompts.map((prompt, index) => buildLessonSegment(
+		`Practice ${index + 1}`,
+		prompt,
+	));
+
+	const exitTicketPrompt = reflectionEntries[0]
+		? ensureQuestion(reflectionEntries[0].text)
+		: misconceptionTriggers[0]
+			? `In 2-3 sentences, explain ${joinCoreConcepts(1)} and describe how to avoid ${misconceptionTriggers[0].toLowerCase()}.`
+			: `In 2-3 sentences, explain ${joinCoreConcepts(1)} and give one example.`;
+	const exitTicket = [buildLessonSegment("Exit Prompt", exitTicketPrompt, reflectionEntries[0]
+		? {
+			documentId: reflectionEntries[0].primaryDocumentId,
+			sourceFileName: reflectionEntries[0].primarySourceFileName,
+			anchorNodeIds: reflectionEntries[0].anchorNodeIds,
+			concepts: reflectionEntries[0].unit.concepts,
+		}
+		: undefined)];
+
 	return {
 		kind: "lesson",
 		focus,
-		title: focus ? `Lesson Builder: ${focus}` : `Lesson Builder: ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName}`,
+		title: focus ? `Lesson Builder: ${focus}` : `Lesson Builder: ${sourceFileName}`,
 		learningObjectives: objectiveEntries.length > 0 ? objectiveEntries : analyzed.insights.concepts.slice(0, 3).map((concept) => `Students will explain and apply ${concept}.`),
 		prerequisiteConcepts,
-		warmUp: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "objective", title: "Warm-Up", limit: 1 }),
-		conceptIntroduction: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "explanation", title: "Concept Introduction", limit: 2 }),
-		guidedPractice: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "example", title: "Guided Practice", limit: 2 }),
-		independentPractice: buildLessonSegments({ units: unitEntries, problems: problemEntries, role: "problem-stem", title: "Independent Practice", limit: 3 }),
-		exitTicket: buildLessonSegments({ units: unitEntries, problems: problemEntries.slice(-1), role: "reflection", title: "Exit Ticket", limit: 1 }),
+		warmUp,
+		conceptIntroduction,
+		guidedPractice,
+		independentPractice,
+		exitTicket,
 		misconceptions: misconceptionTriggers.map((trigger) => ({
 			trigger,
 			correction: `Address ${trigger.toLowerCase()} with a quick model and a corrected example.`,
 			documentIds: [analyzed.document.id],
 		})),
-		scaffolds: scaffoldEntries.length > 0 ? scaffoldEntries : [{ level: "medium", strategy: "Model the first problem together before releasing to independent work.", documentIds: [analyzed.document.id] }],
+		scaffolds: curatedScaffolds.length > 0 ? curatedScaffolds : [{ concept: titleCaseConcept(joinCoreConcepts(1)), level: "medium", strategy: "Model the first problem together before releasing to independent work.", documentIds: [analyzed.document.id] }],
 		extensions: problemEntries.filter((problem) => problem.difficulty === "high").map((problem) => `Extend with: ${problem.text}`).slice(0, 2),
-		teacherNotes: noteEntries.length > 0 ? noteEntries : [`Use ${context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName} as the core source and emphasize ${joinList(analyzed.insights.concepts.slice(0, 2)) || "the central concepts"}.`],
+		teacherNotes: curatedTeacherNotes.length > 0 ? curatedTeacherNotes : [`Use ${sourceFileName} as the core source and emphasize ${joinList(analyzed.insights.concepts.slice(0, 2)) || "the central concepts"}.`],
 		sourceAnchors: collectSourceAnchors([analyzed]),
 		generatedAt: new Date().toISOString(),
 	};
@@ -1212,7 +1443,7 @@ function buildBuilderContext<T extends BuiltIntentType>(request: IntentRequest &
 
 export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {
 	const context = buildBuilderContext(request, prismSessionContext);
-	return BUILDERS[request.intentType](context as BuilderContext<T>);
+	return cleanupProductPayload(BUILDERS[request.intentType](context as BuilderContext<T>)) as IntentPayloadByType[T];
 }
 
 export function getIntentBuildErrorStatus(error: unknown) {
