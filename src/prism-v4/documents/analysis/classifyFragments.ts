@@ -121,6 +121,15 @@ const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern:
 		{ concept: "summarizing", pattern: /\bsummar(y|ize|izing)\b/ },
 		{ concept: "text evidence", pattern: /\btext evidence\b/ },
 	],
+	statistics: [
+		{ concept: "hypothesis testing", pattern: /\bhypothesis test(ing)?\b|\bnull hypothesis\b|\balternative hypothesis\b|\bh0\b|\bha\b/ },
+		{ concept: "p-values & decision rules", pattern: /\bp-?value(s)?\b|\bdecision rule\b|(?:\balpha\b|α)\s*[=:]?\s*0?\.\d+/ },
+		{ concept: "one-sample proportion test", pattern: /\bone-?sample proportion test\b|\bsample proportion\b|\bkissing couples\b/ },
+		{ concept: "one-sample mean test", pattern: /\bone-?sample mean test\b|\bsample mean\b|\brestaurant income\b|\bconstruction zone speed(s)?\b/ },
+		{ concept: "simulation-based inference", pattern: /\bsimulation-based inference\b|\bsimulation\b|\bsampling distribution\b|\bdotplot\b|\brepeated samples?\b/ },
+		{ concept: "parameters & statistics", pattern: /\bparameter(s)?\b|\bstatistic(s)?\b/ },
+		{ concept: "type i and type ii errors", pattern: /\btype i\b|\btype ii\b|\bfalse positive\b|\bfalse negative\b/ },
+	],
 	social_studies: [
 		{ concept: "government", pattern: /\bgovernment\b/ },
 		{ concept: "government branches", pattern: /\bbranch(es)? of government\b|\bgovernment branch(es)?\b/ },
@@ -173,11 +182,31 @@ function extractPrerequisiteConcepts(text: string) {
 	const concepts = CONCEPT_PATTERNS
 		.filter(({ pattern }) => pattern.test(lower))
 		.map(({ concept }) => normalizeConceptName(concept));
+	const normalized = new Set(concepts);
+	const hasStatisticalSignal = [
+		"hypothesis testing",
+		"p-values & decision rules",
+		"one-sample proportion test",
+		"one-sample mean test",
+		"simulation-based inference",
+		"parameters & statistics",
+		"type i and type ii errors",
+	].some((concept) => normalized.has(concept));
+	if (hasStatisticalSignal) {
+		normalized.delete("decimal operations");
+		normalized.delete("rights and responsibilities");
+		if (normalized.has("inference")) {
+			normalized.delete("inference");
+			if (/\bsimulation\b|\bsampling distribution\b|\bdotplot\b/.test(lower)) {
+				normalized.add("simulation-based inference");
+			}
+		}
+	}
 	if (/review|before|prior|remember/.test(lower)) {
-		return unique(concepts.length > 0 ? concepts : [text.trim().slice(0, 48)]);
+		return unique(normalized.size > 0 ? [...normalized] : [text.trim().slice(0, 48)]);
 	}
 
-	return unique(concepts);
+	return unique([...normalized]);
 }
 
 function inferScaffoldLevel(text: string, instructionalRole: FragmentSemanticRecord["instructionalRole"]) {

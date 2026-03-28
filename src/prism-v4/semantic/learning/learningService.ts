@@ -13,6 +13,12 @@ export interface TeacherActionContext {
 	gradeLevel?: string;
 	templateIds?: string[];
 	teacherTemplateIds?: string[];
+	assessmentId?: string;
+	unitId?: string;
+	conceptId?: string;
+	conceptDisplayName?: string;
+	scenarioType?: string;
+	scope?: "problem" | "instructional-unit" | "assessment-item";
 }
 
 export interface TeacherActionEvent {

@@ -19,8 +19,25 @@ import type {
 	ReviewSection,
 	SequenceProduct,
 	TestItem,
+	TestProduct,
 	UnitProduct,
 } from "../../schema/integration";
+import {
+	buildAssessmentFingerprint,
+	canonicalConceptId,
+	classifyBloomLevel,
+	classifyScenarioTypes,
+	compareBloomLevels,
+	deriveItemCounts,
+	getTeacherFingerprint,
+	getUnitFingerprint,
+	saveAssessmentFingerprint,
+	type BloomLevel,
+	type ConceptProfile,
+	type ScenarioDirective,
+	type TeacherFingerprint,
+	type UnitFingerprint,
+} from "../../teacherFeedback";
 import type { PrismSessionContext } from "../registryStore";
 
 class IntentBuildError extends Error {
@@ -41,6 +58,8 @@ interface BuilderContext<T extends BuiltIntentType> {
 	documentSummaries: ProductDocumentSummary[];
 	domain?: string;
 	requestedItemCount?: number;
+	teacherFingerprint?: TeacherFingerprint | null;
+	unitFingerprint?: UnitFingerprint | null;
 }
 
 interface InstructionalUnitEntry {
@@ -108,6 +127,11 @@ function getPositiveNumberOption(options: Record<string, unknown> | undefined, k
 	return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
+function getStringOption(options: Record<string, unknown> | undefined, key: string) {
+	const value = options?.[key];
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 function matchesFocus(textParts: string[], focus: string | null) {
 	if (!focus) {
 		return true;
@@ -116,7 +140,304 @@ function matchesFocus(textParts: string[], focus: string | null) {
 	return textParts.some((value) => value.toLowerCase().includes(normalizedFocus));
 }
 
+const TEACHER_CONCEPT_LABELS: Record<string, string> = {
+	"hypothesis testing": "Hypothesis Testing",
+	"p-values & decision rules": "P-Values & Decision Rules",
+	"one-sample proportion test": "One-Sample Proportion Test",
+	"one-sample mean test": "One-Sample Mean Test",
+	"simulation-based inference": "Simulation-Based Inference",
+	"parameters & statistics": "Parameters & Statistics",
+	"type i and type ii errors": "Type I and Type II Errors",
+};
+
+const ASSESSMENT_CLUSTER_ALIASES: Array<{ section: string; order: number; patterns: RegExp[] }> = [
+	{ section: "hypothesis testing", order: 1, patterns: [/hypothesis testing/, /p values? decision rules?/, /parameters? statistics?/] },
+	{ section: "one-sample proportion test", order: 2, patterns: [/one-sample proportion test/, /sample proportion/, /kissing couples/] },
+	{ section: "one-sample mean test", order: 3, patterns: [/one-sample mean test/, /sample mean/, /restaurant income/, /construction zone/] },
+	{ section: "simulation-based inference", order: 4, patterns: [/simulation-based inference/, /sampling distribution/, /dotplot/, /simulation/] },
+	{ section: "type i and type ii errors", order: 5, patterns: [/type i and type ii errors/, /type i/, /type ii/, /false positive/, /false negative/] },
+];
+
+function normalizeTeacherText(value: string) {
+	return value.toLowerCase().replace(/[^a-z0-9α\s]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function hasStatisticsTeacherSignal(textParts: string[]) {
+	const combined = normalizeTeacherText(textParts.join(" "));
+	return /p value|null hypothesis|alternative hypothesis|sample proportion|sample mean|sampling distribution|dotplot|simulation|type i|type ii|false positive|false negative|decision rule|alpha|α|significance/.test(combined);
+}
+
+function inferCanonicalTeacherConcepts(concepts: string[], textParts: string[]) {
+	const combined = normalizeTeacherText([...concepts, ...textParts].join(" "));
+	const canonical = new Set<string>();
+	if (/null hypothesis|alternative hypothesis|hypothesis test|\bh0\b|\bha\b|significance test/.test(combined)) {
+		canonical.add("hypothesis testing");
+	}
+	if (/p value|decision rule|alpha|α|significance level|reject the null|fail to reject/.test(combined)) {
+		canonical.add("p-values & decision rules");
+	}
+	if (/one sample proportion test|sample proportion|kissing couples|coin flip|sample of proportions/.test(combined)) {
+		canonical.add("one-sample proportion test");
+	}
+	if (/one sample mean test|sample mean|restaurant income|construction zone|speed limit|daily income/.test(combined)) {
+		canonical.add("one-sample mean test");
+	}
+	if (/simulation based inference|simulation|sampling distribution|dotplot|repeated sample|proportion of outcomes/.test(combined)) {
+		canonical.add("simulation-based inference");
+	}
+	if (/parameter|statistic/.test(combined)) {
+		canonical.add("parameters & statistics");
+	}
+	if (/type i|type ii|false positive|false negative/.test(combined)) {
+		canonical.add("type i and type ii errors");
+	}
+
+	const hasStatistics = canonical.size > 0 || hasStatisticsTeacherSignal(textParts);
+	const normalizedConcepts = concepts
+		.map((concept) => concept.trim().toLowerCase())
+		.filter(Boolean)
+		.filter((concept) => {
+			if (!hasStatistics) {
+				return true;
+			}
+			return !["decimal operations", "rights and responsibilities", "inference"].includes(concept);
+		});
+
+	if (hasStatistics && /\binfer|\binference/.test(combined) && /simulation|sampling distribution|dotplot/.test(combined)) {
+		canonical.add("simulation-based inference");
+	}
+
+	return unique(canonical.size > 0 ? [...canonical] : normalizedConcepts);
+}
+
+function clusterAssessmentConcept(concept: string) {
+	const normalizedConcept = normalizeTeacherText(concept);
+	for (const alias of ASSESSMENT_CLUSTER_ALIASES) {
+		if (alias.patterns.some((pattern) => pattern.test(normalizedConcept))) {
+			return alias.section;
+		}
+	}
+	return concept;
+}
+
+function conceptSortOrder(concept: string) {
+	const clustered = clusterAssessmentConcept(concept);
+	return ASSESSMENT_CLUSTER_ALIASES.find((entry) => entry.section === clustered)?.order ?? Number.MAX_SAFE_INTEGER;
+}
+
+function getPreferredFingerprintProfiles(context: BuilderContext<"build-test">): ConceptProfile[] {
+	return context.unitFingerprint?.conceptProfiles?.length
+		? context.unitFingerprint.conceptProfiles
+		: context.teacherFingerprint?.globalConceptProfiles ?? [];
+}
+
+function getFingerprintProfileForConcept(context: BuilderContext<"build-test">, concept: string) {
+	const conceptId = canonicalConceptId(concept);
+	return getPreferredFingerprintProfiles(context).find((profile) => profile.conceptId === conceptId);
+}
+
+function sortAssessmentConceptNames(context: BuilderContext<"build-test">, conceptNames: string[]) {
+	const preferredOrder = context.unitFingerprint?.flowProfile.sectionOrder?.length
+		? context.unitFingerprint.flowProfile.sectionOrder
+		: context.teacherFingerprint?.flowProfile.sectionOrder ?? [];
+	const preferredOrderIndex = new Map(preferredOrder.map((conceptId, index) => [conceptId, index]));
+	return [...conceptNames].sort((left, right) => {
+		const leftIndex = preferredOrderIndex.get(canonicalConceptId(left));
+		const rightIndex = preferredOrderIndex.get(canonicalConceptId(right));
+		if (leftIndex !== undefined || rightIndex !== undefined) {
+			return (leftIndex ?? Number.MAX_SAFE_INTEGER) - (rightIndex ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right);
+		}
+		return conceptSortOrder(left) - conceptSortOrder(right) || left.localeCompare(right);
+	});
+}
+
+function applyFingerprintConstraintsToItems(context: BuilderContext<"build-test">, concept: string, items: TestItem[]) {
+	const profile = getFingerprintProfileForConcept(context, concept);
+	let constrained = [...items];
+	if (profile) {
+		const bloomFiltered = constrained.filter((item) => compareBloomLevels(classifyBloomLevel(item.prompt), profile.maxBloomLevel) <= 0);
+		if (bloomFiltered.length > 0) {
+			constrained = bloomFiltered;
+		}
+		const scenarioPreferences = profile.scenarioPatterns.length > 0
+			? profile.scenarioPatterns
+			: context.teacherFingerprint?.defaultScenarioPreferences ?? [];
+		if (scenarioPreferences.length > 0) {
+			const scenarioFiltered = constrained.filter((item) => classifyScenarioTypes(item.prompt).some((scenario) => scenarioPreferences.includes(scenario)));
+			if (scenarioFiltered.length > 0) {
+				constrained = scenarioFiltered;
+			}
+		}
+	}
+	return constrained;
+}
+
+function getFingerprintRequestedConceptCounts(context: BuilderContext<"build-test">, conceptNames: string[], itemCount: number) {
+	const preferredProfiles = getPreferredFingerprintProfiles(context)
+		.filter((profile) => conceptNames.some((concept) => canonicalConceptId(concept) === profile.conceptId));
+	if (preferredProfiles.length === 0) {
+		return null;
+	}
+	const flowProfile = context.unitFingerprint?.flowProfile ?? context.teacherFingerprint?.flowProfile;
+	if (!flowProfile) {
+		return null;
+	}
+	const rawCounts = deriveItemCounts({
+		concepts: preferredProfiles,
+		flowProfile,
+	});
+	const normalized: Record<string, number> = {};
+	const queue = conceptNames.flatMap((concept) => Array.from({ length: Math.max(0, rawCounts[canonicalConceptId(concept)] ?? 0) }, () => concept));
+	for (const concept of queue.slice(0, itemCount)) {
+		normalized[concept] = (normalized[concept] ?? 0) + 1;
+	}
+	return normalized;
+}
+
+function deriveRequestedBloomCounts(profile: ConceptProfile, requestedCount: number) {
+	const levels = Object.entries(profile.bloomDistribution) as Array<[BloomLevel, number]>;
+	const counts = Object.fromEntries(levels.map(([level]) => [level, 0])) as Record<BloomLevel, number>;
+	const ranked = levels
+		.map(([level, weight]) => ({ level, raw: weight * requestedCount }))
+		.sort((left, right) => right.raw - left.raw || compareBloomLevels(right.level, left.level));
+	let assigned = 0;
+	for (const entry of ranked) {
+		const whole = Math.floor(entry.raw);
+		counts[entry.level] = whole;
+		assigned += whole;
+	}
+	const remainders = ranked
+		.map((entry) => ({ level: entry.level, remainder: entry.raw - Math.floor(entry.raw) }))
+		.sort((left, right) => right.remainder - left.remainder || compareBloomLevels(right.level, left.level));
+	for (const entry of remainders) {
+		if (assigned >= requestedCount) {
+			break;
+		}
+		counts[entry.level] += 1;
+		assigned += 1;
+	}
+	return counts;
+}
+
+function rewritePromptNumberLiteral(value: string, occurrence: number) {
+	if (value.endsWith("%")) {
+		const numeric = Number(value.slice(0, -1));
+		return `${numeric + Math.max(1, occurrence + 1)}%`;
+	}
+	if (value.includes(".")) {
+		const decimals = value.split(".")[1]?.length ?? 0;
+		const numeric = Number(value);
+		return (numeric + Math.pow(10, -Math.max(decimals, 1)) * (occurrence + 1)).toFixed(decimals);
+	}
+	return String(Number(value) + occurrence + 1);
+}
+
+function applyScenarioDirectiveToPrompt(prompt: string, directive: ScenarioDirective | undefined) {
+	if (directive !== "keep-context-change-numbers") {
+		return prompt;
+	}
+	let occurrence = 0;
+	const rewritten = prompt.replace(/\d+(?:\.\d+)?%?/g, (match) => {
+		const rewritten = rewritePromptNumberLiteral(match, occurrence);
+		occurrence += 1;
+		return rewritten;
+	});
+	if (occurrence === 0) {
+		return `${prompt} Use alpha = 0.06.`;
+	}
+	return rewritten;
+}
+
+function applyScenarioDirectiveToItem(item: TestItem, directive: ScenarioDirective | undefined): TestItem {
+	const prompt = applyScenarioDirectiveToPrompt(item.prompt, directive);
+	return prompt === item.prompt ? item : { ...item, prompt };
+}
+
+function applyFingerprintDirectiveToItem(context: BuilderContext<"build-test">, concept: string, item: TestItem) {
+	const profile = getFingerprintProfileForConcept(context, concept);
+	return applyScenarioDirectiveToItem(item, profile?.scenarioDirective);
+}
+
+function selectFingerprintItemsForConcept(context: BuilderContext<"build-test">, concept: string, items: TestItem[], requestedCount: number) {
+	const profile = getFingerprintProfileForConcept(context, concept);
+	if (!profile || requestedCount <= 0) {
+		return items.slice(0, requestedCount);
+	}
+	const remaining = [...items];
+	const selected: TestItem[] = [];
+	const requestedBloomCounts = deriveRequestedBloomCounts(profile, requestedCount);
+	for (const level of Object.keys(requestedBloomCounts) as BloomLevel[]) {
+		let needed = requestedBloomCounts[level] ?? 0;
+		while (needed > 0 && remaining.length > 0) {
+			const matchIndex = remaining.findIndex((item) => classifyBloomLevel(item.prompt) === level);
+			if (matchIndex < 0) {
+				break;
+			}
+			selected.push(applyScenarioDirectiveToItem(remaining.splice(matchIndex, 1)[0]!, profile.scenarioDirective));
+			needed -= 1;
+		}
+	}
+	while (selected.length < requestedCount && remaining.length > 0) {
+		selected.push(applyScenarioDirectiveToItem(remaining.shift()!, profile.scenarioDirective));
+	}
+	return selected;
+}
+
+function inferAssessmentPromptStage(prompt: string) {
+	const normalized = normalizeTeacherText(prompt);
+	if (/parameter|statistic/.test(normalized)) {
+		return 1;
+	}
+	if (/null hypothesis|alternative hypothesis|h0|ha/.test(normalized)) {
+		return 2;
+	}
+	if (/p value|sampling distribution|dotplot|simulation/.test(normalized)) {
+		return 3;
+	}
+	if (/decision rule|alpha|α|reject the null|fail to reject/.test(normalized)) {
+		return 4;
+	}
+	if (/type i|type ii|false positive|false negative/.test(normalized)) {
+		return 5;
+	}
+	if (/consequence|impact|evaluate|justify|why it matters/.test(normalized)) {
+		return 6;
+	}
+	return 99;
+}
+
+function assessmentSemanticPromptKey(concept: string, prompt: string) {
+	const clustered = clusterAssessmentConcept(concept);
+	if (conceptSortOrder(clustered) !== Number.MAX_SAFE_INTEGER) {
+		return `${clustered}:${inferAssessmentPromptStage(prompt)}`;
+	}
+	return normalizeTeacherText(prompt);
+}
+
+function getStructuredAssessmentContextLabel(concept: string) {
+	const clustered = clusterAssessmentConcept(concept);
+	if (clustered === "hypothesis testing") {
+		return "this hypothesis test";
+	}
+	if (clustered === "one-sample proportion test") {
+		return "this one-sample proportion study";
+	}
+	if (clustered === "one-sample mean test") {
+		return "this one-sample mean study";
+	}
+	if (clustered === "simulation-based inference") {
+		return "this simulation study";
+	}
+	if (clustered === "type i and type ii errors") {
+		return "this statistical decision";
+	}
+	return "this scenario";
+}
+
 function teacherFacingConceptLabel(value: string) {
+	if (TEACHER_CONCEPT_LABELS[value]) {
+		return TEACHER_CONCEPT_LABELS[value];
+	}
 	return value
 		.replace(/[._-]+/g, " ")
 		.split(/\s+/)
@@ -146,6 +467,43 @@ function inferFallbackConceptForDomain(domain: string | undefined, focus: string
 
 function buildFallbackPrompt(domain: string | undefined, concept: string, index: number) {
 	const normalizedConcept = concept.toLowerCase();
+	if (conceptSortOrder(concept) !== Number.MAX_SAFE_INTEGER) {
+		const statsPrompts: Record<string, string[]> = {
+			"hypothesis testing": [
+				"A class study compares a sample result to a claim. Identify the parameter and statistic in the hypothesis test.",
+				"State the null hypothesis and alternative hypothesis for the class study.",
+				"Use the p-value from the class study to explain what the evidence suggests.",
+				"Make a decision at alpha = 0.05 and justify it in context.",
+				"Explain one consequence of making the wrong decision in this hypothesis test.",
+			],
+			"one-sample proportion test": [
+				"A survey of kissing couples is used to test a claim about a population proportion. Identify the parameter and the sample statistic.",
+				"Write hypotheses for the one-sample proportion test about the kissing couples scenario.",
+				"Interpret the p-value for the kissing couples proportion test.",
+				"Decide whether the evidence supports the claim at alpha = 0.05.",
+			],
+			"one-sample mean test": [
+				"A restaurant income study compares a sample mean to a claimed average. Identify the parameter and sample statistic.",
+				"State the null and alternative hypotheses for the restaurant income claim.",
+				"Interpret the p-value for the restaurant income test.",
+				"Make and justify the decision for the restaurant income scenario at alpha = 0.05.",
+			],
+			"simulation-based inference": [
+				"A dotplot of repeated samples is shown. Describe what the simulation is estimating.",
+				"Use the sampling distribution to interpret how unusual the observed result is.",
+				"Explain how simulation-based inference supports a decision about the claim.",
+			],
+			"type i and type ii errors": [
+				"Describe a Type I error in the context of a significance test.",
+				"Describe a Type II error in the same context.",
+				"Explain which error would be more serious in this scenario and why.",
+			],
+		};
+		const prompts = statsPrompts[clusterAssessmentConcept(concept)];
+		if (prompts?.length) {
+			return prompts[index % prompts.length]!;
+		}
+	}
 	if (domain === "Life Science") {
 		return [
 			`Explain ${normalizedConcept} and give a concrete example from science.`,
@@ -430,7 +788,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 	const concepts = new Map<string, ConceptExtractionEntry>();
 
 	for (const entry of unitEntries) {
-		for (const concept of entry.unit.concepts) {
+		for (const concept of inferCanonicalTeacherConcepts(entry.unit.concepts, [entry.text, ...entry.questionTexts, ...entry.unit.learningTargets])) {
 			if (!matchesFocus([concept], focus)) {
 				continue;
 			}
@@ -449,20 +807,39 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 	}
 
 	if (concepts.size > 0) {
-		return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || left.concept.localeCompare(right.concept));
+		return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
 	}
 
 	for (const analyzed of context.analyzedDocuments) {
-		for (const concept of analyzed.insights.concepts) {
+		const documentTexts = analyzed.document.nodes
+			.map((node) => node.text)
+			.filter((text): text is string => typeof text === "string" && text.trim().length > 0);
+		const canonicalProblemConcepts = analyzed.problems.map((problem) => ({
+			problem,
+			concepts: inferCanonicalTeacherConcepts(problem.concepts, [problem.text]),
+		}));
+		const canonicalDocumentConcepts = unique([
+			...analyzed.insights.concepts
+				.filter((concept): concept is string => typeof concept === "string" && concept.trim().length > 0)
+				.flatMap((concept) => inferCanonicalTeacherConcepts([concept], documentTexts)),
+			...canonicalProblemConcepts.flatMap((entry) => entry.concepts),
+		]);
+		for (const concept of canonicalDocumentConcepts) {
 			if (!matchesFocus([concept], focus)) {
 				continue;
 			}
 
-			const matchingProblems = analyzed.problems.filter((problem) => problem.concepts.includes(concept));
+			const matchingProblems = canonicalProblemConcepts.filter((entry) => entry.concepts.includes(concept)).map((entry) => entry.problem);
 			const existing = concepts.get(concept);
 			concepts.set(concept, {
 				concept,
-				frequency: (existing?.frequency ?? 0) + Math.max(analyzed.insights.conceptFrequencies[concept] ?? 0, matchingProblems.length),
+				frequency: (existing?.frequency ?? 0) + Math.max(
+					matchingProblems.length,
+					analyzed.insights.concepts
+						.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+						.filter((entry) => inferCanonicalTeacherConcepts([entry], documentTexts).includes(concept)).length,
+					1,
+				),
 				documentIds: unique([...(existing?.documentIds ?? []), analyzed.document.id]),
 				sourceFileNames: unique([...(existing?.sourceFileNames ?? []), context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName]),
 				representations: unique([...(existing?.representations ?? []), ...matchingProblems.flatMap((problem) => problem.representations)]),
@@ -472,7 +849,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 		}
 	}
 
-	return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || left.concept.localeCompare(right.concept));
+	return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
 }
 
 function buildExtractProblemsProduct(context: BuilderContext<"extract-problems">): IntentPayloadByType["extract-problems"] {
@@ -630,7 +1007,58 @@ function buildAssessmentPrompts(entry: InstructionalUnitEntry, concept: string) 
 	const prompts = entry.questionTexts.length > 0
 		? entry.questionTexts
 		: [entry.text || entry.unit.title || `Explain ${concept}.`];
-	return unique(prompts.filter(Boolean));
+	if (conceptSortOrder(concept) !== Number.MAX_SAFE_INTEGER && prompts.length === 1) {
+		const contextLabel = getStructuredAssessmentContextLabel(concept);
+		const scaffoldedPrompts: Record<string, string[]> = {
+			"hypothesis testing": [
+				`Identify the parameter and statistic in ${contextLabel}.`,
+				`State the null hypothesis and alternative hypothesis for ${contextLabel}.`,
+				`Interpret the p-value in ${contextLabel}.`,
+				`Make the decision at alpha = 0.05 for ${contextLabel} and justify it.`,
+			],
+			"one-sample proportion test": [
+				`Identify the population proportion and sample statistic in ${contextLabel}.`,
+				`Write hypotheses for the one-sample proportion test in ${contextLabel}.`,
+				`Interpret the p-value for ${contextLabel}.`,
+				`Decide whether the evidence supports the claim at alpha = 0.05 in ${contextLabel}.`,
+			],
+			"one-sample mean test": [
+				`Identify the population mean and sample statistic in ${contextLabel}.`,
+				`Write hypotheses for the one-sample mean test in ${contextLabel}.`,
+				`Interpret the p-value for ${contextLabel}.`,
+				`Decide whether the evidence supports the claim at alpha = 0.05 in ${contextLabel}.`,
+			],
+			"simulation-based inference": [
+				`Describe what the simulation is estimating in ${contextLabel}.`,
+				`Use the dotplot or sampling distribution to interpret the result in ${contextLabel}.`,
+				`Explain how the simulation supports a decision in ${contextLabel}.`,
+			],
+			"type i and type ii errors": [
+				`Describe a Type I error in ${contextLabel}.`,
+				`Describe a Type II error in ${contextLabel}.`,
+				`Explain which error would matter more in ${contextLabel} and why.`,
+			],
+		};
+		const generated = scaffoldedPrompts[clusterAssessmentConcept(concept)];
+		if (generated?.length) {
+			return generated;
+		}
+	}
+	const ranked = unique(prompts.filter(Boolean))
+		.map((prompt) => ({
+			prompt,
+			stage: inferAssessmentPromptStage(prompt),
+			semanticKey: assessmentSemanticPromptKey(concept, prompt),
+		}))
+		.sort((left, right) => left.stage - right.stage || left.prompt.localeCompare(right.prompt));
+	const seen = new Set<string>();
+	return ranked.filter((entry) => {
+		if (seen.has(entry.semanticKey)) {
+			return false;
+		}
+		seen.add(entry.semanticKey);
+		return true;
+	}).map((entry) => entry.prompt);
 }
 
 function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test">, focus: string | null): InstructionalUnitEntry[] {
@@ -638,7 +1066,7 @@ function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test
 		unit: {
 			unitId: `problem-unit-${problem.problemId}`,
 			fragments: [],
-			concepts: problem.concepts,
+			concepts: inferCanonicalTeacherConcepts(problem.concepts, [problem.text]),
 			skills: [problem.cognitiveDemand, "problem-stem", "question"],
 			learningTargets: [],
 			misconceptions: problem.misconceptions,
@@ -663,38 +1091,36 @@ function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test
 
 function chooseTestItems(context: BuilderContext<"build-test">, focus: string | null, itemCount: number) {
 	const groupedUnitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames)
-		.filter((entry) => matchesFocus([entry.text, ...entry.unit.concepts, ...entry.unit.learningTargets], focus));
+		.filter((entry) => matchesFocus([entry.text, ...inferCanonicalTeacherConcepts(entry.unit.concepts, [entry.text, ...entry.questionTexts, ...entry.unit.learningTargets]), ...entry.unit.learningTargets], focus));
 	const unitEntries = groupedUnitEntries.length > 0 ? groupedUnitEntries : buildProblemBackedAssessmentEntries(context, focus);
 	const conceptEntries = buildConceptEntries(context, focus);
 	if (unitEntries.length === 0) {
 		return buildFallbackTestSections(context, focus, itemCount, focus ? [focus] : conceptEntries.map((entry) => entry.concept));
 	}
-	const conceptNames = conceptEntries.map((entry) => entry.concept);
-	const effectiveConceptNames = conceptNames.length > 0
-		? conceptNames
-		: unique(unitEntries.flatMap((entry) => entry.unit.concepts.length > 0 ? entry.unit.concepts : ["general"]));
-		effectiveConceptNames.sort((a, b) => a.localeCompare(b));
+	const conceptNames = unique(conceptEntries.map((entry) => clusterAssessmentConcept(entry.concept)));
+	const fingerprintConceptNames = getPreferredFingerprintProfiles(context).map((profile) => clusterAssessmentConcept(profile.displayName || profile.conceptId));
+	const fallbackConceptNames = unique(unitEntries.flatMap((entry) => {
+			const concepts = inferCanonicalTeacherConcepts(entry.unit.concepts, [entry.text, ...entry.questionTexts, ...entry.unit.learningTargets]).map((concept) => clusterAssessmentConcept(concept));
+			return concepts.length > 0 ? concepts : ["general"];
+		}));
+	const effectiveConceptNames = conceptNames.length > 0 ? conceptNames : fallbackConceptNames;
+	const orderedConceptNames = sortAssessmentConceptNames(context, unique([...effectiveConceptNames, ...fingerprintConceptNames]));
 
-	const itemsByConcept = new Map<string, TestItem[]>();
+	const candidateItemsByConcept = new Map<string, TestItem[]>();
 	const emittedPromptKeys = new Set<string>();
-	let emitted = 0;
 
-	for (const concept of effectiveConceptNames) {
+	for (const concept of orderedConceptNames) {
 		const conceptUnits = prioritizeAssessmentUnits(unitEntries.filter((entry) =>
 			concept === "general"
 				? true
-				: entry.unit.concepts.includes(concept) || matchesFocus([entry.text, ...entry.unit.learningTargets], concept),
+				: inferCanonicalTeacherConcepts(entry.unit.concepts, [entry.text, ...entry.questionTexts, ...entry.unit.learningTargets])
+					.map((entryConcept) => clusterAssessmentConcept(entryConcept))
+					.includes(concept)
+					|| matchesFocus([entry.text, ...entry.unit.learningTargets], concept),
 		));
 		for (const unitEntry of conceptUnits) {
-			if (emitted >= itemCount) {
-				break;
-			}
-
 			for (const [promptIndex, prompt] of buildAssessmentPrompts(unitEntry, concept).entries()) {
-				if (emitted >= itemCount) {
-					break;
-				}
-				const promptKey = `${unitEntry.unit.unitId}:${prompt}`;
+				const promptKey = `${concept}:${assessmentSemanticPromptKey(concept, prompt)}`;
 				if (emittedPromptKeys.has(promptKey)) {
 					continue;
 				}
@@ -710,13 +1136,12 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 						? `Look for evidence that the student can ${joinList(unitEntry.unit.learningTargets).toLowerCase()}.`
 						: `Look for accurate reasoning about ${concept}.`,
 				};
-				itemsByConcept.set(concept, [...(itemsByConcept.get(concept) ?? []), item]);
+				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
 				emittedPromptKeys.add(promptKey);
-				emitted += 1;
 			}
 		}
 
-		if (conceptUnits.length === 0 && emitted < itemCount) {
+		if (conceptUnits.length === 0) {
 			const sourceDocument = conceptEntries.find((entry) => entry.concept === concept)?.documentIds[0] ?? context.analyzedDocuments[0]?.document.id ?? "unknown-document";
 			const sourceFileName = conceptEntries.find((entry) => entry.concept === concept)?.sourceFileNames[0]
 				?? context.sourceFileNames[sourceDocument]
@@ -734,25 +1159,89 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					cognitiveDemand: "conceptual",
 					answerGuidance: `Look for accurate reasoning about ${concept} and a valid application example.`,
 				};
-				itemsByConcept.set(concept, [...(itemsByConcept.get(concept) ?? []), item]);
+				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
 				emittedPromptKeys.add(fallbackKey);
-				emitted += 1;
 			}
 		}
 
-		if (emitted >= itemCount) {
+		candidateItemsByConcept.set(concept, applyFingerprintConstraintsToItems(context, concept, candidateItemsByConcept.get(concept) ?? []));
+	}
+
+	const allItems: TestItem[] = [];
+	const candidateQueues = new Map([...candidateItemsByConcept.entries()].map(([concept, items]) => [concept, [...items]]));
+	const preferredConceptCounts = getFingerprintRequestedConceptCounts(context, orderedConceptNames, itemCount);
+	if (preferredConceptCounts) {
+		for (const concept of orderedConceptNames) {
+			const queue = candidateQueues.get(concept) ?? [];
+			const requested = preferredConceptCounts[concept] ?? 0;
+			const selected = selectFingerprintItemsForConcept(context, concept, queue, requested);
+			allItems.push(...selected.slice(0, Math.max(0, itemCount - allItems.length)));
+			candidateQueues.set(concept, queue.filter((item) => !selected.includes(item)));
+		}
+	}
+	for (const concept of orderedConceptNames) {
+		if (allItems.length >= itemCount) {
 			break;
+		}
+		if (preferredConceptCounts) {
+			continue;
+		}
+		const queue = candidateQueues.get(concept) ?? [];
+		const next = queue.shift();
+		candidateQueues.set(concept, queue);
+		if (next) {
+			allItems.push(applyFingerprintDirectiveToItem(context, concept, next));
 		}
 	}
 
-	const allItems: TestItem[] = [...itemsByConcept.values()].flat();
+	for (const concept of orderedConceptNames) {
+		if (allItems.length >= itemCount || conceptSortOrder(concept) === Number.MAX_SAFE_INTEGER) {
+			continue;
+		}
+		if (preferredConceptCounts) {
+			continue;
+		}
+		const queue = candidateQueues.get(concept) ?? [];
+		const initialCount = allItems.filter((item) => item.concept === concept).length;
+		const target = Math.min(3, initialCount + queue.length);
+		while (allItems.length < itemCount && allItems.filter((item) => item.concept === concept).length < target) {
+			const next = queue.shift();
+			candidateQueues.set(concept, queue);
+			if (!next) {
+				break;
+			}
+			allItems.push(applyFingerprintDirectiveToItem(context, concept, next));
+		}
+	}
+
+	while (!preferredConceptCounts && allItems.length < itemCount) {
+		let emittedInRound = false;
+		for (const concept of orderedConceptNames) {
+			const queue = candidateQueues.get(concept) ?? [];
+			const next = queue.shift();
+			candidateQueues.set(concept, queue);
+			if (!next) {
+				continue;
+			}
+			allItems.push(applyFingerprintDirectiveToItem(context, concept, next));
+			emittedInRound = true;
+			if (allItems.length >= itemCount) {
+				break;
+			}
+		}
+		if (!emittedInRound) {
+			break;
+		}
+	}
 	if (allItems.length === 0) {
-		return buildFallbackTestSections(context, focus, itemCount, effectiveConceptNames.length > 0 ? effectiveConceptNames : focus ? [focus] : []);
+		return buildFallbackTestSections(context, focus, itemCount, orderedConceptNames.length > 0 ? orderedConceptNames : focus ? [focus] : []);
 	}
 	// Sort deterministically: concept → difficulty → prompt
 		allItems.sort((a, b) => {
-			const c = a.concept.localeCompare(b.concept);
+				const c = conceptSortOrder(a.concept) - conceptSortOrder(b.concept) || a.concept.localeCompare(b.concept);
 			if (c !== 0) return c;
+				const s = inferAssessmentPromptStage(a.prompt) - inferAssessmentPromptStage(b.prompt);
+				if (s !== 0) return s;
 			const d = DIFFICULTY_SCORE[a.difficulty] - DIFFICULTY_SCORE[b.difficulty];
 			if (d !== 0) return d;
 			return a.prompt.localeCompare(b.prompt);
@@ -775,7 +1264,8 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 			sourceDocumentIds: unique(items.map((i) => i.sourceDocumentId)),
 			items,
 		}));
-		sections.sort((a, b) => a.concept.localeCompare(b.concept));
+	const sectionOrder = new Map(sortAssessmentConceptNames(context, sections.map((section) => section.concept)).map((concept, index) => [concept, index]));
+	sections.sort((a, b) => (sectionOrder.get(a.concept) ?? Number.MAX_SAFE_INTEGER) - (sectionOrder.get(b.concept) ?? Number.MAX_SAFE_INTEGER) || a.concept.localeCompare(b.concept));
 
 
 	return sections;
@@ -1556,6 +2046,10 @@ export function isBuiltIntentType(intentType: IntentRequest["intentType"]): inte
 function buildBuilderContext<T extends BuiltIntentType>(
     request: IntentRequest & { intentType: T },
     context: PrismSessionContext,
+    preferences?: {
+		teacherFingerprint?: TeacherFingerprint | null;
+		unitFingerprint?: UnitFingerprint | null;
+	},
 ): BuilderContext<T> {
     const session = context.session;
     if (!session) {
@@ -1624,12 +2118,33 @@ function buildBuilderContext<T extends BuiltIntentType>(
         documentSummaries: buildDocumentSummaries(mergedAnalyzedDocuments, context.sourceFileNames, unitEntries),
         domain,
         requestedItemCount,
+		teacherFingerprint: preferences?.teacherFingerprint ?? null,
+		unitFingerprint: preferences?.unitFingerprint ?? null,
     };
 }
 
 export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {
-	const context = buildBuilderContext(request, prismSessionContext);
-	return cleanupProductPayload(BUILDERS[request.intentType](context as BuilderContext<T>)) as IntentPayloadByType[T];
+	const teacherId = getStringOption(request.options, "teacherId");
+	const unitId = getStringOption(request.options, "unitId");
+	const preferences = request.intentType === "build-test" && teacherId
+		? {
+			teacherFingerprint: await getTeacherFingerprint(teacherId),
+			unitFingerprint: unitId ? await getUnitFingerprint(teacherId, unitId) : null,
+		}
+		: undefined;
+	const context = buildBuilderContext(request, prismSessionContext, preferences);
+	const payload = cleanupProductPayload(BUILDERS[request.intentType](context as BuilderContext<T>)) as IntentPayloadByType[T];
+	if (request.intentType === "build-test" && teacherId) {
+		const assessmentId = getStringOption(request.options, "assessmentId") ?? `${request.sessionId}-generated-assessment`;
+		await saveAssessmentFingerprint(buildAssessmentFingerprint({
+			teacherId,
+			assessmentId,
+			unitId: unitId ?? undefined,
+			product: payload as TestProduct,
+			sourceType: "generated",
+		}));
+	}
+	return payload;
 }
 
 export function getIntentBuildErrorStatus(error: unknown) {

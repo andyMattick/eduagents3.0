@@ -7,6 +7,10 @@ interface DomainSignals {
     conceptsPerDomain: Record<DomainName, number>;
     lexicalHitsPerDomain: Record<DomainName, number>;
     representationHitsPerDomain: Record<DomainName, number>;
+    statisticsLexiconHits: number;
+    arithmeticLexiconHits: number;
+    socialStudiesLexiconHits: number;
+    elaLexiconHits: number;
 }
 
 interface DomainLexicon {
@@ -17,6 +21,29 @@ interface DomainLexicon {
 
 const DOMAIN_ORDER: DomainName[] = ["Mathematics", "Life Science", "Social Studies", "ELA"];
 const LOW_CONFIDENCE_THRESHOLD = 2;
+const STATISTICS_OVERRIDE_THRESHOLD = 2;
+const STATISTICS_OVERRIDE_PATTERNS = [
+    /\bp-?value(s)?\b/,
+    /\bnull hypothesis\b/,
+    /\balternative hypothesis\b/,
+    /\bsignificance test\b/,
+    /(?:\balpha\b|α)\s*[=:]/,
+    /\bsample proportion\b/,
+    /\bsample mean\b/,
+    /\bparameter(s)?\b/,
+    /\bstatistic(s)?\b/,
+    /\btype i error\b|\btype 1 error\b/,
+    /\btype ii error\b|\btype 2 error\b/,
+    /\bsimulation\b/,
+    /\bsampling distribution\b/,
+    /\bdotplot\b/,
+    /\bone-?sample test\b/,
+    /\bone-?sample proportion test\b/,
+    /\bone-?sample mean test\b/,
+];
+const ARITHMETIC_PATTERNS = [/\bdecimal(s)?\b/, /\boperation(s)?\b/, /\badd\b|\bsubtract\b|\bmultiply\b|\bdivide\b/];
+const SOCIAL_STUDIES_PATTERNS = [/\bgovernment\b/, /\bculture\b/, /\bgeography\b/, /\bsamurai\b/, /\bfeudal\b/, /\bhistorical\b/];
+const ELA_PATTERNS = [/\binfer\b|\binference\b/, /\btheme\b/, /\bparagraph\b/, /\btext evidence\b/, /\bauthor['’]s purpose\b/];
 
 const DOMAIN_LEXICONS: Record<DomainName, DomainLexicon> = {
     "Mathematics": {
@@ -121,6 +148,10 @@ function emptySignals(): DomainSignals {
         conceptsPerDomain: Object.fromEntries(DOMAIN_ORDER.map((domain) => [domain, 0])) as DomainSignals["conceptsPerDomain"],
         lexicalHitsPerDomain: Object.fromEntries(DOMAIN_ORDER.map((domain) => [domain, 0])) as DomainSignals["lexicalHitsPerDomain"],
         representationHitsPerDomain: Object.fromEntries(DOMAIN_ORDER.map((domain) => [domain, 0])) as DomainSignals["representationHitsPerDomain"],
+        statisticsLexiconHits: 0,
+        arithmeticLexiconHits: 0,
+        socialStudiesLexiconHits: 0,
+        elaLexiconHits: 0,
     };
 }
 
@@ -135,9 +166,17 @@ function countPatternHits(text: string, patterns: RegExp[]) {
     return hits;
 }
 
+function addOverrideSignals(signals: DomainSignals, text: string) {
+    signals.statisticsLexiconHits += countPatternHits(text, STATISTICS_OVERRIDE_PATTERNS);
+    signals.arithmeticLexiconHits += countPatternHits(text, ARITHMETIC_PATTERNS);
+    signals.socialStudiesLexiconHits += countPatternHits(text, SOCIAL_STUDIES_PATTERNS);
+    signals.elaLexiconHits += countPatternHits(text, ELA_PATTERNS);
+}
+
 function addConceptSignals(signals: DomainSignals, concepts: string[]) {
     for (const concept of concepts) {
         const normalizedConcept = normalize(concept);
+        addOverrideSignals(signals, normalizedConcept);
         for (const domain of DOMAIN_ORDER) {
             const lexicon = DOMAIN_LEXICONS[domain];
             const conceptHits = countPatternHits(normalizedConcept, lexicon.conceptPatterns);
@@ -151,6 +190,7 @@ function addConceptSignals(signals: DomainSignals, concepts: string[]) {
 
 function addRepresentationSignals(signals: DomainSignals, representations: string[]) {
     for (const representation of representations.map(normalize)) {
+        addOverrideSignals(signals, representation);
         for (const domain of DOMAIN_ORDER) {
             if (DOMAIN_LEXICONS[domain].representations.includes(representation)) {
                 signals.representationHitsPerDomain[domain] += 1;
@@ -163,6 +203,7 @@ function addProblemSignals(signals: DomainSignals, analyzedDocuments: AnalyzedDo
     for (const analyzed of analyzedDocuments) {
         for (const problem of analyzed.problems) {
             const text = normalize([problem.text, ...problem.concepts, ...problem.representations].join(" "));
+            addOverrideSignals(signals, text);
             for (const domain of DOMAIN_ORDER) {
                 const lexicon = DOMAIN_LEXICONS[domain];
                 const lexicalHits = countPatternHits(text, [...lexicon.conceptPatterns, ...lexicon.lexicalPatterns]);
@@ -202,6 +243,20 @@ export function inferDomainMerged(
 
     const scoredDomains = DOMAIN_ORDER
         .map((domain) => ({ domain, score: scoreDomain(signals, domain) }))
+        .map((entry) => {
+            if (signals.statisticsLexiconHits >= STATISTICS_OVERRIDE_THRESHOLD) {
+                if (entry.domain === "Mathematics") {
+                    return { ...entry, score: entry.score + (signals.statisticsLexiconHits * 5) };
+                }
+                if (entry.domain === "ELA" && signals.statisticsLexiconHits > signals.elaLexiconHits) {
+                    return { ...entry, score: 0 };
+                }
+                if (entry.domain === "Social Studies" && signals.statisticsLexiconHits > signals.socialStudiesLexiconHits) {
+                    return { ...entry, score: 0 };
+                }
+            }
+            return entry;
+        })
         .sort((left, right) => right.score - left.score);
     const best = scoredDomains[0];
 

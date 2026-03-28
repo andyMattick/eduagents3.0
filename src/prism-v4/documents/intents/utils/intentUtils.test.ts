@@ -322,6 +322,60 @@ describe("intent utils", () => {
 		expect(domain).toBe("Life Science");
 	});
 
+	it("inferDomainMerged lets statistics overpower ELA-style narrative vocabulary", () => {
+		const domain = inferDomainMerged(
+			{ "hypothesis testing": ["doc-1"], "p-values & decision rules": ["doc-1"], theme: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["hypothesis testing", "p-values & decision rules", "theme"],
+					problemText: "Read the scenario, identify the null hypothesis, interpret the p-value, and justify the decision at alpha = 0.05.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Mathematics");
+	});
+
+	it("inferDomainMerged lets statistics overpower social studies context", () => {
+		const domain = inferDomainMerged(
+			{ government: ["doc-1"], "sample proportion": ["doc-1"], simulation: ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["government", "sample proportion", "simulation"],
+					problemText: "A civics survey uses a sample proportion and a simulation dotplot to test a claim about voter support.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Mathematics");
+	});
+
+	it("inferDomainMerged lets statistics overpower arithmetic-style decimal noise", () => {
+		const domain = inferDomainMerged(
+			{ "p-values & decision rules": ["doc-1"], "one-sample mean test": ["doc-1"], "decimal operations": ["doc-1"] },
+			[
+				buildAnalyzedDocument({
+					documentId: "doc-1",
+					concepts: ["p-values & decision rules", "one-sample mean test", "decimal operations"],
+					problemText: "Use the p-value and alpha = 0.05 to evaluate a one-sample mean test for restaurant income.",
+					fragmentIdSuffix: "a",
+					problemIdSuffix: "a",
+				}),
+			],
+			[],
+		);
+
+		expect(domain).toBe("Mathematics");
+	});
+
 	it("inferDomainMerged detects social studies from humanities vocabulary", () => {
 		const domain = inferDomainMerged(
 			{ samurai: ["doc-1"], culture: ["doc-1"], geography: ["doc-1"] },

@@ -3,7 +3,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildIntentPayload } from "./buildIntentProduct";
 import { createDocumentSession, registerDocuments, resetDocumentRegistryState, saveAnalyzedDocument } from "../registry";
 import { loadPrismSessionContext } from "../registryStore";
-import { buildInstructionalUnitOverrideId, resetTeacherFeedbackState, saveTeacherFeedback } from "../../teacherFeedback";
+import {
+	buildInstructionalUnitOverrideId,
+	classifyBloomLevel,
+	classifyScenarioTypes,
+	getAssessmentFingerprint,
+	resetTeacherFeedbackState,
+	saveTeacherFeedback,
+	updateAssessmentFingerprint,
+} from "../../teacherFeedback";
 import type { AnalyzedDocument } from "../../schema/semantic";
 
 function buildAnalyzedDocument(args: {
@@ -350,6 +358,103 @@ function buildSparseAnalyzedDocument(args: {
 			misconceptionThemes: [`a common error with ${args.concept}`],
 			instructionalDensity: 0.15,
 			problemCount: 0,
+			exampleCount: 0,
+			explanationCount: 0,
+		},
+		updatedAt: new Date().toISOString(),
+	};
+}
+
+function buildStatsAnalyzedDocument(args: {
+	documentId: string;
+	sourceFileName: string;
+	concepts: string[];
+	problemText: string;
+	difficulty?: "low" | "medium" | "high";
+}): AnalyzedDocument {
+	const difficulty = args.difficulty ?? "medium";
+	return {
+		document: {
+			id: args.documentId,
+			sourceFileName: args.sourceFileName,
+			sourceMimeType: "application/pdf",
+			surfaces: [{ id: `${args.documentId}-surface-1`, surfaceType: "page", index: 0, label: "Page 1" }],
+			nodes: [
+				{
+					id: `${args.documentId}-node-1`,
+					documentId: args.documentId,
+					surfaceId: `${args.documentId}-surface-1`,
+					nodeType: "heading",
+					orderIndex: 0,
+					text: `Learning target: Explain ${args.concepts.join(" and ")}.`,
+					normalizedText: `Learning target: Explain ${args.concepts.join(" and ")}.`,
+				},
+				{
+					id: `${args.documentId}-node-2`,
+					documentId: args.documentId,
+					surfaceId: `${args.documentId}-surface-1`,
+					nodeType: "paragraph",
+					orderIndex: 1,
+					text: args.problemText,
+					normalizedText: args.problemText,
+				},
+			],
+			createdAt: new Date().toISOString(),
+		},
+		fragments: [
+			{
+				id: `${args.documentId}-fragment-1`,
+				documentId: args.documentId,
+				anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-1` }],
+				isInstructional: true,
+				instructionalRole: "objective",
+				contentType: "heading",
+				learningTarget: `Explain ${args.concepts.join(" and ")}`,
+				prerequisiteConcepts: [...args.concepts],
+				scaffoldLevel: "medium",
+				misconceptionTriggers: [],
+				confidence: 0.95,
+				classifierVersion: "wave5-test",
+				strategy: "rule-based",
+			},
+			{
+				id: `${args.documentId}-fragment-2`,
+				documentId: args.documentId,
+				anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }],
+				isInstructional: true,
+				instructionalRole: "problem-stem",
+				contentType: "question",
+				learningTarget: `Explain ${args.concepts.join(" and ")}`,
+				prerequisiteConcepts: [...args.concepts],
+				scaffoldLevel: "medium",
+				misconceptionTriggers: [],
+				confidence: 0.95,
+				classifierVersion: "wave5-test",
+				strategy: "rule-based",
+			},
+		],
+		problems: [
+			{
+				id: `${args.documentId}-problem-1`,
+				documentId: args.documentId,
+				anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }],
+				text: args.problemText,
+				extractionMode: "authored",
+				concepts: [...args.concepts],
+				representations: ["text"],
+				difficulty,
+				misconceptions: [],
+				cognitiveDemand: difficulty === "high" ? "analysis" : "conceptual",
+			},
+		],
+		insights: {
+			concepts: [...args.concepts],
+			conceptFrequencies: Object.fromEntries(args.concepts.map((concept) => [concept, 1])),
+			representations: ["text"],
+			difficultyDistribution: { low: difficulty === "low" ? 1 : 0, medium: difficulty === "medium" ? 1 : 0, high: difficulty === "high" ? 1 : 0 },
+			misconceptionThemes: [],
+			instructionalDensity: 1,
+			problemCount: 1,
 			exampleCount: 0,
 			explanationCount: 0,
 		},
@@ -1009,6 +1114,326 @@ describe("buildIntentPayload", () => {
 		expect(test.sections).toHaveLength(1);
 		expect(test.sections[0]?.items).toHaveLength(1);
 		expect(new Set(test.sections.flatMap((section) => section.items.map((item) => item.prompt))).size).toBe(test.totalItemCount);
+	});
+
+	it("build-test clusters statistics scenarios into teacher-facing sections and suppresses noisy labels", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "stats-1.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-2.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-3.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "stats-1.pdf",
+			concepts: ["kissing couples", "decimal operations", "inference"],
+			problemText: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "stats-2.pdf",
+			concepts: ["restaurant income", "rights and responsibilities"],
+			problemText: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[2]!.documentId,
+			sourceFileName: "stats-3.pdf",
+			concepts: ["Type I and Type II Errors"],
+			problemText: "Explain a Type I error and a Type II error in the construction zone speeds test.",
+			difficulty: "high",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 5 },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		expect(test.kind).toBe("test");
+		expect(test.domain).toBe("Mathematics");
+		expect(test.sections.map((section) => section.concept)).toEqual([
+			"hypothesis testing",
+			"one-sample proportion test",
+			"one-sample mean test",
+			"simulation-based inference",
+			"type i and type ii errors",
+		]);
+		expect(test.sections.map((section) => section.concept)).not.toContain("decimal operations");
+		expect(test.sections.map((section) => section.concept)).not.toContain("rights and responsibilities");
+		expect(test.sections.flatMap((section) => section.items).every((item) => item.prompt.length > 20)).toBe(true);
+	});
+
+	it("build-test keeps hypothesis-testing prompts in teacher cognitive order without semantic duplicates", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "stats-sequence.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "stats-sequence.pdf",
+			concepts: ["hypothesis testing", "p-values & decision rules", "parameters & statistics", "Type I and Type II Errors"],
+			problemText: "Identify the parameter and statistic, state the null and alternative hypotheses, interpret the p-value, make the decision at alpha = 0.05, and explain a Type I error consequence.",
+			difficulty: "high",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const test = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 5 },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		expect(test.kind).toBe("test");
+		expect(test.sections[0]?.concept).toBe("hypothesis testing");
+		const hypothesisItems = test.sections[0]?.items ?? [];
+		expect(hypothesisItems.length).toBeGreaterThan(0);
+		expect(hypothesisItems[0]?.prompt.toLowerCase()).toContain("parameter");
+		expect(hypothesisItems[1]?.prompt.toLowerCase()).toMatch(/null hypothesis|alternative hypothesis/);
+		expect(hypothesisItems.some((item) => item.prompt.toLowerCase().includes("p-value"))).toBe(true);
+		expect(new Set(hypothesisItems.map((item) => item.prompt)).size).toBe(hypothesisItems.length);
+	});
+
+	it("build-test applies persisted teacher fingerprint edits for order, counts, bloom ceilings, and scenarios", async () => {
+		const registered = registerDocuments([
+			{ sourceFileName: "stats-1.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-2.pdf", sourceMimeType: "application/pdf" },
+			{ sourceFileName: "stats-3.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession(registered.map((document) => document.documentId));
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[0]!.documentId,
+			sourceFileName: "stats-1.pdf",
+			concepts: ["kissing couples", "decimal operations", "inference"],
+			problemText: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[1]!.documentId,
+			sourceFileName: "stats-2.pdf",
+			concepts: ["restaurant income", "hypothesis testing", "p-values & decision rules"],
+			problemText: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.",
+			difficulty: "high",
+		}));
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered[2]!.documentId,
+			sourceFileName: "stats-3.pdf",
+			concepts: ["Type I and Type II Errors"],
+			problemText: "Explain a Type I error and a Type II error in the construction zone speeds test.",
+			difficulty: "high",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		const builderContext = {
+			...context,
+			groupedUnits: [],
+		};
+
+		const seeded = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 5, teacherId: "teacher-1", unitId: "stats-unit-1", assessmentId: "seed-assessment" },
+		}, builderContext);
+
+		expect(seeded.kind).toBe("test");
+		expect(await getAssessmentFingerprint("seed-assessment")).not.toBeNull();
+
+		await updateAssessmentFingerprint({
+			assessmentId: "seed-assessment",
+			edits: {
+				removeConceptIds: [
+					"hypothesis-testing",
+					"p-values-decision-rules",
+					"one-sample-proportion-test",
+					"simulation-based-inference",
+				],
+				itemCountOverrides: {
+					"type-i-and-type-ii-errors": 1,
+					"one-sample-mean-test": 1,
+				},
+				bloomCeilings: {
+					"type-i-and-type-ii-errors": "analyze",
+				},
+				scenarioOverrides: {
+					"one-sample-mean-test": ["real-world"],
+				},
+				sectionOrder: ["type-i-and-type-ii-errors", "one-sample-mean-test"],
+				now: "2026-03-29T00:00:00.000Z",
+			},
+		});
+
+		const fingerprintDriven = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: registered.map((document) => document.documentId),
+			intentType: "build-test",
+			options: { itemCount: 2, teacherId: "teacher-1", unitId: "stats-unit-1", assessmentId: "fingerprint-driven-assessment" },
+		}, builderContext);
+
+		expect(fingerprintDriven.kind).toBe("test");
+		expect(fingerprintDriven.sections.map((section) => section.concept)).toEqual(["type i and type ii errors", "one-sample mean test"]);
+		expect(fingerprintDriven.totalItemCount).toBe(2);
+		expect(fingerprintDriven.sections[0]?.items).toHaveLength(1);
+		expect(fingerprintDriven.sections[1]?.items).toHaveLength(1);
+		expect(fingerprintDriven.sections[0]?.items.some((item) => item.prompt.toLowerCase().includes("more serious"))).toBe(false);
+		expect(fingerprintDriven.sections[1]?.items.every((item) => classifyScenarioTypes(item.prompt).includes("real-world"))).toBe(true);
+	});
+
+	it("build-test approximates stored bloom distributions within tolerance when fingerprint counts are active", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "stats-bloom.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "stats-bloom.pdf",
+			concepts: ["hypothesis testing", "p-values & decision rules", "parameters & statistics"],
+			problemText: "Identify the parameter and statistic, state the null and alternative hypotheses, interpret the p-value, and make the decision at alpha = 0.05.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 4, teacherId: "teacher-bloom", unitId: "unit-bloom", assessmentId: "seed-bloom" },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		const fingerprintDriven = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 4, teacherId: "teacher-bloom", unitId: "unit-bloom", assessmentId: "generated-bloom" },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		const fingerprint = await getAssessmentFingerprint("seed-bloom");
+		const expectedDistribution = Object.entries((fingerprint?.conceptProfiles ?? []).reduce<Record<string, number>>((counts, profile) => {
+			for (const [level, weight] of Object.entries(profile.bloomDistribution)) {
+				counts[level] = (counts[level] ?? 0) + weight * (profile.absoluteItemHint ?? 0);
+			}
+			return counts;
+		}, {})).reduce<Record<string, number>>((distribution, [level, weightedCount], _, entries) => {
+			const total = entries.reduce((sum, [, value]) => sum + value, 0);
+			distribution[level] = total > 0 ? weightedCount / total : 0;
+			return distribution;
+		}, {});
+		const generatedItems = fingerprintDriven.sections.flatMap((section) => section.items);
+		const demandToBloom = (value: (typeof generatedItems)[number]["cognitiveDemand"]) => {
+			if (value === "recall") {
+				return "remember";
+			}
+			if (value === "conceptual") {
+				return "understand";
+			}
+			if (value === "procedural") {
+				return "apply";
+			}
+			return "analyze";
+		};
+		const generatedCounts = generatedItems.reduce<Record<string, number>>((counts, item) => {
+			const promptLevel = classifyBloomLevel(item.prompt);
+			const demandLevel = demandToBloom(item.cognitiveDemand);
+			const level = ["remember", "understand", "apply", "analyze", "evaluate", "create"].indexOf(promptLevel)
+				>= ["remember", "understand", "apply", "analyze", "evaluate", "create"].indexOf(demandLevel)
+				? promptLevel
+				: demandLevel;
+			counts[level] = (counts[level] ?? 0) + 1;
+			return counts;
+		}, {});
+
+		for (const [level, expectedWeight] of Object.entries(expectedDistribution)) {
+			const actualWeight = generatedItems.length > 0 ? (generatedCounts[level] ?? 0) / generatedItems.length : 0;
+			expect(Math.abs(actualWeight - expectedWeight)).toBeLessThanOrEqual(0.1);
+		}
+	});
+
+	it("build-test can keep scenario context while changing numeric literals from stored teacher edits", async () => {
+		const [registered] = registerDocuments([
+			{ sourceFileName: "stats-context.pdf", sourceMimeType: "application/pdf" },
+		]);
+		const session = createDocumentSession([registered!.documentId]);
+
+		saveAnalyzedDocument(buildStatsAnalyzedDocument({
+			documentId: registered!.documentId,
+			sourceFileName: "stats-context.pdf",
+			concepts: ["restaurant income", "one-sample mean test"],
+			problemText: "A restaurant income study uses alpha = 0.05 to test whether the mean income is 52 dollars.",
+		}));
+
+		const context = await loadPrismSessionContext(session.sessionId);
+		if (!context) {
+			throw new Error("Expected Prism session context");
+		}
+
+		await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 4, teacherId: "teacher-context", unitId: "unit-context", assessmentId: "seed-context" },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		await updateAssessmentFingerprint({
+			assessmentId: "seed-context",
+			edits: {
+				removeConceptIds: ["hypothesis-testing", "p-values-decision-rules", "simulation-based-inference", "type-i-and-type-ii-errors"],
+				itemCountOverrides: { "one-sample-mean-test": 4 },
+				scenarioOverrides: { "one-sample-mean-test": ["real-world"] },
+				scenarioDirectives: { "one-sample-mean-test": "keep-context-change-numbers" },
+				sectionOrder: ["one-sample-mean-test"],
+				now: "2026-03-29T00:00:00.000Z",
+			},
+		});
+
+		const fingerprintDriven = await buildIntentPayload({
+			sessionId: session.sessionId,
+			documentIds: [registered!.documentId],
+			intentType: "build-test",
+			options: { itemCount: 4, teacherId: "teacher-context", unitId: "unit-context", assessmentId: "generated-context" },
+		}, {
+			...context,
+			groupedUnits: [],
+		});
+
+		const prompts = fingerprintDriven.sections.flatMap((section) => section.items.map((item) => item.prompt));
+		expect(prompts.every((prompt) => prompt.includes("this one-sample mean study"))).toBe(true);
+		expect(prompts.some((prompt) => prompt.includes("0.05"))).toBe(false);
+		expect(prompts.some((prompt) => /0\s*\.\s*06|0\s*\.\s*07/.test(prompt))).toBe(true);
 	});
 
 	it("build-lesson uses intentional minimal-content fallbacks for sparse sources", async () => {

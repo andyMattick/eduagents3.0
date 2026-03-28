@@ -3,6 +3,20 @@ import type { CognitiveTemplate } from "../semantic/cognitive/templates";
 import { loadTeacherTemplates } from "../semantic/cognitive/templates/loadTeacherTemplates";
 import { deriveTemplateFromFeedback } from "../semantic/cognitive/templateLearning";
 import { recordTeacherAction, resetLearningState, type TeacherActionEvent, type TeacherActionType } from "../semantic/learning";
+import {
+	applyAssessmentFingerprintEdits,
+	canonicalConceptId,
+	explainFingerprintAlignment,
+	mergeAssessmentIntoTeacherFingerprint,
+	mergeAssessmentIntoUnitFingerprint,
+	type AssessmentFingerprint,
+	type AssessmentFingerprintEdits,
+	type BloomLevel,
+	type FingerprintAlignmentExplanation,
+	type ScenarioType,
+	type TeacherFingerprint,
+	type UnitFingerprint,
+} from "./fingerprints";
 import type {
 	FeedbackTarget,
 	ProblemOverrideRecord,
@@ -15,6 +29,9 @@ import type {
 const feedbackMemory: TeacherFeedback[] = [];
 const overrideMemory = new Map<string, ValidatedOverrides>();
 const templateMemory = new Map<string, TeacherDerivedTemplateRecord>();
+const assessmentFingerprintMemory = new Map<string, AssessmentFingerprint>();
+const unitFingerprintMemory = new Map<string, UnitFingerprint>();
+const teacherFingerprintMemory = new Map<string, TeacherFingerprint>();
 
 const BLOOM_KEYS = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
 const REQUIRED_VECTOR_KEYS = new Set([
@@ -63,6 +80,58 @@ function canUseSupabase() {
 	return typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function fingerprintUnitKey(teacherId: string, unitId: string) {
+	return `${teacherId}::${unitId}`;
+}
+
+function sortAssessmentsForAggregation(assessments: AssessmentFingerprint[]) {
+	return [...assessments].sort((left, right) => left.lastUpdated.localeCompare(right.lastUpdated) || left.assessmentId.localeCompare(right.assessmentId));
+}
+
+function aggregateSectionOrder(assessments: AssessmentFingerprint[]) {
+	const positions = new Map<string, { total: number; count: number }>();
+	for (const assessment of assessments) {
+		assessment.flowProfile.sectionOrder.forEach((conceptId, index) => {
+			const current = positions.get(conceptId) ?? { total: 0, count: 0 };
+			current.total += index;
+			current.count += 1;
+			positions.set(conceptId, current);
+		});
+	}
+	return [...positions.entries()]
+		.sort((left, right) => (left[1].total / left[1].count) - (right[1].total / right[1].count) || right[1].count - left[1].count || left[0].localeCompare(right[0]))
+		.map(([conceptId]) => conceptId);
+}
+
+function aggregateCognitiveLadder(assessments: AssessmentFingerprint[]): BloomLevel[] {
+	const positions = new Map<BloomLevel, { total: number; count: number }>();
+	for (const assessment of assessments) {
+		assessment.flowProfile.cognitiveLadderShape.forEach((level, index) => {
+			const current = positions.get(level) ?? { total: 0, count: 0 };
+			current.total += index;
+			current.count += 1;
+			positions.set(level, current);
+		});
+	}
+	return [...positions.entries()]
+		.sort((left, right) => (left[1].total / left[1].count) - (right[1].total / right[1].count) || right[1].count - left[1].count)
+		.map(([level]) => level);
+}
+
+function finalizeFlowProfiles(assessments: AssessmentFingerprint[], fingerprint: TeacherFingerprint | UnitFingerprint | null) {
+	if (!fingerprint) {
+		return null;
+	}
+	return {
+		...fingerprint,
+		flowProfile: {
+			...fingerprint.flowProfile,
+			sectionOrder: aggregateSectionOrder(assessments),
+			cognitiveLadderShape: aggregateCognitiveLadder(assessments),
+		},
+	};
+}
+
 function createFeedback(payload: TeacherFeedbackPayload): TeacherFeedback {
 	return {
 		feedbackId: createUuid(),
@@ -108,6 +177,12 @@ function buildTeacherActionEvent(payload: TeacherFeedbackPayload, feedback: Teac
 			gradeLevel: payload.context?.gradeLevel,
 			templateIds: payload.context?.templateIds ?? [],
 			teacherTemplateIds: payload.context?.teacherTemplateIds ?? [],
+			assessmentId: payload.context?.assessmentId,
+			unitId: payload.context?.unitId,
+			conceptId: payload.context?.conceptId,
+			conceptDisplayName: payload.context?.conceptDisplayName,
+			scenarioType: payload.context?.scenarioType,
+			scope: payload.context?.scope,
 		},
 	};
 }
@@ -274,6 +349,234 @@ function normalizeTemplate(template: TeacherDerivedTemplateRecord) {
 	};
 }
 
+function normalizeAssessmentFingerprint(fingerprint: AssessmentFingerprint) {
+	return {
+		assessment_id: fingerprint.assessmentId,
+		teacher_id: fingerprint.teacherId,
+		unit_id: fingerprint.unitId ?? null,
+		concept_profiles: fingerprint.conceptProfiles,
+		flow_profile: fingerprint.flowProfile,
+		item_count: fingerprint.itemCount,
+		source_type: fingerprint.sourceType,
+		last_updated: fingerprint.lastUpdated,
+		version: fingerprint.version,
+	};
+}
+
+function normalizeUnitFingerprint(fingerprint: UnitFingerprint) {
+	return {
+		teacher_id: fingerprint.teacherId,
+		unit_id: fingerprint.unitId,
+		concept_profiles: fingerprint.conceptProfiles,
+		flow_profile: fingerprint.flowProfile,
+		derived_from_assessment_ids: fingerprint.derivedFromAssessmentIds,
+		last_updated: fingerprint.lastUpdated,
+		version: fingerprint.version,
+	};
+}
+
+function normalizeTeacherFingerprint(fingerprint: TeacherFingerprint) {
+	return {
+		teacher_id: fingerprint.teacherId,
+		global_concept_profiles: fingerprint.globalConceptProfiles,
+		default_bloom_distribution: fingerprint.defaultBloomDistribution,
+		default_scenario_preferences: fingerprint.defaultScenarioPreferences,
+		default_item_modes: fingerprint.defaultItemModes,
+		flow_profile: fingerprint.flowProfile,
+		last_updated: fingerprint.lastUpdated,
+		version: fingerprint.version,
+	};
+}
+
+function hydrateAssessmentFingerprint(row: Record<string, unknown>): AssessmentFingerprint {
+	return {
+		assessmentId: String(row.assessment_id),
+		teacherId: String(row.teacher_id),
+		unitId: typeof row.unit_id === "string" ? row.unit_id : undefined,
+		conceptProfiles: (row.concept_profiles as AssessmentFingerprint["conceptProfiles"]) ?? [],
+		flowProfile: row.flow_profile as AssessmentFingerprint["flowProfile"],
+		itemCount: Number(row.item_count ?? 0),
+		sourceType: row.source_type as AssessmentFingerprint["sourceType"],
+		lastUpdated: String(row.last_updated),
+		version: Number(row.version ?? 1),
+	};
+}
+
+function hydrateUnitFingerprint(row: Record<string, unknown>): UnitFingerprint {
+	return {
+		teacherId: String(row.teacher_id),
+		unitId: String(row.unit_id),
+		conceptProfiles: (row.concept_profiles as UnitFingerprint["conceptProfiles"]) ?? [],
+		flowProfile: row.flow_profile as UnitFingerprint["flowProfile"],
+		derivedFromAssessmentIds: (row.derived_from_assessment_ids as string[]) ?? [],
+		lastUpdated: String(row.last_updated),
+		version: Number(row.version ?? 1),
+	};
+}
+
+function hydrateTeacherFingerprint(row: Record<string, unknown>): TeacherFingerprint {
+	return {
+		teacherId: String(row.teacher_id),
+		globalConceptProfiles: (row.global_concept_profiles as TeacherFingerprint["globalConceptProfiles"]) ?? [],
+		defaultBloomDistribution: row.default_bloom_distribution as TeacherFingerprint["defaultBloomDistribution"],
+		defaultScenarioPreferences: (row.default_scenario_preferences as TeacherFingerprint["defaultScenarioPreferences"]) ?? [],
+		defaultItemModes: (row.default_item_modes as TeacherFingerprint["defaultItemModes"]) ?? [],
+		flowProfile: row.flow_profile as TeacherFingerprint["flowProfile"],
+		lastUpdated: String(row.last_updated),
+		version: Number(row.version ?? 1),
+	};
+}
+
+function isBloomLevel(value: unknown): value is BloomLevel {
+	return typeof value === "string" && BLOOM_KEYS.includes(value.toLowerCase() as typeof BLOOM_KEYS[number]);
+}
+
+function isScenarioType(value: unknown): value is ScenarioType {
+	return typeof value === "string" && ["real-world", "simulation", "data-table", "graphical", "abstract-symbolic"].includes(value);
+}
+
+function inferFingerprintEdits(payload: TeacherFeedbackPayload, assessment: AssessmentFingerprint): AssessmentFingerprintEdits | null {
+	const context = payload.context;
+	if (!context) {
+		return null;
+	}
+
+	const conceptId = context.conceptId ? canonicalConceptId(context.conceptId) : undefined;
+	const edits: AssessmentFingerprintEdits = {};
+
+	if (payload.target === "bloom" && conceptId && isBloomLevel(payload.teacherValue)) {
+		edits.bloomCeilings = { [conceptId]: payload.teacherValue.toLowerCase() as BloomLevel };
+		edits.bloomLevelAppends = { [conceptId]: [payload.teacherValue.toLowerCase() as BloomLevel] };
+	}
+
+	if (payload.target === "concepts" && payload.teacherValue && typeof payload.teacherValue === "object") {
+		const teacherConcepts = Object.entries(payload.teacherValue as Record<string, unknown>)
+			.filter(([, weight]) => typeof weight === "number" ? weight > 0 : Boolean(weight));
+
+		const existingConceptIds = new Set(assessment.conceptProfiles.map((profile) => profile.conceptId));
+		const addConcepts = teacherConcepts
+			.map(([displayName, weight]) => ({
+				conceptId: canonicalConceptId(displayName),
+				displayName,
+				absoluteItemHint: Math.max(1, Math.round(typeof weight === "number" ? weight : 1)),
+			}))
+			.filter((profile) => !existingConceptIds.has(profile.conceptId));
+
+		if (addConcepts.length > 0) {
+			edits.addConcepts = addConcepts;
+		}
+
+		if (context.scope === "instructional-unit" && teacherConcepts.length > 0) {
+			edits.sectionOrder = teacherConcepts.map(([displayName]) => canonicalConceptId(displayName));
+		}
+	}
+
+	if (context.scenarioType && conceptId && isScenarioType(context.scenarioType)) {
+		edits.scenarioOverrides = { [conceptId]: [context.scenarioType] };
+	}
+
+	if (!edits.addConcepts && !edits.bloomCeilings && !edits.bloomLevelAppends && !edits.sectionOrder && !edits.scenarioOverrides) {
+		return null;
+	}
+
+	return edits;
+}
+
+function recomputeStoredFingerprintsFromAssessments(teacherId: string, assessments: AssessmentFingerprint[]) {
+	for (const key of [...unitFingerprintMemory.keys()]) {
+		if (key.startsWith(`${teacherId}::`)) {
+			unitFingerprintMemory.delete(key);
+		}
+	}
+
+	let teacherFingerprint: TeacherFingerprint | null = null;
+	for (const assessment of assessments) {
+		assessmentFingerprintMemory.set(assessment.assessmentId, assessment);
+		teacherFingerprint = mergeAssessmentIntoTeacherFingerprint({ previous: teacherFingerprint, assessment, now: assessment.lastUpdated });
+		if (assessment.unitId) {
+			const key = fingerprintUnitKey(teacherId, assessment.unitId);
+			const previousUnit = unitFingerprintMemory.get(key) ?? null;
+			unitFingerprintMemory.set(key, mergeAssessmentIntoUnitFingerprint({ previous: previousUnit, assessment, now: assessment.lastUpdated }));
+		}
+	}
+
+	if (teacherFingerprint) {
+		teacherFingerprintMemory.set(teacherId, finalizeFlowProfiles(assessments, teacherFingerprint) as TeacherFingerprint);
+		for (const [key, fingerprint] of [...unitFingerprintMemory.entries()]) {
+			if (!key.startsWith(`${teacherId}::`)) {
+				continue;
+			}
+			const unitId = key.slice(teacherId.length + 2);
+			const unitAssessments = assessments.filter((assessment) => assessment.unitId === unitId);
+			unitFingerprintMemory.set(key, finalizeFlowProfiles(unitAssessments, fingerprint) as UnitFingerprint);
+		}
+	} else {
+		teacherFingerprintMemory.delete(teacherId);
+	}
+}
+
+async function listTeacherAssessments(teacherId: string) {
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("assessment_fingerprints", {
+			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+			filters: { teacher_id: `eq.${teacherId}`, order: "last_updated.asc,assessment_id.asc" },
+		});
+		return ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
+	}
+
+	return sortAssessmentsForAggregation([...assessmentFingerprintMemory.values()].filter((assessment) => assessment.teacherId === teacherId));
+}
+
+async function recomputeStoredFingerprints(teacherId: string) {
+	const assessments = await listTeacherAssessments(teacherId);
+	recomputeStoredFingerprintsFromAssessments(teacherId, assessments);
+
+	if (!canUseSupabase()) {
+		return;
+	}
+
+	if (assessments.length === 0) {
+		await supabaseRest("unit_fingerprints", {
+			method: "DELETE",
+			filters: { teacher_id: `eq.${teacherId}` },
+			prefer: "return=minimal",
+		});
+		await supabaseRest("teacher_fingerprints", {
+			method: "DELETE",
+			filters: { teacher_id: `eq.${teacherId}` },
+			prefer: "return=minimal",
+		});
+		return;
+	}
+
+	const teacherFingerprint = teacherFingerprintMemory.get(teacherId) ?? null;
+	const unitFingerprints = [...unitFingerprintMemory.entries()]
+		.filter(([key]) => key.startsWith(`${teacherId}::`))
+		.map(([, fingerprint]) => fingerprint);
+
+	await supabaseRest("unit_fingerprints", {
+		method: "DELETE",
+		filters: { teacher_id: `eq.${teacherId}` },
+		prefer: "return=minimal",
+	});
+
+	if (unitFingerprints.length > 0) {
+		await supabaseRest("unit_fingerprints", {
+			method: "POST",
+			body: unitFingerprints.map((fingerprint) => normalizeUnitFingerprint(fingerprint)),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+
+	if (teacherFingerprint) {
+		await supabaseRest("teacher_fingerprints", {
+			method: "POST",
+			body: normalizeTeacherFingerprint(teacherFingerprint),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+}
+
 async function readJsonIfAvailable<T>(response: Response): Promise<T | null> {
 	const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
 
@@ -320,6 +623,19 @@ export async function saveTeacherFeedback(payload: TeacherFeedbackPayload) {
 	}
 
 	const learnedTemplate = await learnTemplateFromFeedback(feedback);
+	if (payload.context?.assessmentId) {
+		const assessment = await getAssessmentFingerprint(payload.context.assessmentId);
+		const edits = assessment ? inferFingerprintEdits(payload, assessment) : null;
+		if (assessment && edits) {
+			await updateAssessmentFingerprint({
+				assessmentId: assessment.assessmentId,
+				edits: {
+					...edits,
+					now: feedback.createdAt,
+				},
+			});
+		}
+	}
 	await recordTeacherAction(buildTeacherActionEvent(payload, feedback));
 	return {
 		feedback,
@@ -557,9 +873,166 @@ export async function listTeacherDerivedTemplates(subject?: string, domain?: str
 	return loadTeacherTemplates(records).templates;
 }
 
+export async function saveAssessmentFingerprint(fingerprint: AssessmentFingerprint) {
+	assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
+	if (canUseSupabase()) {
+		await supabaseRest("assessment_fingerprints", {
+			method: "POST",
+			body: normalizeAssessmentFingerprint(fingerprint),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+	await recomputeStoredFingerprints(fingerprint.teacherId);
+	return {
+		assessment: assessmentFingerprintMemory.get(fingerprint.assessmentId) ?? fingerprint,
+		unit: fingerprint.unitId ? unitFingerprintMemory.get(fingerprintUnitKey(fingerprint.teacherId, fingerprint.unitId)) ?? null : null,
+		teacher: teacherFingerprintMemory.get(fingerprint.teacherId) ?? null,
+	};
+}
+
+export async function updateAssessmentFingerprint(args: {
+	assessmentId: string;
+	edits: AssessmentFingerprintEdits;
+}) {
+	const current = await getAssessmentFingerprint(args.assessmentId);
+	if (!current) {
+		return null;
+	}
+
+	const updated = applyAssessmentFingerprintEdits({
+		assessment: current,
+		edits: args.edits,
+	});
+	assessmentFingerprintMemory.set(updated.assessmentId, updated);
+	if (canUseSupabase()) {
+		await supabaseRest("assessment_fingerprints", {
+			method: "POST",
+			body: normalizeAssessmentFingerprint(updated),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+	await recomputeStoredFingerprints(updated.teacherId);
+
+	return {
+		assessment: updated,
+		unit: updated.unitId ? unitFingerprintMemory.get(fingerprintUnitKey(updated.teacherId, updated.unitId)) ?? null : null,
+		teacher: teacherFingerprintMemory.get(updated.teacherId) ?? null,
+	};
+}
+
+export async function getAssessmentFingerprint(assessmentId: string): Promise<AssessmentFingerprint | null> {
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("assessment_fingerprints", {
+			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+			filters: { assessment_id: `eq.${assessmentId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] : null;
+		if (!row) {
+			return null;
+		}
+		const fingerprint = hydrateAssessmentFingerprint(row as Record<string, unknown>);
+		assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
+		return fingerprint;
+	}
+
+	return assessmentFingerprintMemory.get(assessmentId) ?? null;
+}
+
+export async function listAssessmentFingerprints(args?: { teacherId?: string; unitId?: string }) {
+	if (canUseSupabase()) {
+		const filters: Record<string, string> = { order: "last_updated.asc,assessment_id.asc" };
+		if (args?.teacherId) {
+			filters.teacher_id = `eq.${args.teacherId}`;
+		}
+		if (args?.unitId) {
+			filters.unit_id = `eq.${args.unitId}`;
+		}
+		const rows = await supabaseRest("assessment_fingerprints", {
+			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+			filters,
+		});
+		const fingerprints = ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
+		for (const fingerprint of fingerprints) {
+			assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
+		}
+		return fingerprints;
+	}
+
+	return [...assessmentFingerprintMemory.values()].filter((fingerprint) => {
+		if (args?.teacherId && fingerprint.teacherId !== args.teacherId) {
+			return false;
+		}
+		if (args?.unitId && fingerprint.unitId !== args.unitId) {
+			return false;
+		}
+		return true;
+	});
+}
+
+export async function getUnitFingerprint(teacherId: string, unitId: string): Promise<UnitFingerprint | null> {
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("unit_fingerprints", {
+			select: "teacher_id,unit_id,concept_profiles,flow_profile,derived_from_assessment_ids,last_updated,version",
+			filters: { teacher_id: `eq.${teacherId}`, unit_id: `eq.${unitId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] : null;
+		if (!row) {
+			return null;
+		}
+		const fingerprint = hydrateUnitFingerprint(row as Record<string, unknown>);
+		unitFingerprintMemory.set(fingerprintUnitKey(teacherId, unitId), fingerprint);
+		return fingerprint;
+	}
+
+	return unitFingerprintMemory.get(fingerprintUnitKey(teacherId, unitId)) ?? null;
+}
+
+export async function getTeacherFingerprint(teacherId: string): Promise<TeacherFingerprint | null> {
+	if (canUseSupabase()) {
+		const rows = await supabaseRest("teacher_fingerprints", {
+			select: "teacher_id,global_concept_profiles,default_bloom_distribution,default_scenario_preferences,default_item_modes,flow_profile,last_updated,version",
+			filters: { teacher_id: `eq.${teacherId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] : null;
+		if (!row) {
+			return null;
+		}
+		const fingerprint = hydrateTeacherFingerprint(row as Record<string, unknown>);
+		teacherFingerprintMemory.set(teacherId, fingerprint);
+		return fingerprint;
+	}
+
+	return teacherFingerprintMemory.get(teacherId) ?? null;
+}
+
+export async function explainAssessmentFingerprintAlignment(assessmentId: string): Promise<FingerprintAlignmentExplanation | null> {
+	const assessment = assessmentFingerprintMemory.get(assessmentId) ?? null;
+	if (!assessment) {
+		return null;
+	}
+
+	const teacherFingerprint = teacherFingerprintMemory.get(assessment.teacherId) ?? null;
+	if (!teacherFingerprint) {
+		return null;
+	}
+
+	const unitFingerprint = assessment.unitId
+		? unitFingerprintMemory.get(fingerprintUnitKey(assessment.teacherId, assessment.unitId)) ?? null
+		: null;
+
+	return explainFingerprintAlignment({
+		assessment,
+		teacherFingerprint,
+		unitFingerprint,
+	});
+}
+
 export function resetTeacherFeedbackState() {
 	feedbackMemory.length = 0;
 	overrideMemory.clear();
 	templateMemory.clear();
+	assessmentFingerprintMemory.clear();
+	unitFingerprintMemory.clear();
+	teacherFingerprintMemory.clear();
 	resetLearningState();
 }

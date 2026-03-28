@@ -95,4 +95,27 @@ describe("classifyFragments", () => {
 			"historical periods",
 		]));
 	});
+
+	it("normalizes statistics concepts and suppresses noisy non-stat labels", () => {
+		const fragments = classifyFragments(buildDocument([
+			{ id: "node-1", nodeType: "paragraph", text: "Interpret the p-value and decision rule at α = 0.05 for the null hypothesis and alternative hypothesis." },
+			{ id: "node-2", nodeType: "paragraph", text: "A kissing couples simulation uses a sample proportion and a dotplot to estimate the sampling distribution." },
+			{ id: "node-3", nodeType: "paragraph", text: "Explain a Type I error and a Type II error in the restaurant income scenario with decimals like 0.05." },
+			{ id: "node-4", nodeType: "paragraph", text: "Describe the parameter and statistic for a construction zone speeds one-sample mean test." },
+		]));
+
+		const concepts = [...new Set(fragments.flatMap((fragment) => fragment.prerequisiteConcepts ?? []))];
+		expect(concepts).toEqual(expect.arrayContaining([
+			"hypothesis testing",
+			"p-values & decision rules",
+			"one-sample proportion test",
+			"one-sample mean test",
+			"simulation-based inference",
+			"parameters & statistics",
+			"type i and type ii errors",
+		]));
+		expect(concepts).not.toContain("decimal operations");
+		expect(concepts).not.toContain("rights and responsibilities");
+		expect(concepts).not.toContain("inference");
+	});
 });
