@@ -3,6 +3,7 @@ import type { StudentAssessmentEvent, StudentPerformanceProfile } from "./Studen
 
 const studentProfileMemory = new Map<string, StudentPerformanceProfile>();
 const studentEventMemory = new Map<string, StudentAssessmentEvent[]>();
+const classRosterMemory = new Map<string, string[]>();
 
 function canUseSupabase() {
 	return typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -158,6 +159,20 @@ export async function appendStudentAssessmentEvents(events: StudentAssessmentEve
 	return events;
 }
 
+export async function saveClassRoster(classId: string, studentIds: string[]) {
+	const normalizedStudentIds = [...new Set(studentIds.map((studentId) => studentId.trim()).filter(Boolean))].sort((left, right) => left.localeCompare(right));
+	classRosterMemory.set(classId, normalizedStudentIds);
+	return normalizedStudentIds;
+}
+
+export async function getClassRoster(classId: string): Promise<string[] | null> {
+	return classRosterMemory.get(classId) ?? null;
+}
+
+export async function listStudentIdsForClass(classId: string): Promise<string[]> {
+	return [...(classRosterMemory.get(classId) ?? [])];
+}
+
 export async function listStudentAssessmentEvents(studentId: string, unitId?: string): Promise<StudentAssessmentEvent[]> {
 	if (canUseSupabase()) {
 		const rows = await supabaseRest("student_assessment_events", {
@@ -178,4 +193,5 @@ export async function listStudentAssessmentEvents(studentId: string, unitId?: st
 export function resetStudentPerformanceState() {
 	studentProfileMemory.clear();
 	studentEventMemory.clear();
+	classRosterMemory.clear();
 }

@@ -212,6 +212,21 @@
   margin-top: 1rem;
 }
 
+.v4-viewer .v4-analysis-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.v4-viewer .v4-analysis-overview {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.v4-viewer .v4-analysis-columns {
+  margin-top: 0;
+}
+
 .v4-viewer .v4-inline-list,
 .v4-viewer .v4-ranked-list,
 .v4-viewer .v4-problem-list {
@@ -537,6 +552,84 @@
 
 .v4-viewer .v4-product-span {
   grid-column: 1 / -1;
+}
+
+.v4-viewer .v4-tab-strip {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.v4-viewer .v4-tab-button {
+  border: 1px solid rgba(86, 57, 32, 0.14);
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  background: rgba(255, 255, 255, 0.76);
+  color: #4e301d;
+  font: inherit;
+  cursor: pointer;
+}
+
+.v4-viewer .v4-tab-button-active {
+  background: linear-gradient(135deg, #bb5b35, #874122);
+  color: #fff8ef;
+  box-shadow: 0 14px 28px rgba(65, 44, 23, 0.12);
+}
+
+.v4-viewer .v4-reasoning-panel {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(86, 57, 32, 0.12);
+}
+
+.v4-viewer .v4-fingerprint-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.v4-viewer .v4-concept-node {
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+}
+
+.v4-viewer .v4-concept-node-low {
+  background: rgba(187, 91, 53, 0.16);
+}
+
+.v4-viewer .v4-concept-node-mid {
+  background: rgba(212, 167, 44, 0.18);
+}
+
+.v4-viewer .v4-concept-node-high {
+  background: rgba(64, 122, 88, 0.18);
+}
+
+.v4-viewer .v4-concept-node-neutral {
+  background: rgba(86, 57, 32, 0.08);
+}
+
+.v4-viewer .v4-class-heatmap-row {
+  align-items: center;
+}
+
+.v4-viewer .v4-class-heatmap-bands {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.v4-viewer .v4-version-stack {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.v4-viewer .v4-differentiated-version {
+  background: rgba(255, 248, 239, 0.92);
 }
 
 .v4-viewer .v4-segment-column {

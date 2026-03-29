@@ -1,0 +1,332 @@
+import type { TestProduct } from "../schema/integration";
+import type { ExtractedProblemDifficulty } from "../schema/semantic";
+import {
+	buildAssessmentFingerprint,
+	canonicalConceptId,
+	type AssessmentFingerprint,
+	type BloomLevel,
+	type ItemMode,
+	type ScenarioType,
+	type TeacherFingerprint,
+} from "../teacherFeedback";
+
+import type { BlueprintModel, ConceptMapModel, InstructionalAnalysis, TeacherFingerprintModel } from "./InstructionalIntelligenceSession";
+import type { CountedBloom, CountedDifficulty, CountedMode, CountedScenario } from "./primitives";
+
+const BLOOM_LEVELS: BloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
+const ITEM_MODES: ItemMode[] = ["identify", "state", "interpret", "compare", "apply", "analyze", "evaluate", "explain", "construct"];
+const SCENARIO_TYPES: ScenarioType[] = ["real-world", "simulation", "data-table", "graphical", "abstract-symbolic"];
+const DIFFICULTY_BANDS: ExtractedProblemDifficulty[] = ["low", "medium", "high"];
+
+function uniqueValues<T>(values: T[]) {
+	return [...new Set(values)];
+}
+
+function titleCase(value: string) {
+	return value
+		.split(/[-\s]+/)
+		.filter(Boolean)
+		.map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join(" ");
+}
+
+function countArrayValues<T extends string>(values: T[], order: T[]) {
+	const counts = values.reduce<Map<T, number>>((map, value) => {
+		map.set(value, (map.get(value) ?? 0) + 1);
+		return map;
+	}, new Map<T, number>());
+
+	return order.flatMap((value) => {
+		const count = counts.get(value) ?? 0;
+		return count > 0 ? [[value, count] as const] : [];
+	});
+}
+
+function countRecordValues<T extends string>(record: Partial<Record<T, number>>, order: T[]) {
+	return order.flatMap((value) => {
+		const count = record[value] ?? 0;
+		return count > 0 ? [[value, count] as const] : [];
+	});
+}
+
+function orderedConceptProfiles(assessment: AssessmentFingerprint) {
+	const profilesById = new Map(assessment.conceptProfiles.map((profile) => [profile.conceptId, profile] as const));
+	const orderedIds = uniqueValues([...assessment.flowProfile.sectionOrder, ...assessment.conceptProfiles.map((profile) => profile.conceptId)]);
+	return orderedIds.flatMap((conceptId) => {
+		const profile = profilesById.get(conceptId);
+		return profile ? [profile] : [];
+	});
+}
+
+function createSingleBloomDistribution(level: BloomLevel) {
+	return BLOOM_LEVELS.reduce<Record<BloomLevel, number>>((distribution, currentLevel) => {
+		distribution[currentLevel] = currentLevel === level ? 1 : 0;
+		return distribution;
+	}, {
+		remember: 0,
+		understand: 0,
+		apply: 0,
+		analyze: 0,
+		evaluate: 0,
+		create: 0,
+	});
+}
+
+function toCountedBloom(values: Array<readonly [BloomLevel, number]>): CountedBloom[] {
+	return values.map(([level, count]) => ({ level, count }));
+}
+
+function toCountedMode(values: Array<readonly [ItemMode, number]>): CountedMode[] {
+	return values.map(([mode, count]) => ({ mode, count }));
+}
+
+function toCountedScenario(values: Array<readonly [ScenarioType, number]>): CountedScenario[] {
+	return values.map(([scenario, count]) => ({ scenario, count }));
+}
+
+function toCountedDifficulty(values: Array<readonly [ExtractedProblemDifficulty, number]>): CountedDifficulty[] {
+	return values.map(([band, count]) => ({ band, count }));
+}
+
+function expandBloomPreferences(entries: CountedBloom[]) {
+	return entries.flatMap((entry) => Array.from({ length: Math.max(0, Math.round(entry.count)) }, () => entry.level));
+}
+
+function sortModesByCount(entries: CountedMode[]) {
+	return [...entries]
+		.filter((entry) => entry.count > 0)
+		.sort((left, right) => right.count - left.count || ITEM_MODES.indexOf(left.mode) - ITEM_MODES.indexOf(right.mode))
+		.map((entry) => entry.mode);
+}
+
+function sortScenariosByCount(entries: CountedScenario[]) {
+	return [...entries]
+		.filter((entry) => entry.count > 0)
+		.sort((left, right) => right.count - left.count || SCENARIO_TYPES.indexOf(left.scenario) - SCENARIO_TYPES.indexOf(right.scenario))
+		.map((entry) => entry.scenario);
+}
+
+function difficultyCountsFromProduct(product?: TestProduct) {
+	if (!product) {
+		return [] as CountedDifficulty[];
+	}
+
+	const difficulties = product.sections.flatMap((section) => section.items.map((item) => item.difficulty));
+	return toCountedDifficulty(countArrayValues(difficulties, DIFFICULTY_BANDS));
+}
+
+export function buildInstructionalBlueprint(args: {
+	assessment: AssessmentFingerprint;
+	product?: TestProduct;
+}): BlueprintModel {
+	const orderedProfiles = orderedConceptProfiles(args.assessment);
+	const bloomCounts = new Map<BloomLevel, number>();
+
+	for (const profile of orderedProfiles) {
+		const absoluteItemHint = Math.max(1, profile.absoluteItemHint ?? 1);
+		for (const level of BLOOM_LEVELS) {
+			const weightedCount = Math.round((profile.bloomDistribution[level] ?? 0) * absoluteItemHint);
+			if (weightedCount > 0) {
+				bloomCounts.set(level, (bloomCounts.get(level) ?? 0) + weightedCount);
+			}
+		}
+		if (![...bloomCounts.keys()].includes(profile.maxBloomLevel)) {
+			bloomCounts.set(profile.maxBloomLevel, (bloomCounts.get(profile.maxBloomLevel) ?? 0) + 1);
+		}
+	}
+
+	return {
+		concepts: orderedProfiles.map((profile, index) => ({
+			id: profile.conceptId,
+			name: profile.displayName || titleCase(profile.conceptId),
+			order: index,
+			included: true,
+			quota: Math.max(1, profile.absoluteItemHint ?? 1),
+		})),
+		bloomLadder: toCountedBloom(countRecordValues(Object.fromEntries(bloomCounts.entries()) as Partial<Record<BloomLevel, number>>, BLOOM_LEVELS)),
+		difficultyRamp: difficultyCountsFromProduct(args.product),
+		modeMix: toCountedMode(countArrayValues(orderedProfiles.flatMap((profile) => profile.itemModes), ITEM_MODES)),
+		scenarioMix: toCountedScenario(countArrayValues(orderedProfiles.flatMap((profile) => profile.scenarioPatterns), SCENARIO_TYPES)),
+	};
+}
+
+export function mergeBlueprintModel(current: BlueprintModel, patch: Partial<BlueprintModel>): BlueprintModel {
+	return {
+		concepts: patch.concepts ?? current.concepts,
+		bloomLadder: patch.bloomLadder ?? current.bloomLadder,
+		difficultyRamp: patch.difficultyRamp ?? current.difficultyRamp,
+		modeMix: patch.modeMix ?? current.modeMix,
+		scenarioMix: patch.scenarioMix ?? current.scenarioMix,
+	};
+}
+
+export function buildAssessmentFingerprintFromBlueprint(args: {
+	teacherId: string;
+	assessmentId: string;
+	product: TestProduct;
+	blueprint: BlueprintModel;
+	current?: AssessmentFingerprint | null;
+	unitId?: string;
+	now?: string;
+}): AssessmentFingerprint {
+	const now = args.now ?? new Date().toISOString();
+	const base = args.current ?? buildAssessmentFingerprint({
+		teacherId: args.teacherId,
+		assessmentId: args.assessmentId,
+		product: args.product,
+		unitId: args.unitId,
+		sourceType: "generated",
+		now,
+	});
+	const existingProfiles = new Map(base.conceptProfiles.map((profile) => [profile.conceptId, profile] as const));
+	const includedConcepts = [...args.blueprint.concepts]
+		.filter((concept) => concept.included !== false)
+		.sort((left, right) => left.order - right.order);
+	const totalItems = includedConcepts.reduce((sum, concept) => sum + Math.max(1, Math.round(concept.quota)), 0);
+	const expandedBloomLevels = expandBloomPreferences(args.blueprint.bloomLadder);
+	const preferredModes = sortModesByCount(args.blueprint.modeMix);
+	const preferredScenarios = sortScenariosByCount(args.blueprint.scenarioMix);
+
+	const conceptProfiles = includedConcepts.map((concept, index) => {
+		const conceptId = canonicalConceptId(concept.id || concept.name);
+		const existing = existingProfiles.get(conceptId);
+		const assignedBloom = expandedBloomLevels[index] ?? existing?.maxBloomLevel ?? "understand";
+		const absoluteItemHint = Math.max(1, Math.round(concept.quota));
+		return {
+			conceptId,
+			displayName: concept.name,
+			frequencyWeight: totalItems > 0 ? Number((absoluteItemHint / totalItems).toFixed(4)) : 0,
+			absoluteItemHint,
+			lowEmphasis: absoluteItemHint <= 1,
+			bloomDistribution: createSingleBloomDistribution(assignedBloom),
+			scenarioPatterns: preferredScenarios.length > 0
+				? [preferredScenarios[index % preferredScenarios.length]]
+				: (existing?.scenarioPatterns.length ? existing.scenarioPatterns : ["abstract-symbolic"]),
+			scenarioDirective: existing?.scenarioDirective,
+			itemModes: preferredModes.length > 0
+				? [preferredModes[index % preferredModes.length]]
+				: (existing?.itemModes.length ? existing.itemModes : ["explain"]),
+			maxBloomLevel: assignedBloom,
+		};
+	});
+
+	return {
+		teacherId: args.teacherId,
+		assessmentId: args.assessmentId,
+		unitId: args.unitId ?? base.unitId,
+		conceptProfiles,
+		flowProfile: {
+			sectionOrder: includedConcepts.map((concept) => canonicalConceptId(concept.id || concept.name)),
+			typicalLengthRange: [Math.max(1, totalItems), Math.max(1, totalItems)],
+			cognitiveLadderShape: uniqueValues(expandedBloomLevels.length > 0 ? expandedBloomLevels : conceptProfiles.map((profile) => profile.maxBloomLevel)),
+		},
+		itemCount: Math.max(1, totalItems),
+		sourceType: base.sourceType,
+		lastUpdated: now,
+		version: (base.version ?? 0) + 1,
+	};
+}
+
+export function buildInstructionalConceptMap(args: {
+	analysis: InstructionalAnalysis;
+	blueprint: BlueprintModel;
+}): ConceptMapModel {
+	const analysisByConcept = new Map(args.analysis.concepts.map((concept) => [canonicalConceptId(concept.concept), concept] as const));
+	const orderedConcepts = [...args.blueprint.concepts]
+		.filter((concept) => concept.included !== false)
+		.sort((left, right) => left.order - right.order);
+
+	return {
+		nodes: orderedConcepts.map((concept) => {
+			const analysisConcept = analysisByConcept.get(canonicalConceptId(concept.id || concept.name));
+			return {
+				id: concept.id,
+				label: concept.name,
+				weight: analysisConcept?.problemCount ?? concept.quota,
+			};
+		}),
+		edges: orderedConcepts.flatMap((concept, index) => {
+			const nextConcept = orderedConcepts[index + 1];
+			return nextConcept
+				? [{ from: concept.id, to: nextConcept.id, weight: 1 }]
+				: [];
+		}),
+	};
+}
+
+export function buildTeacherFingerprintModel(fingerprint: TeacherFingerprint | null, teacherId?: string): TeacherFingerprintModel {
+	if (!fingerprint) {
+		return {
+			teacherId: teacherId ?? "",
+			modePreferences: [],
+			scenarioPreferences: [],
+			bloomPreferences: [],
+			difficultyPreferences: [],
+			rawFingerprint: null,
+		};
+	}
+
+	return {
+		teacherId: fingerprint.teacherId,
+		modePreferences: toCountedMode(countArrayValues(fingerprint.defaultItemModes, ITEM_MODES)),
+		scenarioPreferences: toCountedScenario(countArrayValues(fingerprint.defaultScenarioPreferences, SCENARIO_TYPES)),
+		bloomPreferences: toCountedBloom(countRecordValues(fingerprint.defaultBloomDistribution, BLOOM_LEVELS)),
+		difficultyPreferences: [],
+		rawFingerprint: fingerprint,
+	};
+}
+
+export function mergeTeacherFingerprintModel(
+	current: TeacherFingerprintModel,
+	patch: Partial<TeacherFingerprintModel>,
+): TeacherFingerprintModel {
+	return {
+		teacherId: patch.teacherId ?? current.teacherId,
+		modePreferences: patch.modePreferences ?? current.modePreferences,
+		scenarioPreferences: patch.scenarioPreferences ?? current.scenarioPreferences,
+		bloomPreferences: patch.bloomPreferences ?? current.bloomPreferences,
+		difficultyPreferences: patch.difficultyPreferences ?? current.difficultyPreferences,
+		rawFingerprint: patch.rawFingerprint ?? current.rawFingerprint,
+	};
+}
+
+export function buildTeacherFingerprintFromModel(args: {
+	teacherId: string;
+	model: TeacherFingerprintModel;
+	current?: TeacherFingerprint | null;
+	now?: string;
+}): TeacherFingerprint {
+	const now = args.now ?? new Date().toISOString();
+	const bloomTotal = args.model.bloomPreferences.reduce((sum, entry) => sum + Math.max(0, entry.count), 0);
+	const defaultBloomDistribution = BLOOM_LEVELS.reduce<Record<BloomLevel, number>>((distribution, level) => {
+		const count = args.model.bloomPreferences.find((entry) => entry.level === level)?.count ?? 0;
+		distribution[level] = bloomTotal > 0 ? Number((count / bloomTotal).toFixed(4)) : (args.current?.defaultBloomDistribution[level] ?? (level === "understand" ? 1 : 0));
+		return distribution;
+	}, {
+		remember: 0,
+		understand: 0,
+		apply: 0,
+		analyze: 0,
+		evaluate: 0,
+		create: 0,
+	});
+
+	const defaultScenarioPreferences = sortScenariosByCount(args.model.scenarioPreferences);
+	const defaultItemModes = sortModesByCount(args.model.modePreferences);
+	const cognitiveLadderShape = uniqueValues(expandBloomPreferences(args.model.bloomPreferences));
+
+	return {
+		teacherId: args.teacherId,
+		globalConceptProfiles: args.current?.globalConceptProfiles ?? [],
+		defaultBloomDistribution,
+		defaultScenarioPreferences: defaultScenarioPreferences.length > 0 ? defaultScenarioPreferences : (args.current?.defaultScenarioPreferences ?? []),
+		defaultItemModes: defaultItemModes.length > 0 ? defaultItemModes : (args.current?.defaultItemModes ?? []),
+		flowProfile: {
+			sectionOrder: args.current?.flowProfile.sectionOrder ?? [],
+			typicalLengthRange: args.current?.flowProfile.typicalLengthRange ?? [1, 1],
+			cognitiveLadderShape: cognitiveLadderShape.length > 0 ? cognitiveLadderShape : (args.current?.flowProfile.cognitiveLadderShape ?? []),
+		},
+		lastUpdated: now,
+		version: (args.current?.version ?? 0) + 1,
+	};
+}

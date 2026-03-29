@@ -1,11 +1,14 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useRef, useState } from "react";
 
-import type { DocumentRole, DocumentSession, SessionRole } from "../../prism-v4/schema/domain";
 import type { IntentProduct } from "../../prism-v4/schema/integration/IntentProduct";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
-import type { AnalyzedDocument, DocumentCollectionAnalysis } from "../../prism-v4/schema/semantic";
+import type { AnalyzedDocument } from "../../prism-v4/schema/semantic";
+import type { InstructionalSessionWorkspace } from "../../types/v4/InstructionalSession";
 
+import { useInstructionalSession } from "../../hooks/useInstructionalSession";
+import { useAuth } from "../Auth/useAuth";
+import { AnalysisPanel } from "./AnalysisPanel";
 import { ProductViewer, getProductTitle } from "./ProductViewer";
 import "./v4.css";
 
@@ -24,27 +27,7 @@ function logUploadTrace(message: string, details?: Record<string, unknown>) {
   console.info(`[Wave6 Upload] ${message}`);
 }
 
-type RegisteredDocumentSummary = {
-  documentId: string;
-  sourceFileName: string;
-  sourceMimeType: string;
-  createdAt: string;
-};
-
-type UploadDocumentResponse = {
-  documentId: string;
-  sessionId: string;
-  registered: RegisteredDocumentSummary[];
-};
-
-type SessionWorkspace = {
-  sessionId: string;
-  session: DocumentSession;
-  documents: RegisteredDocumentSummary[];
-  analyzedDocuments: AnalyzedDocument[];
-  analysis: DocumentCollectionAnalysis | null;
-  products: IntentProduct[];
-};
+type RegisteredDocumentSummary = InstructionalSessionWorkspace["documents"][number];
 
 type IntentConfig = {
   label: string;
@@ -93,39 +76,6 @@ const INTENT_CONFIG: Record<IntentType, IntentConfig> = {
   "build-review-from-test": { label: "Build Review From Test", description: "Not yet surfaced in the Wave 6 UI.", scope: "flex" },
 };
 
-function guessDocumentRole(file: File): DocumentRole {
-  const lowerName = file.name.toLowerCase();
-  if (lowerName.includes("slide") || file.type.includes("presentation")) {
-    return "slides";
-  }
-  if (lowerName.includes("note") || file.type.includes("wordprocessingml")) {
-    return "notes";
-  }
-  if (lowerName.includes("review")) {
-    return "review";
-  }
-  if (lowerName.includes("quiz") || lowerName.includes("test") || lowerName.includes("assessment")) {
-    return "test";
-  }
-  if (lowerName.includes("worksheet") || lowerName.includes("practice")) {
-    return "worksheet";
-  }
-  if (lowerName.includes("article") || lowerName.includes("reading")) {
-    return "article";
-  }
-  return "unknown";
-}
-
-function guessSessionRole(role: DocumentRole): SessionRole {
-  if (role === "test") {
-    return "target-assessment";
-  }
-  if (role === "review") {
-    return "target-review";
-  }
-  return "unit-member";
-}
-
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
 }
@@ -161,7 +111,7 @@ function getIntentConfig(intentType: IntentType) {
   return INTENT_CONFIG[intentType] ?? { label: intentType, description: "Generate a product from the selected documents.", scope: "flex" as const };
 }
 
-function resolveIntentDocumentIds(workspace: SessionWorkspace | null, intentType: IntentType, selectedDocumentIds: string[], primaryDocumentId: string | null) {
+function resolveIntentDocumentIds(workspace: InstructionalSessionWorkspace | null, intentType: IntentType, selectedDocumentIds: string[], primaryDocumentId: string | null) {
   if (!workspace) {
     return [];
   }
@@ -183,7 +133,7 @@ function resolveIntentDocumentIds(workspace: SessionWorkspace | null, intentType
   return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
 }
 
-function getIntentBlockedReason(workspace: SessionWorkspace | null, intentType: IntentType, documentIds: string[]) {
+function getIntentBlockedReason(workspace: InstructionalSessionWorkspace | null, intentType: IntentType, documentIds: string[]) {
   if (!workspace) {
     return "Build a document workspace before generating a product.";
   }
@@ -221,17 +171,30 @@ function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType;
 }
 
 export function DocumentUpload() {
+  const { user } = useAuth();
+  const {
+    workspace,
+    instructionalSession,
+    isUploading,
+    error,
+    setError,
+    createSessionFromFiles,
+    loadClassProfile,
+    loadDifferentiatedBuild,
+    refreshWorkspace,
+    clearSession,
+  } = useInstructionalSession();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadInputKey, setUploadInputKey] = useState(0);
-  const [workspace, setWorkspace] = useState<SessionWorkspace | null>(null);
   const [currentProduct, setCurrentProduct] = useState<IntentProduct | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentType>("build-unit");
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
   const [focus, setFocus] = useState("");
   const [numericOptionValue, setNumericOptionValue] = useState(String(getIntentConfig("build-unit").numericOption?.defaultValue ?? 5));
-  const [error, setError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [unitId, setUnitId] = useState("");
+  const [studentId, setStudentId] = useState("");
+  const [adaptiveConditioningEnabled, setAdaptiveConditioningEnabled] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [lastIntentRequest, setLastIntentRequest] = useState<{ intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null>(null);
   const uploadInFlightRef = useRef(false);
@@ -266,23 +229,6 @@ export function DocumentUpload() {
     return payload as T;
   }
 
-  async function refreshWorkspace(sessionId: string) {
-    const [sessionPayload, analysisPayload, productsPayload] = await Promise.all([
-      fetchJson<{ session: DocumentSession; documents: RegisteredDocumentSummary[]; analyzedDocuments: AnalyzedDocument[] }>(`/api/v4/documents/session?sessionId=${encodeURIComponent(sessionId)}`),
-      fetchJson<{ analysis: DocumentCollectionAnalysis }>(`/api/v4/documents/session-analysis?sessionId=${encodeURIComponent(sessionId)}`),
-      fetchJson<{ sessionId: string; products: IntentProduct[] }>(`/api/v4/documents/intent?sessionId=${encodeURIComponent(sessionId)}`),
-    ]);
-
-    setWorkspace({
-      sessionId,
-      session: sessionPayload.session,
-      documents: sessionPayload.documents,
-      analyzedDocuments: sessionPayload.analyzedDocuments,
-      analysis: analysisPayload.analysis,
-      products: productsPayload.products,
-    });
-  }
-
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -308,76 +254,27 @@ export function DocumentUpload() {
 
     uploadInFlightRef.current = true;
     lastUploadAttemptKeyRef.current = uploadAttemptKey;
-    setIsUploading(true);
     setError(null);
     logUploadTrace("upload started", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
 
     try {
-      const registered: RegisteredDocumentSummary[] = [];
-      const nextFileMap: Record<string, File> = {};
-      let sessionId: string | null = null;
-
-      for (const file of selectedFiles) {
-        logUploadTrace("uploading file", { fileName: file.name, fileSize: file.size, fileType: file.type || "application/octet-stream" });
-        const buffer = await file.arrayBuffer();
-        const uploadPayload: UploadDocumentResponse = await fetchJson("/api/v4/documents/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": file.type || "application/octet-stream",
-            "x-file-name": file.name,
-            ...(sessionId ? { "x-session-id": sessionId } : {}),
-          },
-          body: buffer,
-        });
-        const uploaded = uploadPayload.registered[0]!;
-        registered.push(uploaded);
-        nextFileMap[uploaded.documentId] = file;
-        sessionId = sessionId ?? uploadPayload.sessionId;
-        logUploadTrace("file uploaded", { fileName: file.name, documentId: uploaded.documentId, sessionId: uploadPayload.sessionId });
+      const nextWorkspace = await createSessionFromFiles(selectedFiles);
+      if (!nextWorkspace) {
+        return;
       }
 
-      const documentRoles = Object.fromEntries(registered.map((entry) => {
-        const file = nextFileMap[entry.documentId]!;
-        const role = guessDocumentRole(file);
-        return [entry.documentId, [role]];
-      }));
-      const sessionRoles = Object.fromEntries(registered.map((entry) => {
-        const role = documentRoles[entry.documentId]?.[0] ?? "unknown";
-        return [entry.documentId, [guessSessionRole(role)]];
-      }));
+      logUploadTrace("analysis completed inline during upload", { documentCount: nextWorkspace.documents.length });
 
-      logUploadTrace("persisting session roles", { sessionId, documentCount: registered.length });
-      await fetchJson("/api/v4/documents/session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          documentIds: registered.map((entry) => entry.documentId),
-          documentRoles,
-          sessionRoles,
-        }),
-      });
-
-      // Analysis is now performed inline inside /api/v4/documents/upload while
-      // the binary is still in memory. A separate /analyze call is not needed
-      // and would always 404 in a stateless Vercel serverless environment
-      // because the in-memory registry is not shared across invocations.
-      logUploadTrace("analysis completed inline during upload", { documentCount: registered.length });
-
-      setSelectedDocumentIds(registered.map((entry) => entry.documentId));
-      setPrimaryDocumentId(registered[0]?.documentId ?? null);
+      setSelectedDocumentIds(nextWorkspace.documents.map((entry) => entry.documentId));
+      setPrimaryDocumentId(nextWorkspace.documents[0]?.documentId ?? null);
       setCurrentProduct(null);
       setLastIntentRequest(null);
-      logUploadTrace("refreshing workspace", { sessionId });
-      await refreshWorkspace(sessionId!);
-      logUploadTrace("upload flow complete", { sessionId, uploadedCount: registered.length });
+      logUploadTrace("upload flow complete", { sessionId: nextWorkspace.sessionId, uploadedCount: nextWorkspace.documents.length });
     } catch (uploadError) {
-      setWorkspace(null);
       setCurrentProduct(null);
       setError(uploadError instanceof Error ? uploadError.message : "Workspace creation failed.");
       logUploadTrace("upload flow failed", { error: uploadError instanceof Error ? uploadError.message : "Workspace creation failed." });
     } finally {
-      setIsUploading(false);
       uploadInFlightRef.current = false;
       logUploadTrace("upload lock released");
     }
@@ -397,6 +294,14 @@ export function DocumentUpload() {
       const parsed = Number(numericOptionValue);
       if (Number.isFinite(parsed) && parsed > 0) {
         options[config.numericOption.key] = Math.floor(parsed);
+      }
+    }
+    if (selectedIntent === "build-test") {
+      if (user?.id) {
+        options.teacherId = user.id;
+      }
+      if (unitId.trim()) {
+        options.unitId = unitId.trim();
       }
     }
     return Object.keys(options).length > 0 ? options : undefined;
@@ -423,10 +328,22 @@ export function DocumentUpload() {
     setIsGenerating(true);
     setError(null);
     try {
+      const requestBody: Record<string, unknown> = {
+        sessionId: workspace.sessionId,
+        documentIds: normalizedDocumentIds,
+        intentType,
+        options,
+      };
+      if (intentType === "build-test") {
+        if (studentId.trim()) {
+          requestBody.studentId = studentId.trim();
+        }
+        requestBody.enableAdaptiveConditioning = adaptiveConditioningEnabled;
+      }
       const product = await fetchJson<IntentProduct>("/api/v4/documents/intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: workspace.sessionId, documentIds: normalizedDocumentIds, intentType, options }),
+        body: JSON.stringify(requestBody),
       });
       setCurrentProduct(product);
       setLastIntentRequest({ intentType, documentIds: normalizedDocumentIds, options });
@@ -446,13 +363,16 @@ export function DocumentUpload() {
   function resetSession() {
     setSelectedFiles([]);
     setUploadInputKey((current) => current + 1);
-    setWorkspace(null);
+    clearSession();
     setCurrentProduct(null);
     setSelectedIntent("build-unit");
     setSelectedDocumentIds([]);
     setPrimaryDocumentId(null);
     setFocus("");
     setNumericOptionValue(String(getIntentConfig("build-unit").numericOption?.defaultValue ?? 5));
+    setUnitId("");
+    setStudentId("");
+    setAdaptiveConditioningEnabled(true);
     setError(null);
     setLastIntentRequest(null);
     lastUploadAttemptKeyRef.current = null;
@@ -591,6 +511,8 @@ export function DocumentUpload() {
               </div>
             </section>
 
+            <AnalysisPanel analysis={instructionalSession?.analysis ?? null} />
+
             <section className="v4-panel">
               <div className="v4-section-heading">
                 <div>
@@ -624,8 +546,29 @@ export function DocumentUpload() {
                     <input aria-label={currentIntentConfig.numericOption.label} type="number" min={1} value={numericOptionValue} onChange={(event) => setNumericOptionValue(event.target.value)} />
                   </label>
                 )}
+                {selectedIntent === "build-test" && (
+                  <>
+                    <label className="v4-upload-field">
+                      <span>Unit ID</span>
+                      <input aria-label="Unit ID" value={unitId} onChange={(event) => setUnitId(event.target.value)} placeholder="Optional unit scope for fingerprinting" />
+                    </label>
+                    <label className="v4-upload-field">
+                      <span>Student ID</span>
+                      <input aria-label="Student ID" value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Optional student scope for adaptive planning" />
+                    </label>
+                    <label className="v4-upload-field">
+                      <span>Adaptive conditioning</span>
+                      <input aria-label="Adaptive conditioning" type="checkbox" checked={adaptiveConditioningEnabled} onChange={(event) => setAdaptiveConditioningEnabled(event.target.checked)} />
+                    </label>
+                  </>
+                )}
               </div>
               <p className="v4-body-copy">{currentIntentConfig.description}</p>
+              {selectedIntent === "build-test" && (
+                <p className="v4-body-copy">
+                  Assessment builds use your signed-in teacher account automatically and can optionally target a unit and student profile.
+                </p>
+              )}
               <div className="v4-product-card v4-product-span">
                 <h3>Selected materials</h3>
                 <p>{formatScopeSummary(selectedIntent, actionDocuments)}</p>
@@ -659,6 +602,11 @@ export function DocumentUpload() {
                   <ProductViewer
                     product={currentProduct}
                     sessionId={workspace.sessionId}
+                    classId={workspace.sessionId}
+                    classProfile={instructionalSession?.classProfile ?? null}
+                    onLoadClassProfile={loadClassProfile}
+                    differentiatedBuild={instructionalSession?.differentiatedBuild ?? null}
+                    onLoadDifferentiatedBuild={loadDifferentiatedBuild}
                     onInstructionalMapRefresh={async () => {
                       const options = currentProduct.payload.focus ? { focus: currentProduct.payload.focus } : undefined;
                       await generateProduct(currentProduct.intentType as IntentType, currentProduct.documentIds, options);

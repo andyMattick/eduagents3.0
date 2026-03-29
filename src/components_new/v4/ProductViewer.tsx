@@ -8,11 +8,47 @@ import type {
 } from "../../prism-v4/schema/integration";
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
 import { buildInstructionalUnitOverrideId, canonicalConceptId, type AssessmentFingerprint } from "../../prism-v4/teacherFeedback";
+import type { StudentPerformanceProfile } from "../../prism-v4/studentPerformance";
+import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel } from "../../types/v4/InstructionalSession";
+import { AssessmentPreview } from "./AssessmentPreview";
+import { BuilderPlanView } from "./BuilderPlanView";
+import { BlueprintPanel } from "./BlueprintPanel";
+import { ClassDifferentiator } from "./ClassDifferentiator";
+import { ConceptMap } from "./ConceptMap";
+import { StudentProfilePanel } from "./StudentProfilePanel";
+import { TeacherFingerprintPanel } from "./TeacherFingerprintPanel";
 import { cleanupProductPayload } from "./utils/cleanup";
 
 const BLOOM_LEVEL_OPTIONS: ConceptBlueprintBloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 const SCENARIO_TYPE_OPTIONS: ConceptBlueprintScenarioType[] = ["real-world", "simulation", "data-table", "graphical", "abstract-symbolic"];
 const LOCAL_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
+
+type SessionBlueprintResponse = {
+  sessionId: string;
+  assessmentId: string;
+  teacherId: string;
+  blueprint: BlueprintModel;
+  conceptMap: ConceptMapModel;
+};
+
+type StudentProfileResponse = {
+  studentId: string;
+  unitId?: string;
+  profile: StudentPerformanceProfile;
+  misconceptions: Array<string>;
+  exposureTimeline: Array<{ timestamp: string; conceptId: string; conceptLabel?: string }>;
+  responseTimes: Array<{ itemId: string; conceptId: string; ms: number }>;
+};
+
+type BuilderPlanResponse = {
+  sessionId: string;
+  builderPlan: BuilderPlanModel;
+};
+
+type AssessmentPreviewResponse = {
+  sessionId: string;
+  assessmentPreview: AssessmentPreviewModel;
+};
 
 type SectionBlueprintDraft = {
   concept: string;
@@ -430,6 +466,225 @@ function ItemExplanation(props: { item: Extract<TestProduct["sections"][number][
       <p><strong>Bloom:</strong> {item.explanation.bloomReason}</p>
       <p><strong>Scenario:</strong> {item.explanation.scenarioReason}</p>
       <p><strong>Item Mode:</strong> {item.explanation.itemModeReason}</p>
+    </div>
+  );
+}
+
+function AssessmentWorkbench(props: {
+  product: Extract<IntentProductPayload, { kind: "test" }>;
+  assessmentId: string;
+  sessionId?: string;
+  classId?: string;
+  documentIds: string[];
+  availableStudentIds?: string[];
+  classProfile?: ClassProfileModel | null;
+  onLoadClassProfile?: ((classId: string) => Promise<unknown>) | null;
+  differentiatedBuild?: DifferentiatedBuildModel | null;
+  onLoadDifferentiatedBuild?: ((classId: string) => Promise<unknown>) | null;
+}) {
+  const { product, assessmentId, sessionId, classId, documentIds, availableStudentIds = [], classProfile = null, onLoadClassProfile = null, differentiatedBuild = null, onLoadDifferentiatedBuild = null } = props;
+  const [activeTab, setActiveTab] = useState<"blueprint" | "concept-map" | "student" | "class" | "plan" | "preview" | "fingerprint">("blueprint");
+  const [sessionBlueprint, setSessionBlueprint] = useState<SessionBlueprintResponse | null>(null);
+  const [isLoadingBlueprint, setIsLoadingBlueprint] = useState(false);
+  const [blueprintStatus, setBlueprintStatus] = useState<string | null>(null);
+  const [activeStudentId, setActiveStudentId] = useState<string>(availableStudentIds[0] ?? "");
+  const [studentProfilePayload, setStudentProfilePayload] = useState<StudentProfileResponse | null>(null);
+  const [studentStatus, setStudentStatus] = useState<string | null>(null);
+  const [isLoadingStudent, setIsLoadingStudent] = useState(false);
+  const [builderPlanPayload, setBuilderPlanPayload] = useState<BuilderPlanResponse | null>(null);
+  const [assessmentPreviewPayload, setAssessmentPreviewPayload] = useState<AssessmentPreviewResponse | null>(null);
+  const [isLoadingBuilderPlan, setIsLoadingBuilderPlan] = useState(false);
+  const [isLoadingAssessmentPreview, setIsLoadingAssessmentPreview] = useState(false);
+  const [builderPlanStatus, setBuilderPlanStatus] = useState<string | null>(null);
+  const [assessmentPreviewStatus, setAssessmentPreviewStatus] = useState<string | null>(null);
+
+  async function loadSessionBlueprint() {
+    if (!sessionId) {
+      return;
+    }
+    setIsLoadingBlueprint(true);
+    setBlueprintStatus(null);
+    try {
+      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/blueprint`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to load session blueprint.");
+      }
+      setSessionBlueprint(payload as SessionBlueprintResponse);
+    } catch (error) {
+      setBlueprintStatus(error instanceof Error ? error.message : "Failed to load session blueprint.");
+    } finally {
+      setIsLoadingBlueprint(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    void loadSessionBlueprint();
+  }, [sessionId, assessmentId]);
+
+  async function loadStudentProfile(studentId: string) {
+    setIsLoadingStudent(true);
+    setStudentStatus(null);
+    try {
+      const response = await fetch(`/api/v4/students/${encodeURIComponent(studentId)}/performance`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to load student profile.");
+      }
+      setStudentProfilePayload(payload as StudentProfileResponse);
+      setActiveStudentId(studentId);
+    } catch (error) {
+      setStudentStatus(error instanceof Error ? error.message : "Failed to load student profile.");
+    } finally {
+      setIsLoadingStudent(false);
+    }
+  }
+
+  async function loadBuilderPlan(studentId?: string) {
+    if (!sessionId) {
+      return;
+    }
+    const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
+    setIsLoadingBuilderPlan(true);
+    setBuilderPlanStatus(null);
+    try {
+      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/builder-plan${query}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to load builder plan.");
+      }
+      setBuilderPlanPayload(payload as BuilderPlanResponse);
+    } catch (error) {
+      setBuilderPlanStatus(error instanceof Error ? error.message : "Failed to load builder plan.");
+    } finally {
+      setIsLoadingBuilderPlan(false);
+    }
+  }
+
+  async function loadAssessmentPreview(studentId?: string) {
+    if (!sessionId) {
+      return;
+    }
+    const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
+    setIsLoadingAssessmentPreview(true);
+    setAssessmentPreviewStatus(null);
+    try {
+      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/assessment-preview${query}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to load assessment preview.");
+      }
+      setAssessmentPreviewPayload(payload as AssessmentPreviewResponse);
+    } catch (error) {
+      setAssessmentPreviewStatus(error instanceof Error ? error.message : "Failed to load assessment preview.");
+    } finally {
+      setIsLoadingAssessmentPreview(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!activeStudentId) {
+      return;
+    }
+    void loadStudentProfile(activeStudentId);
+  }, [activeStudentId]);
+
+  useEffect(() => {
+    if (!sessionId || activeTab !== "plan" || builderPlanPayload) {
+      return;
+    }
+    void loadBuilderPlan(activeStudentId || undefined);
+  }, [activeStudentId, activeTab, builderPlanPayload, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || activeTab !== "preview" || assessmentPreviewPayload) {
+      return;
+    }
+    void loadAssessmentPreview(activeStudentId || undefined);
+  }, [activeStudentId, activeTab, assessmentPreviewPayload, sessionId]);
+
+  useEffect(() => {
+    setBuilderPlanPayload(null);
+    setAssessmentPreviewPayload(null);
+    setBuilderPlanStatus(null);
+    setAssessmentPreviewStatus(null);
+  }, [activeStudentId, sessionId]);
+
+  return (
+    <div className="v4-product-grid">
+      <div className="v4-product-card v4-product-span">
+        <div className="v4-tab-strip" role="tablist" aria-label="Assessment workbench tabs">
+          <button className={`v4-tab-button ${activeTab === "blueprint" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "blueprint"} onClick={() => setActiveTab("blueprint")}>Blueprint</button>
+          <button className={`v4-tab-button ${activeTab === "concept-map" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "concept-map"} onClick={() => setActiveTab("concept-map")}>Concept Map</button>
+          <button className={`v4-tab-button ${activeTab === "student" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "student"} onClick={() => setActiveTab("student")}>Student Brain</button>
+          <button className={`v4-tab-button ${activeTab === "class" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "class"} onClick={() => setActiveTab("class")}>Class</button>
+          <button className={`v4-tab-button ${activeTab === "plan" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "plan"} onClick={() => setActiveTab("plan")}>Builder Plan</button>
+          <button className={`v4-tab-button ${activeTab === "preview" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "preview"} onClick={() => setActiveTab("preview")}>Living Assessment</button>
+          <button className={`v4-tab-button ${activeTab === "fingerprint" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "fingerprint"} onClick={() => setActiveTab("fingerprint")}>Teacher Fingerprint</button>
+        </div>
+      </div>
+      <div className="v4-product-span">
+        {activeTab === "blueprint" ? (
+          <BlueprintPanel
+            blueprint={sessionBlueprint?.blueprint ?? null}
+            conceptMap={sessionBlueprint?.conceptMap ?? null}
+            isLoading={isLoadingBlueprint}
+            status={blueprintStatus}
+            onRefresh={sessionId ? () => { void loadSessionBlueprint(); } : null}
+          >
+            <AssessmentConceptVerificationPanel assessmentId={assessmentId} sessionId={sessionId} documentIds={documentIds} product={product} />
+          </BlueprintPanel>
+        ) : null}
+        {activeTab === "concept-map" ? (
+          <ConceptMap conceptMap={sessionBlueprint?.conceptMap ?? null} studentProfile={studentProfilePayload?.profile ?? null} isLoading={isLoadingBlueprint} onRefresh={sessionId ? () => { void loadSessionBlueprint(); } : null} />
+        ) : null}
+        {activeTab === "student" ? (
+          <div className="v4-product-grid">
+            <div className="v4-product-span">
+              <StudentProfilePanel
+                availableStudentIds={availableStudentIds}
+                activeStudentId={activeStudentId}
+                profile={studentProfilePayload?.profile ?? null}
+                misconceptions={studentProfilePayload?.misconceptions ?? []}
+                exposureTimeline={studentProfilePayload?.exposureTimeline ?? []}
+                responseTimes={studentProfilePayload?.responseTimes ?? []}
+                status={studentStatus}
+                isLoading={isLoadingStudent}
+                onStudentChange={(studentId) => setActiveStudentId(studentId)}
+                onLoadStudent={(studentId) => { void loadStudentProfile(studentId); }}
+              />
+            </div>
+            <div className="v4-product-span">
+              <ConceptMap conceptMap={sessionBlueprint?.conceptMap ?? null} studentProfile={studentProfilePayload?.profile ?? null} isLoading={isLoadingBlueprint || isLoadingStudent} onRefresh={sessionId ? () => { void loadSessionBlueprint(); } : null} />
+            </div>
+          </div>
+        ) : null}
+        {activeTab === "class" ? (
+          <ClassDifferentiator classId={classId ?? sessionId} classProfile={classProfile} onLoadClassProfile={onLoadClassProfile} differentiatedBuild={differentiatedBuild} onLoadDifferentiatedBuild={onLoadDifferentiatedBuild} />
+        ) : null}
+        {activeTab === "plan" ? (
+          <BuilderPlanView
+            plan={builderPlanPayload?.builderPlan ?? null}
+            isLoading={isLoadingBuilderPlan}
+            status={builderPlanStatus}
+            onRefresh={sessionId ? () => { void loadBuilderPlan(activeStudentId || undefined); } : null}
+          />
+        ) : null}
+        {activeTab === "preview" ? (
+          <AssessmentPreview
+            preview={assessmentPreviewPayload?.assessmentPreview ?? null}
+            isLoading={isLoadingAssessmentPreview}
+            status={assessmentPreviewStatus}
+            onRefresh={sessionId ? () => { void loadAssessmentPreview(activeStudentId || undefined); } : null}
+          />
+        ) : null}
+        {activeTab === "fingerprint" ? (
+          <TeacherFingerprintPanel teacherId={sessionBlueprint?.teacherId ?? LOCAL_TEACHER_ID} />
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1149,9 +1404,15 @@ function InstructionalMapConceptEditor(props: {
 type ProductViewerProps = {
   product: IntentProduct;
   sessionId?: string;
+  classId?: string;
+  classProfile?: ClassProfileModel | null;
+  onLoadClassProfile?: ((classId: string) => Promise<unknown>) | null;
+  differentiatedBuild?: DifferentiatedBuildModel | null;
+  onLoadDifferentiatedBuild?: ((classId: string) => Promise<unknown>) | null;
   onInstructionalMapRefresh?: () => Promise<void>;
   variant?: "app" | "print";
   showAnswerGuidance?: boolean;
+  availableStudentIds?: string[];
 };
 
 export function getProductTitle(product: IntentProduct) {
@@ -1518,7 +1779,7 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
 }
 
 export function ProductViewer(props: ProductViewerProps) {
-  const { product, sessionId, onInstructionalMapRefresh, variant = "app", showAnswerGuidance = false } = props;
+  const { product, sessionId, classId, classProfile = null, onLoadClassProfile = null, differentiatedBuild = null, onLoadDifferentiatedBuild = null, onInstructionalMapRefresh, variant = "app", showAnswerGuidance = false, availableStudentIds = [] } = props;
   const payload = cleanupProductPayload(product.payload as IntentProductPayload);
 
   if (variant === "print") {
@@ -1680,7 +1941,7 @@ export function ProductViewer(props: ProductViewerProps) {
     }
 
     if (payload.kind === "test") {
-      return <AssessmentConceptVerificationPanel assessmentId={product.productId} sessionId={sessionId ?? product.sessionId} documentIds={product.documentIds} product={payload} />;
+      return <AssessmentWorkbench assessmentId={product.productId} sessionId={sessionId ?? product.sessionId} classId={classId} classProfile={classProfile} onLoadClassProfile={onLoadClassProfile} differentiatedBuild={differentiatedBuild} onLoadDifferentiatedBuild={onLoadDifferentiatedBuild} documentIds={product.documentIds} product={payload} availableStudentIds={availableStudentIds} />;
     }
 
     if (payload.kind === "problem-extraction") {

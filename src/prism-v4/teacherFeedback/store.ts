@@ -1005,6 +1005,18 @@ export async function getTeacherFingerprint(teacherId: string): Promise<TeacherF
 	return teacherFingerprintMemory.get(teacherId) ?? null;
 }
 
+export async function saveTeacherFingerprint(fingerprint: TeacherFingerprint) {
+	teacherFingerprintMemory.set(fingerprint.teacherId, fingerprint);
+	if (canUseSupabase()) {
+		await supabaseRest("teacher_fingerprints", {
+			method: "POST",
+			body: normalizeTeacherFingerprint(fingerprint),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	}
+	return fingerprint;
+}
+
 export async function explainAssessmentFingerprintAlignment(assessmentId: string): Promise<FingerprintAlignmentExplanation | null> {
 	const assessment = assessmentFingerprintMemory.get(assessmentId) ?? null;
 	if (!assessment) {
