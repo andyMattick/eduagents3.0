@@ -1,4 +1,5 @@
 import type { ExtractedProblemCognitiveDemand, TestItem, TestItemExplanation, TestProduct } from "../schema/integration/IntentProduct";
+import type { StudentPerformanceProfile } from "../studentPerformance";
 
 export type BloomLevel =
 	| "remember"
@@ -727,15 +728,26 @@ export function explainFingerprintAlignment(args: {
 	assessment: AssessmentFingerprint;
 	teacherFingerprint: TeacherFingerprint;
 	unitFingerprint?: UnitFingerprint | null;
+	studentPerformanceProfile?: StudentPerformanceProfile | null;
 }): FingerprintAlignmentExplanation {
 	const sourceProfiles = args.unitFingerprint?.conceptProfiles ?? args.teacherFingerprint.globalConceptProfiles;
 	const conceptReasons = args.assessment.conceptProfiles.map((concept) => {
 		const reference = sourceProfiles.find((profile) => profile.conceptId === concept.conceptId);
 		const targetCount = reference?.absoluteItemHint ?? concept.absoluteItemHint ?? 0;
-		return `${concept.displayName} appears because the teacher fingerprint emphasizes it with about ${targetCount} item${targetCount === 1 ? "" : "s"}.`;
+		const studentMastery = args.studentPerformanceProfile?.conceptMastery[concept.conceptId];
+		const misconceptionPressure = (args.studentPerformanceProfile?.misconceptions[concept.conceptId] ?? []).length;
+		const studentReason = studentMastery !== undefined
+			? ` Student mastery is ${Math.round(studentMastery * 100)}%, so the builder keeps this concept in active rotation${misconceptionPressure > 0 ? ` and revisits ${misconceptionPressure} misconception cluster${misconceptionPressure === 1 ? "" : "s"}` : ""}.`
+			: "";
+		return `${concept.displayName} appears because the teacher fingerprint emphasizes it with about ${targetCount} item${targetCount === 1 ? "" : "s"}.${studentReason}`;
 	});
 	const sectionOrder = args.assessment.flowProfile.sectionOrder.join(" -> ");
-	const bloomReason = `Bloom levels follow the stored ceiling and distribution, topping out at ${args.assessment.conceptProfiles.map((concept) => concept.maxBloomLevel).sort((left, right) => compareBloomLevels(left, right)).at(-1) ?? "understand"}.`;
+	const weakestConcept = args.studentPerformanceProfile
+		? args.assessment.conceptProfiles
+			.map((concept) => ({ concept, mastery: args.studentPerformanceProfile?.conceptMastery[concept.conceptId] ?? Number.POSITIVE_INFINITY }))
+			.sort((left, right) => left.mastery - right.mastery || left.concept.displayName.localeCompare(right.concept.displayName))[0]
+		: null;
+	const bloomReason = `Bloom levels follow the stored ceiling and distribution, topping out at ${args.assessment.conceptProfiles.map((concept) => concept.maxBloomLevel).sort((left, right) => compareBloomLevels(left, right)).at(-1) ?? "understand"}.${weakestConcept && Number.isFinite(weakestConcept.mastery) ? ` ${weakestConcept.concept.displayName} is receiving extra emphasis because the student shows lower mastery there.` : ""}`;
 	const scenarioDirectiveReason = args.assessment.conceptProfiles
 		.filter((concept) => concept.scenarioDirective)
 		.map((concept) => `${concept.displayName} keeps the original context while changing the numbers.`);
@@ -766,6 +778,7 @@ export function explainTestItemAlignment(args: {
 	product: TestProduct;
 	teacherFingerprint: TeacherFingerprint;
 	unitFingerprint?: UnitFingerprint | null;
+	studentPerformanceProfile?: StudentPerformanceProfile | null;
 }): TestProductItemAlignmentExplanation[] {
 	const sourceProfiles = args.unitFingerprint?.conceptProfiles ?? args.teacherFingerprint.globalConceptProfiles;
 	return args.product.sections.flatMap((section) => {
@@ -779,6 +792,32 @@ export function explainTestItemAlignment(args: {
 			const bloomLevel = explainEffectiveBloomLevel(item);
 			const scenarioTypes = classifyScenarioTypes(item.prompt);
 			const itemModes = classifyItemModes(item.prompt);
+			const studentReasons: string[] = [];
+			const studentProfile = args.studentPerformanceProfile;
+			if (studentProfile) {
+				const conceptMastery = studentProfile.conceptMastery[conceptId];
+				if (conceptMastery !== undefined && conceptMastery < 0.7) {
+					studentReasons.push(`Selected because ${profile?.displayName ?? section.concept} mastery is ${Math.round(conceptMastery * 100)}%.`);
+				}
+				const conceptBloomMastery = studentProfile.conceptBloomMastery[conceptId]?.[bloomLevel as BloomLevel] ?? studentProfile.bloomMastery[bloomLevel as BloomLevel];
+				if (conceptBloomMastery !== undefined && conceptBloomMastery < 0.68) {
+					studentReasons.push(`Emphasized ${bloomLevel} because the student is weaker at that Bloom level.`);
+				}
+				const weakestMode = itemModes.find((mode) => {
+					const value = studentProfile.conceptModeMastery[conceptId]?.[mode as ItemMode] ?? studentProfile.modeMastery[mode as ItemMode];
+					return value !== undefined && value < 0.68;
+				});
+				if (weakestMode) {
+					studentReasons.push(`Selected ${weakestMode} mode because the student needs more practice in that mode.`);
+				}
+				const matchingMisconception = (studentProfile.misconceptions[conceptId] ?? []).find((cluster) => {
+					const searchable = [item.prompt, item.answerGuidance, ...(item.misconceptionTriggers ?? [])].join(" ").toLowerCase();
+					return searchable.includes(cluster.misconceptionKey.toLowerCase());
+				});
+				if (matchingMisconception) {
+					studentReasons.push(`Targets the misconception cluster \"${matchingMisconception.misconceptionKey}\" seen in recent work.`);
+				}
+			}
 			const conceptReason = profile
 				? `${profile.displayName} appears here because the blueprint targets about ${requestedCount} item${requestedCount === 1 ? "" : "s"} for this concept.`
 				: `${section.concept} appears here because it remains part of the fingerprint-conditioned assessment coverage.`;
@@ -802,11 +841,13 @@ export function explainTestItemAlignment(args: {
 					scenarioReason,
 					itemModes,
 					itemModeReason,
+					studentReasons: studentReasons.length > 0 ? studentReasons : undefined,
 					narrative: [
 						conceptReason,
 						bloomReason,
 						scenarioReason,
 						itemModeReason,
+						...studentReasons,
 						`This is item ${index + 1} in the ${section.concept} section.`,
 					].join(" "),
 				},

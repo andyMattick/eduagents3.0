@@ -1,4 +1,5 @@
 import type { IntentRequestOptions } from "./ConceptBlueprint";
+import type { StudentPerformanceProfile } from "../../studentPerformance";
 
 export type IntentType =
 	| "build-test"
@@ -25,4 +26,7 @@ export interface IntentRequest {
 	documentIds: string[];
 	intentType: IntentType;
 	options?: IntentRequestOptions;
+	studentId?: string;
+	studentPerformanceProfile?: StudentPerformanceProfile;
+	enableAdaptiveConditioning?: boolean;
 }

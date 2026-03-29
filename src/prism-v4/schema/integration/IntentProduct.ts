@@ -130,6 +130,7 @@ export interface TestItemExplanation {
 	scenarioReason: string;
 	itemModes: string[];
 	itemModeReason: string;
+	studentReasons?: string[];
 	narrative: string;
 }
 
@@ -142,6 +143,7 @@ export interface TestItem {
 	difficulty: ExtractedProblemDifficulty;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
+	misconceptionTriggers?: string[];
 	explanation?: TestItemExplanation;
 }
 

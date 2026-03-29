@@ -1,6 +1,8 @@
 import { buildIntentPayload, normalizeConceptBlueprintInput } from "../../../src/prism-v4/documents/intents/buildIntentProduct";
 import { loadPrismSessionContextCached } from "../../../src/prism-v4/documents/registryStore";
 import type { BuildTestIntentOptions, ConceptVerificationPreviewRequest, TestProduct } from "../../../src/prism-v4/schema/integration";
+import type { StudentPerformanceProfile } from "../../../src/prism-v4/studentPerformance";
+import { getStudentPerformanceProfile } from "../../../src/prism-v4/studentPerformance";
 import {
 	buildAssessmentFingerprint,
 	explainFingerprintAlignment,
@@ -80,18 +82,25 @@ export async function buildConceptVerificationPreview(payload: ConceptVerificati
 	}
 
 	const options = (payload.options ?? {}) as BuildTestIntentOptions;
+	const requestStudentId = typeof (payload as { studentId?: unknown }).studentId === "string" && (payload as { studentId?: string }).studentId?.trim()
+		? (payload as { studentId: string }).studentId.trim()
+		: null;
+	const requestStudentProfile = ((payload as { studentPerformanceProfile?: StudentPerformanceProfile }).studentPerformanceProfile ?? null) as StudentPerformanceProfile | null;
+	const teacherId = normalizedBlueprint.teacherId ?? getStringOption(options, "teacherId") ?? "concept-blueprint-preview";
+	const unitId = normalizedBlueprint.unitId ?? getStringOption(options, "unitId") ?? undefined;
+	const studentPerformanceProfile = requestStudentProfile ?? (requestStudentId ? await getStudentPerformanceProfile(requestStudentId, unitId) : null);
 	const preview = await buildIntentPayload({
 		sessionId: payload.sessionId,
 		documentIds: payload.documentIds,
 		intentType: "build-test",
+		studentId: requestStudentId ?? undefined,
+		studentPerformanceProfile: studentPerformanceProfile ?? undefined,
 		options: {
 			...options,
 			conceptBlueprint: normalizedBlueprint,
 		},
 	}, context);
 
-	const teacherId = normalizedBlueprint.teacherId ?? getStringOption(options, "teacherId") ?? "concept-blueprint-preview";
-	const unitId = normalizedBlueprint.unitId ?? getStringOption(options, "unitId") ?? undefined;
 	const assessmentId = normalizedBlueprint.assessmentId ?? getStringOption(options, "assessmentId") ?? `${payload.sessionId}-concept-blueprint-preview`;
 	const previewFingerprint = buildAssessmentFingerprint({
 		teacherId,
@@ -121,11 +130,13 @@ export async function buildConceptVerificationPreview(payload: ConceptVerificati
 		assessment: previewFingerprint,
 		teacherFingerprint: effectiveTeacher,
 		unitFingerprint: effectiveUnit,
+		studentPerformanceProfile,
 	});
 	const itemExplanations = explainTestItemAlignment({
 		product: preview,
 		teacherFingerprint: effectiveTeacher,
 		unitFingerprint: effectiveUnit,
+		studentPerformanceProfile,
 	});
 
 	return {

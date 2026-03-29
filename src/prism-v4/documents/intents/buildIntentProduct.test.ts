@@ -15,6 +15,7 @@ import {
 	saveTeacherFeedback,
 	updateAssessmentFingerprint,
 } from "../../teacherFeedback";
+import { resetStudentPerformanceState, saveStudentPerformanceProfile, type StudentPerformanceProfile } from "../../studentPerformance";
 import type { AnalyzedDocument } from "../../schema/semantic";
 
 function buildAnalyzedDocument(args: {
@@ -572,6 +573,7 @@ describe("buildIntentPayload", () => {
 	afterEach(() => {
 		resetDocumentRegistryState();
 		resetTeacherFeedbackState();
+		resetStudentPerformanceState();
 	});
 
 	it("builds the Wave 3, Wave 4, and Wave 5 intent payloads from analyzed documents", async () => {
@@ -1515,6 +1517,240 @@ describe("buildIntentPayload", () => {
 		expect(blueprintDriven.sections[1]?.items).toHaveLength(1);
 		expect(blueprintDriven.sections[0]?.items.every((item) => classifyBloomLevel(item.prompt) === "understand")).toBe(true);
 		expect(blueprintDriven.sections[1]?.items.every((item) => classifyScenarioTypes(item.prompt).includes("real-world"))).toBe(true);
+	});
+
+	it("build-test adapts the difficulty floor from persisted fingerprints", async () => {
+		const previousFlag = process.env.ENABLE_ADAPTIVE_BUILDER;
+		process.env.ENABLE_ADAPTIVE_BUILDER = "true";
+
+		try {
+			const registered = registerDocuments([
+				{ sourceFileName: "adaptive-type-errors.pdf", sourceMimeType: "application/pdf" },
+				{ sourceFileName: "adaptive-mean-test.pdf", sourceMimeType: "application/pdf" },
+			]);
+			const session = createDocumentSession(registered.map((document) => document.documentId));
+
+			saveAnalyzedDocument(buildStatsAnalyzedDocument({
+				documentId: registered[0]!.documentId,
+				sourceFileName: "adaptive-type-errors.pdf",
+				concepts: ["Type I and Type II Errors"],
+				problemText: "Explain a Type I error and a Type II error in the construction zone speeds test.",
+				difficulty: "high",
+			}));
+			saveAnalyzedDocument(buildStatsAnalyzedDocument({
+				documentId: registered[1]!.documentId,
+				sourceFileName: "adaptive-mean-test.pdf",
+				concepts: ["one-sample mean test"],
+				problemText: "A restaurant income study asks for the null hypothesis, alternative hypothesis, and decision at alpha = 0.05.",
+				difficulty: "medium",
+			}));
+
+			const context = await loadPrismSessionContext(session.sessionId);
+			if (!context) {
+				throw new Error("Expected Prism session context");
+			}
+
+			await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: registered.map((document) => document.documentId),
+				intentType: "build-test",
+				options: { itemCount: 5, teacherId: "teacher-adaptive", unitId: "unit-adaptive", assessmentId: "adaptive-seed" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			await updateAssessmentFingerprint({
+				assessmentId: "adaptive-seed",
+				edits: {
+					removeConceptIds: [
+						"hypothesis-testing",
+						"p-values-decision-rules",
+						"simulation-based-inference",
+					],
+					itemCountOverrides: {
+						"type-i-and-type-ii-errors": 3,
+						"one-sample-mean-test": 3,
+					},
+					bloomCeilings: {
+						"type-i-and-type-ii-errors": "analyze",
+						"one-sample-mean-test": "apply",
+					},
+					sectionOrder: ["type-i-and-type-ii-errors", "one-sample-mean-test"],
+					now: "2026-03-29T00:00:00.000Z",
+				},
+			});
+
+			const studentProfile: StudentPerformanceProfile = {
+				studentId: "student-adaptive",
+				unitId: "unit-adaptive",
+				lastUpdated: "2026-03-29T00:00:00.000Z",
+				totalEvents: 12,
+				totalAssessments: 3,
+				assessmentIds: ["a-1", "a-2", "a-3"],
+				overallMastery: 0.46,
+				overallConfidence: 0.52,
+				averageResponseTimeSeconds: 44,
+				conceptMastery: {
+					"type-i-and-type-ii-errors": 0.18,
+					"one-sample-mean-test": 0.84,
+				},
+				conceptExposure: {
+					"type-i-and-type-ii-errors": 1.1,
+					"one-sample-mean-test": 0.9,
+				},
+				bloomMastery: { understand: 0.72, apply: 0.51, analyze: 0.2 },
+				modeMastery: { explain: 0.22, analyze: 0.3, state: 0.88 },
+				scenarioMastery: { "real-world": 0.82 },
+				conceptBloomMastery: {
+					"type-i-and-type-ii-errors": { understand: 0.35, analyze: 0.12 },
+					"one-sample-mean-test": { apply: 0.84 },
+				},
+				conceptModeMastery: {
+					"type-i-and-type-ii-errors": { explain: 0.2, analyze: 0.26 },
+					"one-sample-mean-test": { state: 0.88, apply: 0.79 },
+				},
+				conceptScenarioMastery: {
+					"one-sample-mean-test": { "real-world": 0.82 },
+				},
+				conceptAverageResponseTimeSeconds: {
+					"type-i-and-type-ii-errors": 58,
+					"one-sample-mean-test": 29,
+				},
+				conceptConfidence: {
+					"type-i-and-type-ii-errors": 0.35,
+					"one-sample-mean-test": 0.78,
+				},
+				misconceptions: {
+					"type-i-and-type-ii-errors": [{
+						misconceptionKey: "common error with type i and type ii errors",
+						occurrences: 3,
+						lastSeenAt: "2026-03-29T00:00:00.000Z",
+						examples: ["Confused false positive and false negative"],
+						relatedBloomLevels: ["analyze"],
+						relatedModes: ["explain"],
+					}],
+				},
+			};
+			await saveStudentPerformanceProfile(studentProfile);
+
+			const adaptive = await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: registered.map((document) => document.documentId),
+				intentType: "build-test",
+				studentId: "student-adaptive",
+				enableAdaptiveConditioning: true,
+				options: { itemCount: 5, teacherId: "teacher-adaptive", unitId: "unit-adaptive", assessmentId: "adaptive-generated" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			const typeErrorSection = adaptive.sections.find((section) => section.concept === "type i and type ii errors");
+			const meanSection = adaptive.sections.find((section) => section.concept === "one-sample mean test");
+			expect(typeErrorSection).toBeTruthy();
+			expect(meanSection).toBeTruthy();
+			expect((typeErrorSection?.items.length ?? 0)).toBeGreaterThanOrEqual(meanSection?.items.length ?? 0);
+			expect(typeErrorSection?.items[0]?.difficulty).toBe("low");
+		} finally {
+			if (previousFlag === undefined) {
+				delete process.env.ENABLE_ADAPTIVE_BUILDER;
+			} else {
+				process.env.ENABLE_ADAPTIVE_BUILDER = previousFlag;
+			}
+		}
+	});
+
+	it("build-test adapts item mode and scenario selection for weak simulation interpretation", async () => {
+		const previousFlag = process.env.ENABLE_ADAPTIVE_BUILDER;
+		process.env.ENABLE_ADAPTIVE_BUILDER = "true";
+
+		try {
+			const [registered] = registerDocuments([
+				{ sourceFileName: "adaptive-simulation.pdf", sourceMimeType: "application/pdf" },
+			]);
+			const session = createDocumentSession([registered!.documentId]);
+
+			saveAnalyzedDocument(buildStatsAnalyzedDocument({
+				documentId: registered!.documentId,
+				sourceFileName: "adaptive-simulation.pdf",
+				concepts: ["simulation-based inference"],
+				problemText: "A kissing couples simulation uses a sample proportion and a dotplot to interpret the p-value.",
+				difficulty: "medium",
+			}));
+
+			const context = await loadPrismSessionContext(session.sessionId);
+			if (!context) {
+				throw new Error("Expected Prism session context");
+			}
+
+			await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: [registered!.documentId],
+				intentType: "build-test",
+				options: { itemCount: 1, teacherId: "teacher-sim", unitId: "unit-sim", assessmentId: "simulation-seed" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			await updateAssessmentFingerprint({
+				assessmentId: "simulation-seed",
+				edits: {
+					removeConceptIds: ["hypothesis-testing", "p-values-decision-rules", "one-sample-proportion-test", "one-sample-mean-test", "type-i-and-type-ii-errors"],
+					itemCountOverrides: { "simulation-based-inference": 1 },
+					bloomCeilings: { "simulation-based-inference": "apply" },
+					sectionOrder: ["simulation-based-inference"],
+					now: "2026-03-29T00:00:00.000Z",
+				},
+			});
+
+			await saveStudentPerformanceProfile({
+				studentId: "student-sim",
+				unitId: "unit-sim",
+				lastUpdated: "2026-03-29T00:00:00.000Z",
+				totalEvents: 5,
+				totalAssessments: 1,
+				assessmentIds: ["simulation-a"],
+				overallMastery: 0.51,
+				overallConfidence: 0.48,
+				averageResponseTimeSeconds: 39,
+				conceptMastery: { "simulation-based-inference": 0.32 },
+				conceptExposure: { "simulation-based-inference": 1 },
+				bloomMastery: { understand: 0.8, apply: 0.25 },
+				modeMastery: { interpret: 0.15, explain: 0.9 },
+				scenarioMastery: { graphical: 0.1, simulation: 0.7 },
+				conceptBloomMastery: { "simulation-based-inference": { apply: 0.22 } },
+				conceptModeMastery: { "simulation-based-inference": { interpret: 0.1, explain: 0.85 } },
+				conceptScenarioMastery: { "simulation-based-inference": { graphical: 0.1, simulation: 0.75 } },
+				conceptAverageResponseTimeSeconds: { "simulation-based-inference": 39 },
+				conceptConfidence: { "simulation-based-inference": 0.48 },
+				misconceptions: {},
+			});
+
+			const adaptive = await buildIntentPayload({
+				sessionId: session.sessionId,
+				documentIds: [registered!.documentId],
+				intentType: "build-test",
+				studentId: "student-sim",
+				enableAdaptiveConditioning: true,
+				options: { itemCount: 1, teacherId: "teacher-sim", unitId: "unit-sim", assessmentId: "simulation-generated" },
+			}, {
+				...context,
+				groupedUnits: [],
+			});
+
+			const prompt = adaptive.sections[0]?.items[0]?.prompt ?? "";
+			expect(prompt.toLowerCase()).toContain("dotplot");
+			expect(classifyItemModes(prompt)).toContain("interpret");
+			expect(classifyScenarioTypes(prompt)).toContain("graphical");
+		} finally {
+			if (previousFlag === undefined) {
+				delete process.env.ENABLE_ADAPTIVE_BUILDER;
+			} else {
+				process.env.ENABLE_ADAPTIVE_BUILDER = previousFlag;
+			}
+		}
 	});
 
 	it("build-test prefers learned item modes when multiple prompts share the same bloom level", async () => {

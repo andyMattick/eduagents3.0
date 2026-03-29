@@ -22,6 +22,7 @@ import type {
 	TestProduct,
 	UnitProduct,
 } from "../../schema/integration";
+import type { StudentPerformanceProfile } from "../../studentPerformance";
 import {
 	applyAssessmentFingerprintEdits,
 	buildAssessmentFingerprint,
@@ -44,6 +45,8 @@ import {
 	type TeacherFingerprint,
 	type UnitFingerprint,
 } from "../../teacherFeedback";
+import { getStudentPerformanceProfile } from "../../studentPerformance";
+import { deriveAdaptiveTargets, type AdaptiveTargets } from "./adaptiveTargets";
 import type { PrismSessionContext } from "../registryStore";
 
 class IntentBuildError extends Error {
@@ -66,6 +69,8 @@ interface BuilderContext<T extends BuiltIntentType> {
 	requestedItemCount?: number;
 	teacherFingerprint?: TeacherFingerprint | null;
 	unitFingerprint?: UnitFingerprint | null;
+	studentPerformanceProfile?: StudentPerformanceProfile | null;
+	adaptiveTargets?: AdaptiveTargets | null;
 }
 
 interface InstructionalUnitEntry {
@@ -501,6 +506,9 @@ function getFingerprintRequestedConceptCounts(context: BuilderContext<"build-tes
 	for (const concept of queue.slice(0, itemCount)) {
 		normalized[concept] = (normalized[concept] ?? 0) + 1;
 	}
+	if (context.adaptiveTargets?.conceptQuotas) {
+		return applyAdaptiveConceptQuotas(normalized, conceptNames, context.adaptiveTargets.conceptQuotas, itemCount);
+	}
 	return normalized;
 }
 
@@ -511,15 +519,49 @@ function getFingerprintCognitiveLadder(context: BuilderContext<"build-test">) {
 }
 
 function getPreferredScenarioPatterns(context: BuilderContext<"build-test">, profile: ConceptProfile) {
-	return profile.scenarioPatterns.length > 0
+	const teacherPreferences = profile.scenarioPatterns.length > 0
 		? profile.scenarioPatterns
 		: context.teacherFingerprint?.defaultScenarioPreferences ?? [];
+	const studentPreferences = context.adaptiveTargets?.scenarioPreferences[profile.conceptId] ?? [];
+	return mergeTeacherAndStudentPreferences(teacherPreferences, studentPreferences);
 }
 
 function getPreferredItemModes(context: BuilderContext<"build-test">, profile: ConceptProfile) {
-	return profile.itemModes.length > 0
+	const teacherPreferences = profile.itemModes.length > 0
 		? profile.itemModes
 		: context.teacherFingerprint?.defaultItemModes ?? [];
+	const studentPreferences = context.adaptiveTargets?.modePreferences[profile.conceptId] ?? [];
+	return mergeTeacherAndStudentPreferences(teacherPreferences, studentPreferences);
+}
+
+function mergeTeacherAndStudentPreferences<T extends string>(teacherPreferences: T[], studentPreferences: T[]) {
+	if (teacherPreferences.length === 0) {
+		return unique(studentPreferences);
+	}
+	const filteredStudentPreferences = studentPreferences.filter((entry) => teacherPreferences.includes(entry));
+	return unique([...filteredStudentPreferences, ...teacherPreferences]);
+}
+
+function applyAdaptiveConceptQuotas(baseCounts: Record<string, number>, conceptNames: string[], adaptiveCounts: Record<string, number>, itemCount: number) {
+	const normalized: Record<string, number> = {};
+	const fallbackWeights = conceptNames.map((concept) => ({
+		concept,
+		weight: adaptiveCounts[canonicalConceptId(concept)] ?? baseCounts[concept] ?? 1,
+	}));
+	const total = fallbackWeights.reduce((sum, entry) => sum + Math.max(0.0001, entry.weight), 0);
+	let assigned = 0;
+	for (const entry of fallbackWeights) {
+		normalized[entry.concept] = Math.floor((Math.max(0.0001, entry.weight) / total) * itemCount);
+		assigned += normalized[entry.concept] ?? 0;
+	}
+	for (const entry of [...fallbackWeights].sort((left, right) => (adaptiveCounts[canonicalConceptId(right.concept)] ?? 0) - (adaptiveCounts[canonicalConceptId(left.concept)] ?? 0) || left.concept.localeCompare(right.concept))) {
+		if (assigned >= itemCount) {
+			break;
+		}
+		normalized[entry.concept] = (normalized[entry.concept] ?? 0) + 1;
+		assigned += 1;
+	}
+	return normalized;
 }
 
 function getItemModeBloomLevel(mode: ItemMode) {
@@ -584,19 +626,35 @@ function buildRequestedItemModeSequence(preferredModes: ItemMode[], requestedBlo
 	});
 }
 
-function buildRequestedDifficultySequence(requestedBloomSequence: BloomLevel[]) {
+function numericDifficultyTargetToLabel(value: number) {
+	if (value >= 0.68) {
+		return "high" as const;
+	}
+	if (value >= 0.34) {
+		return "medium" as const;
+	}
+	return "low" as const;
+}
+
+function buildRequestedDifficultySequence(context: BuilderContext<"build-test">, profile: ConceptProfile, requestedBloomSequence: BloomLevel[]) {
+	const adaptiveSequence = context.adaptiveTargets?.difficultyTargets[profile.conceptId];
+	if (adaptiveSequence?.length) {
+		return requestedBloomSequence.map((_, index) => numericDifficultyTargetToLabel(adaptiveSequence[index] ?? adaptiveSequence.at(-1) ?? 0.5));
+	}
 	return requestedBloomSequence.map((targetBloom, index) => inferTargetDifficulty(targetBloom, index, requestedBloomSequence.length || 1));
 }
 
 function buildFingerprintSequencePlan(context: BuilderContext<"build-test">, profile: ConceptProfile, requestedCount: number) {
-	const requestedBloomSequence = buildRequestedBloomSequence(context, profile, requestedCount);
+	const requestedBloomSequence = context.adaptiveTargets?.bloomTargets[profile.conceptId]?.length
+		? context.adaptiveTargets.bloomTargets[profile.conceptId]!.slice(0, requestedCount)
+		: buildRequestedBloomSequence(context, profile, requestedCount);
 	const effectiveBloomSequence = requestedBloomSequence.length > 0
 		? requestedBloomSequence
 		: Array.from({ length: requestedCount }, () => profile.maxBloomLevel);
 	const preferredModes = getPreferredItemModes(context, profile);
 	const preferredScenarios = getPreferredScenarioPatterns(context, profile);
 	const requestedModeSequence = buildRequestedItemModeSequence(preferredModes, effectiveBloomSequence);
-	const requestedDifficultySequence = buildRequestedDifficultySequence(effectiveBloomSequence);
+	const requestedDifficultySequence = buildRequestedDifficultySequence(context, profile, effectiveBloomSequence);
 	return effectiveBloomSequence.map((targetBloom, index) => ({
 		targetBloom,
 		targetMode: requestedModeSequence[index] ?? null,
@@ -652,6 +710,14 @@ function scenarioPreferenceRank(preferredScenarios: ReturnType<typeof getPreferr
 	return matchedIndex === Number.MAX_SAFE_INTEGER ? preferredScenarios.length + 1 : matchedIndex;
 }
 
+function misconceptionMatchRank(misconceptionKeys: string[], item: TestItem) {
+	if (misconceptionKeys.length === 0) {
+		return 1;
+	}
+	const searchable = [item.prompt, item.answerGuidance, ...(item.misconceptionTriggers ?? [])].join(" ").toLowerCase();
+	return misconceptionKeys.some((key) => searchable.includes(key.toLowerCase())) ? 0 : 1;
+}
+
 function selectBestFingerprintCandidate(args: {
 	remaining: TestItem[];
 	targetMode: ItemMode | null;
@@ -659,16 +725,18 @@ function selectBestFingerprintCandidate(args: {
 	preferredScenarios: ReturnType<typeof getPreferredScenarioPatterns>;
 	targetBloom: BloomLevel;
 	targetDifficulty: TestItem["difficulty"];
+	misconceptionKeys?: string[];
 }) {
 	let bestIndex = -1;
-	let bestScore: [number, number, number, number, number, number, string] | null = null;
+	let bestScore: [number, number, number, number, number, number, number, string] | null = null;
 	for (const [index, item] of args.remaining.entries()) {
 		const itemBloom = classifyBloomLevel(item.prompt);
-		const score: [number, number, number, number, number, number, string] = [
+		const score: [number, number, number, number, number, number, number, string] = [
 			Math.abs(compareBloomLevels(itemBloom, args.targetBloom)),
 			targetModeRank(args.targetMode, item),
 			modePreferenceRank(args.preferredModes, item),
 			scenarioPreferenceRank(args.preferredScenarios, item),
+			misconceptionMatchRank(args.misconceptionKeys ?? [], item),
 			Math.abs(DIFFICULTY_SCORE[item.difficulty] - DIFFICULTY_SCORE[args.targetDifficulty]),
 			inferAssessmentPromptStage(item.prompt),
 			item.prompt,
@@ -739,6 +807,7 @@ function selectFingerprintItemsForConcept(context: BuilderContext<"build-test">,
 	const remaining = [...items];
 	const selected: TestItem[] = [];
 	const sequencePlan = buildFingerprintSequencePlan(context, profile, requestedCount);
+	const misconceptionKeys = context.studentPerformanceProfile?.misconceptions[profile.conceptId]?.map((cluster) => cluster.misconceptionKey) ?? [];
 	for (const slot of sequencePlan) {
 		if (remaining.length === 0) {
 			break;
@@ -750,6 +819,7 @@ function selectFingerprintItemsForConcept(context: BuilderContext<"build-test">,
 			preferredScenarios: slot.preferredScenarios,
 			targetBloom: slot.targetBloom,
 			targetDifficulty: slot.targetDifficulty,
+			misconceptionKeys,
 		});
 		if (matchIndex < 0) {
 			break;
@@ -771,6 +841,7 @@ function selectFingerprintItemsForConcept(context: BuilderContext<"build-test">,
 			preferredScenarios: slot.preferredScenarios,
 			targetBloom: slot.targetBloom,
 			targetDifficulty: slot.targetDifficulty,
+			misconceptionKeys,
 		});
 		const next = matchIndex >= 0 ? remaining.splice(matchIndex, 1)[0]! : remaining.shift()!;
 		selected.push(applyScenarioDirectiveToItem(shapeSelectedDifficulty(next, slot.targetDifficulty), profile.scenarioDirective));
@@ -1530,6 +1601,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					answerGuidance: unitEntry.unit.learningTargets.length > 0
 						? `Look for evidence that the student can ${joinList(unitEntry.unit.learningTargets).toLowerCase()}.`
 						: `Look for accurate reasoning about ${concept}.`,
+					misconceptionTriggers: unitEntry.unit.misconceptions,
 				};
 				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
 				emittedPromptKeys.add(promptKey);
@@ -1553,6 +1625,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					difficulty: "medium",
 					cognitiveDemand: "conceptual",
 					answerGuidance: `Look for accurate reasoning about ${concept} and a valid application example.`,
+					misconceptionTriggers: [],
 				};
 				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
 				emittedPromptKeys.add(fallbackKey);
@@ -1665,7 +1738,18 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadByType["build-test"] {
 	const focus = getFocus(context.request.options);
 	const itemCount = context.requestedItemCount ?? getPositiveNumberOption(context.request.options, "itemCount", 5);
-	const sections = chooseTestItems(context, focus, itemCount);
+	const adaptiveEnabled = process.env.ENABLE_ADAPTIVE_BUILDER === "true" && context.request.enableAdaptiveConditioning !== false;
+	const preferredProfiles = getPreferredFingerprintProfiles(context);
+	const adaptiveTargets = adaptiveEnabled && context.studentPerformanceProfile && preferredProfiles.length > 0
+		? deriveAdaptiveTargets(context.studentPerformanceProfile, preferredProfiles, {
+			teacherFingerprint: context.teacherFingerprint,
+			unitFingerprint: context.unitFingerprint,
+		}, itemCount)
+		: null;
+	const sections = chooseTestItems({
+		...context,
+		adaptiveTargets,
+	}, focus, itemCount);
 	const totalItemCount = sections.reduce((sum, section) => sum + section.items.length, 0);
 
 	return {
@@ -2439,6 +2523,7 @@ function buildBuilderContext<T extends BuiltIntentType>(
     preferences?: {
 		teacherFingerprint?: TeacherFingerprint | null;
 		unitFingerprint?: UnitFingerprint | null;
+		studentPerformanceProfile?: StudentPerformanceProfile | null;
 	},
 ): BuilderContext<T> {
     const session = context.session;
@@ -2510,19 +2595,26 @@ function buildBuilderContext<T extends BuiltIntentType>(
         requestedItemCount,
 		teacherFingerprint: preferences?.teacherFingerprint ?? null,
 		unitFingerprint: preferences?.unitFingerprint ?? null,
+		studentPerformanceProfile: preferences?.studentPerformanceProfile ?? null,
     };
 }
 
 export async function buildIntentPayload<T extends BuiltIntentType>(request: IntentRequest & { intentType: T }, prismSessionContext: PrismSessionContext): Promise<IntentPayloadByType[T]> {
 	const teacherId = getStringOption(request.options, "teacherId");
 	const unitId = getStringOption(request.options, "unitId");
+	const studentId = typeof request.studentId === "string" && request.studentId.trim().length > 0 ? request.studentId.trim() : null;
 	const conceptBlueprint = request.intentType === "build-test" ? getConceptBlueprintOption(request.options) : null;
 	const preferences = request.intentType === "build-test" && teacherId
 		? {
 			teacherFingerprint: await getTeacherFingerprint(teacherId),
 			unitFingerprint: unitId ? await getUnitFingerprint(teacherId, unitId) : null,
+			studentPerformanceProfile: request.studentPerformanceProfile ?? (studentId ? await getStudentPerformanceProfile(studentId, unitId ?? undefined) : null),
 		}
-		: undefined;
+		: request.intentType === "build-test"
+			? {
+				studentPerformanceProfile: request.studentPerformanceProfile ?? (studentId ? await getStudentPerformanceProfile(studentId, unitId ?? undefined) : null),
+			}
+			: undefined;
 	const initialRequest = request.intentType === "build-test" && conceptBlueprint
 		? withItemCountOverride(request, estimateBlueprintSeedItemCount(request.options, conceptBlueprint.edits))
 		: request;
