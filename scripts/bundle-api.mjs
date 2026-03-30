@@ -12,6 +12,12 @@ import { build } from "esbuild";
 import { readdirSync, renameSync, statSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 
+const skip = [
+  "api/v4/documents/intent.ts",
+  "api/v4/documents/session", // skip entire folder
+];
+
+
 const apiDir = "api";
 const srcDir = resolve("src");
 
@@ -61,10 +67,11 @@ function collectApiTsFiles(dir) {
 const tsFiles = collectApiTsFiles(apiDir);
 
 for (const file of tsFiles) {
-  if (unbundledApiEntries.has(file)) {
-    console.log(`  ${file} → left as source`);
+  if (skip.some(s => file.startsWith(s))) {
+    console.log(`  ${file} → skipped`);
     continue;
   }
+
 
   const entry = file;
   const tmpFile = file.replace(/\.ts$/, ".bundled.mjs");
