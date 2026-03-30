@@ -174,6 +174,44 @@ CREATE POLICY "tg: own rows update"
 
 
 -- ────────────────────────────────────────────────────────────
+-- 5b. ASSESSMENT_FINGERPRINTS / UNIT_FINGERPRINTS
+--     Derived teacher-feedback fingerprints used by the v4
+--     assessment runtime and pavilion surfaces.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.assessment_fingerprints (
+  assessment_id    text        PRIMARY KEY,
+  teacher_id       text        NOT NULL,
+  unit_id          text,
+  concept_profiles jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  flow_profile     jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  item_count       integer     NOT NULL DEFAULT 0,
+  source_type      text        NOT NULL,
+  last_updated     timestamptz NOT NULL DEFAULT now(),
+  version          integer     NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_fingerprints_teacher
+  ON public.assessment_fingerprints (teacher_id, last_updated DESC);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_fingerprints_unit
+  ON public.assessment_fingerprints (teacher_id, unit_id);
+
+CREATE TABLE IF NOT EXISTS public.unit_fingerprints (
+  teacher_id                   text        NOT NULL,
+  unit_id                      text        NOT NULL,
+  concept_profiles             jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  flow_profile                 jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  derived_from_assessment_ids  jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  last_updated                 timestamptz NOT NULL DEFAULT now(),
+  version                      integer     NOT NULL DEFAULT 1,
+  PRIMARY KEY (teacher_id, unit_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unit_fingerprints_teacher
+  ON public.unit_fingerprints (teacher_id, last_updated DESC);
+
+
+-- ────────────────────────────────────────────────────────────
 -- 6. HELPER FUNCTION
 --    Auto-creates the teachers row from auth metadata whenever
 --    a new user confirms their email or signs up without

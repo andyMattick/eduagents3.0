@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TestProduct } from "../../schema/integration/IntentProduct";
 import { buildAssessmentFingerprint } from "../fingerprints";
@@ -381,5 +381,78 @@ describe("teacher feedback fingerprint store", () => {
 			apply: 0.75,
 		});
 		expect(updated?.assessment.conceptProfiles[0]?.maxBloomLevel).toBe("apply");
+	});
+
+	it("falls back to in-memory fingerprints when Supabase fingerprint tables are missing", async () => {
+		const originalUrl = process.env.SUPABASE_URL;
+		const originalAnonKey = process.env.SUPABASE_ANON_KEY;
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+		process.env.SUPABASE_URL = "https://example.supabase.co";
+		process.env.SUPABASE_ANON_KEY = "anon-key";
+
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("/rest/v1/assessment_fingerprints")) {
+				return {
+					ok: false,
+					status: 404,
+					headers: new Headers({ "content-type": "application/json" }),
+					text: async () => JSON.stringify({
+						code: "PGRST205",
+						message: "Could not find the table 'public.assessment_fingerprints' in the schema cache",
+					}),
+				};
+			}
+			if (url.includes("/rest/v1/unit_fingerprints")) {
+				return {
+					ok: false,
+					status: 404,
+					headers: new Headers({ "content-type": "application/json" }),
+					text: async () => JSON.stringify({
+						code: "PGRST205",
+						message: "Could not find the table 'public.unit_fingerprints' in the schema cache",
+					}),
+				};
+			}
+
+			throw new Error(`Unexpected fetch call: ${url}`);
+		});
+
+		vi.stubGlobal("fetch", fetchMock);
+
+		const fingerprint = buildAssessmentFingerprint({
+			teacherId: "teacher-1",
+			assessmentId: "assessment-missing-table",
+			unitId: "unit-a",
+			product: buildProduct({
+				concept: "Hypothesis Testing",
+				prompts: [
+					"State the null hypothesis.",
+					"Interpret the p-value.",
+				],
+				assessmentTitle: "Fallback Assessment",
+			}),
+			now: "2026-03-30T00:00:00.000Z",
+		});
+
+		const stored = await saveAssessmentFingerprint(fingerprint);
+
+		expect(stored.assessment.assessmentId).toBe("assessment-missing-table");
+		expect(await getAssessmentFingerprint("assessment-missing-table")).toMatchObject({ assessmentId: "assessment-missing-table" });
+		expect(await getUnitFingerprint("teacher-1", "unit-a")).toMatchObject({ unitId: "unit-a" });
+		expect(await getTeacherFingerprint("teacher-1")).toMatchObject({ teacherId: "teacher-1" });
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("assessment_fingerprints missing in Supabase schema cache"));
+
+		if (originalUrl === undefined) {
+			delete process.env.SUPABASE_URL;
+		} else {
+			process.env.SUPABASE_URL = originalUrl;
+		}
+		if (originalAnonKey === undefined) {
+			delete process.env.SUPABASE_ANON_KEY;
+		} else {
+			process.env.SUPABASE_ANON_KEY = originalAnonKey;
+		}
 	});
 });

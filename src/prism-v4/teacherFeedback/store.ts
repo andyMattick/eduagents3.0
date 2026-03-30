@@ -33,6 +33,12 @@ const assessmentFingerprintMemory = new Map<string, AssessmentFingerprint>();
 const unitFingerprintMemory = new Map<string, UnitFingerprint>();
 const teacherFingerprintMemory = new Map<string, TeacherFingerprint>();
 
+const ASSESSMENT_FINGERPRINTS_TABLE = "assessment_fingerprints";
+const UNIT_FINGERPRINTS_TABLE = "unit_fingerprints";
+
+let assessmentFingerprintPersistenceSupported = true;
+let unitFingerprintPersistenceSupported = true;
+
 const BLOOM_KEYS = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
 const REQUIRED_VECTOR_KEYS = new Set([
 	"subject",
@@ -78,6 +84,32 @@ function hashText(value: string) {
 
 function canUseSupabase() {
 	return typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function isMissingSupabaseTableError(error: unknown, table: string) {
+	const message = String(error instanceof Error ? error.message : error).toLowerCase();
+	return message.includes("pgrst205")
+		|| (message.includes("schema cache") && message.includes(table))
+		|| message.includes(`could not find the table 'public.${table}'`);
+}
+
+function disableFingerprintPersistence(table: typeof ASSESSMENT_FINGERPRINTS_TABLE | typeof UNIT_FINGERPRINTS_TABLE, error: unknown) {
+	if (!isMissingSupabaseTableError(error, table)) {
+		throw error;
+	}
+
+	if (table === ASSESSMENT_FINGERPRINTS_TABLE) {
+		if (assessmentFingerprintPersistenceSupported) {
+			console.warn(`[teacherFeedback.store] ${table} missing in Supabase schema cache; falling back to in-memory assessment fingerprints.`);
+		}
+		assessmentFingerprintPersistenceSupported = false;
+		return;
+	}
+
+	if (unitFingerprintPersistenceSupported) {
+		console.warn(`[teacherFeedback.store] ${table} missing in Supabase schema cache; falling back to in-memory unit fingerprints.`);
+	}
+	unitFingerprintPersistenceSupported = false;
 }
 
 function fingerprintUnitKey(teacherId: string, unitId: string) {
@@ -490,12 +522,16 @@ function recomputeStoredFingerprintsFromAssessments(teacherId: string, assessmen
 }
 
 async function listTeacherAssessments(teacherId: string) {
-	if (canUseSupabase()) {
-		const rows = await supabaseRest("assessment_fingerprints", {
-			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
-			filters: { teacher_id: `eq.${teacherId}`, order: "last_updated.asc,assessment_id.asc" },
-		});
-		return ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
+	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
+		try {
+			const rows = await supabaseRest(ASSESSMENT_FINGERPRINTS_TABLE, {
+				select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+				filters: { teacher_id: `eq.${teacherId}`, order: "last_updated.asc,assessment_id.asc" },
+			});
+			return ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
+		} catch (error) {
+			disableFingerprintPersistence(ASSESSMENT_FINGERPRINTS_TABLE, error);
+		}
 	}
 
 	return sortAssessmentsForAggregation([...assessmentFingerprintMemory.values()].filter((assessment) => assessment.teacherId === teacherId));
@@ -505,35 +541,39 @@ async function recomputeStoredFingerprints(teacherId: string) {
 	const assessments = await listTeacherAssessments(teacherId);
 	recomputeStoredFingerprintsFromAssessments(teacherId, assessments);
 
-	if (!canUseSupabase()) {
+	if (!canUseSupabase() || !unitFingerprintPersistenceSupported) {
 		return;
 	}
 
-	if (assessments.length === 0) {
-		await supabaseRest("unit_fingerprints", {
+	try {
+		if (assessments.length === 0) {
+			await supabaseRest(UNIT_FINGERPRINTS_TABLE, {
+				method: "DELETE",
+				filters: { teacher_id: `eq.${teacherId}` },
+				prefer: "return=minimal",
+			});
+			return;
+		}
+
+		const unitFingerprints = [...unitFingerprintMemory.entries()]
+			.filter(([key]) => key.startsWith(`${teacherId}::`))
+			.map(([, fingerprint]) => fingerprint);
+
+		await supabaseRest(UNIT_FINGERPRINTS_TABLE, {
 			method: "DELETE",
 			filters: { teacher_id: `eq.${teacherId}` },
 			prefer: "return=minimal",
 		});
-		return;
-	}
 
-	const unitFingerprints = [...unitFingerprintMemory.entries()]
-		.filter(([key]) => key.startsWith(`${teacherId}::`))
-		.map(([, fingerprint]) => fingerprint);
-
-	await supabaseRest("unit_fingerprints", {
-		method: "DELETE",
-		filters: { teacher_id: `eq.${teacherId}` },
-		prefer: "return=minimal",
-	});
-
-	if (unitFingerprints.length > 0) {
-		await supabaseRest("unit_fingerprints", {
-			method: "POST",
-			body: unitFingerprints.map((fingerprint) => normalizeUnitFingerprint(fingerprint)),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
+		if (unitFingerprints.length > 0) {
+			await supabaseRest(UNIT_FINGERPRINTS_TABLE, {
+				method: "POST",
+				body: unitFingerprints.map((fingerprint) => normalizeUnitFingerprint(fingerprint)),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+		}
+	} catch (error) {
+		disableFingerprintPersistence(UNIT_FINGERPRINTS_TABLE, error);
 	}
 }
 
@@ -835,12 +875,16 @@ export async function listTeacherDerivedTemplates(subject?: string, domain?: str
 
 export async function saveAssessmentFingerprint(fingerprint: AssessmentFingerprint) {
 	assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
-	if (canUseSupabase()) {
-		await supabaseRest("assessment_fingerprints", {
-			method: "POST",
-			body: normalizeAssessmentFingerprint(fingerprint),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
+	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
+		try {
+			await supabaseRest(ASSESSMENT_FINGERPRINTS_TABLE, {
+				method: "POST",
+				body: normalizeAssessmentFingerprint(fingerprint),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+		} catch (error) {
+			disableFingerprintPersistence(ASSESSMENT_FINGERPRINTS_TABLE, error);
+		}
 	}
 	await recomputeStoredFingerprints(fingerprint.teacherId);
 	return {
@@ -864,12 +908,16 @@ export async function updateAssessmentFingerprint(args: {
 		edits: args.edits,
 	});
 	assessmentFingerprintMemory.set(updated.assessmentId, updated);
-	if (canUseSupabase()) {
-		await supabaseRest("assessment_fingerprints", {
-			method: "POST",
-			body: normalizeAssessmentFingerprint(updated),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
+	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
+		try {
+			await supabaseRest(ASSESSMENT_FINGERPRINTS_TABLE, {
+				method: "POST",
+				body: normalizeAssessmentFingerprint(updated),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+		} catch (error) {
+			disableFingerprintPersistence(ASSESSMENT_FINGERPRINTS_TABLE, error);
+		}
 	}
 	await recomputeStoredFingerprints(updated.teacherId);
 
@@ -881,41 +929,49 @@ export async function updateAssessmentFingerprint(args: {
 }
 
 export async function getAssessmentFingerprint(assessmentId: string): Promise<AssessmentFingerprint | null> {
-	if (canUseSupabase()) {
-		const rows = await supabaseRest("assessment_fingerprints", {
-			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
-			filters: { assessment_id: `eq.${assessmentId}` },
-		});
-		const row = Array.isArray(rows) ? rows[0] : null;
-		if (!row) {
-			return null;
+	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
+		try {
+			const rows = await supabaseRest(ASSESSMENT_FINGERPRINTS_TABLE, {
+				select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+				filters: { assessment_id: `eq.${assessmentId}` },
+			});
+			const row = Array.isArray(rows) ? rows[0] : null;
+			if (!row) {
+				return null;
+			}
+			const fingerprint = hydrateAssessmentFingerprint(row as Record<string, unknown>);
+			assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
+			return fingerprint;
+		} catch (error) {
+			disableFingerprintPersistence(ASSESSMENT_FINGERPRINTS_TABLE, error);
 		}
-		const fingerprint = hydrateAssessmentFingerprint(row as Record<string, unknown>);
-		assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
-		return fingerprint;
 	}
 
 	return assessmentFingerprintMemory.get(assessmentId) ?? null;
 }
 
 export async function listAssessmentFingerprints(args?: { teacherId?: string; unitId?: string }) {
-	if (canUseSupabase()) {
-		const filters: Record<string, string> = { order: "last_updated.asc,assessment_id.asc" };
-		if (args?.teacherId) {
-			filters.teacher_id = `eq.${args.teacherId}`;
+	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
+		try {
+			const filters: Record<string, string> = { order: "last_updated.asc,assessment_id.asc" };
+			if (args?.teacherId) {
+				filters.teacher_id = `eq.${args.teacherId}`;
+			}
+			if (args?.unitId) {
+				filters.unit_id = `eq.${args.unitId}`;
+			}
+			const rows = await supabaseRest(ASSESSMENT_FINGERPRINTS_TABLE, {
+				select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
+				filters,
+			});
+			const fingerprints = ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
+			for (const fingerprint of fingerprints) {
+				assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
+			}
+			return fingerprints;
+		} catch (error) {
+			disableFingerprintPersistence(ASSESSMENT_FINGERPRINTS_TABLE, error);
 		}
-		if (args?.unitId) {
-			filters.unit_id = `eq.${args.unitId}`;
-		}
-		const rows = await supabaseRest("assessment_fingerprints", {
-			select: "assessment_id,teacher_id,unit_id,concept_profiles,flow_profile,item_count,source_type,last_updated,version",
-			filters,
-		});
-		const fingerprints = ((rows as Array<Record<string, unknown>>) ?? []).map((row) => hydrateAssessmentFingerprint(row));
-		for (const fingerprint of fingerprints) {
-			assessmentFingerprintMemory.set(fingerprint.assessmentId, fingerprint);
-		}
-		return fingerprints;
 	}
 
 	return [...assessmentFingerprintMemory.values()].filter((fingerprint) => {
@@ -930,18 +986,22 @@ export async function listAssessmentFingerprints(args?: { teacherId?: string; un
 }
 
 export async function getUnitFingerprint(teacherId: string, unitId: string): Promise<UnitFingerprint | null> {
-	if (canUseSupabase()) {
-		const rows = await supabaseRest("unit_fingerprints", {
-			select: "teacher_id,unit_id,concept_profiles,flow_profile,derived_from_assessment_ids,last_updated,version",
-			filters: { teacher_id: `eq.${teacherId}`, unit_id: `eq.${unitId}` },
-		});
-		const row = Array.isArray(rows) ? rows[0] : null;
-		if (!row) {
-			return null;
+	if (canUseSupabase() && unitFingerprintPersistenceSupported) {
+		try {
+			const rows = await supabaseRest(UNIT_FINGERPRINTS_TABLE, {
+				select: "teacher_id,unit_id,concept_profiles,flow_profile,derived_from_assessment_ids,last_updated,version",
+				filters: { teacher_id: `eq.${teacherId}`, unit_id: `eq.${unitId}` },
+			});
+			const row = Array.isArray(rows) ? rows[0] : null;
+			if (!row) {
+				return null;
+			}
+			const fingerprint = hydrateUnitFingerprint(row as Record<string, unknown>);
+			unitFingerprintMemory.set(fingerprintUnitKey(teacherId, unitId), fingerprint);
+			return fingerprint;
+		} catch (error) {
+			disableFingerprintPersistence(UNIT_FINGERPRINTS_TABLE, error);
 		}
-		const fingerprint = hydrateUnitFingerprint(row as Record<string, unknown>);
-		unitFingerprintMemory.set(fingerprintUnitKey(teacherId, unitId), fingerprint);
-		return fingerprint;
 	}
 
 	return unitFingerprintMemory.get(fingerprintUnitKey(teacherId, unitId)) ?? null;
@@ -993,5 +1053,7 @@ export function resetTeacherFeedbackState() {
 	assessmentFingerprintMemory.clear();
 	unitFingerprintMemory.clear();
 	teacherFingerprintMemory.clear();
+	assessmentFingerprintPersistenceSupported = true;
+	unitFingerprintPersistenceSupported = true;
 	resetLearningState();
 }
