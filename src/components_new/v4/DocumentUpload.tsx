@@ -1,5 +1,5 @@
 import type { ChangeEvent, FormEvent } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument } from "../../prism-v4/schema/semantic";
@@ -23,6 +23,19 @@ function logUploadTrace(message: string, details?: Record<string, unknown>) {
   }
 
   console.info(`[Wave6 Upload] ${message}`);
+}
+
+function warnUploadGuard(guard: string, details?: Record<string, unknown>) {
+  if (!DEBUG_UPLOAD_TRACE) {
+    return;
+  }
+
+  if (details) {
+    console.warn(`[Wave6 Upload] blocked at guard: ${guard}`, details);
+    return;
+  }
+
+  console.warn(`[Wave6 Upload] blocked at guard: ${guard}`);
 }
 
 type IntentConfig = {
@@ -85,7 +98,10 @@ function resolveIntentDocumentIds(workspace: InstructionalSessionWorkspace | nul
   const allDocumentIds = workspace.documents.map((entry) => entry.documentId);
 
   if (config.scope === "single") {
-    return primaryDocumentId ? [primaryDocumentId] : [];
+    if (primaryDocumentId) {
+      return [primaryDocumentId];
+    }
+    return allDocumentIds[0] ? [allDocumentIds[0]] : [];
   }
 
   if (config.scope === "multi") {
@@ -136,6 +152,24 @@ export function DocumentUpload() {
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    if (!workspace) {
+      warnUploadGuard("workspace-sync:no-workspace");
+      return;
+    }
+
+    const nextDocumentIds = workspace.documents.map((entry) => entry.documentId);
+
+    setSelectedDocumentIds((current) => {
+      const validSelection = current.filter((documentId) => nextDocumentIds.includes(documentId));
+      return validSelection.length > 0 ? validSelection : nextDocumentIds;
+    });
+
+    setPrimaryDocumentId((current) => (current && nextDocumentIds.includes(current)
+      ? current
+      : (nextDocumentIds[0] ?? null)));
+  }, [workspace]);
+
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -146,16 +180,19 @@ export function DocumentUpload() {
 
     if (uploadInFlightRef.current || isUploading) {
       logUploadTrace("ignored submit while upload in flight", { isUploading, selectedFileCount: selectedFiles.length });
+      warnUploadGuard("upload:in-flight", { isUploading, selectedFileCount: selectedFiles.length });
       return;
     }
 
     if (uploadAttemptKey.length > 0 && lastUploadAttemptKeyRef.current === uploadAttemptKey) {
       logUploadTrace("ignored duplicate submit", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
+      warnUploadGuard("upload:duplicate-submit", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
       return;
     }
 
     if (selectedFiles.length === 0) {
       setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
+      warnUploadGuard("upload:no-files-selected");
       return;
     }
 
@@ -167,6 +204,7 @@ export function DocumentUpload() {
     try {
       const nextWorkspace = await createSessionFromFiles(selectedFiles);
       if (!nextWorkspace) {
+        warnUploadGuard("upload:no-workspace-returned", { selectedFileCount: selectedFiles.length });
         return;
       }
 
@@ -192,6 +230,10 @@ export function DocumentUpload() {
     enableAdaptiveConditioning?: boolean;
   }) {
     if (!workspace) {
+      warnUploadGuard("pavilion-generation:no-workspace", {
+        intentType: args.intentType,
+        studentId: args.studentId ?? null,
+      });
       return null;
     }
 
@@ -200,23 +242,77 @@ export function DocumentUpload() {
 
     if (normalizedDocumentIds.length === 0) {
       setError("Select the document scope before generating a pavilion surface.");
+      warnUploadGuard("pavilion-generation:no-document-scope", {
+        sessionId: workspace.sessionId,
+        intentType: args.intentType,
+        selectedDocumentIds,
+        primaryDocumentId,
+      });
       return null;
     }
 
     if (config.scope === "multi" && normalizedDocumentIds.length < 2) {
       setError(`${config.label} requires at least 2 documents in the workspace.`);
+      warnUploadGuard("pavilion-generation:insufficient-multi-selection", {
+        sessionId: workspace.sessionId,
+        intentType: args.intentType,
+        requiredScope: config.scope,
+        documentIds: normalizedDocumentIds,
+      });
       return null;
     }
 
     setError(null);
-    return await generateProduct({
+    logUploadTrace("pavilion generation started", {
       sessionId: workspace.sessionId,
-      documentIds: normalizedDocumentIds,
       intentType: args.intentType,
-      options: args.options,
-      studentId: args.studentId,
-      enableAdaptiveConditioning: args.enableAdaptiveConditioning,
+      documentIds: normalizedDocumentIds,
+      hasOptions: Boolean(args.options && Object.keys(args.options).length > 0),
+      studentId: args.studentId ?? null,
+      adaptiveConditioning: args.enableAdaptiveConditioning ?? null,
     });
+
+    try {
+      const product = await generateProduct({
+        sessionId: workspace.sessionId,
+        documentIds: normalizedDocumentIds,
+        intentType: args.intentType,
+        options: args.options,
+        studentId: args.studentId,
+        enableAdaptiveConditioning: args.enableAdaptiveConditioning,
+      });
+
+      if (!product) {
+        setError("Pavilion generation completed without returning a draft.");
+        logUploadTrace("pavilion generation returned no product", {
+          sessionId: workspace.sessionId,
+          intentType: args.intentType,
+          documentIds: normalizedDocumentIds,
+        });
+        warnUploadGuard("pavilion-generation:no-product-returned", {
+          sessionId: workspace.sessionId,
+          intentType: args.intentType,
+          documentIds: normalizedDocumentIds,
+        });
+        return null;
+      }
+
+      logUploadTrace("pavilion generation completed", {
+        sessionId: workspace.sessionId,
+        intentType: product.intentType,
+        productId: product.productId,
+      });
+      return product;
+    } catch (generationError) {
+      const message = generationError instanceof Error ? generationError.message : "Pavilion generation failed.";
+      setError(message);
+      logUploadTrace("pavilion generation failed", {
+        sessionId: workspace.sessionId,
+        intentType: args.intentType,
+        error: message,
+      });
+      throw generationError;
+    }
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {

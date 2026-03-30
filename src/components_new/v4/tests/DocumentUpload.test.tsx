@@ -242,7 +242,7 @@ describe("DocumentUpload", () => {
     };
 
     let uploadCount = 0;
-    let products = [unitProduct];
+    let products: typeof unitProduct[] = [];
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         const nextDocument = documents[uploadCount]!;
@@ -283,7 +283,8 @@ describe("DocumentUpload", () => {
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
     expect(screen.getByText("Pavilion Studio")).toBeInTheDocument();
-    expect(screen.getByText("Output Gallery")).toBeInTheDocument();
+    expect(screen.queryByText("Output Gallery")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Builder Plan" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "What would you like to build?" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Your recent builds" })).not.toBeInTheDocument();
     expect(screen.queryByText("session-1")).not.toBeInTheDocument();
@@ -292,6 +293,7 @@ describe("DocumentUpload", () => {
     fireEvent.change(screen.getByLabelText("Build surface"), { target: { value: "build-unit" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
 
+    expect(await screen.findByRole("tab", { name: "Output Gallery" })).toBeInTheDocument();
     expect(await screen.findByText("Lesson Sequence")).toBeInTheDocument();
     expect(screen.getByText(/lesson-notes\.docx: Start with notes\./i)).toBeInTheDocument();
     expect(screen.getByText("Checkpoint 1")).toBeInTheDocument();
@@ -344,7 +346,7 @@ describe("DocumentUpload", () => {
       createdAt: "2025-01-01T00:00:00.000Z",
     };
 
-    let products = [buildTestProduct];
+      let products: typeof buildTestProduct[] = [];
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         return jsonResponse({ documentId: "doc-1", documentIds: ["doc-1"], sessionId: "session-1", registered: documents });
@@ -364,6 +366,39 @@ describe("DocumentUpload", () => {
       if (input === "/api/v4/documents/intent" && init?.method === "POST") {
         products = [buildTestProduct];
         return jsonResponse(buildTestProduct);
+      }
+      if (input === "/api/v4/sessions/session-1/builder-plan?studentId=student-42") {
+        return jsonResponse({
+          sessionId: "session-1",
+          builderPlan: {
+            sections: [{ conceptId: "fractions", conceptName: "Fractions", itemCount: 1, bloomSequence: ["understand"], difficultySequence: ["medium"], modeSequence: ["compare"], scenarioSequence: ["abstract-symbolic"] }],
+            adaptiveTargets: {
+              boostedConcepts: ["fractions"],
+              suppressedConcepts: [],
+              boostedBloom: ["understand"],
+              suppressedBloom: [],
+            },
+          },
+        });
+      }
+      if (input === "/api/v4/sessions/session-1/assessment-preview?studentId=student-42") {
+        return jsonResponse({
+          sessionId: "session-1",
+          assessmentPreview: {
+            items: [{
+              itemId: "item-1",
+              stem: "Explain fractions.",
+              answer: "Show your reasoning.",
+              conceptId: "fractions",
+              bloom: "understand",
+              difficulty: "medium",
+              mode: "compare",
+              scenario: "abstract-symbolic",
+              teacherReasons: ["Fractions was selected for the first draft."],
+              studentReasons: ["This stays symbolic for the active learner profile."],
+            }],
+          },
+        });
       }
       if (input === "/api/v4/sessions/session-1/blueprint") {
         return jsonResponse({
@@ -399,12 +434,14 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Builder Plan" })).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Unit ID"), { target: { value: "unit-fractions-1" } });
     fireEvent.change(screen.getByLabelText("Student ID"), { target: { value: "student-42" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
 
-    await screen.findByRole("heading", { name: "Blueprint Engine" });
+	    await screen.findByRole("heading", { name: "Builder Plan" });
+	    expect(await screen.findByRole("heading", { name: "Assessment Preview" })).toBeInTheDocument();
 
     const buildRequest = fetchMock.mock.calls.find(([input, init]) => input === "/api/v4/documents/intent" && init?.method === "POST");
     expect(buildRequest).toBeTruthy();
@@ -544,7 +581,7 @@ describe("DocumentUpload", () => {
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Build surface"), { target: { value: "build-instructional-map" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
-    fireEvent.click(await screen.findByRole("button", { name: /Instructional Map/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Draft 1/i }));
 
     expect(await screen.findByRole("heading", { name: "Concept Graph" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Document Alignment" })).toBeInTheDocument();

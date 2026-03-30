@@ -150,6 +150,40 @@ describe("Pavilion integration", () => {
       createdAt: "2025-01-01T00:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
     };
+    const buildTestProduct = {
+      sessionId: "session-1",
+      intentType: "build-test",
+      documentIds: ["doc-1"],
+      productId: "product-test-1",
+      productType: "build-test",
+      schemaVersion: "wave3-v1",
+      payload: {
+        kind: "test",
+        focus: null,
+        domain: "Mathematics",
+        title: "Assessment Draft",
+        overview: "This draft assessment includes 1 item focused on fractions.",
+        estimatedDurationMinutes: 5,
+        totalItemCount: 1,
+        sections: [{
+          concept: "fractions",
+          sourceDocumentIds: ["doc-1"],
+          items: [{
+            itemId: "item-1",
+            prompt: "Compare the fractions 2/3 and 3/4.",
+            concept: "fractions",
+            sourceDocumentId: "doc-1",
+            sourceFileName: "fractions-notes.docx",
+            difficulty: "medium",
+            cognitiveDemand: "conceptual",
+            answerGuidance: "Use common denominators.",
+          }],
+        }],
+        generatedAt: "2025-01-01T00:00:00.000Z",
+      },
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+    let products: typeof buildTestProduct[] = [];
 
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
@@ -165,7 +199,11 @@ describe("Pavilion integration", () => {
         return jsonResponse(buildInstructionalAnalysisResponse("session-1", analyzedDocuments));
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return jsonResponse({ sessionId: "session-1", products: [] });
+        return jsonResponse({ sessionId: "session-1", products });
+      }
+      if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        products = [buildTestProduct];
+        return jsonResponse(buildTestProduct);
       }
       if (input === "/api/v4/sessions/session-1/blueprint") {
         return jsonResponse({
@@ -329,6 +367,13 @@ describe("Pavilion integration", () => {
     expect(await screen.findByRole("heading", { name: "Document analysis" })).toBeInTheDocument();
     expect(screen.queryByText("What would you like to build?")).not.toBeInTheDocument();
     expect(screen.queryByText("Your recent builds")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Blueprint" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
+
+    expect(await screen.findByRole("tab", { name: "Builder Plan" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Builder Plan" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Assessment Preview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Blueprint" }));
     expect(await screen.findByRole("heading", { name: "Blueprint Engine" })).toBeInTheDocument();
@@ -357,5 +402,6 @@ describe("Pavilion integration", () => {
     expect(fetchMock.mock.calls.some(([input]) => input === "/api/v4/sessions/session-1/blueprint")).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => input === "/api/v4/classes/session-1/performance")).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => input === "/api/v4/classes/session-1/differentiated-build")).toBe(true);
+    expect(fetchMock.mock.calls.some(([input, init]) => input === "/api/v4/documents/intent" && init?.method === "POST")).toBe(true);
   });
 });
