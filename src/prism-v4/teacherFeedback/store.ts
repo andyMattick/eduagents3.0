@@ -375,19 +375,6 @@ function normalizeUnitFingerprint(fingerprint: UnitFingerprint) {
 	};
 }
 
-function normalizeTeacherFingerprint(fingerprint: TeacherFingerprint) {
-	return {
-		teacher_id: fingerprint.teacherId,
-		global_concept_profiles: fingerprint.globalConceptProfiles,
-		default_bloom_distribution: fingerprint.defaultBloomDistribution,
-		default_scenario_preferences: fingerprint.defaultScenarioPreferences,
-		default_item_modes: fingerprint.defaultItemModes,
-		flow_profile: fingerprint.flowProfile,
-		last_updated: fingerprint.lastUpdated,
-		version: fingerprint.version,
-	};
-}
-
 function hydrateAssessmentFingerprint(row: Record<string, unknown>): AssessmentFingerprint {
 	return {
 		assessmentId: String(row.assessment_id),
@@ -409,19 +396,6 @@ function hydrateUnitFingerprint(row: Record<string, unknown>): UnitFingerprint {
 		conceptProfiles: (row.concept_profiles as UnitFingerprint["conceptProfiles"]) ?? [],
 		flowProfile: row.flow_profile as UnitFingerprint["flowProfile"],
 		derivedFromAssessmentIds: (row.derived_from_assessment_ids as string[]) ?? [],
-		lastUpdated: String(row.last_updated),
-		version: Number(row.version ?? 1),
-	};
-}
-
-function hydrateTeacherFingerprint(row: Record<string, unknown>): TeacherFingerprint {
-	return {
-		teacherId: String(row.teacher_id),
-		globalConceptProfiles: (row.global_concept_profiles as TeacherFingerprint["globalConceptProfiles"]) ?? [],
-		defaultBloomDistribution: row.default_bloom_distribution as TeacherFingerprint["defaultBloomDistribution"],
-		defaultScenarioPreferences: (row.default_scenario_preferences as TeacherFingerprint["defaultScenarioPreferences"]) ?? [],
-		defaultItemModes: (row.default_item_modes as TeacherFingerprint["defaultItemModes"]) ?? [],
-		flowProfile: row.flow_profile as TeacherFingerprint["flowProfile"],
 		lastUpdated: String(row.last_updated),
 		version: Number(row.version ?? 1),
 	};
@@ -541,15 +515,9 @@ async function recomputeStoredFingerprints(teacherId: string) {
 			filters: { teacher_id: `eq.${teacherId}` },
 			prefer: "return=minimal",
 		});
-		await supabaseRest("teacher_fingerprints", {
-			method: "DELETE",
-			filters: { teacher_id: `eq.${teacherId}` },
-			prefer: "return=minimal",
-		});
 		return;
 	}
 
-	const teacherFingerprint = teacherFingerprintMemory.get(teacherId) ?? null;
 	const unitFingerprints = [...unitFingerprintMemory.entries()]
 		.filter(([key]) => key.startsWith(`${teacherId}::`))
 		.map(([, fingerprint]) => fingerprint);
@@ -564,14 +532,6 @@ async function recomputeStoredFingerprints(teacherId: string) {
 		await supabaseRest("unit_fingerprints", {
 			method: "POST",
 			body: unitFingerprints.map((fingerprint) => normalizeUnitFingerprint(fingerprint)),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
-	}
-
-	if (teacherFingerprint) {
-		await supabaseRest("teacher_fingerprints", {
-			method: "POST",
-			body: normalizeTeacherFingerprint(teacherFingerprint),
 			prefer: "resolution=merge-duplicates,return=minimal",
 		});
 	}
@@ -989,17 +949,11 @@ export async function getUnitFingerprint(teacherId: string, unitId: string): Pro
 
 export async function getTeacherFingerprint(teacherId: string): Promise<TeacherFingerprint | null> {
 	if (canUseSupabase()) {
-		const rows = await supabaseRest("teacher_fingerprints", {
-			select: "teacher_id,global_concept_profiles,default_bloom_distribution,default_scenario_preferences,default_item_modes,flow_profile,last_updated,version",
-			filters: { teacher_id: `eq.${teacherId}` },
-		});
-		const row = Array.isArray(rows) ? rows[0] : null;
-		if (!row) {
-			return null;
+		if (!teacherFingerprintMemory.has(teacherId)) {
+			const assessments = await listTeacherAssessments(teacherId);
+			recomputeStoredFingerprintsFromAssessments(teacherId, assessments);
 		}
-		const fingerprint = hydrateTeacherFingerprint(row as Record<string, unknown>);
-		teacherFingerprintMemory.set(teacherId, fingerprint);
-		return fingerprint;
+		return teacherFingerprintMemory.get(teacherId) ?? null;
 	}
 
 	return teacherFingerprintMemory.get(teacherId) ?? null;
@@ -1007,13 +961,6 @@ export async function getTeacherFingerprint(teacherId: string): Promise<TeacherF
 
 export async function saveTeacherFingerprint(fingerprint: TeacherFingerprint) {
 	teacherFingerprintMemory.set(fingerprint.teacherId, fingerprint);
-	if (canUseSupabase()) {
-		await supabaseRest("teacher_fingerprints", {
-			method: "POST",
-			body: normalizeTeacherFingerprint(fingerprint),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
-	}
 	return fingerprint;
 }
 

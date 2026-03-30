@@ -1,11 +1,24 @@
 import { useRef, useState } from "react";
 
 import type { DocumentRole, DocumentSession, SessionRole } from "../prism-v4/schema/domain";
+import type { IntentRequest, IntentType } from "../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument } from "../prism-v4/schema/semantic";
 import type { IntentProduct } from "../prism-v4/schema/integration";
 import type { StudentPerformanceProfile } from "../prism-v4/studentPerformance";
 import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel, InstructionalIntelligenceSession, InstructionalSessionEnvelope, InstructionalSessionWorkspace, TeacherFingerprintModel } from "../types/v4/InstructionalSession";
 import type { StudentExposureEntry, StudentResponseTimeEntry } from "../types/v4/InstructionalSession";
+import {
+	fetchJson,
+	generateIntentProductApi,
+	loadAssessmentPreviewApi,
+	loadBuilderPlanApi,
+	loadClassProfileApi,
+	loadDifferentiatedBuildApi,
+	loadSessionBlueprintApi,
+	loadStudentProfileApi,
+	loadTeacherFingerprintApi,
+	updateTeacherFingerprintApi,
+} from "../lib/instructionalSessionApi";
 
 type BlueprintResponse = {
 	sessionId: string;
@@ -97,36 +110,6 @@ function guessSessionRole(role: DocumentRole): SessionRole {
 		return "target-review";
 	}
 	return "unit-member";
-}
-
-async function fetchJson<T>(input: string, init?: RequestInit) {
-	const response = await fetch(input, init);
-	const rawBody = await response.text();
-	const trimmedBody = rawBody.trim();
-
-	if (!trimmedBody) {
-		throw new Error(`Empty response from ${input}`);
-	}
-
-	if (trimmedBody.startsWith("<!DOCTYPE") || trimmedBody.startsWith("<html") || trimmedBody.startsWith("<")) {
-		throw new Error(`Non-JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-	}
-
-	let payload: unknown;
-	try {
-		payload = JSON.parse(trimmedBody);
-	} catch {
-		throw new Error(`Invalid JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-	}
-
-	if (!response.ok) {
-		const errorMessage = typeof payload === "object" && payload !== null && "error" in payload
-			? String((payload as { error?: unknown }).error ?? `Request failed: ${input}`)
-			: `Request failed: ${input}`;
-		throw new Error(errorMessage);
-	}
-
-	return payload as T;
 }
 
 function createInstructionalSession(envelope: InstructionalSessionEnvelope): InstructionalIntelligenceSession {
@@ -268,7 +251,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadBlueprint(sessionId: string) {
-		const payload = await fetchJson<BlueprintResponse>(`/api/v4/sessions/${encodeURIComponent(sessionId)}/blueprint`);
+		const payload = await loadSessionBlueprintApi(sessionId);
 		updateInstructionalSession((current) => ({
 			...current,
 			blueprint: payload.blueprint,
@@ -292,7 +275,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadTeacherFingerprint(teacherId: string) {
-		const payload = await fetchJson<{ teacherId: string; fingerprint: TeacherFingerprintModel }>(`/api/v4/teachers/${encodeURIComponent(teacherId)}/fingerprint`);
+		const payload = await loadTeacherFingerprintApi(teacherId);
 		updateInstructionalSession((current) => ({
 			...current,
 			teacherFingerprint: payload.fingerprint,
@@ -301,11 +284,7 @@ export function useInstructionalSession() {
 	}
 
 	async function updateTeacherFingerprint(teacherId: string, patch: Partial<TeacherFingerprintModel>) {
-		const payload = await fetchJson<{ teacherId: string; fingerprint: TeacherFingerprintModel }>(`/api/v4/teachers/${encodeURIComponent(teacherId)}/fingerprint`, {
-			method: "PATCH",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(patch),
-		});
+		const payload = await updateTeacherFingerprintApi(teacherId, patch);
 		updateInstructionalSession((current) => ({
 			...current,
 			teacherFingerprint: payload.fingerprint,
@@ -329,8 +308,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadStudentProfile(studentId: string, unitId?: string) {
-		const query = unitId ? `?unitId=${encodeURIComponent(unitId)}` : "";
-		const payload = await fetchJson<StudentProfileResponse>(`/api/v4/students/${encodeURIComponent(studentId)}/performance${query}`);
+		const payload = await loadStudentProfileApi(studentId, unitId);
 		updateInstructionalSession((current) => ({
 			...current,
 			activeStudentId: payload.studentId,
@@ -343,8 +321,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadBuilderPlan(sessionId: string, studentId?: string) {
-		const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
-		const payload = await fetchJson<BuilderPlanResponse>(`/api/v4/sessions/${encodeURIComponent(sessionId)}/builder-plan${query}`);
+		const payload = await loadBuilderPlanApi(sessionId, studentId);
 		updateInstructionalSession((current) => ({
 			...current,
 			builderPlan: payload.builderPlan,
@@ -353,8 +330,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadAssessmentPreview(sessionId: string, studentId?: string) {
-		const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
-		const payload = await fetchJson<AssessmentPreviewResponse>(`/api/v4/sessions/${encodeURIComponent(sessionId)}/assessment-preview${query}`);
+		const payload = await loadAssessmentPreviewApi(sessionId, studentId);
 		updateInstructionalSession((current) => ({
 			...current,
 			assessmentPreview: payload.assessmentPreview,
@@ -363,7 +339,7 @@ export function useInstructionalSession() {
 	}
 
 	async function loadClassProfile(classId: string) {
-		const payload = await fetchJson<ClassProfileResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/performance`);
+		const payload = await loadClassProfileApi(classId);
 		updateInstructionalSession((current) => ({
 			...current,
 			classProfile: payload.classProfile,
@@ -372,12 +348,18 @@ export function useInstructionalSession() {
 	}
 
 	async function loadDifferentiatedBuild(classId: string) {
-		const payload = await fetchJson<DifferentiatedBuildResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/differentiated-build`);
+		const payload = await loadDifferentiatedBuildApi(classId);
 		updateInstructionalSession((current) => ({
 			...current,
 			differentiatedBuild: payload.differentiatedBuild,
 		}));
 		return payload.differentiatedBuild;
+	}
+
+	async function generateProduct(args: IntentRequest) {
+		const payload = await generateIntentProductApi(args);
+		await refreshWorkspace(args.sessionId);
+		return payload;
 	}
 
 	function clearSession() {
@@ -404,6 +386,7 @@ export function useInstructionalSession() {
 		loadAssessmentPreview,
 		loadClassProfile,
 		loadDifferentiatedBuild,
+		generateProduct,
 		clearSession,
 	};
 }

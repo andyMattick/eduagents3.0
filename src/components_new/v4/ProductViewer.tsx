@@ -6,15 +6,32 @@ import type {
   ConceptBlueprintScenarioType,
   TestProduct,
 } from "../../prism-v4/schema/integration";
+import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
 import { buildInstructionalUnitOverrideId, canonicalConceptId, type AssessmentFingerprint } from "../../prism-v4/teacherFeedback";
 import type { StudentPerformanceProfile } from "../../prism-v4/studentPerformance";
-import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel } from "../../types/v4/InstructionalSession";
+import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel, InstructionalIntelligenceSession, TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
+import {
+  loadAssessmentBlueprintApi,
+  loadAssessmentPreviewApi,
+  loadBuilderPlanApi,
+  loadProblemOverrideApi,
+  loadSessionBlueprintApi,
+  loadStudentProfileApi,
+  loadTeacherFingerprintApi,
+  previewConceptVerificationApi,
+  regenerateAssessmentItemApi,
+  regenerateAssessmentSectionApi,
+  saveAssessmentBlueprintApi,
+  saveTeacherFeedbackApi,
+  updateTeacherFingerprintApi,
+} from "../../lib/instructionalSessionApi";
 import { AssessmentPreview } from "./AssessmentPreview";
 import { BuilderPlanView } from "./BuilderPlanView";
 import { BlueprintPanel } from "./BlueprintPanel";
 import { ClassDifferentiator } from "./ClassDifferentiator";
 import { ConceptMap } from "./ConceptMap";
+import { PavilionSessionView } from "./PavilionSessionView";
 import { StudentProfilePanel } from "./StudentProfilePanel";
 import { TeacherFingerprintPanel } from "./TeacherFingerprintPanel";
 import { cleanupProductPayload } from "./utils/cleanup";
@@ -481,8 +498,31 @@ function AssessmentWorkbench(props: {
   onLoadClassProfile?: ((classId: string) => Promise<unknown>) | null;
   differentiatedBuild?: DifferentiatedBuildModel | null;
   onLoadDifferentiatedBuild?: ((classId: string) => Promise<unknown>) | null;
+  loadBlueprint?: ((sessionId: string) => Promise<unknown>) | null;
+  loadTeacherFingerprint?: ((teacherId: string) => Promise<TeacherFingerprintModel | null | void>) | null;
+  updateTeacherFingerprint?: ((teacherId: string, patch: Partial<TeacherFingerprintModel>) => Promise<TeacherFingerprintModel | null | void>) | null;
+  loadStudentProfile?: ((studentId: string) => Promise<unknown>) | null;
+  loadBuilderPlan?: ((sessionId: string, studentId?: string) => Promise<unknown>) | null;
+  loadAssessmentPreview?: ((sessionId: string, studentId?: string) => Promise<unknown>) | null;
 }) {
-  const { product, assessmentId, sessionId, classId, documentIds, availableStudentIds = [], classProfile = null, onLoadClassProfile = null, differentiatedBuild = null, onLoadDifferentiatedBuild = null } = props;
+  const {
+    product,
+    assessmentId,
+    sessionId,
+    classId,
+    documentIds,
+    availableStudentIds = [],
+    classProfile = null,
+    onLoadClassProfile = null,
+    differentiatedBuild = null,
+    onLoadDifferentiatedBuild = null,
+    loadBlueprint = null,
+    loadTeacherFingerprint = null,
+    updateTeacherFingerprint = null,
+    loadStudentProfile: loadStudentProfileProp = null,
+    loadBuilderPlan: loadBuilderPlanProp = null,
+    loadAssessmentPreview: loadAssessmentPreviewProp = null,
+  } = props;
   const [activeTab, setActiveTab] = useState<"blueprint" | "concept-map" | "student" | "class" | "plan" | "preview" | "fingerprint">("blueprint");
   const [sessionBlueprint, setSessionBlueprint] = useState<SessionBlueprintResponse | null>(null);
   const [isLoadingBlueprint, setIsLoadingBlueprint] = useState(false);
@@ -505,12 +545,8 @@ function AssessmentWorkbench(props: {
     setIsLoadingBlueprint(true);
     setBlueprintStatus(null);
     try {
-      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/blueprint`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load session blueprint.");
-      }
-      setSessionBlueprint(payload as SessionBlueprintResponse);
+      const payload = (loadBlueprint ? await loadBlueprint(sessionId) : await loadSessionBlueprintApi(sessionId)) as SessionBlueprintResponse;
+      setSessionBlueprint(payload);
     } catch (error) {
       setBlueprintStatus(error instanceof Error ? error.message : "Failed to load session blueprint.");
     } finally {
@@ -529,12 +565,8 @@ function AssessmentWorkbench(props: {
     setIsLoadingStudent(true);
     setStudentStatus(null);
     try {
-      const response = await fetch(`/api/v4/students/${encodeURIComponent(studentId)}/performance`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load student profile.");
-      }
-      setStudentProfilePayload(payload as StudentProfileResponse);
+      const payload = (loadStudentProfileProp ? await loadStudentProfileProp(studentId) : await loadStudentProfileApi(studentId)) as StudentProfileResponse;
+      setStudentProfilePayload(payload);
       setActiveStudentId(studentId);
     } catch (error) {
       setStudentStatus(error instanceof Error ? error.message : "Failed to load student profile.");
@@ -547,16 +579,11 @@ function AssessmentWorkbench(props: {
     if (!sessionId) {
       return;
     }
-    const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
     setIsLoadingBuilderPlan(true);
     setBuilderPlanStatus(null);
     try {
-      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/builder-plan${query}`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load builder plan.");
-      }
-      setBuilderPlanPayload(payload as BuilderPlanResponse);
+      const payload = (loadBuilderPlanProp ? await loadBuilderPlanProp(sessionId, studentId) : await loadBuilderPlanApi(sessionId, studentId)) as BuilderPlanResponse;
+      setBuilderPlanPayload(payload);
     } catch (error) {
       setBuilderPlanStatus(error instanceof Error ? error.message : "Failed to load builder plan.");
     } finally {
@@ -568,16 +595,11 @@ function AssessmentWorkbench(props: {
     if (!sessionId) {
       return;
     }
-    const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
     setIsLoadingAssessmentPreview(true);
     setAssessmentPreviewStatus(null);
     try {
-      const response = await fetch(`/api/v4/sessions/${encodeURIComponent(sessionId)}/assessment-preview${query}`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load assessment preview.");
-      }
-      setAssessmentPreviewPayload(payload as AssessmentPreviewResponse);
+      const payload = (loadAssessmentPreviewProp ? await loadAssessmentPreviewProp(sessionId, studentId) : await loadAssessmentPreviewApi(sessionId, studentId)) as AssessmentPreviewResponse;
+      setAssessmentPreviewPayload(payload);
     } catch (error) {
       setAssessmentPreviewStatus(error instanceof Error ? error.message : "Failed to load assessment preview.");
     } finally {
@@ -682,7 +704,11 @@ function AssessmentWorkbench(props: {
           />
         ) : null}
         {activeTab === "fingerprint" ? (
-          <TeacherFingerprintPanel teacherId={sessionBlueprint?.teacherId ?? LOCAL_TEACHER_ID} />
+          <TeacherFingerprintPanel
+            teacherId={sessionBlueprint?.teacherId ?? LOCAL_TEACHER_ID}
+            onLoadFingerprint={loadTeacherFingerprint ?? (async (teacherId) => (await loadTeacherFingerprintApi(teacherId)).fingerprint)}
+            onSaveFingerprint={updateTeacherFingerprint ?? (async (teacherId, patch) => (await updateTeacherFingerprintApi(teacherId, patch)).fingerprint)}
+          />
         ) : null}
       </div>
     </div>
@@ -738,8 +764,8 @@ function AssessmentConceptVerificationPanel(props: {
     async function loadStoredBlueprint(silent: boolean) {
       setBusyAction("load-draft");
       try {
-        const response = await fetch(`/api/v4/teacher-feedback/assessment-blueprint?assessmentId=${encodeURIComponent(assessmentId)}`);
-        if (response.status === 404) {
+        const payload = await loadAssessmentBlueprintApi(assessmentId);
+        if (!payload) {
           if (!isCancelled) {
             setHasStoredDraft(false);
             applyLoadedDraftState(buildDefaultAssessmentDraftState(product));
@@ -748,11 +774,6 @@ function AssessmentConceptVerificationPanel(props: {
             }
           }
           return;
-        }
-
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error ?? "Failed to load saved draft.");
         }
         if (!isCancelled) {
           applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
@@ -812,16 +833,12 @@ function AssessmentConceptVerificationPanel(props: {
     setStatus(null);
     setBusyAction("load-draft");
     try {
-      const response = await fetch(`/api/v4/teacher-feedback/assessment-blueprint?assessmentId=${encodeURIComponent(assessmentId)}`);
-      if (response.status === 404) {
+      const payload = await loadAssessmentBlueprintApi(assessmentId);
+      if (!payload) {
         setHasStoredDraft(false);
         resetDraftState();
         setStatus("No saved draft found.");
         return;
-      }
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to load saved draft.");
       }
       applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
       setHasStoredDraft(true);
@@ -838,20 +855,12 @@ function AssessmentConceptVerificationPanel(props: {
     setStatus(null);
     try {
       const edits = buildAssessmentConceptBlueprintEdits(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
-      const response = await fetch("/api/v4/teacher-feedback/assessment-blueprint", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assessmentId,
-          teacherId: LOCAL_TEACHER_ID,
-          product,
-          edits,
-        }),
+      const payload = await saveAssessmentBlueprintApi({
+        assessmentId,
+        teacherId: LOCAL_TEACHER_ID,
+        product,
+        edits,
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Failed to save draft.");
-      }
       applyLoadedDraftState(buildAssessmentDraftStateFromFingerprint(product, payload.assessment as AssessmentFingerprint));
       setHasStoredDraft(true);
       setStatus("Draft saved.");
@@ -867,22 +876,15 @@ function AssessmentConceptVerificationPanel(props: {
     setStatus(null);
     try {
       const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
-      const response = await fetch("/api/v4/teacher-feedback/concept-verification-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await previewConceptVerificationApi({
+        assessmentId,
+        options: {
           sessionId,
           documentIds,
-          options: {
-            itemCount: product.totalItemCount,
-            conceptBlueprint,
-          },
-        }),
+          itemCount: product.totalItemCount,
+          conceptBlueprint,
+        },
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Preview failed.");
-      }
       setPreview(payload.preview as Extract<IntentProductPayload, { kind: "test" }>);
       setPreviewNarrative(typeof payload.explanation?.narrative === "string" ? payload.explanation.narrative : null);
       setStatus("Preview updated.");
@@ -898,25 +900,18 @@ function AssessmentConceptVerificationPanel(props: {
     setStatus(null);
     try {
       const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
-      const response = await fetch("/api/v4/teacher-feedback/regenerate-item", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await regenerateAssessmentItemApi({
+        assessmentId,
+        itemId,
+        options: {
           sessionId,
           documentIds,
-          itemId,
           concept,
           prompt,
-          options: {
-            itemCount: effectiveProduct.totalItemCount,
-            conceptBlueprint,
-          },
-        }),
+          itemCount: effectiveProduct.totalItemCount,
+          conceptBlueprint,
+        },
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Item regeneration failed.");
-      }
       setPreview((current) => {
         const base = current ?? product;
         return {
@@ -942,23 +937,16 @@ function AssessmentConceptVerificationPanel(props: {
     setStatus(null);
     try {
       const conceptBlueprint = buildAssessmentConceptBlueprint(product, sectionDrafts, addedConceptDrafts, mergeDrafts);
-      const response = await fetch("/api/v4/teacher-feedback/regenerate-section", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await regenerateAssessmentSectionApi({
+        assessmentId,
+        conceptId: concept,
+        options: {
           sessionId,
           documentIds,
-          concept,
-          options: {
-            itemCount: effectiveProduct.totalItemCount,
-            conceptBlueprint,
-          },
-        }),
+          itemCount: effectiveProduct.totalItemCount,
+          conceptBlueprint,
+        },
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Section regeneration failed.");
-      }
       setPreview((current) => {
         const base = current ?? product;
         return {
@@ -1307,11 +1295,10 @@ function InstructionalMapConceptEditor(props: {
     async function loadProvenance() {
       const results = await Promise.all(product.unitConceptAlignment.map(async (entry) => {
         try {
-          const response = await fetch(`/api/v4/problem-overrides/${encodeURIComponent(buildInstructionalUnitOverrideId(sessionId, entry.unitId))}`);
-          if (!response.ok) {
+          const payload = await loadProblemOverrideApi(buildInstructionalUnitOverrideId(sessionId, entry.unitId));
+          if (!payload) {
             return [entry.unitId, "inferred"] as const;
           }
-          const payload = await response.json().catch(() => ({}));
           return [entry.unitId, payload?.overrides?.concepts ? "teacher-adjusted" : "inferred"] as const;
         } catch {
           return [entry.unitId, "inferred"] as const;
@@ -1335,25 +1322,19 @@ function InstructionalMapConceptEditor(props: {
 
     try {
       const concepts = parseConceptList(drafts[unitId] ?? "");
-      const response = await fetch("/api/v4/teacher-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          teacherId: "00000000-0000-4000-8000-000000000001",
-          documentId: sessionId,
-          sessionId,
+      await saveTeacherFeedbackApi({
+        teacherId: "00000000-0000-4000-8000-000000000001",
+        documentId: sessionId,
+        canonicalProblemId: `${sessionId}::instructional-unit::${unitId}`,
+        context: {
+          subject: "unknown",
           unitId,
           scope: "instructional-unit",
-          target: "concepts",
-          aiValue: toConceptWeights(currentConcepts),
-          teacherValue: toConceptWeights(concepts),
-        }),
+        },
+        target: "concepts",
+        aiValue: toConceptWeights(currentConcepts),
+        teacherValue: toConceptWeights(concepts),
       });
-
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Failed to save unit concepts.");
-      }
 
       setProvenance((current) => ({ ...current, [unitId]: "teacher-adjusted" }));
       setStatusByUnitId((current) => ({ ...current, [unitId]: "Saved" }));
@@ -1401,19 +1382,52 @@ function InstructionalMapConceptEditor(props: {
   );
 }
 
-type ProductViewerProps = {
-  product: IntentProduct;
+type ProductViewerBaseProps = {
   sessionId?: string;
+  variant?: "app" | "print";
+  showAnswerGuidance?: boolean;
+};
+
+type ProductViewerLegacyProps = ProductViewerBaseProps & {
+  product: IntentProduct;
   classId?: string;
   classProfile?: ClassProfileModel | null;
   onLoadClassProfile?: ((classId: string) => Promise<unknown>) | null;
   differentiatedBuild?: DifferentiatedBuildModel | null;
   onLoadDifferentiatedBuild?: ((classId: string) => Promise<unknown>) | null;
   onInstructionalMapRefresh?: () => Promise<void>;
-  variant?: "app" | "print";
-  showAnswerGuidance?: boolean;
   availableStudentIds?: string[];
+  loadBlueprint?: ((sessionId: string) => Promise<unknown>) | null;
+  loadTeacherFingerprint?: ((teacherId: string) => Promise<TeacherFingerprintModel | null | void>) | null;
+  updateTeacherFingerprint?: ((teacherId: string, patch: Partial<TeacherFingerprintModel>) => Promise<TeacherFingerprintModel | null | void>) | null;
+  loadStudentProfile?: ((studentId: string) => Promise<unknown>) | null;
+  loadBuilderPlan?: ((sessionId: string, studentId?: string) => Promise<unknown>) | null;
+  loadAssessmentPreview?: ((sessionId: string, studentId?: string) => Promise<unknown>) | null;
 };
+
+type ProductViewerSessionProps = ProductViewerBaseProps & {
+  product?: undefined;
+  sessionId: string;
+  instructionalSession: InstructionalIntelligenceSession | null;
+  products: IntentProduct[];
+  teacherId?: string | null;
+  onGenerateProduct: (args: {
+    intentType: IntentType;
+    options?: Record<string, unknown>;
+    studentId?: string;
+    enableAdaptiveConditioning?: boolean;
+  }) => Promise<IntentProduct | null>;
+  loadBlueprint: (sessionId: string) => Promise<unknown>;
+  loadTeacherFingerprint: (teacherId: string) => Promise<TeacherFingerprintModel | null | void>;
+  updateTeacherFingerprint: (teacherId: string, patch: Partial<TeacherFingerprintModel>) => Promise<TeacherFingerprintModel | null | void>;
+  loadStudentProfile: (studentId: string) => Promise<unknown>;
+  loadClassProfile: (classId: string) => Promise<unknown>;
+  loadDifferentiatedBuild: (classId: string) => Promise<unknown>;
+  loadBuilderPlan: (sessionId: string, studentId?: string) => Promise<unknown>;
+  loadAssessmentPreview: (sessionId: string, studentId?: string) => Promise<unknown>;
+};
+
+type ProductViewerProps = ProductViewerLegacyProps | ProductViewerSessionProps;
 
 export function getProductTitle(product: IntentProduct) {
   const payload = product.payload as IntentProductPayload;
@@ -1779,7 +1793,39 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
 }
 
 export function ProductViewer(props: ProductViewerProps) {
-  const { product, sessionId, classId, classProfile = null, onLoadClassProfile = null, differentiatedBuild = null, onLoadDifferentiatedBuild = null, onInstructionalMapRefresh, variant = "app", showAnswerGuidance = false, availableStudentIds = [] } = props;
+  if (!("product" in props) || !props.product) {
+    const { sessionId, instructionalSession, products, teacherId = null, onGenerateProduct, loadBlueprint, loadTeacherFingerprint, updateTeacherFingerprint, loadStudentProfile, loadClassProfile, loadDifferentiatedBuild, loadBuilderPlan, loadAssessmentPreview } = props;
+    return (
+      <PavilionSessionView
+        sessionId={sessionId}
+        instructionalSession={instructionalSession}
+        products={products}
+        teacherId={teacherId}
+        onGenerateProduct={onGenerateProduct}
+        loadBlueprint={loadBlueprint}
+        loadTeacherFingerprint={loadTeacherFingerprint}
+        updateTeacherFingerprint={updateTeacherFingerprint}
+        loadStudentProfile={loadStudentProfile}
+        loadClassProfile={loadClassProfile}
+        loadDifferentiatedBuild={loadDifferentiatedBuild}
+        loadBuilderPlan={loadBuilderPlan}
+        loadAssessmentPreview={loadAssessmentPreview}
+        renderProduct={(product) => (
+          <ProductViewer
+            product={product}
+            loadBlueprint={loadBlueprint}
+            loadTeacherFingerprint={loadTeacherFingerprint}
+            updateTeacherFingerprint={updateTeacherFingerprint}
+            loadStudentProfile={loadStudentProfile}
+            loadBuilderPlan={loadBuilderPlan}
+            loadAssessmentPreview={loadAssessmentPreview}
+          />
+        )}
+      />
+    );
+  }
+
+  const { product, sessionId, classId, classProfile = null, onLoadClassProfile = null, differentiatedBuild = null, onLoadDifferentiatedBuild = null, onInstructionalMapRefresh, variant = "app", showAnswerGuidance = false, availableStudentIds = [], loadBlueprint = null, loadTeacherFingerprint = null, updateTeacherFingerprint = null, loadStudentProfile = null, loadBuilderPlan = null, loadAssessmentPreview = null } = props;
   const payload = cleanupProductPayload(product.payload as IntentProductPayload);
 
   if (variant === "print") {
@@ -1941,7 +1987,7 @@ export function ProductViewer(props: ProductViewerProps) {
     }
 
     if (payload.kind === "test") {
-      return <AssessmentWorkbench assessmentId={product.productId} sessionId={sessionId ?? product.sessionId} classId={classId} classProfile={classProfile} onLoadClassProfile={onLoadClassProfile} differentiatedBuild={differentiatedBuild} onLoadDifferentiatedBuild={onLoadDifferentiatedBuild} documentIds={product.documentIds} product={payload} availableStudentIds={availableStudentIds} />;
+      return <AssessmentWorkbench assessmentId={product.productId} sessionId={sessionId ?? product.sessionId} classId={classId} classProfile={classProfile} onLoadClassProfile={onLoadClassProfile} differentiatedBuild={differentiatedBuild} onLoadDifferentiatedBuild={onLoadDifferentiatedBuild} documentIds={product.documentIds} product={payload} availableStudentIds={availableStudentIds} loadBlueprint={loadBlueprint} loadTeacherFingerprint={loadTeacherFingerprint} updateTeacherFingerprint={updateTeacherFingerprint} loadStudentProfile={loadStudentProfile} loadBuilderPlan={loadBuilderPlan} loadAssessmentPreview={loadAssessmentPreview} />;
     }
 
     if (payload.kind === "problem-extraction") {

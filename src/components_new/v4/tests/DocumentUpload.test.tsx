@@ -198,10 +198,7 @@ describe("DocumentUpload", () => {
     expect(screen.queryByText("Semantic viewer")).not.toBeInTheDocument();
   });
 
-  it("creates a workspace and builds a teacher-facing document", async () => {
-    const openMock = vi.fn();
-    vi.stubGlobal("open", openMock);
-
+  it("creates a workspace and generates a teacher-facing pavilion output", async () => {
     const documents = [
       { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" },
       { documentId: "doc-2", sourceFileName: "practice.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
@@ -245,6 +242,7 @@ describe("DocumentUpload", () => {
     };
 
     let uploadCount = 0;
+    let products = [unitProduct];
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         const nextDocument = documents[uploadCount]!;
@@ -261,9 +259,10 @@ describe("DocumentUpload", () => {
         return jsonResponse(collectionAnalysis);
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return jsonResponse({ sessionId: "session-1", products: [unitProduct] });
+        return jsonResponse({ sessionId: "session-1", products });
       }
       if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        products = [unitProduct];
         return jsonResponse(unitProduct);
       }
       throw new Error(`Unexpected fetch call: ${input}`);
@@ -283,19 +282,22 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "What would you like to build?" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Your recent builds" })).toBeInTheDocument();
+    expect(screen.getByText("Pavilion Studio")).toBeInTheDocument();
+    expect(screen.getByText("Output Gallery")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "What would you like to build?" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Your recent builds" })).not.toBeInTheDocument();
     expect(screen.queryByText("session-1")).not.toBeInTheDocument();
     expect(screen.queryByText("POST /api/v4/documents/intent")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Create document" }));
+    fireEvent.change(screen.getByLabelText("Build surface"), { target: { value: "build-unit" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
 
-    expect(await screen.findByRole("heading", { name: "Unit Builder: Fractions" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Print" }));
-    expect(openMock).toHaveBeenCalledWith("/print/product-1?returnTo=%2F", "_blank", "noopener,noreferrer");
+    expect(await screen.findByText("Lesson Sequence")).toBeInTheDocument();
+    expect(screen.getByText(/lesson-notes\.docx: Start with notes\./i)).toBeInTheDocument();
+    expect(screen.getByText("Checkpoint 1")).toBeInTheDocument();
   });
 
-  it("sends teacher, unit, student, and adaptive context for assessment builds", async () => {
+  it("sends teacher, unit, student, and adaptive context for pavilion assessment builds", async () => {
     const documents = [
       { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" },
     ];
@@ -342,6 +344,7 @@ describe("DocumentUpload", () => {
       createdAt: "2025-01-01T00:00:00.000Z",
     };
 
+    let products = [buildTestProduct];
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         return jsonResponse({ documentId: "doc-1", documentIds: ["doc-1"], sessionId: "session-1", registered: documents });
@@ -356,10 +359,29 @@ describe("DocumentUpload", () => {
         return jsonResponse(buildInstructionalAnalysisResponse("session-1", analyzedDocuments));
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return jsonResponse({ sessionId: "session-1", products: [buildTestProduct] });
+        return jsonResponse({ sessionId: "session-1", products });
       }
       if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        products = [buildTestProduct];
         return jsonResponse(buildTestProduct);
+      }
+      if (input === "/api/v4/sessions/session-1/blueprint") {
+        return jsonResponse({
+          sessionId: "session-1",
+          assessmentId: "product-test-1",
+          teacherId: "teacher-auth-1",
+          blueprint: {
+            concepts: [{ id: "fractions", name: "fractions", order: 0, included: true, quota: 1 }],
+            bloomLadder: [{ level: "understand", count: 1 }],
+            difficultyRamp: [{ band: "medium", count: 1 }],
+            modeMix: [{ mode: "compare", count: 1 }],
+            scenarioMix: [{ scenario: "abstract-symbolic", count: 1 }],
+          },
+          conceptMap: {
+            nodes: [{ id: "fractions", label: "fractions", weight: 1 }],
+            edges: [],
+          },
+        });
       }
       throw new Error(`Unexpected fetch call: ${input}`);
     });
@@ -378,12 +400,11 @@ describe("DocumentUpload", () => {
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("What would you like to build?"), { target: { value: "build-test" } });
     fireEvent.change(screen.getByLabelText("Unit ID"), { target: { value: "unit-fractions-1" } });
     fireEvent.change(screen.getByLabelText("Student ID"), { target: { value: "student-42" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create document" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
 
-    await screen.findByRole("heading", { name: "Assessment Draft" });
+    await screen.findByRole("heading", { name: "Blueprint Engine" });
 
     const buildRequest = fetchMock.mock.calls.find(([input, init]) => input === "/api/v4/documents/intent" && init?.method === "POST");
     expect(buildRequest).toBeTruthy();
@@ -441,7 +462,7 @@ describe("DocumentUpload", () => {
     expect(screen.getByRole("button", { name: "Create workspace" })).toBeDisabled();
   });
 
-  it("saves instructional map concept updates from the teacher-facing product view", async () => {
+  it("renders an instructional map inside the pavilion output gallery", async () => {
     const documents = [
       { documentId: "doc-1", sourceFileName: "lesson-notes.docx", sourceMimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: "2025-01-01T00:00:00.000Z" },
       { documentId: "doc-2", sourceFileName: "practice.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
@@ -483,6 +504,7 @@ describe("DocumentUpload", () => {
     };
 
     let uploadCount = 0;
+    let products = [mapProduct];
     const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
       if (input === "/api/v4/documents/upload") {
         const document = documents[uploadCount] ?? documents[0];
@@ -499,16 +521,11 @@ describe("DocumentUpload", () => {
         return jsonResponse(buildInstructionalAnalysisResponse("session-1", analyzedDocuments));
       }
       if (input === "/api/v4/documents/intent?sessionId=session-1") {
-        return jsonResponse({ sessionId: "session-1", products: [mapProduct] });
+        return jsonResponse({ sessionId: "session-1", products });
       }
       if (input === "/api/v4/documents/intent" && init?.method === "POST") {
+        products = [mapProduct];
         return jsonResponse(mapProduct);
-      }
-      if (typeof input === "string" && input.includes("/api/v4/problem-overrides/")) {
-        return jsonResponse({ overrides: null });
-      }
-      if (input === "/api/v4/teacher-feedback" && init?.method === "POST") {
-        return jsonResponse({ ok: true, feedback: { canonicalProblemId: "session-1::instructional-unit::unit-1" } });
       }
       throw new Error(`Unexpected fetch call: ${input}`);
     });
@@ -525,17 +542,13 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("What would you like to build?"), { target: { value: "build-instructional-map" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create document" }));
+    fireEvent.change(screen.getByLabelText("Build surface"), { target: { value: "build-instructional-map" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate in Pavilion" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Instructional Map/i }));
 
-    expect(await screen.findByText("Instructional Units")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Concepts for Instructional Unit: fractions"), { target: { value: "ratios, equivalence" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save concepts" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v4/teacher-feedback",
-      expect.objectContaining({ method: "POST" }),
-    ));
+    expect(await screen.findByRole("heading", { name: "Concept Graph" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Document Alignment" })).toBeInTheDocument();
+    expect(screen.getByText(/lesson-notes\.docx: fractions/i)).toBeInTheDocument();
   });
 
   it("renders the Act 1 analysis summary after upload", async () => {

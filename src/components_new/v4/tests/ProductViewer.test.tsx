@@ -893,7 +893,7 @@ describe("ProductViewer", () => {
 
     render(<ProductViewer product={buildAssessmentProduct()} sessionId="session-1" />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v4/sessions/session-1/blueprint"));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/v4/sessions/session-1/blueprint", undefined));
 
     fireEvent.click(screen.getByRole("tab", { name: "Builder Plan" }));
 

@@ -23,14 +23,3 @@ create table if not exists unit_fingerprints (
   version integer not null default 1,
   primary key (teacher_id, unit_id)
 );
-
-create table if not exists teacher_fingerprints (
-  teacher_id text primary key,
-  global_concept_profiles jsonb not null default '[]'::jsonb,
-  default_bloom_distribution jsonb not null default '{}'::jsonb,
-  default_scenario_preferences jsonb not null default '[]'::jsonb,
-  default_item_modes jsonb not null default '[]'::jsonb,
-  flow_profile jsonb not null default '{}'::jsonb,
-  last_updated timestamptz default now(),
-  version integer not null default 1
-);

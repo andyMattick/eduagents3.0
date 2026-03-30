@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { loadTeacherFingerprintApi, updateTeacherFingerprintApi } from "../../lib/instructionalSessionApi";
 import type { TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
 
 const BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"] as const;
@@ -10,6 +11,8 @@ type TeacherFingerprintPanelProps = {
 	teacherId?: string | null;
 	initialFingerprint?: TeacherFingerprintModel | null;
 	onFingerprintChange?: ((fingerprint: TeacherFingerprintModel) => void) | null;
+	onLoadFingerprint?: ((teacherId: string) => Promise<TeacherFingerprintModel | null | void>) | null;
+	onSaveFingerprint?: ((teacherId: string, patch: Partial<TeacherFingerprintModel>) => Promise<TeacherFingerprintModel | null | void>) | null;
 };
 
 function buildEmptyFingerprint(teacherId: string): TeacherFingerprintModel {
@@ -42,7 +45,7 @@ function getCount<T extends string, K extends string>(entries: Array<Record<K, T
 }
 
 export function TeacherFingerprintPanel(props: TeacherFingerprintPanelProps) {
-	const { teacherId, initialFingerprint = null, onFingerprintChange = null } = props;
+	const { teacherId, initialFingerprint = null, onFingerprintChange = null, onLoadFingerprint = null, onSaveFingerprint = null } = props;
 	const [fingerprint, setFingerprint] = useState<TeacherFingerprintModel | null>(initialFingerprint);
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
@@ -63,13 +66,11 @@ export function TeacherFingerprintPanel(props: TeacherFingerprintPanelProps) {
 			setIsLoading(true);
 			setStatus(null);
 			try {
-				const response = await fetch(`/api/v4/teachers/${encodeURIComponent(teacherId)}/fingerprint`);
-				const payload = await response.json().catch(() => ({}));
-				if (!response.ok) {
-					throw new Error(payload?.error ?? "Failed to load teacher fingerprint.");
-				}
+				const loadedFingerprint = onLoadFingerprint
+					? await onLoadFingerprint(teacherId)
+					: (await loadTeacherFingerprintApi(teacherId)).fingerprint;
 				if (!isCancelled) {
-					setFingerprint(payload.fingerprint as TeacherFingerprintModel);
+					setFingerprint((loadedFingerprint as TeacherFingerprintModel | null) ?? buildEmptyFingerprint(teacherId));
 				}
 			} catch (error) {
 				if (!isCancelled) {
@@ -104,17 +105,11 @@ export function TeacherFingerprintPanel(props: TeacherFingerprintPanelProps) {
 		setIsSaving(true);
 		setStatus(null);
 		try {
-			const response = await fetch(`/api/v4/teachers/${encodeURIComponent(teacherId)}/fingerprint`, {
-				method: "PATCH",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(activeFingerprint),
-			});
-			const payload = await response.json().catch(() => ({}));
-			if (!response.ok) {
-				throw new Error(payload?.error ?? "Failed to save teacher fingerprint.");
-			}
-			setFingerprint(payload.fingerprint as TeacherFingerprintModel);
-			onFingerprintChange?.(payload.fingerprint as TeacherFingerprintModel);
+			const savedFingerprint = onSaveFingerprint
+				? await onSaveFingerprint(teacherId, activeFingerprint)
+				: (await updateTeacherFingerprintApi(teacherId, activeFingerprint)).fingerprint;
+			setFingerprint((savedFingerprint as TeacherFingerprintModel | null) ?? activeFingerprint);
+			onFingerprintChange?.((savedFingerprint as TeacherFingerprintModel | null) ?? activeFingerprint);
 			setStatus("Teacher fingerprint saved.");
 		} catch (error) {
 			setStatus(error instanceof Error ? error.message : "Failed to save teacher fingerprint.");

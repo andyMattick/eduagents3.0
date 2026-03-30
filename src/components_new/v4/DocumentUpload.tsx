@@ -1,15 +1,13 @@
 import type { ChangeEvent, FormEvent } from "react";
 import { useRef, useState } from "react";
 
-import type { IntentProduct } from "../../prism-v4/schema/integration/IntentProduct";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument } from "../../prism-v4/schema/semantic";
 import type { InstructionalSessionWorkspace } from "../../types/v4/InstructionalSession";
 
 import { useInstructionalSession } from "../../hooks/useInstructionalSession";
 import { useAuth } from "../Auth/useAuth";
-import { AnalysisPanel } from "./AnalysisPanel";
-import { ProductViewer, getProductTitle } from "./ProductViewer";
+import { ProductViewer } from "./ProductViewer";
 import "./v4.css";
 
 const DEBUG_UPLOAD_TRACE = import.meta.env.DEV;
@@ -27,8 +25,6 @@ function logUploadTrace(message: string, details?: Record<string, unknown>) {
   console.info(`[Wave6 Upload] ${message}`);
 }
 
-type RegisteredDocumentSummary = InstructionalSessionWorkspace["documents"][number];
-
 type IntentConfig = {
   label: string;
   description: string;
@@ -39,21 +35,6 @@ type IntentConfig = {
     defaultValue: number;
   };
 };
-
-const SUPPORTED_INTENTS: IntentType[] = [
-  "build-unit",
-  "build-lesson",
-  "build-instructional-map",
-  "curriculum-alignment",
-  "compare-documents",
-  "merge-documents",
-  "build-sequence",
-  "build-review",
-  "build-test",
-  "extract-problems",
-  "extract-concepts",
-  "summarize",
-];
 
 const INTENT_CONFIG: Record<IntentType, IntentConfig> = {
   "build-unit": { label: "Unit Plan", description: "Build a multi-day plan across your selected materials.", scope: "multi" },
@@ -91,22 +72,6 @@ function describeAnalyzedDocument(analyzed: AnalyzedDocument | undefined) {
   return `${problemCount} question${problemCount === 1 ? "" : "s"}, ${conceptCount} key idea${conceptCount === 1 ? "" : "s"}, ${density} instructional density.`;
 }
 
-function formatScopeSummary(intentType: IntentType, documents: RegisteredDocumentSummary[]) {
-  const config = getIntentConfig(intentType);
-  const names = documents.map((document) => document.sourceFileName);
-  const description = names.length > 0 ? names.join(", ") : "the materials you select";
-
-  if (config.scope === "single") {
-    return `This will use one main source: ${description}.`;
-  }
-
-  if (config.scope === "multi") {
-    return `This will combine multiple materials: ${description}.`;
-  }
-
-  return `This can use one or more materials: ${description}.`;
-}
-
 function getIntentConfig(intentType: IntentType) {
   return INTENT_CONFIG[intentType] ?? { label: intentType, description: "Generate a product from the selected documents.", scope: "flex" as const };
 }
@@ -133,23 +98,6 @@ function resolveIntentDocumentIds(workspace: InstructionalSessionWorkspace | nul
   return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
 }
 
-function getIntentBlockedReason(workspace: InstructionalSessionWorkspace | null, intentType: IntentType, documentIds: string[]) {
-  if (!workspace) {
-    return "Build a document workspace before generating a product.";
-  }
-
-  const config = getIntentConfig(intentType);
-  if (documentIds.length === 0) {
-    return "Select the document scope before generating a product.";
-  }
-
-  if (config.scope === "multi" && documentIds.length < 2) {
-    return `${config.label} requires at least 2 documents in the workspace.`;
-  }
-
-  return null;
-}
-
 function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean) {
   if (isUploading) {
     return "Workspace creation is already running.";
@@ -162,72 +110,31 @@ function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean)
   return null;
 }
 
-function getRegenerateBlockedReason(lastIntentRequest: { intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null, isGenerating: boolean) {
-  if (isGenerating) {
-    return "Wait for the current generation request to finish.";
-  }
-
-  return lastIntentRequest ? null : "Create a document once before building again.";
-}
-
 export function DocumentUpload() {
   const { user } = useAuth();
   const {
     workspace,
-    instructionalSession,
     isUploading,
     error,
     setError,
     createSessionFromFiles,
+    loadBlueprint,
+    loadTeacherFingerprint,
+    updateTeacherFingerprint,
+    loadStudentProfile,
     loadClassProfile,
     loadDifferentiatedBuild,
-    refreshWorkspace,
+    loadBuilderPlan,
+    loadAssessmentPreview,
+    generateProduct,
     clearSession,
   } = useInstructionalSession();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadInputKey, setUploadInputKey] = useState(0);
-  const [currentProduct, setCurrentProduct] = useState<IntentProduct | null>(null);
-  const [selectedIntent, setSelectedIntent] = useState<IntentType>("build-unit");
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
-  const [focus, setFocus] = useState("");
-  const [numericOptionValue, setNumericOptionValue] = useState(String(getIntentConfig("build-unit").numericOption?.defaultValue ?? 5));
-  const [unitId, setUnitId] = useState("");
-  const [studentId, setStudentId] = useState("");
-  const [adaptiveConditioningEnabled, setAdaptiveConditioningEnabled] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [lastIntentRequest, setLastIntentRequest] = useState<{ intentType: IntentType; documentIds: string[]; options?: Record<string, unknown> } | null>(null);
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
-
-  async function fetchJson<T>(input: string, init?: RequestInit) {
-    const response = await fetch(input, init);
-    const rawBody = await response.text();
-    const trimmedBody = rawBody.trim();
-
-    if (!trimmedBody) {
-      throw new Error(`Empty response from ${input}`);
-    }
-
-    if (trimmedBody.startsWith("<!DOCTYPE") || trimmedBody.startsWith("<html") || trimmedBody.startsWith("<")) {
-      throw new Error(`Non-JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-    }
-
-    let payload: unknown;
-    try {
-      payload = JSON.parse(trimmedBody);
-    } catch {
-      throw new Error(`Invalid JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-    }
-
-    if (!response.ok) {
-      const errorMessage = typeof payload === "object" && payload !== null && "error" in payload
-        ? String((payload as { error?: unknown }).error ?? `Request failed: ${input}`)
-        : `Request failed: ${input}`;
-      throw new Error(errorMessage);
-    }
-    return payload as T;
-  }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -267,11 +174,8 @@ export function DocumentUpload() {
 
       setSelectedDocumentIds(nextWorkspace.documents.map((entry) => entry.documentId));
       setPrimaryDocumentId(nextWorkspace.documents[0]?.documentId ?? null);
-      setCurrentProduct(null);
-      setLastIntentRequest(null);
       logUploadTrace("upload flow complete", { sessionId: nextWorkspace.sessionId, uploadedCount: nextWorkspace.documents.length });
     } catch (uploadError) {
-      setCurrentProduct(null);
       setError(uploadError instanceof Error ? uploadError.message : "Workspace creation failed.");
       logUploadTrace("upload flow failed", { error: uploadError instanceof Error ? uploadError.message : "Workspace creation failed." });
     } finally {
@@ -280,79 +184,39 @@ export function DocumentUpload() {
     }
   }
 
-  function getActionDocumentIds() {
-    return resolveIntentDocumentIds(workspace, selectedIntent, selectedDocumentIds, primaryDocumentId);
-  }
 
-  function buildIntentOptions() {
-    const config = getIntentConfig(selectedIntent);
-    const options: Record<string, unknown> = {};
-    if (focus.trim()) {
-      options.focus = focus.trim();
-    }
-    if (config.numericOption) {
-      const parsed = Number(numericOptionValue);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        options[config.numericOption.key] = Math.floor(parsed);
-      }
-    }
-    if (selectedIntent === "build-test") {
-      if (user?.id) {
-        options.teacherId = user.id;
-      }
-      if (unitId.trim()) {
-        options.unitId = unitId.trim();
-      }
-    }
-    return Object.keys(options).length > 0 ? options : undefined;
-  }
-
-  async function generateProduct(intentType = selectedIntent, documentIds = getActionDocumentIds(), options = buildIntentOptions()) {
+  async function handleGenerateProduct(args: {
+    intentType: IntentType;
+    options?: Record<string, unknown>;
+    studentId?: string;
+    enableAdaptiveConditioning?: boolean;
+  }) {
     if (!workspace) {
-      return;
+      return null;
     }
 
-    const normalizedDocumentIds = resolveIntentDocumentIds(workspace, intentType, documentIds, primaryDocumentId);
-    const config = getIntentConfig(intentType);
+    const normalizedDocumentIds = resolveIntentDocumentIds(workspace, args.intentType, selectedDocumentIds, primaryDocumentId);
+    const config = getIntentConfig(args.intentType);
 
     if (normalizedDocumentIds.length === 0) {
-      setError("Select the document scope before generating a product.");
-      return;
+      setError("Select the document scope before generating a pavilion surface.");
+      return null;
     }
 
     if (config.scope === "multi" && normalizedDocumentIds.length < 2) {
       setError(`${config.label} requires at least 2 documents in the workspace.`);
-      return;
+      return null;
     }
 
-    setIsGenerating(true);
     setError(null);
-    try {
-      const requestBody: Record<string, unknown> = {
-        sessionId: workspace.sessionId,
-        documentIds: normalizedDocumentIds,
-        intentType,
-        options,
-      };
-      if (intentType === "build-test") {
-        if (studentId.trim()) {
-          requestBody.studentId = studentId.trim();
-        }
-        requestBody.enableAdaptiveConditioning = adaptiveConditioningEnabled;
-      }
-      const product = await fetchJson<IntentProduct>("/api/v4/documents/intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      setCurrentProduct(product);
-      setLastIntentRequest({ intentType, documentIds: normalizedDocumentIds, options });
-      await refreshWorkspace(workspace.sessionId);
-    } catch (generationError) {
-      setError(generationError instanceof Error ? generationError.message : "Product generation failed.");
-    } finally {
-      setIsGenerating(false);
-    }
+    return await generateProduct({
+      sessionId: workspace.sessionId,
+      documentIds: normalizedDocumentIds,
+      intentType: args.intentType,
+      options: args.options,
+      studentId: args.studentId,
+      enableAdaptiveConditioning: args.enableAdaptiveConditioning,
+    });
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -364,17 +228,9 @@ export function DocumentUpload() {
     setSelectedFiles([]);
     setUploadInputKey((current) => current + 1);
     clearSession();
-    setCurrentProduct(null);
-    setSelectedIntent("build-unit");
     setSelectedDocumentIds([]);
     setPrimaryDocumentId(null);
-    setFocus("");
-    setNumericOptionValue(String(getIntentConfig("build-unit").numericOption?.defaultValue ?? 5));
-    setUnitId("");
-    setStudentId("");
-    setAdaptiveConditioningEnabled(true);
     setError(null);
-    setLastIntentRequest(null);
     lastUploadAttemptKeyRef.current = null;
     uploadInFlightRef.current = false;
   }
@@ -385,26 +241,7 @@ export function DocumentUpload() {
       : [...current, documentId]);
   }
 
-  function openPrintView() {
-    if (!currentProduct || typeof window === "undefined") {
-      return;
-    }
-
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    window.open(`/print/${encodeURIComponent(currentProduct.productId)}?returnTo=${encodeURIComponent(returnTo)}`, "_blank", "noopener,noreferrer");
-  }
-
-  const currentIntentConfig = getIntentConfig(selectedIntent);
-  const actionDocumentIds = getActionDocumentIds();
-  const intentBlockedReason = getIntentBlockedReason(workspace, selectedIntent, actionDocumentIds);
   const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
-  const regenerateBlockedReason = getRegenerateBlockedReason(lastIntentRequest, isGenerating);
-  const printBlockedReason = currentProduct ? null : "Generate a product before opening print view.";
-  const actionDocuments = workspace
-    ? actionDocumentIds
-      .map((documentId) => workspace.documents.find((entry) => entry.documentId === documentId))
-      .filter((entry): entry is RegisteredDocumentSummary => Boolean(entry))
-    : [];
 
   return (
     <div className="v4-viewer">
@@ -447,8 +284,8 @@ export function DocumentUpload() {
               <button className="v4-button" type="submit" disabled={Boolean(uploadBlockedReason)} title={uploadBlockedReason ?? undefined}>
                 {isUploading ? "Creating workspace..." : "Create workspace"}
               </button>
-              {(workspace || selectedFiles.length > 0 || currentProduct || error) && (
-                <button className="v4-button v4-button-secondary" type="button" onClick={resetSession} disabled={isUploading || isGenerating}>
+              {(workspace || selectedFiles.length > 0 || error) && (
+                <button className="v4-button v4-button-secondary" type="button" onClick={resetSession} disabled={isUploading}>
                   Start new session
                 </button>
               )}
@@ -511,132 +348,25 @@ export function DocumentUpload() {
               </div>
             </section>
 
-            <AnalysisPanel analysis={instructionalSession?.analysis ?? null} />
-
-            <section className="v4-panel">
-              <div className="v4-section-heading">
-                <div>
-                  <p className="v4-kicker">Build</p>
-                  <h2>What would you like to build?</h2>
-                </div>
-                <span className="v4-pill">{actionDocumentIds.length} material(s) selected</span>
-              </div>
-              <div className="v4-intent-grid">
-                <label className="v4-upload-field">
-                  <span>Document type</span>
-                  <select
-                    aria-label="What would you like to build?"
-                    value={selectedIntent}
-                    onChange={(event) => {
-                      const nextIntent = event.target.value as IntentType;
-                      setSelectedIntent(nextIntent);
-                      setNumericOptionValue(String(getIntentConfig(nextIntent).numericOption?.defaultValue ?? 5));
-                    }}
-                  >
-                    {SUPPORTED_INTENTS.map((intent) => <option key={intent} value={intent}>{getIntentConfig(intent).label}</option>)}
-                  </select>
-                </label>
-                <label className="v4-upload-field">
-                  <span>Optional focus</span>
-                  <input aria-label="Optional focus" value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="fractions, equations, review, misconceptions..." />
-                </label>
-                {currentIntentConfig.numericOption && (
-                  <label className="v4-upload-field">
-                    <span>{currentIntentConfig.numericOption.label}</span>
-                    <input aria-label={currentIntentConfig.numericOption.label} type="number" min={1} value={numericOptionValue} onChange={(event) => setNumericOptionValue(event.target.value)} />
-                  </label>
-                )}
-                {selectedIntent === "build-test" && (
-                  <>
-                    <label className="v4-upload-field">
-                      <span>Unit ID</span>
-                      <input aria-label="Unit ID" value={unitId} onChange={(event) => setUnitId(event.target.value)} placeholder="Optional unit scope for fingerprinting" />
-                    </label>
-                    <label className="v4-upload-field">
-                      <span>Student ID</span>
-                      <input aria-label="Student ID" value={studentId} onChange={(event) => setStudentId(event.target.value)} placeholder="Optional student scope for adaptive planning" />
-                    </label>
-                    <label className="v4-upload-field">
-                      <span>Adaptive conditioning</span>
-                      <input aria-label="Adaptive conditioning" type="checkbox" checked={adaptiveConditioningEnabled} onChange={(event) => setAdaptiveConditioningEnabled(event.target.checked)} />
-                    </label>
-                  </>
-                )}
-              </div>
-              <p className="v4-body-copy">{currentIntentConfig.description}</p>
-              {selectedIntent === "build-test" && (
-                <p className="v4-body-copy">
-                  Assessment builds use your signed-in teacher account automatically and can optionally target a unit and student profile.
-                </p>
-              )}
-              <div className="v4-product-card v4-product-span">
-                <h3>Selected materials</h3>
-                <p>{formatScopeSummary(selectedIntent, actionDocuments)}</p>
-                {intentBlockedReason && <p className="v4-error">{intentBlockedReason}</p>}
-              </div>
-              <div className="v4-upload-actions">
-                <button className="v4-button" type="button" onClick={() => void generateProduct()} disabled={isGenerating || Boolean(intentBlockedReason)} title={intentBlockedReason ?? undefined}>
-                  {isGenerating ? "Creating document..." : "Create document"}
-                </button>
-              </div>
-            </section>
-
-            <section className="v4-panel">
-              <div className="v4-section-heading">
-                <div>
-                  <p className="v4-kicker">Your Document</p>
-                  <h2>{currentProduct ? getProductTitle(currentProduct) : "No document yet"}</h2>
-                </div>
-                <div className="v4-upload-actions">
-                  <button className="v4-button v4-button-secondary" type="button" onClick={openPrintView} disabled={Boolean(printBlockedReason)} title={printBlockedReason ?? undefined}>Print</button>
-                  <button className="v4-button v4-button-secondary" type="button" onClick={() => lastIntentRequest && void generateProduct(lastIntentRequest.intentType, lastIntentRequest.documentIds, lastIntentRequest.options)} disabled={Boolean(regenerateBlockedReason)} title={regenerateBlockedReason ?? undefined}>Build again</button>
-                </div>
-              </div>
-              {(printBlockedReason || regenerateBlockedReason) && (
-                <p className="v4-body-copy">
-                  {printBlockedReason ?? regenerateBlockedReason}
-                </p>
-              )}
-              {currentProduct ? (
-                <>
-                  <ProductViewer
-                    product={currentProduct}
-                    sessionId={workspace.sessionId}
-                    classId={workspace.sessionId}
-                    classProfile={instructionalSession?.classProfile ?? null}
-                    onLoadClassProfile={loadClassProfile}
-                    differentiatedBuild={instructionalSession?.differentiatedBuild ?? null}
-                    onLoadDifferentiatedBuild={loadDifferentiatedBuild}
-                    onInstructionalMapRefresh={async () => {
-                      const options = currentProduct.payload.focus ? { focus: currentProduct.payload.focus } : undefined;
-                      await generateProduct(currentProduct.intentType as IntentType, currentProduct.documentIds, options);
-                    }}
-                  />
-                </>
-              ) : (
-                <p className="v4-body-copy">Upload your materials, choose what to build, and this is where your classroom document will appear.</p>
-              )}
-            </section>
-
-            <section className="v4-panel">
-              <div className="v4-section-heading">
-                <div>
-                  <p className="v4-kicker">Recent Documents</p>
-                  <h2>Your recent builds</h2>
-                </div>
-                <span className="v4-pill">{workspace.products.length}</span>
-              </div>
-              <ul className="v4-history-list">
-                {workspace.products.map((product) => (
-                  <li key={product.productId}>
-                    <button className={`v4-history-item ${currentProduct?.productId === product.productId ? "v4-history-item-active" : ""}`} type="button" onClick={() => setCurrentProduct(product)}>
-                      <strong>{getProductTitle(product)}</strong>
-                      <span>{new Date(product.createdAt ?? product.payload.generatedAt ?? Date.now()).toLocaleDateString()}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            {workspace.instructionalSession ? (
+              <section className="v4-panel v4-product-span">
+                <ProductViewer
+                  sessionId={workspace.instructionalSession.sessionId}
+                  instructionalSession={workspace.instructionalSession}
+                  products={workspace.products}
+                  teacherId={user?.id ?? null}
+                  onGenerateProduct={handleGenerateProduct}
+                  loadBlueprint={loadBlueprint}
+                  loadTeacherFingerprint={loadTeacherFingerprint}
+                  updateTeacherFingerprint={updateTeacherFingerprint}
+                  loadStudentProfile={loadStudentProfile}
+                  loadClassProfile={loadClassProfile}
+                  loadDifferentiatedBuild={loadDifferentiatedBuild}
+                  loadBuilderPlan={loadBuilderPlan}
+                  loadAssessmentPreview={loadAssessmentPreview}
+                />
+              </section>
+            ) : null}
           </div>
         )}
       </div>
