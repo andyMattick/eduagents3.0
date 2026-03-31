@@ -1,5 +1,6 @@
 import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragments } from "./analysis";
+import { withPreferredContentHash } from "./contentHash";
 import { buildInstructionalUnitOverrideId, getProblemOverride } from "../teacherFeedback";
 import {
 	addDocumentToSession,
@@ -707,7 +708,8 @@ export async function getSessionDocumentsStore(sessionId: string) {
 
 async function loadAnalyzedDocumentStore(documentId: string) {
 	if (!canUseSupabase()) {
-		return getAnalyzedDocument(documentId);
+		const analyzed = getAnalyzedDocument(documentId);
+		return analyzed ? withPreferredContentHash(analyzed) : null;
 	}
 
 	const rows = await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
@@ -715,7 +717,7 @@ async function loadAnalyzedDocumentStore(documentId: string) {
 		filters: { document_id: `eq.${documentId}` },
 	});
 	const row = Array.isArray(rows) ? rows[0] as AnalyzedDocumentRow | undefined : undefined;
-	return row?.analyzed_document ?? null;
+	return row?.analyzed_document ? withPreferredContentHash(row.analyzed_document) : null;
 }
 
 export async function loadPrismDocumentAnalysisTarget(documentId: string, sessionId?: string | null): Promise<PrismDocumentAnalysisTarget | null> {
@@ -766,14 +768,14 @@ export async function loadPrismDocumentAnalysisTarget(documentId: string, sessio
 
 export async function getAnalyzedDocumentsForSessionStore(sessionId: string) {
 	if (!canUseSupabase()) {
-		return getAnalyzedDocumentsForSession(sessionId);
+		return getAnalyzedDocumentsForSession(sessionId).map((document) => withPreferredContentHash(document));
 	}
 
 	const rows = await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 		select: "document_id,session_id,analyzed_document,updated_at",
 		filters: { session_id: `eq.${sessionId}`, order: "updated_at.asc" },
 	});
-	return ((rows as AnalyzedDocumentRow[] | null) ?? []).map((row) => row.analyzed_document);
+	return ((rows as AnalyzedDocumentRow[] | null) ?? []).map((row) => withPreferredContentHash(row.analyzed_document));
 }
 
 export async function saveAnalyzedDocumentStore(
@@ -783,9 +785,10 @@ export async function saveAnalyzedDocumentStore(
 ) {
 	const invalidateSessionCache = options.invalidateSessionCache ?? true;
 	const invalidateSnapshot = options.invalidateSnapshot ?? true;
+	const normalized = withPreferredContentHash(analyzedDocument);
 
 	if (!canUseSupabase()) {
-		const saved = saveAnalyzedDocument(analyzedDocument);
+		const saved = saveAnalyzedDocument(normalized);
 		markCollectionAnalysisStale(sessionId);
 		if (invalidateSessionCache) {
 			invalidatePrismSessionContext(sessionId);
@@ -799,18 +802,18 @@ export async function saveAnalyzedDocumentStore(
 	await supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
 		method: "POST",
 		body: {
-			document_id: analyzedDocument.document.id,
+			document_id: normalized.document.id,
 			session_id: sessionId,
-			analyzed_document: analyzedDocument,
-			updated_at: analyzedDocument.updatedAt,
+			analyzed_document: normalized,
+			updated_at: normalized.updatedAt,
 		},
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 
 	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "PATCH",
-		filters: { document_id: `eq.${analyzedDocument.document.id}` },
-		body: { canonical_document: analyzedDocument.document },
+		filters: { document_id: `eq.${normalized.document.id}` },
+		body: { canonical_document: normalized.document },
 		prefer: "return=minimal",
 	});
 	markCollectionAnalysisStale(sessionId);
@@ -821,7 +824,7 @@ export async function saveAnalyzedDocumentStore(
 		await invalidatePrismSessionSnapshot(sessionId);
 	}
 
-	return analyzedDocument;
+	return normalized;
 }
 
 export async function saveCollectionAnalysisStore(

@@ -448,6 +448,7 @@ export function DocumentUpload() {
               <section className="v4-panel v4-product-span">
                 <ProductViewer
                   sessionId={workspace.instructionalSession.sessionId}
+                  workspace={workspace}
                   instructionalSession={workspace.instructionalSession}
                   products={workspace.products}
                   teacherId={user?.id ?? null}

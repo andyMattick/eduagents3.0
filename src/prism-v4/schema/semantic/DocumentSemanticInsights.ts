@@ -1,5 +1,18 @@
 import type { Problem } from "../domain";
 
+export interface DocumentSemanticConceptDetail {
+  concept: string;
+  aliases?: string[];
+  freqProblems: number;
+  freqPages: number;
+  freqDocuments: number;
+  semanticDensity: number;
+  multipartPresence: number;
+  crossDocumentRecurrence: number;
+  score: number;
+  isNoise: boolean;
+}
+
 export interface DocumentSemanticInsights {
   documentId: string;
   title?: string;
@@ -21,6 +34,7 @@ export interface DocumentSemanticInsights {
   problems: Problem[];
 
   documentConcepts?: Record<string, number>;
+  documentConceptDetails?: DocumentSemanticConceptDetail[];
   documentStandards?: Record<string, number>;
   overallDifficulty?: number;
   overallLinguisticLoad?: number;

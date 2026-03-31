@@ -1,11 +1,8 @@
 import type { CanonicalDocument, FragmentSemanticRecord } from "../../schema/semantic";
+import { isLikelyNoiseConcept, normalizeConceptLabel } from "../../semantic/utils/conceptUtils";
 
 function unique<T>(values: T[]) {
 	return [...new Set(values)];
-}
-
-function normalizeConceptName(value: string) {
-	return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 const SUBJECT_CONCEPT_PATTERNS: Record<string, Array<{ concept: string; pattern: RegExp }>> = {
@@ -181,7 +178,8 @@ function extractPrerequisiteConcepts(text: string) {
 	const lower = text.toLowerCase();
 	const concepts = CONCEPT_PATTERNS
 		.filter(({ pattern }) => pattern.test(lower))
-		.map(({ concept }) => normalizeConceptName(concept));
+		.map(({ concept }) => normalizeConceptLabel(concept))
+		.filter((concept) => !isLikelyNoiseConcept(concept));
 	const normalized = new Set(concepts);
 	const hasStatisticalSignal = [
 		"hypothesis testing",

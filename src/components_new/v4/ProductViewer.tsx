@@ -10,7 +10,7 @@ import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest
 import type { IntentProduct, IntentProductPayload } from "../../prism-v4/schema/integration/IntentProduct";
 import { buildInstructionalUnitOverrideId, canonicalConceptId, type AssessmentFingerprint } from "../../prism-v4/teacherFeedback";
 import type { StudentPerformanceProfile } from "../../prism-v4/studentPerformance";
-import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel, InstructionalIntelligenceSession, TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
+import type { AssessmentPreviewModel, BlueprintModel, BuilderPlanModel, ClassProfileModel, ConceptMapModel, DifferentiatedBuildModel, InstructionalIntelligenceSession, InstructionalSessionWorkspace, TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
 import {
   loadAssessmentBlueprintApi,
   loadAssessmentPreviewApi,
@@ -34,7 +34,9 @@ import { ConceptMap } from "./ConceptMap";
 import { PavilionSessionView } from "./PavilionSessionView";
 import { StudentProfilePanel } from "./StudentProfilePanel";
 import { TeacherFingerprintPanel } from "./TeacherFingerprintPanel";
+import { ViewerSurface } from "./viewer/ViewerSurface";
 import { cleanupProductPayload } from "./utils/cleanup";
+import type { ViewerData } from "../../prism-v4/viewer";
 
 const BLOOM_LEVEL_OPTIONS: ConceptBlueprintBloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 const SCENARIO_TYPE_OPTIONS: ConceptBlueprintScenarioType[] = ["real-world", "simulation", "data-table", "graphical", "abstract-symbolic"];
@@ -1386,6 +1388,9 @@ type ProductViewerBaseProps = {
   sessionId?: string;
   variant?: "app" | "print";
   showAnswerGuidance?: boolean;
+  /** Render ViewerSurface directly (standalone viewer mode). Selection state stays inside ViewerSurface — ProductViewer does not own it. */
+  viewerMode?: "v4-viewer";
+  viewerData?: ViewerData | null;
 };
 
 type ProductViewerLegacyProps = ProductViewerBaseProps & {
@@ -1408,6 +1413,7 @@ type ProductViewerLegacyProps = ProductViewerBaseProps & {
 type ProductViewerSessionProps = ProductViewerBaseProps & {
   product?: undefined;
   sessionId: string;
+  workspace?: InstructionalSessionWorkspace | null;
   instructionalSession: InstructionalIntelligenceSession | null;
   products: IntentProduct[];
   teacherId?: string | null;
@@ -1793,11 +1799,16 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
 }
 
 export function ProductViewer(props: ProductViewerProps) {
+  if (props.viewerMode === "v4-viewer") {
+    if (!props.viewerData) return null;
+    return <ViewerSurface data={props.viewerData} />;
+  }
   if (!("product" in props) || !props.product) {
-    const { sessionId, instructionalSession, products, teacherId = null, onGenerateProduct, loadBlueprint, loadTeacherFingerprint, updateTeacherFingerprint, loadStudentProfile, loadClassProfile, loadDifferentiatedBuild, loadBuilderPlan, loadAssessmentPreview } = props;
+    const { sessionId, workspace = null, instructionalSession, products, teacherId = null, onGenerateProduct, loadBlueprint, loadTeacherFingerprint, updateTeacherFingerprint, loadStudentProfile, loadClassProfile, loadDifferentiatedBuild, loadBuilderPlan, loadAssessmentPreview } = props;
     return (
       <PavilionSessionView
         sessionId={sessionId}
+        workspace={workspace}
         instructionalSession={instructionalSession}
         products={products}
         teacherId={teacherId}

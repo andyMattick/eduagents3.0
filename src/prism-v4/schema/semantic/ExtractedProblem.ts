@@ -7,9 +7,14 @@ export type ExtractedProblemCognitiveDemand = "recall" | "procedural" | "concept
 export interface ExtractedProblem {
 	id: string;
 	documentId: string;
+	problemGroupId?: string;
 	anchors: DocumentAnchor[];
 	text: string;
 	extractionMode: ProblemExtractionMode;
+	sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	};
 	concepts: string[];
 	representations: string[];
 	difficulty: ExtractedProblemDifficulty;

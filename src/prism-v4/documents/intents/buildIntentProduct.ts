@@ -84,6 +84,12 @@ interface InstructionalUnitEntry {
 	contentTypes: string[];
 	primaryDocumentId: string;
 	primarySourceFileName: string;
+	primaryConcepts: string[];
+	groupId?: string;
+	sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	};
 	difficultyBand: "low" | "medium" | "high";
 }
 
@@ -451,12 +457,39 @@ function getFingerprintProfileForConcept(context: BuilderContext<"build-test">, 
 	return getPreferredFingerprintProfiles(context).find((profile) => profile.conceptId === conceptId);
 }
 
+function getCollectionCoverageForConcept(context: Pick<BuilderContext<"build-test">, "collectionAnalysis">, concept: string) {
+	const coverageEntries = Object.values(context.collectionAnalysis.coverageSummary.conceptCoverage ?? {});
+	const conceptId = canonicalConceptId(concept);
+	return coverageEntries
+		.filter((entry) => canonicalConceptId(entry.concept) === conceptId)
+		.sort((left, right) => (right.overlapStrength ?? 0) - (left.overlapStrength ?? 0) || (right.gapScore ?? 0) - (left.gapScore ?? 0) || right.averageScore - left.averageScore)[0];
+}
+
 function sortAssessmentConceptNames(context: BuilderContext<"build-test">, conceptNames: string[]) {
 	const preferredOrder = context.unitFingerprint?.flowProfile.sectionOrder?.length
 		? context.unitFingerprint.flowProfile.sectionOrder
 		: context.teacherFingerprint?.flowProfile.sectionOrder ?? [];
 	const preferredOrderIndex = new Map(preferredOrder.map((conceptId, index) => [conceptId, index]));
 	return [...conceptNames].sort((left, right) => {
+		const leftCoverage = getCollectionCoverageForConcept(context, left);
+		const rightCoverage = getCollectionCoverageForConcept(context, right);
+		const leftNoise = Boolean(leftCoverage?.noiseCandidate);
+		const rightNoise = Boolean(rightCoverage?.noiseCandidate);
+		if (leftNoise !== rightNoise) {
+			return Number(leftNoise) - Number(rightNoise);
+		}
+		const overlapDelta = (rightCoverage?.overlapStrength ?? 0) - (leftCoverage?.overlapStrength ?? 0);
+		if (overlapDelta !== 0) {
+			return overlapDelta;
+		}
+		const gapDelta = (rightCoverage?.gapScore ?? 0) - (leftCoverage?.gapScore ?? 0);
+		if (gapDelta !== 0) {
+			return gapDelta;
+		}
+		const scoreDelta = (rightCoverage?.averageScore ?? 0) - (leftCoverage?.averageScore ?? 0);
+		if (scoreDelta !== 0) {
+			return scoreDelta;
+		}
 		const leftIndex = preferredOrderIndex.get(canonicalConceptId(left));
 		const rightIndex = preferredOrderIndex.get(canonicalConceptId(right));
 		if (leftIndex !== undefined || rightIndex !== undefined) {
@@ -1023,6 +1056,7 @@ function buildFallbackTestSections(context: BuilderContext<"build-test">, focus:
 			itemId: `fallback-${sourceDocumentId}-${index + 1}`,
 			prompt,
 			concept,
+			primaryConcepts: [concept],
 			sourceDocumentId,
 			sourceFileName,
 			difficulty: "medium",
@@ -1102,6 +1136,19 @@ function collectInstructionalUnitEntries(units: InstructionalUnit[], analyzedDoc
 			.filter(Boolean));
 		const documentIds = unique(orderedFragments.map((fragment) => fragment.documentId));
 		const derivedSourceFileNames = documentIds.map((documentId) => sourceFileNames[documentId] ?? analyzedById.get(documentId)?.document.sourceFileName ?? documentId);
+		const primaryConcepts = inferCanonicalTeacherConcepts(unit.concepts, [text, ...questionTexts, ...unit.learningTargets]);
+		const matchingProblems = documentIds.flatMap((documentId) => {
+			const analyzed = analyzedById.get(documentId);
+			if (!analyzed) {
+				return [];
+			}
+			return analyzed.problems.filter((problem) => problem.concepts.some((concept) => primaryConcepts.includes(concept) || primaryConcepts.includes(clusterAssessmentConcept(concept))));
+		});
+		const primaryProblem = [...matchingProblems].sort((left, right) => {
+			const leftMatches = left.concepts.filter((concept) => primaryConcepts.includes(concept) || primaryConcepts.includes(clusterAssessmentConcept(concept))).length;
+			const rightMatches = right.concepts.filter((concept) => primaryConcepts.includes(concept) || primaryConcepts.includes(clusterAssessmentConcept(concept))).length;
+			return rightMatches - leftMatches || left.text.length - right.text.length;
+		})[0];
 		return {
 			unit,
 			text: text || fragmentTexts.join(" ").trim() || unit.title || joinList(unit.learningTargets) || joinList(unit.concepts),
@@ -1113,6 +1160,9 @@ function collectInstructionalUnitEntries(units: InstructionalUnit[], analyzedDoc
 			contentTypes: unique(orderedFragments.map((fragment) => fragment.contentType)),
 			primaryDocumentId: documentIds[0] ?? "unknown-document",
 			primarySourceFileName: derivedSourceFileNames[0] ?? "Unknown source",
+			primaryConcepts,
+			groupId: primaryProblem?.problemGroupId,
+			sourceSpan: primaryProblem?.sourceSpan,
 			difficultyBand: toDifficultyBand(unit.difficulty),
 		};
 	});
@@ -1238,6 +1288,8 @@ function buildProblemEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 				problemId: problem.id,
 				documentId: problem.documentId,
 				sourceFileName: context.sourceFileNames[problem.documentId] ?? analyzed.document.sourceFileName,
+				problemGroupId: problem.problemGroupId,
+				sourceSpan: problem.sourceSpan,
 				text: problem.text,
 				concepts: problem.concepts,
 				representations: problem.representations,
@@ -1273,18 +1325,26 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 	}
 
 	if (concepts.size > 0) {
-		return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
+		return [...concepts.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
 	}
 
 	for (const analyzed of context.analyzedDocuments) {
 		const documentTexts = analyzed.document.nodes
 			.map((node) => node.text)
 			.filter((text): text is string => typeof text === "string" && text.trim().length > 0);
+		const scoredConcepts = new Map(
+			(analyzed.insights.scoredConcepts ?? [])
+				.filter((concept) => !concept.isNoise)
+				.map((concept) => [concept.concept, concept]),
+		);
 		const canonicalProblemConcepts = analyzed.problems.map((problem) => ({
 			problem,
 			concepts: inferCanonicalTeacherConcepts(problem.concepts, [problem.text]),
 		}));
 		const canonicalDocumentConcepts = unique([
+			...(analyzed.insights.scoredConcepts ?? [])
+				.filter((concept) => !concept.isNoise)
+				.map((concept) => concept.concept),
 			...analyzed.insights.concepts
 				.filter((concept): concept is string => typeof concept === "string" && concept.trim().length > 0)
 				.flatMap((concept) => inferCanonicalTeacherConcepts([concept], documentTexts)),
@@ -1297,6 +1357,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 
 			const matchingProblems = canonicalProblemConcepts.filter((entry) => entry.concepts.includes(concept)).map((entry) => entry.problem);
 			const existing = concepts.get(concept);
+			const scored = scoredConcepts.get(concept);
 			concepts.set(concept, {
 				concept,
 				frequency: (existing?.frequency ?? 0) + Math.max(
@@ -1306,6 +1367,11 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 						.filter((entry) => inferCanonicalTeacherConcepts([entry], documentTexts).includes(concept)).length,
 					1,
 				),
+				score: scored ? Math.max(existing?.score ?? 0, scored.score) : existing?.score,
+				freqProblems: (existing?.freqProblems ?? 0) + (scored?.freqProblems ?? 0),
+				freqPages: Math.max(existing?.freqPages ?? 0, scored?.freqPages ?? 0) || undefined,
+				semanticDensity: scored ? Math.max(existing?.semanticDensity ?? 0, scored.semanticDensity) : existing?.semanticDensity,
+				multipartPresence: scored ? Math.max(existing?.multipartPresence ?? 0, scored.multipartPresence) : existing?.multipartPresence,
 				documentIds: unique([...(existing?.documentIds ?? []), analyzed.document.id]),
 				sourceFileNames: unique([...(existing?.sourceFileNames ?? []), context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName]),
 				representations: unique([...(existing?.representations ?? []), ...matchingProblems.flatMap((problem) => problem.representations)]),
@@ -1315,7 +1381,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 		}
 	}
 
-	return [...concepts.values()].sort((left, right) => right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
+	return [...concepts.values()].sort((left, right) => (right.score ?? 0) - (left.score ?? 0) || right.frequency - left.frequency || conceptSortOrder(left.concept) - conceptSortOrder(right.concept) || left.concept.localeCompare(right.concept));
 }
 
 function buildExtractProblemsProduct(context: BuilderContext<"extract-problems">): IntentPayloadByType["extract-problems"] {
@@ -1551,6 +1617,9 @@ function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test
 		contentTypes: ["question"],
 		primaryDocumentId: problem.documentId,
 		primarySourceFileName: problem.sourceFileName,
+		primaryConcepts: inferCanonicalTeacherConcepts(problem.concepts, [problem.text]),
+		groupId: problem.problemGroupId,
+		sourceSpan: problem.sourceSpan,
 		difficultyBand: problem.difficulty,
 	}));
 }
@@ -1594,8 +1663,11 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					itemId: `item-${unitEntry.unit.unitId}-${promptIndex + 1}`,
 					prompt,
 					concept,
+					primaryConcepts: unitEntry.primaryConcepts,
+					groupId: unitEntry.groupId,
 					sourceDocumentId: unitEntry.primaryDocumentId,
 					sourceFileName: unitEntry.primarySourceFileName,
+					sourceSpan: unitEntry.sourceSpan,
 					difficulty: unitEntry.difficultyBand,
 					cognitiveDemand: inferUnitCognitiveDemand(unitEntry),
 					answerGuidance: unitEntry.unit.learningTargets.length > 0
@@ -1620,6 +1692,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					itemId: `item-concept-${concept.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "general"}`,
 					prompt: `Explain ${concept} and show how you would apply it.`,
 					concept,
+					primaryConcepts: [concept],
 					sourceDocumentId: sourceDocument,
 					sourceFileName,
 					difficulty: "medium",
@@ -1790,7 +1863,17 @@ function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents
 	const metrics = buildCompareMetricEntries(context);
 	const filteredOverlap = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis))
 		.filter(([concept]) => matchesFocus([concept], focus))
-		.map(([concept, documentIds]) => ({ concept, documentIds }));
+		.map(([concept, documentIds]) => {
+			const coverage = context.collectionAnalysis.coverageSummary.conceptCoverage?.[concept];
+			return {
+				concept,
+				documentIds,
+				overlapStrength: coverage?.overlapStrength,
+				stability: coverage?.stability,
+				gap: coverage?.gap,
+				crossDocumentAnchor: coverage?.crossDocumentAnchor,
+			};
+		});
 
 	return {
 		kind: "compare-documents",

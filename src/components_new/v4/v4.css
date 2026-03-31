@@ -298,6 +298,110 @@
   gap: 0.85rem;
 }
 
+.v4-viewer .v4-problem-group-browser {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  margin-top: 1rem;
+  align-items: start;
+}
+
+.v4-viewer .v4-problem-group-nav {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 72vh;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.v4-viewer .v4-problem-group-option {
+  text-align: left;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 1rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.75rem;
+  color: inherit;
+  font: inherit;
+  box-shadow: 0 10px 24px rgba(65, 44, 23, 0.04);
+}
+
+.v4-viewer .v4-problem-group-option-active {
+  border-color: rgba(156, 77, 43, 0.45);
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.96), rgba(245, 233, 214, 0.96));
+  box-shadow: 0 16px 32px rgba(65, 44, 23, 0.1);
+}
+
+.v4-viewer .v4-problem-group-option-header,
+.v4-viewer .v4-problem-group-detail-header,
+.v4-viewer .v4-problem-group-subheading,
+.v4-viewer .v4-problem-group-option-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.v4-viewer .v4-problem-group-option h3,
+.v4-viewer .v4-problem-group-detail h3,
+.v4-viewer .v4-problem-group-detail h4 {
+  margin: 0;
+}
+
+.v4-viewer .v4-problem-group-option-meta {
+  font-size: 0.9rem;
+  color: #5b4434;
+}
+
+.v4-viewer .v4-problem-group-detail {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.v4-viewer .v4-problem-group-detail-grid {
+  margin-top: 0;
+}
+
+.v4-viewer .v4-problem-group-detail-list {
+  margin-top: 0;
+}
+
+.v4-viewer .v4-problem-group-content-columns {
+  margin-top: 0;
+  grid-template-columns: 1fr;
+}
+
+.v4-viewer .v4-problem-group-problem-list,
+.v4-viewer .v4-problem-group-preview-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.v4-viewer .v4-problem-group-problem-card,
+.v4-viewer .v4-problem-group-preview-card {
+  border-radius: 18px;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  background: rgba(255, 255, 255, 0.76);
+  padding: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+@media (max-width: 960px) {
+  .v4-viewer .v4-problem-group-browser {
+    grid-template-columns: 1fr;
+  }
+
+  .v4-viewer .v4-problem-group-nav {
+    max-height: none;
+  }
+  }
+
 .v4-viewer .v4-provenance-row {
   display: flex;
   align-items: center;
@@ -1013,4 +1117,136 @@
   .v4-viewer .v4-print-table th {
     background: transparent;
   }
+}
+
+/* ─── Cross-panel selection & highlight ─────────────────────────────────── */
+
+.v4-viewer .v4-selected {
+  border-color: rgba(156, 77, 43, 0.65) !important;
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(245, 233, 214, 0.98)) !important;
+  box-shadow: 0 16px 32px rgba(65, 44, 23, 0.12) !important;
+}
+
+.v4-viewer .v4-highlighted {
+  border-color: rgba(156, 77, 43, 0.28);
+  background: rgba(255, 250, 242, 0.92);
+}
+
+/* ─── ConceptListPanel ───────────────────────────────────────────────────── */
+
+.v4-viewer .v4-concept-list {
+  margin-top: 1rem;
+}
+
+.v4-viewer .v4-concept-list-row {
+  padding: 0;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.v4-viewer .v4-concept-list-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.v4-viewer .v4-concept-list-name {
+  font-weight: 600;
+}
+
+.v4-viewer .v4-concept-list-meta {
+  font-size: 0.85rem;
+  color: #5b4434;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+/* ─── PreviewPanel ───────────────────────────────────────────────────────── */
+
+.v4-viewer .v4-preview-list {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.v4-viewer .v4-preview-card {
+  display: grid;
+  gap: 0.6rem;
+  border-radius: 18px;
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  background: rgba(255, 255, 255, 0.76);
+  padding: 1rem;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+}
+
+/* ─── ConceptMapPanel ────────────────────────────────────────────────────── */
+
+.v4-viewer .v4-concept-map-node-list {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.v4-viewer .v4-concept-map-node {
+  border-radius: 999px;
+  border: 1px solid rgba(86, 57, 32, 0.16);
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  color: inherit;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+/* ─── CoveragePanel ──────────────────────────────────────────────────────── */
+
+.v4-viewer .v4-coverage-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+
+.v4-viewer .v4-coverage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.v4-viewer .v4-coverage-table th,
+.v4-viewer .v4-coverage-table td {
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(86, 57, 32, 0.1);
+}
+
+.v4-viewer .v4-coverage-table th {
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.75rem;
+  color: #9c4d2b;
+}
+
+.v4-viewer .v4-coverage-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.v4-viewer .v4-coverage-row:hover {
+  background: rgba(156, 77, 43, 0.06);
 }

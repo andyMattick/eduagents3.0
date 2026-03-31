@@ -50,6 +50,8 @@ describe("extractProblems", () => {
     expect(problems.map((problem) => problem.displayOrder)).toEqual([1000, 1100, 1200, 2000, 2100, 2200, 3000]);
     expect(problems.map((problem) => problem.teacherLabel)).toEqual(["1.", "a)", "b)", "2.", "a)", "b)", "3."]);
     expect(problems.every((problem) => problem.createdAt === "2026-03-24T12:00:00.000Z")).toBe(true);
+    expect(problems[0]?.sourceSpan).toEqual({ firstPage: 1, lastPage: 1 });
+    expect(problems[1]?.sourceSpan).toEqual({ firstPage: 1, lastPage: 1 });
     expect(problems[1]?.stemText).toBe("Bob has a magic coin that lands on heads 70% of the time.");
     expect(problems[1]?.partText).toBe("Describe the parameter in this situation.");
     expect(problems[6]?.cleanedText).toBe("Write one conclusion based on the data.");
@@ -76,6 +78,40 @@ describe("extractProblems", () => {
     expect(problems).toHaveLength(2);
     expect(problems.map((problem) => problem.problemId)).toEqual(["p1", "p1a"]);
     expect(problems[1]?.partText).toBe("State the trend.\nSupport your answer with one value.");
+  });
+
+  it("suppresses repeated header and footer noise before problem extraction", () => {
+    const problems = extractProblems({
+      fileName: "quiz.pdf",
+      content: [
+        "Chapter 9 Review Monday, April 11, 2022 10:57 AM",
+        "1. Explain the null hypothesis.",
+        "Page 1",
+        "Chapter 9 Review Monday, April 11, 2022 10:57 AM",
+        "2. Interpret the p-value.",
+        "Page 2",
+      ].join("\n"),
+      pages: [
+        { pageNumber: 1, text: "page 1" },
+        { pageNumber: 2, text: "page 2" },
+      ],
+      paragraphs: [
+        { text: "Chapter 9 Review Monday, April 11, 2022 10:57 AM", pageNumber: 1 },
+        { text: "1. Explain the null hypothesis.", pageNumber: 1 },
+        { text: "Page 1", pageNumber: 1 },
+        { text: "Chapter 9 Review Monday, April 11, 2022 10:57 AM", pageNumber: 2 },
+        { text: "2. Interpret the p-value.", pageNumber: 2 },
+        { text: "Page 2", pageNumber: 2 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    expect(problems.map((problem) => problem.problemId)).toEqual(["p1", "p2"]);
+    expect(problems.map((problem) => problem.cleanedText)).toEqual([
+      "Explain the null hypothesis.",
+      "Interpret the p-value.",
+    ]);
   });
 
   it("recognizes numeric-prefixed multipart labels without a separate normalization pass", () => {

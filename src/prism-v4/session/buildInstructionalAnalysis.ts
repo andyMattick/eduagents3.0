@@ -2,6 +2,7 @@ import type { PrismSessionContext } from "../documents/registryStore";
 import { inferDomainMerged } from "../documents/intents/utils/inferDomain";
 import type { InstructionalAnalysis, BloomSummary, ConceptSummary, DifficultySummary, MisconceptionSummary, ModeSummary, ProblemSummary, ScenarioSummary } from "./InstructionalIntelligenceSession";
 import { classifyBloomLevel, classifyItemModes, classifyScenarioTypes, type BloomLevel, type ItemMode, type ScenarioType } from "../teacherFeedback";
+import { normalizeConceptLabel } from "../semantic/utils/conceptUtils";
 
 const BLOOM_LEVELS: BloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 
@@ -40,7 +41,19 @@ function average(values: number[]) {
 }
 
 export function buildInstructionalAnalysis(context: PrismSessionContext): InstructionalAnalysis {
-	const conceptCounts = new Map<string, { documentIds: Set<string>; problemCount: number }>();
+	const coverageByConcept = new Map(
+		Object.entries(context.collectionAnalysis.coverageSummary.conceptCoverage ?? {}).map(([concept, coverage]) => [concept, coverage] as const),
+	);
+	const conceptCounts = new Map<string, {
+		documentIds: Set<string>;
+		problemCount: number;
+		groupCount: number;
+		freqPages: number;
+		semanticDensityTotal: number;
+		multipartPresenceTotal: number;
+		scoreTotal: number;
+		scoreSamples: number;
+	}>();
 	const misconceptionCounts = new Map<string, { occurrences: number; concepts: Set<string> }>();
 	const problemSummaries: ProblemSummary[] = [];
 	const bloomSummary = createEmptyBloomSummary();
@@ -56,10 +69,28 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 	for (const analyzed of context.analyzedDocuments) {
 		const demandCounts: Record<string, number> = {};
 		const documentDifficultyDistribution = { low: 0, medium: 0, high: 0 };
+		const scoredConcepts = new Map((analyzed.insights.scoredConcepts ?? []).filter((concept) => !concept.isNoise).map((concept) => [concept.concept, concept]));
 
 		for (const concept of analyzed.insights.concepts) {
-			const current = conceptCounts.get(concept) ?? { documentIds: new Set<string>(), problemCount: 0 };
+			const current = conceptCounts.get(concept) ?? {
+				documentIds: new Set<string>(),
+				problemCount: 0,
+				groupCount: 0,
+				freqPages: 0,
+				semanticDensityTotal: 0,
+				multipartPresenceTotal: 0,
+				scoreTotal: 0,
+				scoreSamples: 0,
+			};
+			const scored = scoredConcepts.get(concept);
 			current.documentIds.add(analyzed.document.id);
+			if (scored) {
+				current.freqPages = Math.max(current.freqPages, scored.freqPages);
+				current.semanticDensityTotal += scored.semanticDensity;
+				current.multipartPresenceTotal += scored.multipartPresence;
+				current.scoreTotal += scored.score;
+				current.scoreSamples += 1;
+			}
 			conceptCounts.set(concept, current);
 		}
 
@@ -80,10 +111,24 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 			}
 
 			for (const concept of problem.concepts) {
-				const current = conceptCounts.get(concept) ?? { documentIds: new Set<string>(), problemCount: 0 };
+				const normalizedConcept = concept.includes(".") ? concept.toLowerCase() : normalizeConceptLabel(concept);
+				if (!normalizedConcept) {
+					continue;
+				}
+				const current = conceptCounts.get(normalizedConcept) ?? {
+					documentIds: new Set<string>(),
+					problemCount: 0,
+					groupCount: 0,
+					freqPages: 0,
+					semanticDensityTotal: 0,
+					multipartPresenceTotal: 0,
+					scoreTotal: 0,
+					scoreSamples: 0,
+				};
 				current.documentIds.add(analyzed.document.id);
 				current.problemCount += 1;
-				conceptCounts.set(concept, current);
+				current.groupCount = Math.max(current.groupCount, coverageByConcept.get(normalizedConcept)?.groupCount ?? 0);
+				conceptCounts.set(normalizedConcept, current);
 			}
 
 			for (const misconception of problem.misconceptions) {
@@ -116,13 +161,31 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 
 	const totalDocuments = Math.max(context.analyzedDocuments.length, 1);
 	const concepts: ConceptSummary[] = [...conceptCounts.entries()]
-		.map(([concept, summary]) => ({
-			concept,
-			documentCount: summary.documentIds.size,
-			problemCount: summary.problemCount,
-			coverage: Number((summary.documentIds.size / totalDocuments).toFixed(2)),
-		}))
-		.sort((left, right) => right.problemCount - left.problemCount || right.documentCount - left.documentCount || left.concept.localeCompare(right.concept));
+		.map(([concept, summary]) => {
+			const coverage = coverageByConcept.get(concept);
+			const computedScore = summary.scoreSamples === 0 ? undefined : Number((summary.scoreTotal / summary.scoreSamples).toFixed(4));
+			return {
+				concept,
+				documentCount: summary.documentIds.size,
+				problemCount: summary.problemCount,
+				coverage: Number((summary.documentIds.size / totalDocuments).toFixed(2)),
+				groupCount: coverage?.groupCount ?? (summary.groupCount || undefined),
+				freqPages: coverage?.freqPages ?? (summary.freqPages || undefined),
+				semanticDensity: summary.scoreSamples === 0 ? undefined : Number((summary.semanticDensityTotal / summary.scoreSamples).toFixed(4)),
+				multipartPresence: coverage?.multipartPresence ?? (summary.scoreSamples === 0 ? undefined : Number((summary.multipartPresenceTotal / summary.scoreSamples).toFixed(4))),
+				score: coverage?.averageScore ?? computedScore,
+				coverageScore: coverage?.coverageScore,
+				gapScore: coverage?.gapScore,
+				isNoise: coverage?.noiseCandidate ?? false,
+				isGap: coverage?.gap,
+				isNoiseCandidate: coverage?.noiseCandidate,
+				isCrossDocumentAnchor: coverage?.crossDocumentAnchor,
+				overlapStrength: coverage?.overlapStrength,
+				stability: coverage?.stability,
+				redundancy: coverage?.redundancy,
+			};
+		})
+		.sort((left, right) => Number(left.isNoise ?? false) - Number(right.isNoise ?? false) || (right.overlapStrength ?? 0) - (left.overlapStrength ?? 0) || (right.gapScore ?? 0) - (left.gapScore ?? 0) || (right.score ?? 0) - (left.score ?? 0) || right.problemCount - left.problemCount || right.documentCount - left.documentCount || left.concept.localeCompare(right.concept));
 
 	const misconceptions: MisconceptionSummary[] = [...misconceptionCounts.entries()]
 		.map(([misconception, summary]) => ({

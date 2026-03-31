@@ -807,6 +807,110 @@ describe("buildIntentPayload", () => {
 		expect(test.sections[0]?.items[0]?.prompt).not.toContain("RAW PROBLEM TEXT SHOULD NOT BE USED");
 	});
 
+	it("build-test carries source alignment and prefers anchor concepts in section ordering", async () => {
+		const anchorDoc = buildAnalyzedDocument({
+			documentId: "doc-anchor",
+			sourceFileName: "anchor.pdf",
+			concept: "fractions",
+			problemText: "Explain why one half is equivalent to two fourths.",
+			representation: "text",
+			difficulty: "medium",
+		});
+		anchorDoc.problems[0] = {
+			...anchorDoc.problems[0]!,
+			problemGroupId: "group-fractions",
+			sourceSpan: { firstPage: 2, lastPage: 3 },
+		};
+		anchorDoc.insights.scoredConcepts = [{
+			concept: "fractions",
+			freqProblems: 2,
+			freqPages: 2,
+			freqDocuments: 1,
+			semanticDensity: 0.5,
+			multipartPresence: 0.3,
+			crossDocumentRecurrence: 1,
+			score: 2.4,
+			isNoise: false,
+		}];
+
+		const gapDoc = buildAnalyzedDocument({
+			documentId: "doc-gap",
+			sourceFileName: "gap.pdf",
+			concept: "ratios",
+			problemText: "Explain how a ratio compares two quantities.",
+			representation: "text",
+			difficulty: "medium",
+		});
+		gapDoc.problems[0] = {
+			...gapDoc.problems[0]!,
+			problemGroupId: "group-ratios",
+			sourceSpan: { firstPage: 5, lastPage: 5 },
+		};
+		gapDoc.insights.scoredConcepts = [{
+			concept: "ratios",
+			freqProblems: 1,
+			freqPages: 1,
+			freqDocuments: 1,
+			semanticDensity: 0.4,
+			multipartPresence: 0,
+			crossDocumentRecurrence: 1,
+			score: 1.6,
+			isNoise: false,
+		}];
+
+		const context = {
+			session: {
+				sessionId: "session-preview",
+				documentIds: ["doc-anchor", "doc-gap"],
+				documentRoles: { "doc-anchor": ["unknown"], "doc-gap": ["unknown"] },
+				sessionRoles: { "doc-anchor": ["source-material"], "doc-gap": ["source-material"] },
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+			registeredDocuments: [],
+			analyzedDocuments: [anchorDoc, gapDoc],
+			collectionAnalysis: {
+				sessionId: "session-preview",
+				documentIds: ["doc-anchor", "doc-gap"],
+				conceptOverlap: { fractions: ["doc-anchor", "doc-gap"] },
+				conceptGaps: ["ratios"],
+				difficultyProgression: {},
+				representationProgression: {},
+				redundancy: { "doc-anchor": [], "doc-gap": [] },
+				coverageSummary: {
+					totalConcepts: 2,
+					docsPerConcept: { fractions: 2, ratios: 1 },
+					perDocument: {
+						"doc-anchor": { documentId: "doc-anchor", conceptCount: 1, problemCount: 1, instructionalDensity: 1, representations: ["text"], dominantDifficulty: "medium" },
+						"doc-gap": { documentId: "doc-gap", conceptCount: 1, problemCount: 1, instructionalDensity: 1, representations: ["text"], dominantDifficulty: "medium" },
+					},
+					conceptCoverage: {
+						fractions: { concept: "fractions", documentIds: ["doc-anchor", "doc-gap"], averageScore: 2.4, totalScore: 4.8, coverageScore: 2.4, gapScore: 1.1, freqProblems: 2, freqPages: 2, freqDocuments: 2, groupCount: 1, multipartPresence: 0.3, crossDocumentAnchor: true, gap: false, noiseCandidate: false, stability: 2.5, overlapStrength: 2.6, redundancy: 0.8 },
+						ratios: { concept: "ratios", documentIds: ["doc-gap"], averageScore: 1.6, totalScore: 1.6, coverageScore: 0.8, gapScore: 1.3, freqProblems: 1, freqPages: 1, freqDocuments: 1, groupCount: 1, multipartPresence: 0, crossDocumentAnchor: false, gap: true, noiseCandidate: false, stability: 1.4, overlapStrength: 0.8, redundancy: 0.2 },
+					},
+				},
+				documentSimilarity: [],
+				conceptToDocumentMap: { fractions: ["doc-anchor", "doc-gap"], ratios: ["doc-gap"] },
+				updatedAt: new Date().toISOString(),
+			},
+			sourceFileNames: { "doc-anchor": "anchor.pdf", "doc-gap": "gap.pdf" },
+			groupedUnits: [],
+		} satisfies Awaited<ReturnType<typeof loadPrismSessionContext>> extends infer T ? NonNullable<T> : never;
+
+		const test = await buildIntentPayload({
+			sessionId: "session-preview",
+			documentIds: ["doc-anchor", "doc-gap"],
+			intentType: "build-test",
+			options: { itemCount: 2 },
+		}, context);
+
+		expect(test.sections[0]?.concept).toBe("fractions");
+		expect(test.sections[0]?.items[0]?.groupId).toBe("group-fractions");
+		expect(test.sections[0]?.items[0]?.primaryConcepts).toContain("fractions");
+		expect(test.sections[0]?.items[0]?.sourceDocumentId).toBe("doc-anchor");
+		expect(test.sections[0]?.items[0]?.sourceSpan).toEqual({ firstPage: 2, lastPage: 3 });
+	});
+
 	it("build-test caps requested itemCount at the number of available items", async () => {
 		const [registered] = registerDocuments([
 			{ sourceFileName: "single-problem.pdf", sourceMimeType: "application/pdf" },

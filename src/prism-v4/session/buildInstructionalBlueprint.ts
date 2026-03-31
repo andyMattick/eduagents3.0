@@ -115,12 +115,112 @@ function difficultyCountsFromProduct(product?: TestProduct) {
 	return toCountedDifficulty(countArrayValues(difficulties, DIFFICULTY_BANDS));
 }
 
+function sortAnalysisConcepts(analysis: InstructionalAnalysis) {
+	return [...analysis.concepts]
+		.filter((concept) => !concept.isNoise)
+		.sort((left, right) =>
+			Number(left.isNoise ?? false) - Number(right.isNoise ?? false)
+			|| (right.overlapStrength ?? 0) - (left.overlapStrength ?? 0)
+			|| (right.gapScore ?? 0) - (left.gapScore ?? 0)
+			|| (right.score ?? 0) - (left.score ?? 0)
+			|| right.problemCount - left.problemCount
+			|| right.documentCount - left.documentCount
+			|| left.concept.localeCompare(right.concept),
+		);
+}
+
+function clampQuotaWeight(value: number) {
+	return Number(Math.max(0.25, value).toFixed(4));
+}
+
+function computeConceptQuotaWeight(concept: InstructionalAnalysis["concepts"][number]) {
+	return clampQuotaWeight(
+		(concept.overlapStrength ?? 0) * 0.35
+		+ (concept.gapScore ?? 0) * 0.3
+		+ (concept.score ?? 0) * 0.2
+		+ (concept.multipartPresence ?? 0) * 0.1
+		+ (concept.groupCount ?? concept.problemCount) * 0.05,
+	);
+}
+
+function distributeConceptQuotas(concepts: InstructionalAnalysis["concepts"], totalItems: number) {
+	if (concepts.length === 0) {
+		return [] as Array<{ concept: InstructionalAnalysis["concepts"][number]; quota: number; included: boolean }>;
+	}
+
+	const sorted = sortAnalysisConcepts({
+		concepts,
+		problems: [],
+		misconceptions: [],
+		bloomSummary: { remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0, create: 0 },
+		modeSummary: {},
+		scenarioSummary: {},
+		difficultySummary: { low: 0, medium: 0, high: 0, averageInstructionalDensity: 0 },
+		domain: "",
+	});
+	const includedCount = Math.min(sorted.length, Math.max(1, totalItems));
+	const included = sorted.slice(0, includedCount);
+	const weights = included.map((concept) => ({ concept, weight: computeConceptQuotaWeight(concept) }));
+	const totalWeight = weights.reduce((sum, entry) => sum + entry.weight, 0) || included.length;
+	const quotas = new Map<string, number>();
+	let assigned = 0;
+
+	for (const entry of weights) {
+		const rawQuota = totalItems <= includedCount ? 1 : (entry.weight / totalWeight) * totalItems;
+		const baseQuota = totalItems <= includedCount ? 1 : Math.max(1, Math.floor(rawQuota));
+		quotas.set(entry.concept.concept, baseQuota);
+		assigned += baseQuota;
+	}
+
+	if (assigned > totalItems) {
+		for (const concept of [...included].reverse()) {
+			if (assigned <= totalItems) {
+				break;
+			}
+			const current = quotas.get(concept.concept) ?? 1;
+			if (current > 1) {
+				quotas.set(concept.concept, current - 1);
+				assigned -= 1;
+			}
+		}
+	}
+
+	if (assigned < totalItems) {
+		const rankedRemainders = weights
+			.map((entry) => ({
+				concept: entry.concept,
+				remainder: totalItems <= includedCount ? 0 : ((entry.weight / totalWeight) * totalItems) - (quotas.get(entry.concept.concept) ?? 1),
+			}))
+			.sort((left, right) => right.remainder - left.remainder || (right.concept.overlapStrength ?? 0) - (left.concept.overlapStrength ?? 0));
+		for (const entry of rankedRemainders) {
+			if (assigned >= totalItems) {
+				break;
+			}
+			quotas.set(entry.concept.concept, (quotas.get(entry.concept.concept) ?? 1) + 1);
+			assigned += 1;
+		}
+	}
+
+	return sorted.map((concept) => ({
+		concept,
+		quota: quotas.get(concept.concept) ?? 0,
+		included: quotas.has(concept.concept),
+	}));
+}
+
 export function buildInstructionalBlueprint(args: {
 	assessment: AssessmentFingerprint;
 	product?: TestProduct;
+	analysis?: InstructionalAnalysis;
 }): BlueprintModel {
 	const orderedProfiles = orderedConceptProfiles(args.assessment);
 	const bloomCounts = new Map<BloomLevel, number>();
+	const requestedTotalItems = Math.max(
+		1,
+		args.product?.totalItemCount
+			?? args.assessment.itemCount
+			?? orderedProfiles.reduce((sum, profile) => sum + Math.max(1, profile.absoluteItemHint ?? 1), 0),
+	);
 
 	for (const profile of orderedProfiles) {
 		const absoluteItemHint = Math.max(1, profile.absoluteItemHint ?? 1);
@@ -135,14 +235,34 @@ export function buildInstructionalBlueprint(args: {
 		}
 	}
 
-	return {
-		concepts: orderedProfiles.map((profile, index) => ({
+	const conceptBlueprints = args.analysis && args.analysis.concepts.length > 0
+		? distributeConceptQuotas(args.analysis.concepts, requestedTotalItems).map(({ concept, quota, included }, index) => ({
+			id: canonicalConceptId(concept.concept),
+			name: titleCase(concept.concept),
+			order: index,
+			included,
+			quota,
+			isNoise: concept.isNoise,
+			score: concept.score,
+			freqProblems: concept.problemCount,
+			freqDocuments: concept.documentCount,
+			groupCount: concept.groupCount,
+			multipartPresence: concept.multipartPresence,
+			overlapStrength: concept.overlapStrength,
+			gapScore: concept.gapScore,
+			coverageScore: concept.coverageScore,
+			isCrossDocumentAnchor: concept.isCrossDocumentAnchor,
+		}))
+		: orderedProfiles.map((profile, index) => ({
 			id: profile.conceptId,
 			name: profile.displayName || titleCase(profile.conceptId),
 			order: index,
 			included: true,
 			quota: Math.max(1, profile.absoluteItemHint ?? 1),
-		})),
+		}));
+
+	return {
+		concepts: conceptBlueprints,
 		bloomLadder: toCountedBloom(countRecordValues(Object.fromEntries(bloomCounts.entries()) as Partial<Record<BloomLevel, number>>, BLOOM_LEVELS)),
 		difficultyRamp: difficultyCountsFromProduct(args.product),
 		modeMix: toCountedMode(countArrayValues(orderedProfiles.flatMap((profile) => profile.itemModes), ITEM_MODES)),
@@ -242,13 +362,19 @@ export function buildInstructionalConceptMap(args: {
 			return {
 				id: concept.id,
 				label: concept.name,
-				weight: analysisConcept?.problemCount ?? concept.quota,
+				weight: analysisConcept?.overlapStrength ?? analysisConcept?.score ?? analysisConcept?.problemCount ?? concept.quota,
 			};
 		}),
 		edges: orderedConcepts.flatMap((concept, index) => {
 			const nextConcept = orderedConcepts[index + 1];
+			const currentAnalysis = analysisByConcept.get(canonicalConceptId(concept.id || concept.name));
+			const nextAnalysis = nextConcept ? analysisByConcept.get(canonicalConceptId(nextConcept.id || nextConcept.name)) : null;
 			return nextConcept
-				? [{ from: concept.id, to: nextConcept.id, weight: 1 }]
+				? [{
+					from: concept.id,
+					to: nextConcept.id,
+					weight: Number((((currentAnalysis?.overlapStrength ?? 0) + (nextAnalysis?.overlapStrength ?? 0) + (currentAnalysis?.coverageScore ?? 0) + (nextAnalysis?.coverageScore ?? 0)) / 2 || 1).toFixed(4)),
+				}]
 				: [];
 		}),
 	};

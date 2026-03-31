@@ -12,6 +12,16 @@ export interface BlueprintConcept {
   order: number;
   included: boolean;
   quota: number;
+	isNoise?: boolean;
+	score?: number;
+	freqProblems?: number;
+	freqDocuments?: number;
+	groupCount?: number;
+	multipartPresence?: number;
+	overlapStrength?: number;
+	gapScore?: number;
+	coverageScore?: number;
+	isCrossDocumentAnchor?: boolean;
 }
 
 export interface ConceptSummary {
@@ -19,6 +29,20 @@ export interface ConceptSummary {
 	documentCount: number;
 	problemCount: number;
 	coverage: number;
+	groupCount?: number;
+	freqPages?: number;
+	semanticDensity?: number;
+	multipartPresence?: number;
+	score?: number;
+	coverageScore?: number;
+	gapScore?: number;
+	isNoise?: boolean;
+	isGap?: boolean;
+	isNoiseCandidate?: boolean;
+	isCrossDocumentAnchor?: boolean;
+	overlapStrength?: number;
+	stability?: number;
+	redundancy?: number;
 }
 
 export interface ProblemSummary {
@@ -103,6 +127,13 @@ export interface AssessmentPreviewItemModel {
 	options?: string[];
 	answer?: string;
 	conceptId: string;
+	primaryConcepts?: string[];
+	groupId?: string;
+	sourceDocumentId?: string;
+	sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	};
 	bloom: BloomLevel;
 	difficulty: ExtractedProblemDifficulty;
 	mode: ItemMode;

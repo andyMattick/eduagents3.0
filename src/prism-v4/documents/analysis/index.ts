@@ -3,6 +3,7 @@ export * from "./buildCollectionAnalysis";
 export * from "./buildInsights";
 export * from "./canonicalize";
 export * from "./classifyFragments";
+export * from "../contentHash";
 export * from "./groupFragments";
 export * from "./extractAnchoredProblems";
 export * from "./parseOfficeDocuments";

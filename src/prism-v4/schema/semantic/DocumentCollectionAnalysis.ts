@@ -17,6 +17,8 @@ export interface RedundancyEntry {
 	sharedConcepts: string[];
 	similarityScore: number;
 	sharedProblemCount: number;
+	overlapStrength?: number;
+	redundancyScore?: number;
 }
 
 export interface DocumentSimilarityScore {
@@ -24,6 +26,8 @@ export interface DocumentSimilarityScore {
 	rightDocumentId: string;
 	score: number;
 	sharedConcepts: string[];
+	overlapStrength?: number;
+	redundancyScore?: number;
 }
 
 export interface DocumentCoverageSnapshot {
@@ -33,6 +37,29 @@ export interface DocumentCoverageSnapshot {
 	instructionalDensity: number;
 	representations: string[];
 	dominantDifficulty: "low" | "medium" | "high";
+	averageConceptScore?: number;
+	uniqueConcepts?: string[];
+	anchorConcepts?: string[];
+}
+
+export interface ConceptCoverageEntry {
+	concept: string;
+	documentIds: string[];
+	averageScore: number;
+	totalScore: number;
+	coverageScore: number;
+	gapScore: number;
+	freqProblems: number;
+	freqPages: number;
+	freqDocuments: number;
+	groupCount: number;
+	multipartPresence: number;
+	crossDocumentAnchor: boolean;
+	gap: boolean;
+	noiseCandidate: boolean;
+	stability: number;
+	overlapStrength: number;
+	redundancy: number;
 }
 
 export interface DocumentCollectionAnalysis {
@@ -47,6 +74,7 @@ export interface DocumentCollectionAnalysis {
 		totalConcepts: number;
 		docsPerConcept: Record<string, number>;
 		perDocument: Record<string, DocumentCoverageSnapshot>;
+		conceptCoverage?: Record<string, ConceptCoverageEntry>;
 	};
 	documentSimilarity: DocumentSimilarityScore[];
 	conceptToDocumentMap: Record<string, string[]>;

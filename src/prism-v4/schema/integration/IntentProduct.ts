@@ -40,6 +40,11 @@ export interface ProblemExtractionEntry {
 	problemId: string;
 	documentId: string;
 	sourceFileName: string;
+	problemGroupId?: string;
+	sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	};
 	text: string;
 	concepts: string[];
 	representations: string[];
@@ -61,6 +66,11 @@ export interface ProblemExtractionProduct extends IntentProductMetadata {
 export interface ConceptExtractionEntry {
 	concept: string;
 	frequency: number;
+	score?: number;
+	freqProblems?: number;
+	freqPages?: number;
+	semanticDensity?: number;
+	multipartPresence?: number;
 	documentIds: string[];
 	sourceFileNames: string[];
 	representations: string[];
@@ -138,8 +148,14 @@ export interface TestItem {
 	itemId: string;
 	prompt: string;
 	concept: string;
+	primaryConcepts?: string[];
+	groupId?: string;
 	sourceDocumentId: string;
 	sourceFileName: string;
+	sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	};
 	difficulty: ExtractedProblemDifficulty;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
@@ -167,6 +183,10 @@ export interface TestProduct extends IntentProductMetadata {
 export interface CompareDocumentConceptEntry {
 	concept: string;
 	documentIds: string[];
+	overlapStrength?: number;
+	stability?: number;
+	gap?: boolean;
+	crossDocumentAnchor?: boolean;
 }
 
 export interface CompareDocumentMetricEntry {
@@ -201,6 +221,8 @@ export interface CompareDocumentsProduct extends IntentProductMetadata {
 		rightDocumentId: string;
 		score: number;
 		sharedConcepts: string[];
+		overlapStrength?: number;
+		redundancyScore?: number;
 	}>;
 	sourceAnchors: ProductSourceAnchor[];
 	generatedAt: string;

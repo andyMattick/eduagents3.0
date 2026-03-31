@@ -37,6 +37,10 @@
 	  sourceType: "document" | "manual" | "itemBank" | "imported";
 	  sourceDocumentId?: string;
 	  sourcePageNumber?: number;
+	  sourceSpan?: {
+		firstPage: number;
+		lastPage: number;
+	  };
 	
 	  // Link to semantic fingerprint
 	  tags?: ProblemTagVector;

@@ -205,7 +205,7 @@ export async function runSemanticPipeline(input: TaggingPipelineInput): Promise<
   const taggedProblems = enrichedProblems.map((entry) => applyPostSemanticProcessing(
     toCanonicalProblem(input.documentId, entry.problem, entry.vector),
   ));
-  const conceptGraph = buildConceptGraph(enrichedProblemVectors);
+  const conceptGraph = buildConceptGraph(enrichedProblemVectors, enrichedProblems);
   const documentInsights = buildDocumentInsights({
     documentId: input.documentId,
     azureExtract: input.azureExtract,

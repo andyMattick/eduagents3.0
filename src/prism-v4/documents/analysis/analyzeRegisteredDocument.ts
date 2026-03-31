@@ -3,6 +3,7 @@ import { normalizeAzureLayout } from "../../ingestion/azure/azureNormalizer";
 import { mapAzureToCanonical } from "../../ingestion/normalize/structureMapper";
 import { runAzureExtraction } from "../../ingestion/azure/azureExtractor";
 import type { AnalyzedDocument, AzureExtractResult, CanonicalDocument } from "../../schema/semantic";
+import { computeContentHashV1, computeContentHashV2, withPreferredContentHash } from "../contentHash";
 import { buildAnalyzedDocumentInsights } from "./buildInsights";
 import { canonicalDocumentToAzureExtract, canonicalizeAzureExtract } from "./canonicalize";
 import { classifyFragments } from "./classifyFragments";
@@ -72,12 +73,20 @@ export async function analyzeRegisteredDocument(args: {
 		fragments,
 		problems: extractedProblems,
 	});
-
-	return {
+	const updatedAt = new Date().toISOString();
+	const analyzedDocumentBase: AnalyzedDocument = {
 		document: canonicalDocument,
 		fragments,
 		problems: extractedProblems,
 		insights,
-		updatedAt: new Date().toISOString(),
+		updatedAt,
 	};
+	const contentHashV1 = await computeContentHashV1(analyzedDocumentBase);
+	const contentHashV2 = await computeContentHashV2(analyzedDocumentBase);
+
+	return withPreferredContentHash({
+		...analyzedDocumentBase,
+		contentHashV1,
+		contentHashV2,
+	});
 }

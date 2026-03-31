@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { IntentRequestOptions } from "../../prism-v4/schema/integration/ConceptBlueprint";
 import type { IntentType } from "../../prism-v4/schema/integration/IntentRequest";
 import type { IntentProduct } from "../../prism-v4/schema/integration/IntentProduct";
-import type { InstructionalIntelligenceSession, TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
+import type { InstructionalIntelligenceSession, InstructionalSessionWorkspace, TeacherFingerprintModel } from "../../types/v4/InstructionalSession";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { AssessmentPreview } from "./AssessmentPreview";
 import { BlueprintPanel } from "./BlueprintPanel";
@@ -12,6 +12,10 @@ import { ClassDifferentiator } from "./ClassDifferentiator";
 import { ConceptMap } from "./ConceptMap";
 import { StudentProfilePanel } from "./StudentProfilePanel";
 import { TeacherFingerprintPanel } from "./TeacherFingerprintPanel";
+import { ViewerSurface } from "./viewer/ViewerSurface";
+import { useViewerSelection } from "./viewer/useViewerSelection";
+import { buildViewerData } from "../../prism-v4/viewer";
+import { InstructionalIntelligenceSurface } from "./intelligence/InstructionalIntelligenceSurface";
 
 type IntentConfig = {
 	label: string;
@@ -79,6 +83,7 @@ type PavilionSessionViewProps = {
 	loadDifferentiatedBuild: (classId: string) => Promise<unknown>;
 	loadBuilderPlan: (sessionId: string, studentId?: string) => Promise<unknown>;
 	loadAssessmentPreview: (sessionId: string, studentId?: string) => Promise<unknown>;
+	workspace?: InstructionalSessionWorkspace | null;
 };
 
 function getIntentConfig(intentType: IntentType) {
@@ -113,8 +118,11 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 		loadDifferentiatedBuild,
 		loadBuilderPlan,
 		loadAssessmentPreview,
+		workspace = null,
 	} = props;
-	const [activeTab, setActiveTab] = useState<"gallery" | "blueprint" | "concept-map" | "fingerprint" | "student" | "plan" | "preview" | "class">("gallery");
+	const viewerSelection = useViewerSelection();
+	const viewerData = useMemo(() => (workspace ? buildViewerData(workspace) : null), [workspace]);
+	const [activeTab, setActiveTab] = useState<"gallery" | "blueprint" | "concept-map" | "fingerprint" | "student" | "plan" | "preview" | "class" | "viewer" | "intelligence">("gallery");
 	const [selectedIntent, setSelectedIntent] = useState<IntentType>("build-test");
 	const [focus, setFocus] = useState("");
 	const [numericOptionValue, setNumericOptionValue] = useState(String(getIntentConfig("build-test").numericOption?.defaultValue ?? 5));
@@ -167,7 +175,7 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 		}
 
 		if (!hasAssessmentDraft) {
-			if (activeTab !== "gallery") {
+			if (activeTab !== "gallery" && activeTab !== "viewer") {
 				setActiveTab("gallery");
 			}
 			return;
@@ -367,7 +375,7 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 							{hasAssessmentDraft ? <button className={`v4-tab-button ${activeTab === "plan" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "plan"} onClick={() => setActiveTab("plan")}>Builder Plan</button> : null}
 							{hasAssessmentDraft ? <button className={`v4-tab-button ${activeTab === "preview" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "preview"} onClick={() => setActiveTab("preview")}>Living Assessment</button> : null}
 							{hasAssessmentDraft ? <button className={`v4-tab-button ${activeTab === "class" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "class"} onClick={() => setActiveTab("class")}>Class</button> : null}
-						</div>
+							{workspace ? <button className={`v4-tab-button ${activeTab === "viewer" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "viewer"} onClick={() => setActiveTab("viewer")}>Document Viewer</button> : null}						{workspace ? <button className={`v4-tab-button ${activeTab === "intelligence" ? "v4-tab-button-active" : ""}`} type="button" role="tab" aria-selected={activeTab === "intelligence"} onClick={() => setActiveTab("intelligence")}>Instructional Intelligence</button> : null}						</div>
 					</div>
 
 					{activeTab === "gallery" ? (
@@ -485,6 +493,28 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 					onLoadClassProfile={loadClassProfile}
 					onLoadDifferentiatedBuild={loadDifferentiatedBuild}
 				/>
+					) : null}
+					{activeTab === "viewer" && viewerData ? (
+						<ViewerSurface
+							data={viewerData}
+							selectedGroupKey={viewerSelection.selectedGroupKey}
+							selectedConcept={viewerSelection.selectedConcept}
+							selectedPreviewItem={viewerSelection.selectedPreviewItem}
+							onSelectGroup={viewerSelection.selectGroup}
+							onSelectConcept={viewerSelection.selectConcept}
+							onSelectPreviewItem={viewerSelection.selectPreviewItem}
+						/>
+					) : null}
+					{activeTab === "intelligence" && viewerData ? (
+						<InstructionalIntelligenceSurface
+							data={viewerData}
+							selectedGroupKey={viewerSelection.selectedGroupKey}
+							selectedConcept={viewerSelection.selectedConcept}
+							selectedPreviewItem={viewerSelection.selectedPreviewItem}
+							onSelectGroup={viewerSelection.selectGroup}
+							onSelectConcept={viewerSelection.selectConcept}
+							onSelectPreviewItem={viewerSelection.selectPreviewItem}
+						/>
 					) : null}
 				</>
 			) : null}

@@ -1,6 +1,7 @@
 import type { DocumentSession } from "../schema/domain";
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
 import type { AnalyzedDocument, CanonicalDocument, DocumentCollectionAnalysis } from "../schema/semantic";
+import { withPreferredContentHash } from "./contentHash";
 
 export interface RegisteredDocument {
 	documentId: string;
@@ -76,15 +77,16 @@ export function getRegisteredDocument(documentId: string) {
 }
 
 export function saveAnalyzedDocument(analyzedDocument: AnalyzedDocument) {
-	analyzedDocuments.set(analyzedDocument.document.id, analyzedDocument);
+	const normalized = withPreferredContentHash(analyzedDocument);
+	analyzedDocuments.set(normalized.document.id, normalized);
 	const existing = documents.get(analyzedDocument.document.id);
 	if (existing) {
-		documents.set(analyzedDocument.document.id, {
+		documents.set(normalized.document.id, {
 			...existing,
-			canonicalDocument: analyzedDocument.document,
+			canonicalDocument: normalized.document,
 		});
 	}
-	return analyzedDocument;
+	return normalized;
 }
 
 export function getAnalyzedDocument(documentId: string) {

@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DocumentUpload } from "../DocumentUpload";
@@ -265,6 +265,35 @@ describe("Pavilion integration", () => {
           responseTimes: [{ itemId: "item-1", conceptId: "fractions", ms: 1200 }],
         });
       }
+      if (input === "/api/v4/sessions/session-1/builder-plan") {
+        return jsonResponse({
+          sessionId: "session-1",
+          builderPlan: {
+            sections: [{ conceptId: "fractions", conceptName: "Fractions", itemCount: 1, bloomSequence: ["understand"], difficultySequence: ["medium"], modeSequence: ["compare"], scenarioSequence: ["abstract-symbolic"] }],
+            adaptiveTargets: { boostedConcepts: ["fractions"], suppressedConcepts: [], boostedBloom: ["understand"], suppressedBloom: [] },
+          },
+        });
+      }
+      if (input === "/api/v4/sessions/session-1/assessment-preview") {
+        return jsonResponse({
+          sessionId: "session-1",
+          assessmentPreview: {
+            items: [{
+              itemId: "item-1",
+              stem: "Compare the fractions 2/3 and 3/4.",
+              answer: "Use common denominators.",
+              conceptId: "fractions",
+              bloom: "understand",
+              difficulty: "medium",
+              mode: "compare",
+              scenario: "abstract-symbolic",
+              misconceptionTag: "denominator-swap",
+              teacherReasons: ["Fractions was boosted for support."],
+              studentReasons: ["This stays symbolic for scaffolding."],
+            }],
+          },
+        });
+      }
       if (input === "/api/v4/sessions/session-1/builder-plan?studentId=student-42") {
         return jsonResponse({
           sessionId: "session-1",
@@ -403,5 +432,40 @@ describe("Pavilion integration", () => {
     expect(fetchMock.mock.calls.some(([input]) => input === "/api/v4/classes/session-1/performance")).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => input === "/api/v4/classes/session-1/differentiated-build")).toBe(true);
     expect(fetchMock.mock.calls.some(([input, init]) => input === "/api/v4/documents/intent" && init?.method === "POST")).toBe(true);
+
+    // ── 11a: Document Viewer tab is present ──────────────────────────────────
+    const viewerTab = screen.getByRole("tab", { name: "Document Viewer" });
+    expect(viewerTab).toBeInTheDocument();
+
+    // ── 11b: Clicking the tab renders ViewerSurface ──────────────────────────
+    fireEvent.click(viewerTab);
+    const viewerSurface = await screen.findByTestId("v4-viewer-surface");
+    expect(viewerSurface).toBeInTheDocument();
+
+    // ── 11c: ViewerSurface receives real ViewerData ──────────────────────────
+    // At least one concept ("fractions") is visible inside the viewer surface
+    expect(within(viewerSurface).getAllByText("fractions").length).toBeGreaterThan(0);
+    // At least one document/group heading (fractions-notes.docx) is visible
+    expect(within(viewerSurface).getAllByText("fractions-notes.docx").length).toBeGreaterThan(0);
+    // At least one preview item (the extracted problem text) is visible
+    expect(within(viewerSurface).getAllByText(/Solve a problem/).length).toBeGreaterThan(0);
+
+    // ── 11d: Switching tabs preserves viewer selection ───────────────────────
+    // Click the "fractions" concept button to select it (aria-pressed starts as false)
+    const unselectedConceptBtns = within(viewerSurface).getAllByRole("button", { pressed: false });
+    const fractionConceptBtn = unselectedConceptBtns.find((btn) => btn.textContent?.includes("fractions"));
+    expect(fractionConceptBtn).toBeDefined();
+    fireEvent.click(fractionConceptBtn!);
+
+    // Switch to Builder Plan tab then back to Document Viewer
+    fireEvent.click(screen.getByRole("tab", { name: "Builder Plan" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Document Viewer" }));
+
+    // Selection must survive the remount — aria-pressed=true on the concept button
+    const restoredViewerSurface = screen.getByTestId("v4-viewer-surface");
+    const pressedBtns = within(restoredViewerSurface)
+      .getAllByRole("button")
+      .filter((btn) => btn.getAttribute("aria-pressed") === "true" && btn.textContent?.includes("fractions"));
+    expect(pressedBtns.length).toBeGreaterThan(0);
   });
 });

@@ -85,9 +85,11 @@ export function extractAnchoredProblems(args: {
 		return {
 			id: problem.problemId,
 			documentId: args.document.id,
+			problemGroupId: problem.problemGroupId,
 			anchors: problemAnchors,
 			text: problem.cleanedText ?? problem.rawText,
 			extractionMode,
+			sourceSpan: problem.sourceSpan,
 			concepts: Object.keys(concepts[problem.problemId] ?? {}),
 			representations: [representations[problem.problemId] ?? "paragraph"],
 			difficulty: difficultyLabel(difficultyScore),

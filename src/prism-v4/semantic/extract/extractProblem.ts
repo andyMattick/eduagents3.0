@@ -1,5 +1,6 @@
 import type { Problem } from "../../schema/domain";
 import type { AzureExtractResult } from "../../schema/semantic";
+import { classifyParagraphBlocks } from "./classifyParagraphBlocks";
 import { normalizeWhitespace } from "../utils/textUtils";
 
 interface ParagraphBlock {
@@ -21,6 +22,7 @@ interface ProblemGroupDraft {
 	rootProblemId: string;
 	teacherLabel: string;
 	pageNumber: number;
+	lastPageNumber: number;
 	stemLines: string[];
 	parts: ProblemPartDraft[];
 }
@@ -159,6 +161,10 @@ function createProblem(params: {
 	cleanedText: string;
 	fileName: string;
 	sourcePageNumber: number;
+	sourceSpan: {
+		firstPage: number;
+		lastPage: number;
+	};
 	displayOrder: number;
 }): Problem {
 	const createdAt = new Date().toISOString();
@@ -186,6 +192,7 @@ function createProblem(params: {
 		sourceType: "document",
 		sourceDocumentId: params.fileName,
 		sourcePageNumber: params.sourcePageNumber,
+		sourceSpan: params.sourceSpan,
 	};
 }
 
@@ -210,6 +217,7 @@ function buildProblemGroupProblems(group: ProblemGroupDraft, fileName: string): 
 		cleanedText: stemText,
 		fileName,
 		sourcePageNumber: group.pageNumber,
+		sourceSpan: { firstPage: group.pageNumber, lastPage: group.lastPageNumber },
 		displayOrder: rootDisplayOrder,
 	});
 
@@ -241,6 +249,7 @@ function buildProblemGroupProblems(group: ProblemGroupDraft, fileName: string): 
 			cleanedText,
 			fileName,
 			sourcePageNumber: part.pageNumber,
+			sourceSpan: { firstPage: group.pageNumber, lastPage: group.lastPageNumber },
 			displayOrder: group.problemNumber * 1000 + part.partIndex * 100,
 		});
 		}),
@@ -272,6 +281,7 @@ function buildLegacyProblem(rawText: string, cleanedText: string, fileName: stri
 		sourceType: "document",
 		sourceDocumentId: fileName,
 		sourcePageNumber,
+		sourceSpan: { firstPage: sourcePageNumber, lastPage: sourcePageNumber },
 	};
 }
 
@@ -292,6 +302,7 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 				rootProblemId: `p${topLevel.problemNumber}`,
 				teacherLabel: `${topLevel.problemNumber}.`,
 				pageNumber: block.pageNumber,
+				lastPageNumber: block.pageNumber,
 				stemLines: inlineSubparts?.leadingText ? [inlineSubparts.leadingText] : topLevel.body ? [topLevel.body] : [],
 				parts: inlineSubparts?.parts ?? [],
 			};
@@ -306,6 +317,8 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 			}
 			continue;
 		}
+
+		currentGroup.lastPageNumber = Math.max(currentGroup.lastPageNumber, block.pageNumber);
 
 		const inlineSubparts = splitInlineSubparts(block.text, block.pageNumber);
 		if (inlineSubparts) {
@@ -331,6 +344,7 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 					rootProblemId: `p${subpart.problemNumber}`,
 					teacherLabel: `${subpart.problemNumber}.`,
 					pageNumber: block.pageNumber,
+					lastPageNumber: block.pageNumber,
 					stemLines: [],
 					parts: [],
 				};
@@ -386,15 +400,15 @@ function extractLegacyProblems(blocks: ParagraphBlock[], azureExtract: AzureExtr
 }
 
 export function extractProblems(azureExtract: AzureExtractResult): Problem[] {
-	const blocks = (azureExtract.paragraphs ?? [])
+	const blocks = classifyParagraphBlocks(azureExtract)
+		.filter((paragraph) => !paragraph.isSuppressed)
 		.map((paragraph) => ({
-			text: normalizeWhitespace(paragraph.text),
+			text: paragraph.text,
 			pageNumber: paragraph.pageNumber,
 			role: paragraph.role,
-		}))
-		.filter((paragraph) => paragraph.text.length > 0);
+		}));
 
-	const fallbackText = normalizeWhitespace(azureExtract.content);
+	const fallbackText = normalizeWhitespace(blocks.map((block) => block.text).join("\n") || azureExtract.content);
 	if (blocks.length === 0) {
 		return fallbackText.length > 0
 			? [buildLegacyProblem(azureExtract.content, fallbackText, azureExtract.fileName, 1)]
