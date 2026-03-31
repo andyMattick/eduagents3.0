@@ -8,6 +8,18 @@
       "handle": "filesystem"
     },
     {
+      "src": "/api/v4/sessions/([^/]+)/assessment-preview",
+      "dest": "/api/v4/sessions/assessment-preview?sessionId=$1"
+    },
+    {
+      "src": "/api/v4/sessions/([^/]+)/builder-plan",
+      "dest": "/api/v4/sessions/builder-plan?sessionId=$1"
+    },
+    {
+      "src": "/api/v4/sessions/([^/]+)/blueprint",
+      "dest": "/api/v4/sessions/blueprint?sessionId=$1"
+    },
+    {
       "src": "/.*",
       "dest": "/index.html"
     }

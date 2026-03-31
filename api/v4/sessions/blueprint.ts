@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { handleBlueprint } from "../shared";
+import { handleBlueprint } from "./shared";
 
 export const runtime = "nodejs";
 
