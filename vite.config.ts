@@ -28,6 +28,170 @@ function sendJson(res: any, statusCode: number, payload: unknown) {
   res.end(JSON.stringify(payload))
 }
 
+async function readTextBody(req: NodeJS.ReadableStream): Promise<string> {
+  const chunks: Buffer[] = []
+
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (chunk: Buffer) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)))
+    req.on('end', resolve)
+    req.on('error', reject)
+  })
+
+  return Buffer.concat(chunks).toString()
+}
+
+function appendQueryValue(target: Record<string, string | string[]>, key: string, value: string) {
+  const current = target[key]
+
+  if (typeof current === 'undefined') {
+    target[key] = value
+    return
+  }
+
+  if (Array.isArray(current)) {
+    current.push(value)
+    target[key] = current
+    return
+  }
+
+  target[key] = [current, value]
+}
+
+function createLocalQuery(url: URL, extra: Record<string, string> = {}) {
+  const query: Record<string, string | string[]> = {}
+
+  url.searchParams.forEach((value, key) => {
+    appendQueryValue(query, key, value)
+  })
+
+  Object.entries(extra).forEach(([key, value]) => {
+    appendQueryValue(query, key, value)
+  })
+
+  return query
+}
+
+function createLocalVercelResponse(res: any) {
+  const response = res
+
+  response.status = (code: number) => {
+    res.statusCode = code
+    return response
+  }
+
+  response.json = (payload: unknown) => {
+    if (!res.getHeader('Content-Type')) {
+      res.setHeader('Content-Type', 'application/json')
+    }
+    res.end(JSON.stringify(payload))
+    return response
+  }
+
+  response.send = (payload: unknown) => {
+    if (typeof payload === 'object' && payload !== null && !Buffer.isBuffer(payload)) {
+      return response.json(payload)
+    }
+    res.end(payload)
+    return response
+  }
+
+  return response
+}
+
+type LocalApiRoute = {
+  pattern: RegExp
+  modulePath: string
+  queryFromMatch?: (match: RegExpMatchArray) => Record<string, string>
+  readRawBody?: boolean
+}
+
+const localPrismRoutes: LocalApiRoute[] = [
+  { pattern: /^\/documents\/upload$/, modulePath: '/api/v4/documents/upload.ts', readRawBody: true },
+  { pattern: /^\/documents\/session$/, modulePath: '/api/v4/documents/session.ts' },
+  { pattern: /^\/documents\/session-analysis$/, modulePath: '/api/v4/documents/session-analysis.ts' },
+  {
+    pattern: /^\/documents\/session\/([^/]+)\/analysis$/,
+    modulePath: '/api/v4/documents/session/[sessionId]/analysis.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  { pattern: /^\/documents\/intent$/, modulePath: '/api/v4/documents/intent.ts' },
+  { pattern: /^\/documents\/analyze$/, modulePath: '/api/v4/documents/analyze.ts' },
+  { pattern: /^\/sessions\/assessment-preview$/, modulePath: '/api/v4/sessions/assessment-preview.ts' },
+  { pattern: /^\/sessions\/builder-plan$/, modulePath: '/api/v4/sessions/builder-plan.ts' },
+  { pattern: /^\/sessions\/blueprint$/, modulePath: '/api/v4/sessions/blueprint.ts' },
+  {
+    pattern: /^\/sessions\/([^/]+)\/assessment-preview$/,
+    modulePath: '/api/v4/sessions/assessment-preview.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/sessions\/([^/]+)\/builder-plan$/,
+    modulePath: '/api/v4/sessions/builder-plan.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/sessions\/([^/]+)\/blueprint$/,
+    modulePath: '/api/v4/sessions/blueprint.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/students\/([^/]+)\/performance$/,
+    modulePath: '/api/v4/students/[studentId]/performance.ts',
+    queryFromMatch: (match) => ({ studentId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/teachers\/([^/]+)\/fingerprint$/,
+    modulePath: '/api/v4/teachers/[teacherId]/fingerprint.ts',
+    queryFromMatch: (match) => ({ teacherId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/classes\/([^/]+)\/performance$/,
+    modulePath: '/api/v4/classes/[classId]/performance.ts',
+    queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/classes\/([^/]+)\/differentiated-build$/,
+    modulePath: '/api/v4/classes/[classId]/differentiated-build.ts',
+    queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
+  },
+  { pattern: /^\/narrate-problem$/, modulePath: '/api/v4/narrate-problem.ts' },
+  { pattern: /^\/teacher-feedback\/templates$/, modulePath: '/api/v4/teacher-feedback/templates.ts' },
+  { pattern: /^\/teacher-feedback\/assessment-blueprint$/, modulePath: '/api/v4/teacher-feedback/assessment-blueprint.ts' },
+  { pattern: /^\/teacher-feedback\/concept-verification-preview$/, modulePath: '/api/v4/teacher-feedback/concept-verification-preview.ts' },
+  { pattern: /^\/teacher-feedback\/regenerate-item$/, modulePath: '/api/v4/teacher-feedback/regenerate-item.ts' },
+  { pattern: /^\/teacher-feedback\/regenerate-section$/, modulePath: '/api/v4/teacher-feedback/regenerate-section.ts' },
+  { pattern: /^\/teacher-feedback\/learning$/, modulePath: '/api/v4/teacher-feedback/learning.ts' },
+  {
+    pattern: /^\/teacher-feedback\/([^/]+)$/,
+    modulePath: '/api/v4/teacher-feedback/[canonicalProblemId].ts',
+    queryFromMatch: (match) => ({ canonicalProblemId: decodeURIComponent(match[1] ?? '') }),
+  },
+  { pattern: /^\/teacher-feedback$/, modulePath: '/api/v4/teacher-feedback.ts' },
+  {
+    pattern: /^\/problem-overrides\/([^/]+)$/,
+    modulePath: '/api/v4/problem-overrides/[canonicalProblemId].ts',
+    queryFromMatch: (match) => ({ canonicalProblemId: decodeURIComponent(match[1] ?? '') }),
+  },
+  { pattern: /^\/student-performance\/ingestAssessment$/, modulePath: '/api/v4/student-performance/ingestAssessment.ts' },
+]
+
+async function invokeLocalApiRoute(server: any, req: any, res: any, route: LocalApiRoute, url: URL, match: RegExpMatchArray) {
+  const mod = await server.ssrLoadModule(route.modulePath)
+  const handler = mod?.default
+
+  if (typeof handler !== 'function') {
+    throw new Error(`No default handler exported from ${route.modulePath}`)
+  }
+
+  req.query = createLocalQuery(url, route.queryFromMatch?.(match) ?? {})
+
+  if (!route.readRawBody && req.method && !['GET', 'HEAD', 'OPTIONS'].includes(req.method) && typeof req.body === 'undefined') {
+    req.body = await readTextBody(req)
+  }
+
+  return handler(req, createLocalVercelResponse(res))
+}
+
 /**
  * Local dev middleware — serves /api/llm so `npm run dev` works without
  * Vercel CLI. In production, the real Vercel serverless function takes over.
@@ -454,8 +618,13 @@ function localPrismV4Proxy(): Plugin {
         const url = new URL(req.url ?? '/', 'http://localhost')
         const pathname = url.pathname.replace(/\/+$/, '') || '/'
 
-        const feedbackMethods = 'GET, POST, DELETE, OPTIONS'
-        setApiCors(res, feedbackMethods)
+        const route = localPrismRoutes.find((entry) => entry.pattern.test(pathname))
+        if (!route) {
+          next()
+          return
+        }
+
+        setApiCors(res, 'GET, POST, PATCH, DELETE, OPTIONS')
 
         if (req.method === 'OPTIONS') {
           sendJson(res, 200, {})
@@ -463,85 +632,14 @@ function localPrismV4Proxy(): Plugin {
         }
 
         try {
-          const feedbackMod = await server.ssrLoadModule('/src/prism-v4/teacherFeedback/index.ts')
-
-          if (pathname === '/teacher-feedback') {
-            if (req.method !== 'POST') {
-              sendJson(res, 405, { error: 'Method not allowed' })
-              return
-            }
-
-            const body = await readJsonBody(req)
-            if (!body.teacherId || !body.documentId || !body.canonicalProblemId || !body.target) {
-              sendJson(res, 400, { error: 'Missing required teacher feedback fields.' })
-              return
-            }
-
-            const result = await feedbackMod.saveTeacherFeedback(body)
-            sendJson(res, 200, result)
+          const match = pathname.match(route.pattern)
+          if (!match) {
+            next()
             return
           }
 
-          if (pathname === '/teacher-feedback/templates') {
-            if (req.method !== 'GET') {
-              sendJson(res, 405, { error: 'Method not allowed' })
-              return
-            }
-
-            const subject = url.searchParams.get('subject') ?? undefined
-            const domain = url.searchParams.get('domain') ?? undefined
-            const templates = await feedbackMod.getTeacherDerivedTemplateRecords(subject, domain)
-            sendJson(res, 200, { templates })
-            return
-          }
-
-          if (pathname.startsWith('/teacher-feedback/')) {
-            if (req.method !== 'GET') {
-              sendJson(res, 405, { error: 'Method not allowed' })
-              return
-            }
-
-            const canonicalProblemId = decodeURIComponent(pathname.slice('/teacher-feedback/'.length))
-            if (!canonicalProblemId) {
-              sendJson(res, 400, { error: 'Missing canonicalProblemId' })
-              return
-            }
-
-            const feedback = await feedbackMod.getFeedbackForProblem(canonicalProblemId)
-            sendJson(res, 200, { feedback })
-            return
-          }
-
-          if (pathname.startsWith('/problem-overrides/')) {
-            const canonicalProblemId = decodeURIComponent(pathname.slice('/problem-overrides/'.length))
-            if (!canonicalProblemId) {
-              sendJson(res, 400, { error: 'Missing canonicalProblemId' })
-              return
-            }
-
-            if (req.method === 'GET') {
-              const overrides = await feedbackMod.getProblemOverride(canonicalProblemId)
-              sendJson(res, 200, { overrides })
-              return
-            }
-
-            if (req.method === 'DELETE') {
-              const result = await feedbackMod.deleteProblemOverride(canonicalProblemId)
-              sendJson(res, 200, result)
-              return
-            }
-
-            sendJson(res, 405, { error: 'Method not allowed' })
-            return
-          }
-
-          next()
+          await invokeLocalApiRoute(server, req, res, route, url, match)
         } catch (err: any) {
-          if (err instanceof Error && err.message.startsWith('INVALID_OVERRIDE:')) {
-            sendJson(res, 400, { error: err.message.replace('INVALID_OVERRIDE: ', '') })
-            return
-          }
-
           sendJson(res, 500, { error: err?.message ?? 'Local PRISM v4 API proxy failed' })
         }
       })
@@ -553,6 +651,11 @@ export default defineConfig(({ mode }) => {
   // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
   // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
   const env = loadEnv(mode, process.cwd(), '');
+  Object.entries(env).forEach(([key, value]) => {
+    if (typeof process.env[key] === 'undefined') {
+      process.env[key] = value
+    }
+  })
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
 
   return {
