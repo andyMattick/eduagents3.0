@@ -62,7 +62,7 @@ async function resolveSessionBlueprint(sessionId: string) {
 		sourceType: "generated",
 	});
 	const analysis = buildInstructionalAnalysis(context);
-	const blueprint = buildInstructionalBlueprint({ assessment, product: activeAssessment.payload });
+	const blueprint = buildInstructionalBlueprint({ assessment, product: activeAssessment.payload, analysis });
 	const conceptMap = buildInstructionalConceptMap({ analysis, blueprint });
 
 	return {
