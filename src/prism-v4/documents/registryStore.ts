@@ -135,7 +135,11 @@ function isMissingSnapshotTableError(error: unknown) {
 	const message = String(error instanceof Error ? error.message : error).toLowerCase();
 	return message.includes("pgrst205")
 		|| (message.includes("schema cache") && message.includes(SESSION_SNAPSHOTS_TABLE))
-		|| message.includes(`could not find the table 'public.${SESSION_SNAPSHOTS_TABLE}'`);
+		|| message.includes(`could not find the table 'public.${SESSION_SNAPSHOTS_TABLE}'`)
+		// 42703: undefined_column — migration not yet applied; table schema is out of date
+		|| message.includes("42703")
+		// 23502: not_null_violation — old `snapshot` column exists without a default; migration pending
+		|| (message.includes("23502") && message.includes(SESSION_SNAPSHOTS_TABLE));
 }
 
 function disablePersistedSnapshots(error: unknown) {

@@ -104,7 +104,18 @@ function buildAnalyzedDocument(args: {
 }
 
 describe("Prism session snapshots", () => {
-	afterEach(() => {
+	// Unique suffix per test run prevents Supabase document accumulation across runs.
+	const runId = Date.now().toString(36);
+	const SESSION_LOAD = `session-snapshot-load-${runId}`;
+	const SESSION_INVALIDATE = `session-snapshot-invalidate-${runId}`;
+	const SESSION_UNIT_OVERRIDE = `session-snapshot-unit-override-${runId}`;
+	const SESSION_ROUTE = `session-snapshot-route-${runId}`;
+
+	afterEach(async () => {
+		await Promise.all(
+			[SESSION_LOAD, SESSION_INVALIDATE, SESSION_UNIT_OVERRIDE, SESSION_ROUTE]
+				.map((id) => invalidatePrismSessionSnapshot(id)),
+		);
 		resetPrismSessionContextCache();
 		resetPrismSessionSnapshotStore();
 		resetDocumentRegistryState();
@@ -114,7 +125,7 @@ describe("Prism session snapshots", () => {
 
 	it("reuses a persisted snapshot after the in-memory cache is cleared", async () => {
 		const [document] = await registerDocumentsStore([{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" }]);
-		const session = await createDocumentSessionStore([document!.documentId], "session-snapshot-load");
+		const session = await createDocumentSessionStore([document!.documentId], SESSION_LOAD);
 		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
 			documentId: document!.documentId,
 			sourceFileName: "notes.pdf",
@@ -139,7 +150,7 @@ describe("Prism session snapshots", () => {
 
 	it("invalidates persisted snapshots after document and analysis mutations", async () => {
 		const [document] = await registerDocumentsStore([{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" }]);
-		const session = await createDocumentSessionStore([document!.documentId], "session-snapshot-invalidate");
+		const session = await createDocumentSessionStore([document!.documentId], SESSION_INVALIDATE);
 		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
 			documentId: document!.documentId,
 			sourceFileName: "notes.pdf",
@@ -172,7 +183,7 @@ describe("Prism session snapshots", () => {
 
 	it("rehydrates snapshot-backed grouped units with live concept overrides", async () => {
 		const [document] = await registerDocumentsStore([{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" }]);
-		const session = await createDocumentSessionStore([document!.documentId], "session-snapshot-unit-override");
+		const session = await createDocumentSessionStore([document!.documentId], SESSION_UNIT_OVERRIDE);
 		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
 			documentId: document!.documentId,
 			sourceFileName: "notes.pdf",
@@ -200,7 +211,7 @@ describe("Prism session snapshots", () => {
 
 	it("lets the intent route reuse a persisted snapshot on the second request after cache reset", async () => {
 		const [document] = await registerDocumentsStore([{ sourceFileName: "notes.pdf", sourceMimeType: "application/pdf" }]);
-		const session = await createDocumentSessionStore([document!.documentId], "session-snapshot-route");
+		const session = await createDocumentSessionStore([document!.documentId], SESSION_ROUTE);
 		await saveAnalyzedDocumentStore(buildAnalyzedDocument({
 			documentId: document!.documentId,
 			sourceFileName: "notes.pdf",
