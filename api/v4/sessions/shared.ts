@@ -16,6 +16,7 @@ import {
 	mergeBlueprintModel,
 	type BlueprintModel,
 } from "../../../src/prism-v4/session";
+import { buildConceptRegistry } from "../../../src/prism-v4/normalizer";
 
 const DEFAULT_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -99,6 +100,7 @@ export async function handleBuilderPlan(req: VercelRequest, res: VercelResponse)
 				product: runtime.product,
 				conceptProfiles: runtime.assessmentFingerprint.conceptProfiles,
 				adaptiveTargets: runtime.adaptiveTargets,
+				registry: buildConceptRegistry(runtime.context.analyzedDocuments, [], null),
 			}),
 		});
 	} catch (error) {
@@ -131,6 +133,7 @@ export async function handleAssessmentPreview(req: VercelRequest, res: VercelRes
 			assessmentPreview: buildInstructionalPreview({
 				product: runtime.product,
 				productRecord: runtime.productRecord,
+				registry: buildConceptRegistry(runtime.context.analyzedDocuments, [], null),
 			}),
 		});
 	} catch (error) {

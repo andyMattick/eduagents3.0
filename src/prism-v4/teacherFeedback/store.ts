@@ -495,10 +495,16 @@ function recomputeStoredFingerprintsFromAssessments(teacherId: string, assessmen
 		}
 	}
 
+	// Only non-generated assessments (uploaded / hybrid) feed the teacher fingerprint.
+	// Generated assessments are AI artifacts — they reflect no teacher intent.
+	const teacherCandidates = assessments.filter((a) => a.sourceType !== "generated");
+
 	let teacherFingerprint: TeacherFingerprint | null = null;
 	for (const assessment of assessments) {
 		assessmentFingerprintMemory.set(assessment.assessmentId, assessment);
-		teacherFingerprint = mergeAssessmentIntoTeacherFingerprint({ previous: teacherFingerprint, assessment, now: assessment.lastUpdated });
+		if (assessment.sourceType !== "generated") {
+			teacherFingerprint = mergeAssessmentIntoTeacherFingerprint({ previous: teacherFingerprint, assessment, now: assessment.lastUpdated });
+		}
 		if (assessment.unitId) {
 			const key = fingerprintUnitKey(teacherId, assessment.unitId);
 			const previousUnit = unitFingerprintMemory.get(key) ?? null;
@@ -507,7 +513,7 @@ function recomputeStoredFingerprintsFromAssessments(teacherId: string, assessmen
 	}
 
 	if (teacherFingerprint) {
-		teacherFingerprintMemory.set(teacherId, finalizeFlowProfiles(assessments, teacherFingerprint) as TeacherFingerprint);
+		teacherFingerprintMemory.set(teacherId, finalizeFlowProfiles(teacherCandidates, teacherFingerprint) as TeacherFingerprint);
 		for (const [key, fingerprint] of [...unitFingerprintMemory.entries()]) {
 			if (!key.startsWith(`${teacherId}::`)) {
 				continue;
@@ -903,10 +909,15 @@ export async function updateAssessmentFingerprint(args: {
 		return null;
 	}
 
-	const updated = applyAssessmentFingerprintEdits({
+	const rawUpdated = applyAssessmentFingerprintEdits({
 		assessment: current,
 		edits: args.edits,
 	});
+	// A teacher edit on a generated assessment graduates it to "hybrid" —
+	// it now carries teacher intent and should feed the teacher fingerprint.
+	const updated = rawUpdated.sourceType === "generated"
+		? { ...rawUpdated, sourceType: "hybrid" as const }
+		: rawUpdated;
 	assessmentFingerprintMemory.set(updated.assessmentId, updated);
 	if (canUseSupabase() && assessmentFingerprintPersistenceSupported) {
 		try {

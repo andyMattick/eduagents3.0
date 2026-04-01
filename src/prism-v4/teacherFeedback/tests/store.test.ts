@@ -90,13 +90,8 @@ describe("teacher feedback fingerprint store", () => {
 			unitId: "unit-a",
 			derivedFromAssessmentIds: ["assessment-1"],
 		});
-		expect(await getTeacherFingerprint("teacher-1")).toMatchObject({
-			teacherId: "teacher-1",
-			version: 2,
-		});
-		expect((await getTeacherFingerprint("teacher-1"))?.globalConceptProfiles.map((profile) => profile.conceptId)).toEqual(
-			expect.arrayContaining(["hypothesis-testing", "type-i-and-type-ii-errors"]),
-		);
+		// Generated assessments must NOT feed the teacher fingerprint — no teacher intent has been expressed.
+		expect(await getTeacherFingerprint("teacher-1")).toBeNull();
 	});
 
 	it("updates stored assessment fingerprints and recomputes aggregated teacher preferences", async () => {
@@ -147,6 +142,8 @@ describe("teacher feedback fingerprint store", () => {
 		});
 
 		expect(updated).not.toBeNull();
+		// A teacher edit on a generated assessment promotes sourceType to "hybrid".
+		expect(updated?.assessment.sourceType).toBe("hybrid");
 		expect(updated?.assessment.conceptProfiles.map((profile) => profile.conceptId)).toEqual(["hypothesis-testing", "simulation-based-inference"]);
 		expect(updated?.assessment.conceptProfiles[0]).toMatchObject({ absoluteItemHint: 4, maxBloomLevel: "analyze", scenarioPatterns: ["real-world"] });
 		expect(updated?.unit?.flowProfile.sectionOrder).toEqual(["hypothesis-testing", "simulation-based-inference"]);
@@ -166,6 +163,7 @@ describe("teacher feedback fingerprint store", () => {
 				],
 				assessmentTitle: "Explainable Assessment",
 			}),
+			sourceType: "uploaded",
 			now: "2026-03-28T00:00:00.000Z",
 		}));
 
@@ -256,6 +254,7 @@ describe("teacher feedback fingerprint store", () => {
 			assessmentId: "assessment-a",
 			unitId: "unit-a",
 			product: buildOrderedProduct("A", ["Proportion", "Mean", "P-Values"]),
+			sourceType: "uploaded",
 			now: "2026-03-28T00:00:00.000Z",
 		}));
 		await saveAssessmentFingerprint(buildAssessmentFingerprint({
@@ -263,6 +262,7 @@ describe("teacher feedback fingerprint store", () => {
 			assessmentId: "assessment-b",
 			unitId: "unit-a",
 			product: buildOrderedProduct("B", ["Proportion", "Mean", "P-Values"]),
+			sourceType: "uploaded",
 			now: "2026-03-29T00:00:00.000Z",
 		}));
 		await saveAssessmentFingerprint(buildAssessmentFingerprint({
@@ -270,6 +270,7 @@ describe("teacher feedback fingerprint store", () => {
 			assessmentId: "assessment-c",
 			unitId: "unit-a",
 			product: buildOrderedProduct("C", ["Mean", "Proportion", "P-Values"]),
+			sourceType: "uploaded",
 			now: "2026-03-30T00:00:00.000Z",
 		}));
 
@@ -433,6 +434,7 @@ describe("teacher feedback fingerprint store", () => {
 				],
 				assessmentTitle: "Fallback Assessment",
 			}),
+			sourceType: "uploaded",
 			now: "2026-03-30T00:00:00.000Z",
 		});
 

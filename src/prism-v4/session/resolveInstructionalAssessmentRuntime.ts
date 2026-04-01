@@ -1,6 +1,6 @@
 import { buildIntentPayload } from "../documents/intents/buildIntentProduct";
 import { deriveAdaptiveTargets } from "../documents/intents/adaptiveTargets";
-import { getDocumentSessionStore, listIntentProductsForSessionStore, loadPrismSessionContextCached, saveIntentProductStore } from "../documents/registryStore";
+import { getDocumentSessionStore, listIntentProductsForSessionStore, loadPrismSessionContextCached, saveIntentProductStore, type PrismSessionContext } from "../documents/registryStore";
 import type { IntentProduct, TestProduct } from "../schema/integration";
 import { getStudentPerformanceProfile } from "../studentPerformance";
 import {
@@ -45,6 +45,7 @@ export interface ResolvedInstructionalAssessmentRuntime {
 	unitFingerprint: UnitFingerprint | null;
 	studentPerformanceProfile: Awaited<ReturnType<typeof getStudentPerformanceProfile>>;
 	adaptiveTargets: ReturnType<typeof deriveAdaptiveTargets> | null;
+	context: PrismSessionContext;
 }
 
 export async function resolveInstructionalAssessmentRuntime(args: {
@@ -142,5 +143,6 @@ export async function resolveInstructionalAssessmentRuntime(args: {
 		unitFingerprint,
 		studentPerformanceProfile,
 		adaptiveTargets,
+		context,
 	};
 }

@@ -3,6 +3,7 @@ import { inferDomainMerged } from "../documents/intents/utils/inferDomain";
 import type { InstructionalAnalysis, BloomSummary, ConceptSummary, DifficultySummary, MisconceptionSummary, ModeSummary, ProblemSummary, ScenarioSummary } from "./InstructionalIntelligenceSession";
 import { classifyBloomLevel, classifyItemModes, classifyScenarioTypes, type BloomLevel, type ItemMode, type ScenarioType } from "../teacherFeedback";
 import { normalizeConceptLabel } from "../semantic/utils/conceptUtils";
+import { buildConceptRegistry } from "../normalizer";
 
 const BLOOM_LEVELS: BloomLevel[] = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 
@@ -41,6 +42,7 @@ function average(values: number[]) {
 }
 
 export function buildInstructionalAnalysis(context: PrismSessionContext): InstructionalAnalysis {
+	const registry = buildConceptRegistry(context.analyzedDocuments, [], null);
 	const coverageByConcept = new Map(
 		Object.entries(context.collectionAnalysis.coverageSummary.conceptCoverage ?? {}).map(([concept, coverage]) => [concept, coverage] as const),
 	);
@@ -176,7 +178,7 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 				score: coverage?.averageScore ?? computedScore,
 				coverageScore: coverage?.coverageScore,
 				gapScore: coverage?.gapScore,
-				isNoise: coverage?.noiseCandidate ?? false,
+				isNoise: registry.canonical.has(concept) ? false : (coverage?.noiseCandidate ?? false),
 				isGap: coverage?.gap,
 				isNoiseCandidate: coverage?.noiseCandidate,
 				isCrossDocumentAnchor: coverage?.crossDocumentAnchor,

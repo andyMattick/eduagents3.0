@@ -2,10 +2,22 @@ import type { AdaptiveTargets } from "../documents/intents/adaptiveTargets";
 import type { TestProduct } from "../schema/integration";
 import type { ExtractedProblemDifficulty } from "../schema/semantic";
 import { canonicalConceptId, classifyBloomLevel, classifyItemModes, classifyScenarioTypes, type BloomLevel, type ConceptProfile, type ItemMode, type ScenarioType } from "../teacherFeedback";
+import type { ConceptRegistry } from "../normalizer";
 
 import type { BuilderPlanModel } from "./InstructionalIntelligenceSession";
 
 type AdaptiveTargetSummary = NonNullable<BuilderPlanModel["adaptiveTargets"]>;
+
+function resolveConceptId(raw: string, registry?: ConceptRegistry): string {
+	const trimmed = raw.trim();
+	if (registry) {
+		const normalized = trimmed.includes(".") ? trimmed.toLowerCase() : trimmed;
+		if (registry.canonical.has(normalized)) return normalized;
+		const mapped = registry.mapToCanonical.get(trimmed);
+		if (mapped !== undefined) return mapped ?? canonicalConceptId(trimmed);
+	}
+	return canonicalConceptId(trimmed);
+}
 
 function uniqueValues<T>(values: T[]) {
 	return [...new Set(values)];
@@ -80,10 +92,11 @@ export function buildInstructionalBuilderPlan(args: {
 	product: TestProduct;
 	conceptProfiles?: ConceptProfile[];
 	adaptiveTargets?: AdaptiveTargets | null;
+	registry?: ConceptRegistry;
 }): BuilderPlanModel {
 	const conceptProfiles = args.conceptProfiles ?? [];
 	const sections = args.product.sections.map((section) => {
-		const conceptId = canonicalConceptId(section.concept);
+		const conceptId = resolveConceptId(section.concept, args.registry);
 		const conceptProfile = conceptProfiles.find((profile) => profile.conceptId === conceptId);
 		return {
 			conceptId,
