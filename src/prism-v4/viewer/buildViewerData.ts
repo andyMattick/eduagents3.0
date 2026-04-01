@@ -1,4 +1,7 @@
 import type { IntentProduct, TestProduct } from "../schema/integration";
+import { buildConceptRegistry } from "../normalizer/normalizeConceptRegistry";
+import type { ConceptRegistry } from "../normalizer/normalizeConceptRegistry";
+import { enrichConceptGraph } from "../normalizer/enrichConceptGraph";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, ExtractedProblemCognitiveDemand, ExtractedProblemDifficulty, ScoredDocumentConcept } from "../schema/semantic";
 import { buildInstructionalPreview } from "../session/buildInstructionalPreview";
 import type {
@@ -111,6 +114,8 @@ export interface ViewerScoredConcept {
 	linkedPreviewFallbackCount: number;
 	previewCoverage: number;
 	conceptCoverageEntry?: NonNullable<DocumentCollectionAnalysis["coverageSummary"]["conceptCoverage"]>[string];
+	/** True when this concept appears in at least one extracted problem (canonical origin). */
+	fromProblems: boolean;
 }
 
 export interface ViewerData {
@@ -417,6 +422,7 @@ function buildScoredConcepts(
 	workspace: InstructionalSessionWorkspace,
 	problemGroups: ViewerProblemGroup[],
 	previewItems: AssessmentPreviewItemModel[],
+	registry: ConceptRegistry,
 ): ViewerScoredConcept[] {
 	const previewByConcept = new Map<string, AssessmentPreviewItemModel[]>();
 	for (const item of previewItems) {
@@ -438,12 +444,10 @@ function buildScoredConcepts(
 	const conceptToDocumentMap = workspace.rawAnalysis?.conceptToDocumentMap ?? {};
 	const documentNameById = new Map(workspace.documents.map((document) => [document.documentId, document.sourceFileName]));
 	const fallback = buildFallbackConceptCoverage(workspace);
-	const conceptNames = uniqueStrings([
-		...Object.keys(coverage ?? {}),
-		...fallback.keys(),
-		...problemGroups.flatMap((group) => group.concepts),
-		...previewItems.flatMap((item) => item.primaryConcepts ?? [item.conceptId]),
-	]);
+	// Only include canonical concepts — concepts that appear in extracted problems.
+	// This excludes preview-only / noise concepts that corrupted coverage scores
+	// and gap flags in the upstream analysis.
+	const conceptNames = uniqueStrings([...registry.canonical]);
 	const totalDocuments = Math.max(1, workspace.documents.length);
 
 	return conceptNames.map((concept) => {
@@ -458,14 +462,20 @@ function buildScoredConcepts(
 		const totalScore = coverageEntry?.totalScore ?? fallbackEntry?.totalScore ?? 0;
 		const freqDocuments = coverageEntry?.freqDocuments ?? documentIds.length;
 		const previewCoverage = previewMatches.length / Math.max(problemGroupIds.length || previewMatches.length || 1, 1);
+		// Clamp coverage to [0, 1] — upstream analysis can emit values outside that
+		// range when concept sets are unnormalized.
+		const rawCoverageScore = coverageEntry?.coverageScore ?? Number((totalScore / Math.max(freqDocuments, 1)).toFixed(4));
+		const clampedCoverageScore = Number(Math.min(1, Math.max(0, rawCoverageScore)).toFixed(4));
+		const rawAverageScore = coverageEntry?.averageScore ?? Number((totalScore / Math.max(freqDocuments, 1)).toFixed(4));
+		const clampedAverageScore = Number(Math.min(1, Math.max(0, rawAverageScore)).toFixed(4));
 
 		return {
 			concept,
 			documentIds,
 			sourceFileNames,
-			averageScore: coverageEntry?.averageScore ?? Number((totalScore / Math.max(freqDocuments, 1)).toFixed(4)),
+			averageScore: clampedAverageScore,
 			totalScore: Number(totalScore.toFixed(4)),
-			coverageScore: coverageEntry?.coverageScore ?? Number((totalScore / Math.max(freqDocuments, 1)).toFixed(4)),
+			coverageScore: clampedCoverageScore,
 			gapScore: coverageEntry?.gapScore ?? 0,
 			freqProblems: coverageEntry?.freqProblems ?? fallbackEntry?.freqProblems ?? 0,
 			freqPages: coverageEntry?.freqPages ?? fallbackEntry?.freqPages ?? 0,
@@ -473,7 +483,10 @@ function buildScoredConcepts(
 			groupCount: coverageEntry?.groupCount ?? fallbackEntry?.groupIds.size ?? problemGroupIds.length,
 			multipartPresence: coverageEntry?.multipartPresence ?? Number(((fallbackEntry?.multipartPresenceTotal ?? 0) / Math.max(freqDocuments, 1)).toFixed(4)),
 			crossDocumentAnchor: coverageEntry?.crossDocumentAnchor ?? documentIds.length > 1,
-			gap: coverageEntry?.gap ?? false,
+			// Gap = coverage is below the threshold after normalization. We use the
+			// clamped score instead of the upstream flag, which was calibrated on
+			// unnormalized (noise-inclusive) concept sets.
+			gap: clampedCoverageScore < 0.3,
 			noiseCandidate: coverageEntry?.noiseCandidate ?? Boolean(fallbackEntry && fallbackEntry.noiseHits === fallbackEntry.documentIds.size),
 			stability: coverageEntry?.stability ?? Number((documentIds.length / totalDocuments).toFixed(4)),
 			overlapStrength: coverageEntry?.overlapStrength ?? Number(((documentIds.length - 1) / Math.max(totalDocuments - 1, 1)).toFixed(4)),
@@ -490,6 +503,7 @@ function buildScoredConcepts(
 			linkedPreviewFallbackCount: previewMatches.filter((item) => !item.groupId).length,
 			previewCoverage: Number(previewCoverage.toFixed(4)),
 			conceptCoverageEntry: coverageEntry,
+			fromProblems: registry.canonical.has(concept),
 		};
 	}).sort((left, right) => right.coverageScore - left.coverageScore || right.averageScore - left.averageScore || left.concept.localeCompare(right.concept));
 }
@@ -498,7 +512,20 @@ export function buildViewerData(workspace: InstructionalSessionWorkspace): Viewe
 	const preview = resolvePreview(workspace);
 	const documents = buildDocumentSummaries(workspace);
 	const problemGroups = buildProblemGroups(workspace.analyzedDocuments, preview.items);
-	const scoredConcepts = buildScoredConcepts(workspace, problemGroups, preview.items);
+	// Build registry first — used by both scoredConcepts and conceptGraph enrichment.
+	const registry = buildConceptRegistry(
+		workspace.analyzedDocuments,
+		preview.items,
+		workspace.instructionalSession?.conceptMap ?? null,
+	);
+	const scoredConcepts = buildScoredConcepts(workspace, problemGroups, preview.items, registry);
+	// Enrich the concept graph so canonical concepts have nodes and co-occurrence
+	// edges regardless of whether the upstream graph only tracked noise nodes.
+	const enrichedConceptGraph = enrichConceptGraph(
+		workspace.instructionalSession?.conceptMap ?? null,
+		problemGroups,
+		registry.canonical,
+	);
 	const availableSurfaces: ViewerData["availableSurfaces"] = ["documents"];
 
 	if (workspace.rawAnalysis) {
@@ -521,7 +548,7 @@ export function buildViewerData(workspace: InstructionalSessionWorkspace): Viewe
 		scoredConcepts,
 		collectionAnalysis: workspace.rawAnalysis,
 		blueprint: workspace.instructionalSession?.blueprint ?? null,
-		conceptGraph: workspace.instructionalSession?.conceptMap ?? null,
+		conceptGraph: enrichedConceptGraph.nodes.length ? enrichedConceptGraph : null,
 		previewItems: preview.items,
 		previewSource: preview.source,
 		selectedIntent: workspace.selectedIntent,

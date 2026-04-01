@@ -84,22 +84,22 @@ describe("buildMisconceptionPractice", () => {
 		expect(entry!.misconception).toBe("denominator-swap");
 	});
 
-	it("falls back to generic misconception label when no tag is present", () => {
+	it("emits no entry when no misconception tag is present (no synthetic labels)", () => {
 		const concepts = [
 			makeScoredConcept({ concept: "geometry", coverageScore: 0.2, gapScore: 0.6, gap: true }),
 		];
 		const result = buildMisconceptionPractice(concepts, [], null);
-		const entry = result.entries.find((e) => e.concept === "geometry");
-		expect(entry).toBeDefined();
-		expect(entry!.misconception.length).toBeGreaterThan(0);
+		// Real signals only — a concept with no misconceptionTag should produce no entry.
+		expect(result.entries.find((e) => e.concept === "geometry")).toBeUndefined();
 	});
 
 	it("returns at most 4 recommended items per concept", () => {
 		const concepts = [
 			makeScoredConcept({ concept: "fractions", coverageScore: 0.3, gapScore: 0.5 }),
 		];
+		// All items have a real misconceptionTag so an entry is generated.
 		const items = Array.from({ length: 6 }, (_, i) =>
-			makeItem({ itemId: `i${i}`, conceptId: "fractions" }),
+			makeItem({ itemId: `i${i}`, conceptId: "fractions", misconceptionTag: "denominator-swap" }),
 		);
 		const result = buildMisconceptionPractice(concepts, items, null);
 		const entry = result.entries.find((e) => e.concept === "fractions");

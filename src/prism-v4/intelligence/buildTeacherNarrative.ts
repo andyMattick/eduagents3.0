@@ -27,7 +27,10 @@ function conceptsByScore(scoredConcepts: ViewerScoredConcept[]): ViewerScoredCon
 }
 
 function gapConcepts(scoredConcepts: ViewerScoredConcept[]): ViewerScoredConcept[] {
-	return scoredConcepts.filter((c) => c.gap || c.gapScore > 0.5);
+	// Use the coverage-threshold gap flag computed in buildViewerData after
+	// concept normalization.  The old gapScore > 0.5 secondary condition was
+	// set on unnormalized data and produced false positives for well-covered concepts.
+	return scoredConcepts.filter((c) => !c.noiseCandidate && c.gap);
 }
 
 function noiseCandidates(scoredConcepts: ViewerScoredConcept[]): ViewerScoredConcept[] {

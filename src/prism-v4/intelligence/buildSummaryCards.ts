@@ -14,7 +14,8 @@ export interface SummaryCardsOutput {
 
 export function buildSummaryCards(data: ViewerData): SummaryCardsOutput {
 	const totalConcepts = data.scoredConcepts.length;
-	const gapConcepts = data.scoredConcepts.filter((c) => c.gap || c.gapScore > 0.5);
+	// Use the coverage-threshold gap flag (set in buildViewerData after normalization).
+	const gapConcepts = data.scoredConcepts.filter((c) => c.gap);
 	const coverageAvg = totalConcepts
 		? data.scoredConcepts.reduce((sum, c) => sum + c.coverageScore, 0) / totalConcepts
 		: 0;

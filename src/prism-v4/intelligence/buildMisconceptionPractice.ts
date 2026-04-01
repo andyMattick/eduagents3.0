@@ -41,11 +41,8 @@ function candidateMisconceptions(concept: ViewerScoredConcept, previewItems: Ass
 		}
 	}
 
-	// Fall back to a generic misconception label based on concept name
-	if (!unique.length) {
-		unique.push(`common error with ${concept.concept}`);
-	}
-
+	// No fallback — only return real misconception signals.
+	// Synthetic labels were masking the absence of actual distractor metadata.
 	return unique;
 }
 
