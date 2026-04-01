@@ -237,7 +237,7 @@ export function buildInstructionalBlueprint(args: {
 
 	const conceptBlueprints = args.analysis && args.analysis.concepts.length > 0
 		? distributeConceptQuotas(args.analysis.concepts, requestedTotalItems).map(({ concept, quota, included }, index) => ({
-			id: canonicalConceptId(concept.concept),
+			id: concept.concept,
 			name: titleCase(concept.concept),
 			order: index,
 			included,
@@ -261,12 +261,21 @@ export function buildInstructionalBlueprint(args: {
 			quota: Math.max(1, profile.absoluteItemHint ?? 1),
 		}));
 
+	const bloomLadder = args.analysis
+		? toCountedBloom(countRecordValues(args.analysis.bloomSummary, BLOOM_LEVELS))
+		: toCountedBloom(countRecordValues(Object.fromEntries(bloomCounts.entries()) as Partial<Record<BloomLevel, number>>, BLOOM_LEVELS));
+	const modeMix = args.analysis && Object.keys(args.analysis.modeSummary).length > 0
+		? toCountedMode(countRecordValues(args.analysis.modeSummary as Partial<Record<ItemMode, number>>, ITEM_MODES))
+		: toCountedMode(countArrayValues(orderedProfiles.flatMap((profile) => profile.itemModes), ITEM_MODES));
+	const scenarioMix = args.analysis && Object.keys(args.analysis.scenarioSummary).length > 0
+		? toCountedScenario(countRecordValues(args.analysis.scenarioSummary as Partial<Record<ScenarioType, number>>, SCENARIO_TYPES))
+		: toCountedScenario(countArrayValues(orderedProfiles.flatMap((profile) => profile.scenarioPatterns), SCENARIO_TYPES));
 	return {
 		concepts: conceptBlueprints,
-		bloomLadder: toCountedBloom(countRecordValues(Object.fromEntries(bloomCounts.entries()) as Partial<Record<BloomLevel, number>>, BLOOM_LEVELS)),
+		bloomLadder,
 		difficultyRamp: difficultyCountsFromProduct(args.product),
-		modeMix: toCountedMode(countArrayValues(orderedProfiles.flatMap((profile) => profile.itemModes), ITEM_MODES)),
-		scenarioMix: toCountedScenario(countArrayValues(orderedProfiles.flatMap((profile) => profile.scenarioPatterns), SCENARIO_TYPES)),
+		modeMix,
+		scenarioMix,
 	};
 }
 
@@ -308,7 +317,8 @@ export function buildAssessmentFingerprintFromBlueprint(args: {
 	const preferredScenarios = sortScenariosByCount(args.blueprint.scenarioMix);
 
 	const conceptProfiles = includedConcepts.map((concept, index) => {
-		const conceptId = canonicalConceptId(concept.id || concept.name);
+		// Preserve taxonomy IDs as-is; only slugify if concept.id is absent (name-only fallback).
+		const conceptId = concept.id ? concept.id : canonicalConceptId(concept.name);
 		const existing = existingProfiles.get(conceptId);
 		const assignedBloom = expandedBloomLevels[index] ?? existing?.maxBloomLevel ?? "understand";
 		const absoluteItemHint = Math.max(1, Math.round(concept.quota));
@@ -336,7 +346,7 @@ export function buildAssessmentFingerprintFromBlueprint(args: {
 		unitId: args.unitId ?? base.unitId,
 		conceptProfiles,
 		flowProfile: {
-			sectionOrder: includedConcepts.map((concept) => canonicalConceptId(concept.id || concept.name)),
+			sectionOrder: includedConcepts.map((concept) => concept.id ? concept.id : canonicalConceptId(concept.name)),
 			typicalLengthRange: [Math.max(1, totalItems), Math.max(1, totalItems)],
 			cognitiveLadderShape: uniqueValues(expandedBloomLevels.length > 0 ? expandedBloomLevels : conceptProfiles.map((profile) => profile.maxBloomLevel)),
 		},
@@ -351,14 +361,16 @@ export function buildInstructionalConceptMap(args: {
 	analysis: InstructionalAnalysis;
 	blueprint: BlueprintModel;
 }): ConceptMapModel {
-	const analysisByConcept = new Map(args.analysis.concepts.map((concept) => [canonicalConceptId(concept.concept), concept] as const));
+	// Use the raw concept string as the map key — taxonomy IDs (e.g. "math.statistics.hypothesis-testing")
+	// must not be slugified because canonicalConceptId() strips dots.
+	const analysisByConcept = new Map(args.analysis.concepts.map((concept) => [concept.concept, concept] as const));
 	const orderedConcepts = [...args.blueprint.concepts]
 		.filter((concept) => concept.included !== false)
 		.sort((left, right) => left.order - right.order);
 
 	return {
 		nodes: orderedConcepts.map((concept) => {
-			const analysisConcept = analysisByConcept.get(canonicalConceptId(concept.id || concept.name));
+			const analysisConcept = analysisByConcept.get(concept.id || concept.name);
 			return {
 				id: concept.id,
 				label: concept.name,
@@ -367,8 +379,8 @@ export function buildInstructionalConceptMap(args: {
 		}),
 		edges: orderedConcepts.flatMap((concept, index) => {
 			const nextConcept = orderedConcepts[index + 1];
-			const currentAnalysis = analysisByConcept.get(canonicalConceptId(concept.id || concept.name));
-			const nextAnalysis = nextConcept ? analysisByConcept.get(canonicalConceptId(nextConcept.id || nextConcept.name)) : null;
+			const currentAnalysis = analysisByConcept.get(concept.id || concept.name);
+			const nextAnalysis = nextConcept ? analysisByConcept.get(nextConcept.id || nextConcept.name) : null;
 			return nextConcept
 				? [{
 					from: concept.id,

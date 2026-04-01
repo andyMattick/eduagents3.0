@@ -46,6 +46,18 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 	const coverageByConcept = new Map(
 		Object.entries(context.collectionAnalysis.coverageSummary.conceptCoverage ?? {}).map(([concept, coverage]) => [concept, coverage] as const),
 	);
+	// Build inheritance map so canonical taxonomy IDs can find coverage from their noise variants.
+	// registry.mapToCanonical maps noise string → canonical ID (or null). We invert it here.
+	const noiseCoverageForCanonical = new Map<string, (typeof coverageByConcept extends Map<string, infer V> ? V : never)>();
+	for (const [noiseId, canonicalId] of registry.mapToCanonical) {
+		if (canonicalId !== null && !coverageByConcept.has(canonicalId)) {
+			const noiseCoverage = coverageByConcept.get(noiseId);
+			const existing = noiseCoverageForCanonical.get(canonicalId);
+			if (noiseCoverage && (!existing || (noiseCoverage.overlapStrength ?? 0) > (existing.overlapStrength ?? 0))) {
+				noiseCoverageForCanonical.set(canonicalId, noiseCoverage);
+			}
+		}
+	}
 	const conceptCounts = new Map<string, {
 		documentIds: Set<string>;
 		problemCount: number;
@@ -74,6 +86,7 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 		const scoredConcepts = new Map((analyzed.insights.scoredConcepts ?? []).filter((concept) => !concept.isNoise).map((concept) => [concept.concept, concept]));
 
 		for (const concept of analyzed.insights.concepts) {
+			if (registry.noise.has(concept)) continue; // Skip noise; counted via problem.concepts
 			const current = conceptCounts.get(concept) ?? {
 				documentIds: new Set<string>(),
 				problemCount: 0,
@@ -164,7 +177,7 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 	const totalDocuments = Math.max(context.analyzedDocuments.length, 1);
 	const concepts: ConceptSummary[] = [...conceptCounts.entries()]
 		.map(([concept, summary]) => {
-			const coverage = coverageByConcept.get(concept);
+			const coverage = coverageByConcept.get(concept) ?? noiseCoverageForCanonical.get(concept);
 			const computedScore = summary.scoreSamples === 0 ? undefined : Number((summary.scoreTotal / summary.scoreSamples).toFixed(4));
 			return {
 				concept,

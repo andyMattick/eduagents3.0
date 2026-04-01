@@ -90,7 +90,9 @@ function isMissingSupabaseTableError(error: unknown, table: string) {
 	const message = String(error instanceof Error ? error.message : error).toLowerCase();
 	return message.includes("pgrst205")
 		|| (message.includes("schema cache") && message.includes(table))
-		|| message.includes(`could not find the table 'public.${table}'`);
+		|| message.includes(`could not find the table 'public.${table}'`)
+		// 22P02: invalid_text_representation — table schema is incompatible (e.g. UUID column vs text ID)
+		|| message.includes("22p02");
 }
 
 function disableFingerprintPersistence(table: typeof ASSESSMENT_FINGERPRINTS_TABLE | typeof UNIT_FINGERPRINTS_TABLE, error: unknown) {
