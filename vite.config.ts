@@ -220,6 +220,16 @@ const localPrismRoutes: LocalApiRoute[] = [
     queryFromMatch: (match) => ({ blueprintId: decodeURIComponent(match[1] ?? '') }),
   },
   {
+    pattern: /^\/studio\/outputs\/([^/]+)\/items\/([^/]+)\/rewrite$/,
+    modulePath: '/api/v4/studio/outputs/[outputId]/items/[itemId]/rewrite.ts',
+    queryFromMatch: (match) => ({ outputId: decodeURIComponent(match[1] ?? ''), itemId: decodeURIComponent(match[2] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/outputs\/([^/]+)\/items\/([^/]+)\/replace$/,
+    modulePath: '/api/v4/studio/outputs/[outputId]/items/[itemId]/replace.ts',
+    queryFromMatch: (match) => ({ outputId: decodeURIComponent(match[1] ?? ''), itemId: decodeURIComponent(match[2] ?? '') }),
+  },
+  {
     pattern: /^\/studio\/outputs\/([^/]+)$/,
     modulePath: '/api/v4/studio/outputs/[outputId].ts',
     queryFromMatch: (match) => ({ outputId: decodeURIComponent(match[1] ?? '') }),

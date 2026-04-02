@@ -7,6 +7,7 @@ import {
 	getCollectionAnalysisStore,
 	getStudioOutputStore,
 	saveStudioOutputStore,
+	updateStudioOutputStore,
 	getStudioSessionEnvelopeStore,
 	listBlueprintsForSessionStore,
 	listStudioOutputsForSessionStore,
@@ -20,6 +21,8 @@ import { buildInstructionalAnalysis, buildInstructionalBlueprint, mergeBlueprint
 import type { AssessmentFingerprint } from "../../../src/prism-v4/teacherFeedback";
 import { buildIntentPayload } from "../../../src/prism-v4/documents/intents/buildIntentProduct";
 import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
+import { rewriteTestItem, replaceItemInTestPayload, type ItemRewriteIntent } from "../../../src/prism-v4/studio/rewriteItem";
+import type { TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
 
 const DEFAULT_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -476,4 +479,121 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 	});
 
 	return res.status(200).json({ output });
+}
+
+const VALID_REWRITE_INTENTS: ItemRewriteIntent[] = [
+	"easier", "harder", "change_numbers", "real_world", "concise", "student_friendly", "academic",
+];
+
+function isValidRewriteIntent(value: unknown): value is ItemRewriteIntent {
+	return typeof value === "string" && (VALID_REWRITE_INTENTS as string[]).includes(value);
+}
+
+export async function handleStudioOutputItemRewrite(req: VercelRequest, res: VercelResponse) {
+	if (req.method !== "POST") {
+		return res.status(405).json({ error: "Method not allowed" });
+	}
+
+	const outputId = resolvePathParam(req, "outputId");
+	const itemId = resolvePathParam(req, "itemId");
+	if (!outputId || !itemId) {
+		return res.status(400).json({ error: "outputId and itemId are required" });
+	}
+
+	const body = parseJsonBody<{ intent?: unknown }>(req.body, {});
+	if (!isValidRewriteIntent(body.intent)) {
+		return res.status(400).json({ error: `intent must be one of: ${VALID_REWRITE_INTENTS.join(", ")}` });
+	}
+
+	const output = await getStudioOutputStore(outputId);
+	if (!output) {
+		return res.status(404).json({ error: "Output not found" });
+	}
+
+	const testPayload = output.payload as TestProduct;
+	const allItems = testPayload.sections?.flatMap((s) => s.items) ?? [];
+	const target = allItems.find((i) => i.itemId === itemId);
+	if (!target) {
+		return res.status(404).json({ error: "Item not found" });
+	}
+
+	const rewritten = rewriteTestItem(target, body.intent);
+	const nextPayload = replaceItemInTestPayload(testPayload, itemId, rewritten);
+	if (!nextPayload) {
+		return res.status(404).json({ error: "Item not found in payload" });
+	}
+
+	const updated = await updateStudioOutputStore(outputId, { payload: nextPayload, renderModel: nextPayload });
+	if (!updated) {
+		return res.status(500).json({ error: "Failed to save updated output" });
+	}
+
+	return res.status(200).json({ item: rewritten, output: updated });
+}
+
+export async function handleStudioOutputItemReplace(req: VercelRequest, res: VercelResponse) {
+	if (req.method !== "POST") {
+		return res.status(405).json({ error: "Method not allowed" });
+	}
+
+	const outputId = resolvePathParam(req, "outputId");
+	const itemId = resolvePathParam(req, "itemId");
+	if (!outputId || !itemId) {
+		return res.status(400).json({ error: "outputId and itemId are required" });
+	}
+
+	const output = await getStudioOutputStore(outputId);
+	if (!output) {
+		return res.status(404).json({ error: "Output not found" });
+	}
+
+	const testPayload = output.payload as TestProduct;
+	const allItems = testPayload.sections?.flatMap((s) => s.items) ?? [];
+	const target = allItems.find((i) => i.itemId === itemId);
+	if (!target) {
+		return res.status(404).json({ error: "Item not found" });
+	}
+
+	const blueprintRecord = await getBlueprintStore(output.blueprintId);
+	if (!blueprintRecord) {
+		return res.status(404).json({ error: "Blueprint not found" });
+	}
+
+	const context = await loadPrismSessionContextCached(blueprintRecord.sessionId);
+	if (!context) {
+		return res.status(404).json({ error: "Session not found" });
+	}
+
+	// Regenerate 1 item for the same concept slot
+	const request: IntentRequest & { intentType: "build-test" } = {
+		sessionId: blueprintRecord.sessionId,
+		documentIds: context.session.documentIds,
+		intentType: "build-test",
+		options: {
+			itemCount: 1,
+			...(target.concept ? { focus: target.concept } : {}),
+			...(blueprintRecord.teacherId ? { teacherId: blueprintRecord.teacherId } : {}),
+		},
+	};
+
+	const refreshed = await buildIntentPayload(request, context);
+	const refreshedSections = (refreshed as TestProduct).sections ?? [];
+	const candidate = refreshedSections.flatMap((s) => s.items)[0];
+	if (!candidate) {
+		return res.status(500).json({ error: "No replacement item generated" });
+	}
+
+	// Keep the original's slot identity but use the new prompt + metadata
+	const replacement = { ...candidate, itemId: `${itemId}-r` };
+	const nextPayload = replaceItemInTestPayload(testPayload, itemId, replacement);
+	if (!nextPayload) {
+		return res.status(404).json({ error: "Item not found in payload" });
+	}
+
+	const updated = await updateStudioOutputStore(outputId, { payload: nextPayload, renderModel: nextPayload });
+	if (!updated) {
+		return res.status(500).json({ error: "Failed to save updated output" });
+	}
+
+	return res.status(200).json({ item: replacement, output: updated });
 }

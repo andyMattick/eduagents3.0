@@ -14,8 +14,11 @@ import {
 	loadStudioOutputApi,
 	loadStudioSessionApi,
 	requestAssessmentOutputApi,
+	rewriteStudioItemApi,
+	replaceStudioItemApi,
 	saveStudioBlueprintVersionApi,
 	setActiveStudioBlueprintApi,
+	type ItemRewriteIntent,
 	type RegisteredDocumentSummary,
 } from "../lib/teacherStudioApi";
 
@@ -248,6 +251,38 @@ export function useTeacherStudioRun() {
 		}
 	}
 
+	async function rewriteItem(outputId: string, itemId: string, intent: ItemRewriteIntent) {
+		try {
+			const payload = await rewriteStudioItemApi(outputId, itemId, intent);
+			setState((current) => ({
+				...current,
+				outputs: current.outputs.map((output) =>
+					output.outputId === payload.output.outputId ? payload.output : output,
+				),
+			}));
+			return payload;
+		} catch (error) {
+			setError(error instanceof Error ? error.message : "Item rewrite failed.");
+			return null;
+		}
+	}
+
+	async function replaceItem(outputId: string, itemId: string) {
+		try {
+			const payload = await replaceStudioItemApi(outputId, itemId);
+			setState((current) => ({
+				...current,
+				outputs: current.outputs.map((output) =>
+					output.outputId === payload.output.outputId ? payload.output : output,
+				),
+			}));
+			return payload;
+		} catch (error) {
+			setError(error instanceof Error ? error.message : "Item replace failed.");
+			return null;
+		}
+	}
+
 	function clearStudio() {
 		setState({
 			session: null,
@@ -272,6 +307,8 @@ export function useTeacherStudioRun() {
 		loadOutputs,
 		loadOutput,
 		requestAssessmentOutput,
+		rewriteItem,
+		replaceItem,
 		clearStudio,
 	};
 }

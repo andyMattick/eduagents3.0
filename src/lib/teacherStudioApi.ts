@@ -178,3 +178,30 @@ export function bindDocumentsToSessionApi(args: {
 export function loadSessionDocumentsApi(sessionId: string) {
 	return fetchJson<SessionDocumentsPayload>(`/api/v4/documents/session?sessionId=${encodeURIComponent(sessionId)}`);
 }
+
+export type ItemRewriteIntent =
+	| "easier"
+	| "harder"
+	| "change_numbers"
+	| "real_world"
+	| "concise"
+	| "student_friendly"
+	| "academic";
+
+export function rewriteStudioItemApi(outputId: string, itemId: string, intent: ItemRewriteIntent) {
+	return fetchJson<{ item: Record<string, unknown>; output: TeacherStudioOutputArtifact }>(
+		`/api/v4/studio/outputs/${encodeURIComponent(outputId)}/items/${encodeURIComponent(itemId)}/rewrite`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ intent }),
+		},
+	);
+}
+
+export function replaceStudioItemApi(outputId: string, itemId: string) {
+	return fetchJson<{ item: Record<string, unknown>; output: TeacherStudioOutputArtifact }>(
+		`/api/v4/studio/outputs/${encodeURIComponent(outputId)}/items/${encodeURIComponent(itemId)}/replace`,
+		{ method: "POST" },
+	);
+}

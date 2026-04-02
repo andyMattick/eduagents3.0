@@ -1657,6 +1657,43 @@ export async function markStudioOutputStaleStore(outputId: string) {
 	return getStudioOutputStore(outputId);
 }
 
+export async function updateStudioOutputStore(outputId: string, patch: {
+	payload: TeacherStudioOutputArtifact["payload"];
+	renderModel: TeacherStudioOutputArtifact["renderModel"];
+}) {
+	const updatedAt = now();
+
+	if (!canUseStudioOutputs()) {
+		const existing = studioOutputsStore.get(outputId);
+		if (!existing) {
+			return null;
+		}
+		const next = { ...existing, payload: patch.payload, renderModel: patch.renderModel, updatedAt };
+		studioOutputsStore.set(outputId, next);
+		return next;
+	}
+
+	try {
+		await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			method: "PATCH",
+			filters: { output_id: `eq.${outputId}` },
+			body: { payload: patch.payload, render_model: patch.renderModel, updated_at: updatedAt },
+			prefer: "return=minimal",
+		});
+	} catch (error) {
+		disableStudioOutputs(error);
+		const existing = studioOutputsStore.get(outputId);
+		if (!existing) {
+			return null;
+		}
+		const next = { ...existing, payload: patch.payload, renderModel: patch.renderModel, updatedAt };
+		studioOutputsStore.set(outputId, next);
+		return next;
+	}
+
+	return getStudioOutputStore(outputId);
+}
+
 async function loadBasePrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
 	const start = Date.now();
 	const session = await getDocumentSessionStore(sessionId);
