@@ -11,13 +11,14 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { DocumentUpload } from './components_new/v4/DocumentUpload';
 import { PrintProductPage } from './components_new/v4/PrintProductPage';
 import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
+import { CreateDocumentFlow } from './components_new/v4/CreateDocumentFlow';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/studio/create']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -78,7 +79,9 @@ function TeacherAppContent() {
                 ? 'Printable Product'
                 : pathname === '/studio'
                   ? 'Teacher Studio'
-                  : 'Document Ingestion'}
+                  : pathname === '/studio/create'
+                    ? 'Create a Document'
+                    : 'Document Ingestion'}
             </h1>
 
           </div>
@@ -90,6 +93,9 @@ function TeacherAppContent() {
             <button onClick={() => navigate('/studio')} className="logout-button" type="button">
               Teacher Studio
             </button>
+            <button onClick={() => navigate('/studio/create')} className={`logout-button${pathname === '/studio/create' ? ' logout-button--active' : ''}`} type="button">
+              Create a Document
+            </button>
             {user?.email && <span className="v4-home-user">{user.email}</span>}
             <button onClick={handleLogout} className="logout-button">
               Sign Out
@@ -99,7 +105,13 @@ function TeacherAppContent() {
       </header>
 
       <main className="app-content app-content--v4">
-        {pathname.startsWith('/print/') ? <PrintProductPage /> : pathname === '/studio' ? <TeacherStudioView /> : <DocumentUpload />}
+        {pathname.startsWith('/print/')
+          ? <PrintProductPage />
+          : pathname === '/studio/create'
+            ? <CreateDocumentFlow />
+            : pathname === '/studio'
+              ? <TeacherStudioView />
+              : <DocumentUpload />}
       </main>
     </div>
   );
