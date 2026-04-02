@@ -173,6 +173,57 @@ const localPrismRoutes: LocalApiRoute[] = [
     queryFromMatch: (match) => ({ canonicalProblemId: decodeURIComponent(match[1] ?? '') }),
   },
   { pattern: /^\/student-performance\/ingestAssessment$/, modulePath: '/api/v4/student-performance/ingestAssessment.ts' },
+  // ── Studio routes ──────────────────────────────────────────────────────────
+  {
+    pattern: /^\/studio\/sessions\/([^/]+)$/,
+    modulePath: '/api/v4/studio/sessions/[sessionId].ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/sessions\/([^/]+)\/analysis$/,
+    modulePath: '/api/v4/studio/sessions/[sessionId]/analysis.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/sessions\/([^/]+)\/blueprints$/,
+    modulePath: '/api/v4/studio/sessions/[sessionId]/blueprints.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/sessions\/([^/]+)\/active-blueprint$/,
+    modulePath: '/api/v4/studio/sessions/[sessionId]/active-blueprint.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/sessions\/([^/]+)\/outputs$/,
+    modulePath: '/api/v4/studio/sessions/[sessionId]/outputs.ts',
+    queryFromMatch: (match) => ({ sessionId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/blueprints\/([^/]+)\/versions\/([^/]+)$/,
+    modulePath: '/api/v4/studio/blueprints/[blueprintId]/versions/[version].ts',
+    queryFromMatch: (match) => ({ blueprintId: decodeURIComponent(match[1] ?? ''), version: decodeURIComponent(match[2] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/blueprints\/([^/]+)\/versions$/,
+    modulePath: '/api/v4/studio/blueprints/[blueprintId]/versions.ts',
+    queryFromMatch: (match) => ({ blueprintId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/blueprints\/([^/]+)\/outputs\/assessment$/,
+    modulePath: '/api/v4/studio/blueprints/[blueprintId]/outputs/assessment.ts',
+    queryFromMatch: (match) => ({ blueprintId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/blueprints\/([^/]+)$/,
+    modulePath: '/api/v4/studio/blueprints/[blueprintId].ts',
+    queryFromMatch: (match) => ({ blueprintId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/studio\/outputs\/([^/]+)$/,
+    modulePath: '/api/v4/studio/outputs/[outputId].ts',
+    queryFromMatch: (match) => ({ outputId: decodeURIComponent(match[1] ?? '') }),
+  },
 ]
 
 async function invokeLocalApiRoute(server: any, req: any, res: any, route: LocalApiRoute, url: URL, match: RegExpMatchArray) {

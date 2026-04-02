@@ -24,6 +24,18 @@ import {
 import type { DocumentSession, DocumentRole, SessionRole } from "../schema/domain";
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../schema/semantic";
+import type {
+	BlueprintArtifact,
+	BlueprintArtifactStatus,
+	BlueprintVersionArtifact,
+	BlueprintVersionEditorContext,
+	BlueprintVersionLineage,
+	TeacherStudioOutputArtifact,
+	TeacherStudioOutputStatus,
+	TeacherStudioSessionEnvelope,
+	TeacherStudioTarget,
+	TeacherStudioOutputType,
+} from "../studio/artifacts";
 
 const SESSIONS_TABLE = "prism_v4_sessions";
 const DOCUMENTS_TABLE = "prism_v4_documents";
@@ -31,6 +43,9 @@ const ANALYZED_DOCUMENTS_TABLE = "prism_v4_analyzed_documents";
 const COLLECTION_ANALYSES_TABLE = "prism_v4_collection_analyses";
 const SESSION_SNAPSHOTS_TABLE = "prism_v4_session_snapshots";
 const INTENT_PRODUCTS_TABLE = "prism_v4_intent_products";
+const BLUEPRINTS_TABLE = "prism_v4_blueprints";
+const BLUEPRINT_VERSIONS_TABLE = "prism_v4_blueprint_versions";
+const STUDIO_OUTPUTS_TABLE = "prism_v4_outputs";
 
 export interface PrismSessionContext {
 	session: DocumentSession;
@@ -73,13 +88,30 @@ export interface PrismSessionSnapshot {
 const prismSessionContextCache = new Map<string, Promise<PrismSessionContext | null>>();
 const prismSessionSnapshotStore = new Map<string, PrismSessionSnapshot>();
 const staleCollectionAnalysisSessions = new Set<string>();
+const studioSessionEnvelopeExtrasStore = new Map<string, {
+	activeBlueprintId?: string;
+	activeTarget?: TeacherStudioTarget;
+	outputIds: string[];
+	studioStateVersion: number;
+}>();
+const studioBlueprintStore = new Map<string, BlueprintArtifact>();
+const studioBlueprintVersionsStore = new Map<string, Map<number, BlueprintVersionArtifact>>();
+const studioOutputsStore = new Map<string, TeacherStudioOutputArtifact>();
 let prismSessionSnapshotsSupported = true;
+let studioSessionColumnsSupported = true;
+let studioBlueprintsSupported = true;
+let studioBlueprintVersionsSupported = true;
+let studioOutputsSupported = true;
 
 type SessionRow = {
 	session_id: string;
 	document_ids: string[];
 	document_roles: Record<string, DocumentRole[]>;
 	session_roles: Record<string, SessionRole[]>;
+	active_blueprint_id?: string | null;
+	active_target?: TeacherStudioTarget | null;
+	output_ids?: string[] | null;
+	studio_state_version?: number | null;
 	created_at: string;
 	updated_at: string;
 };
@@ -125,6 +157,46 @@ type IntentProductRow = {
 	created_at: string;
 };
 
+type BlueprintRow = {
+	blueprint_id: string;
+	session_id: string;
+	analysis_session_id: string;
+	teacher_id: string | null;
+	unit_id: string | null;
+	active_version: number;
+	status: BlueprintArtifactStatus;
+	created_at: string;
+	updated_at: string;
+};
+
+type BlueprintVersionRow = {
+	blueprint_id: string;
+	version: number;
+	analysis_snapshot: BlueprintVersionArtifact["analysisSnapshot"] | null;
+	blueprint_json: BlueprintVersionArtifact["blueprint"];
+	editor_context: BlueprintVersionEditorContext | null;
+	lineage: BlueprintVersionLineage | null;
+	created_at: string;
+};
+
+type StudioOutputRow = {
+	output_id: string;
+	session_id: string;
+	blueprint_id: string;
+	blueprint_version: number;
+	output_type: TeacherStudioOutputType;
+	target_type: TeacherStudioOutputArtifact["targetType"] | null;
+	target_id: string | null;
+	teacher_id: string | null;
+	unit_id: string | null;
+	options: Record<string, unknown>;
+	payload: TeacherStudioOutputArtifact["payload"];
+	render_model: TeacherStudioOutputArtifact["renderModel"];
+	status: TeacherStudioOutputStatus;
+	created_at: string;
+	updated_at: string;
+};
+
 function canUseSupabase() {
 	return typeof window === "undefined"
 		&& Boolean(process.env.SUPABASE_URL)
@@ -152,6 +224,73 @@ function disablePersistedSnapshots(error: unknown) {
 	prismSessionSnapshotsSupported = false;
 }
 
+function isMissingStudioSchemaError(error: unknown, token: string) {
+	const message = String(error instanceof Error ? error.message : error).toLowerCase();
+	return message.includes("pgrst205")
+		|| message.includes("42703")
+		|| message.includes("42p01")
+		|| (message.includes("schema cache") && message.includes(token.toLowerCase()))
+		|| message.includes(`could not find the table 'public.${token.toLowerCase()}'`)
+		|| message.includes(token.toLowerCase());
+}
+
+function disableStudioSessionColumns(error: unknown) {
+	if (!isMissingStudioSchemaError(error, "active_blueprint_id") && !isMissingStudioSchemaError(error, SESSIONS_TABLE)) {
+		throw error;
+	}
+	if (studioSessionColumnsSupported) {
+		console.warn(`[registryStore] Studio session columns missing in Supabase schema cache; falling back to base session envelope.`);
+	}
+	studioSessionColumnsSupported = false;
+}
+
+function disableStudioBlueprints(error: unknown) {
+	if (!isMissingStudioSchemaError(error, BLUEPRINTS_TABLE)) {
+		throw error;
+	}
+	if (studioBlueprintsSupported) {
+		console.warn(`[registryStore] ${BLUEPRINTS_TABLE} missing in Supabase schema cache; falling back to in-memory Studio blueprints.`);
+	}
+	studioBlueprintsSupported = false;
+	studioBlueprintVersionsSupported = false;
+}
+
+function disableStudioBlueprintVersions(error: unknown) {
+	if (!isMissingStudioSchemaError(error, BLUEPRINT_VERSIONS_TABLE)) {
+		throw error;
+	}
+	if (studioBlueprintVersionsSupported) {
+		console.warn(`[registryStore] ${BLUEPRINT_VERSIONS_TABLE} missing in Supabase schema cache; falling back to in-memory Studio blueprint versions.`);
+	}
+	studioBlueprintVersionsSupported = false;
+}
+
+function disableStudioOutputs(error: unknown) {
+	if (!isMissingStudioSchemaError(error, STUDIO_OUTPUTS_TABLE)) {
+		throw error;
+	}
+	if (studioOutputsSupported) {
+		console.warn(`[registryStore] ${STUDIO_OUTPUTS_TABLE} missing in Supabase schema cache; falling back to in-memory Studio outputs.`);
+	}
+	studioOutputsSupported = false;
+}
+
+function canUseStudioSessionColumns() {
+	return canUseSupabase() && studioSessionColumnsSupported;
+}
+
+function canUseStudioBlueprints() {
+	return canUseSupabase() && studioBlueprintsSupported;
+}
+
+function canUseStudioBlueprintVersions() {
+	return canUseSupabase() && studioBlueprintVersionsSupported;
+}
+
+function canUseStudioOutputs() {
+	return canUseSupabase() && studioOutputsSupported;
+}
+
 function createId(prefix: string) {
 	if (typeof globalThis.crypto?.randomUUID === "function") {
 		return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -162,6 +301,20 @@ function createId(prefix: string) {
 
 function now() {
 	return new Date().toISOString();
+}
+
+function buildDefaultStudioSessionEnvelope(session: DocumentSession): TeacherStudioSessionEnvelope {
+	const extras = studioSessionEnvelopeExtrasStore.get(session.sessionId);
+	return {
+		sessionId: session.sessionId,
+		documentIds: session.documentIds,
+		activeBlueprintId: extras?.activeBlueprintId,
+		activeTarget: extras?.activeTarget,
+		outputIds: extras?.outputIds ?? [],
+		createdAt: session.createdAt,
+		updatedAt: session.updatedAt,
+		studioStateVersion: extras?.studioStateVersion ?? 1,
+	};
 }
 
 function unique(values: string[]) {
@@ -283,6 +436,65 @@ function fromIntentProductRow(row: IntentProductRow): IntentProduct {
 		payload: row.payload,
 		createdAt: row.created_at,
 	} as IntentProduct;
+}
+
+function fromSessionRowToStudioEnvelope(row: SessionRow): TeacherStudioSessionEnvelope {
+	return {
+		sessionId: row.session_id,
+		documentIds: row.document_ids ?? [],
+		activeBlueprintId: row.active_blueprint_id ?? undefined,
+		activeTarget: row.active_target ?? undefined,
+		outputIds: row.output_ids ?? [],
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+		studioStateVersion: row.studio_state_version ?? 1,
+	};
+}
+
+function fromBlueprintRow(row: BlueprintRow): BlueprintArtifact {
+	return {
+		blueprintId: row.blueprint_id,
+		sessionId: row.session_id,
+		analysisSessionId: row.analysis_session_id,
+		teacherId: row.teacher_id ?? undefined,
+		unitId: row.unit_id ?? undefined,
+		activeVersion: row.active_version,
+		status: row.status,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function fromBlueprintVersionRow(row: BlueprintVersionRow): BlueprintVersionArtifact {
+	return {
+		blueprintId: row.blueprint_id,
+		version: row.version,
+		blueprint: row.blueprint_json,
+		analysisSnapshot: row.analysis_snapshot ?? undefined,
+		editorContext: row.editor_context ?? undefined,
+		lineage: row.lineage ?? undefined,
+		createdAt: row.created_at,
+	};
+}
+
+function fromStudioOutputRow(row: StudioOutputRow): TeacherStudioOutputArtifact {
+	return {
+		outputId: row.output_id,
+		sessionId: row.session_id,
+		blueprintId: row.blueprint_id,
+		blueprintVersion: row.blueprint_version,
+		outputType: row.output_type,
+		targetType: row.target_type ?? undefined,
+		targetId: row.target_id ?? undefined,
+		teacherId: row.teacher_id ?? undefined,
+		unitId: row.unit_id ?? undefined,
+		options: row.options ?? {},
+		payload: row.payload,
+		renderModel: row.render_model,
+		status: row.status,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
 }
 
 function serializePrismSessionContext(context: PrismSessionContext): PersistedPrismSessionContext {
@@ -942,6 +1154,509 @@ export async function listIntentProductsForSessionStore(sessionId: string) {
 	return ((rows as IntentProductRow[] | null) ?? []).map((row) => fromIntentProductRow(row));
 }
 
+export async function getStudioSessionEnvelopeStore(sessionId: string) {
+	if (!canUseStudioSessionColumns()) {
+		const session = canUseSupabase()
+			? await getDocumentSessionStore(sessionId)
+			: getDocumentSession(sessionId);
+		return session ? buildDefaultStudioSessionEnvelope(session) : null;
+	}
+	try {
+		const rows = await supabaseRest(SESSIONS_TABLE, {
+			select: "session_id,document_ids,active_blueprint_id,active_target,output_ids,studio_state_version,created_at,updated_at",
+			filters: { session_id: `eq.${sessionId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] as SessionRow | undefined : undefined;
+		return row ? fromSessionRowToStudioEnvelope(row) : null;
+	} catch (error) {
+		disableStudioSessionColumns(error);
+		const session = await getDocumentSessionStore(sessionId);
+		return session ? buildDefaultStudioSessionEnvelope(session) : null;
+	}
+}
+
+export async function updateStudioSessionEnvelopeStore(
+	sessionId: string,
+	patch: {
+		activeBlueprintId?: string | null;
+		activeTarget?: TeacherStudioTarget | null;
+		outputIds?: string[];
+		studioStateVersion?: number;
+	},
+) {
+	if (!canUseStudioSessionColumns()) {
+		const session = canUseSupabase()
+			? await getDocumentSessionStore(sessionId)
+			: getDocumentSession(sessionId);
+		if (!session) {
+			return null;
+		}
+		const current = buildDefaultStudioSessionEnvelope(session);
+		const next: TeacherStudioSessionEnvelope = {
+			...current,
+			activeBlueprintId: patch.activeBlueprintId === undefined ? current.activeBlueprintId : (patch.activeBlueprintId ?? undefined),
+			activeTarget: patch.activeTarget === undefined ? current.activeTarget : (patch.activeTarget ?? undefined),
+			outputIds: patch.outputIds ? unique(patch.outputIds) : current.outputIds,
+			studioStateVersion: patch.studioStateVersion ?? current.studioStateVersion,
+			updatedAt: now(),
+		};
+		studioSessionEnvelopeExtrasStore.set(sessionId, {
+			activeBlueprintId: next.activeBlueprintId,
+			activeTarget: next.activeTarget,
+			outputIds: next.outputIds,
+			studioStateVersion: next.studioStateVersion,
+		});
+		return next;
+	}
+
+	const body: Record<string, unknown> = { updated_at: now() };
+	if (patch.activeBlueprintId !== undefined) {
+		body.active_blueprint_id = patch.activeBlueprintId;
+	}
+	if (patch.activeTarget !== undefined) {
+		body.active_target = patch.activeTarget ?? {};
+	}
+	if (patch.outputIds !== undefined) {
+		body.output_ids = unique(patch.outputIds);
+	}
+	if (patch.studioStateVersion !== undefined) {
+		body.studio_state_version = patch.studioStateVersion;
+	}
+
+	try {
+		await supabaseRest(SESSIONS_TABLE, {
+			method: "PATCH",
+			filters: { session_id: `eq.${sessionId}` },
+			body,
+			prefer: "return=minimal",
+		});
+	} catch (error) {
+		disableStudioSessionColumns(error);
+		const session = getDocumentSession(sessionId);
+		if (!session) {
+			return null;
+		}
+		const current = buildDefaultStudioSessionEnvelope(session);
+		const next: TeacherStudioSessionEnvelope = {
+			...current,
+			activeBlueprintId: patch.activeBlueprintId === undefined ? current.activeBlueprintId : (patch.activeBlueprintId ?? undefined),
+			activeTarget: patch.activeTarget === undefined ? current.activeTarget : (patch.activeTarget ?? undefined),
+			outputIds: patch.outputIds ? unique(patch.outputIds) : current.outputIds,
+			studioStateVersion: patch.studioStateVersion ?? current.studioStateVersion,
+			updatedAt: now(),
+		};
+		studioSessionEnvelopeExtrasStore.set(sessionId, {
+			activeBlueprintId: next.activeBlueprintId,
+			activeTarget: next.activeTarget,
+			outputIds: next.outputIds,
+			studioStateVersion: next.studioStateVersion,
+		});
+		return next;
+	}
+
+	return getStudioSessionEnvelopeStore(sessionId);
+}
+
+export async function setActiveBlueprintForSessionStore(sessionId: string, blueprintId: string | null) {
+	return updateStudioSessionEnvelopeStore(sessionId, { activeBlueprintId: blueprintId });
+}
+
+export async function setActiveTargetForSessionStore(sessionId: string, target: TeacherStudioTarget | null) {
+	return updateStudioSessionEnvelopeStore(sessionId, { activeTarget: target });
+}
+
+export async function appendOutputToSessionStore(sessionId: string, outputId: string) {
+	const current = await getStudioSessionEnvelopeStore(sessionId);
+	if (!current) {
+		return null;
+	}
+	return updateStudioSessionEnvelopeStore(sessionId, {
+		outputIds: unique([...current.outputIds, outputId]),
+	});
+}
+
+export async function createBlueprintStore(args: {
+	sessionId: string;
+	analysisSessionId: string;
+	teacherId?: string;
+	unitId?: string;
+	blueprintId?: string;
+	activeVersion?: number;
+	status?: BlueprintArtifactStatus;
+}) {
+	const blueprint: BlueprintArtifact = {
+		blueprintId: args.blueprintId ?? createId("blueprint"),
+		sessionId: args.sessionId,
+		analysisSessionId: args.analysisSessionId,
+		teacherId: args.teacherId,
+		unitId: args.unitId,
+		activeVersion: args.activeVersion ?? 1,
+		status: args.status ?? "active",
+		createdAt: now(),
+		updatedAt: now(),
+	};
+
+	if (!canUseStudioBlueprints()) {
+		studioBlueprintStore.set(blueprint.blueprintId, blueprint);
+		await setActiveBlueprintForSessionStore(blueprint.sessionId, blueprint.blueprintId);
+		return blueprint;
+	}
+	try {
+		await supabaseRest(BLUEPRINTS_TABLE, {
+			method: "POST",
+			body: {
+				blueprint_id: blueprint.blueprintId,
+				session_id: blueprint.sessionId,
+				analysis_session_id: blueprint.analysisSessionId,
+				teacher_id: blueprint.teacherId ?? null,
+				unit_id: blueprint.unitId ?? null,
+				active_version: blueprint.activeVersion,
+				status: blueprint.status,
+				created_at: blueprint.createdAt,
+				updated_at: blueprint.updatedAt,
+			},
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} catch (error) {
+		disableStudioBlueprints(error);
+		studioBlueprintStore.set(blueprint.blueprintId, blueprint);
+		await setActiveBlueprintForSessionStore(blueprint.sessionId, blueprint.blueprintId);
+		return blueprint;
+	}
+
+	await setActiveBlueprintForSessionStore(blueprint.sessionId, blueprint.blueprintId);
+	return blueprint;
+}
+
+export async function getBlueprintStore(blueprintId: string) {
+	if (!canUseStudioBlueprints()) {
+		return studioBlueprintStore.get(blueprintId) ?? null;
+	}
+	try {
+		const rows = await supabaseRest(BLUEPRINTS_TABLE, {
+			select: "blueprint_id,session_id,analysis_session_id,teacher_id,unit_id,active_version,status,created_at,updated_at",
+			filters: { blueprint_id: `eq.${blueprintId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] as BlueprintRow | undefined : undefined;
+		return row ? fromBlueprintRow(row) : null;
+	} catch (error) {
+		disableStudioBlueprints(error);
+		return studioBlueprintStore.get(blueprintId) ?? null;
+	}
+}
+
+export async function listBlueprintsForSessionStore(sessionId: string) {
+	if (!canUseStudioBlueprints()) {
+		return [...studioBlueprintStore.values()]
+			.filter((blueprint) => blueprint.sessionId === sessionId)
+			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	}
+
+	try {
+		const rows = await supabaseRest(BLUEPRINTS_TABLE, {
+			select: "blueprint_id,session_id,analysis_session_id,teacher_id,unit_id,active_version,status,created_at,updated_at",
+			filters: { session_id: `eq.${sessionId}`, order: "updated_at.desc" },
+		});
+		return ((rows as BlueprintRow[] | null) ?? []).map((row) => fromBlueprintRow(row));
+	} catch (error) {
+		disableStudioBlueprints(error);
+		return [...studioBlueprintStore.values()]
+			.filter((blueprint) => blueprint.sessionId === sessionId)
+			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	}
+}
+
+export async function getBlueprintVersionStore(blueprintId: string, version?: number) {
+	if (!canUseStudioBlueprintVersions()) {
+		const versions = studioBlueprintVersionsStore.get(blueprintId);
+		if (!versions) {
+			return null;
+		}
+		if (version !== undefined) {
+			return versions.get(version) ?? null;
+		}
+		const blueprint = studioBlueprintStore.get(blueprintId);
+		return blueprint ? (versions.get(blueprint.activeVersion) ?? null) : null;
+	}
+
+	const resolvedVersion = version ?? (await getBlueprintStore(blueprintId))?.activeVersion;
+	if (resolvedVersion === undefined) {
+		return null;
+	}
+
+	try {
+		const rows = await supabaseRest(BLUEPRINT_VERSIONS_TABLE, {
+			select: "blueprint_id,version,analysis_snapshot,blueprint_json,editor_context,lineage,created_at",
+			filters: { blueprint_id: `eq.${blueprintId}`, version: `eq.${resolvedVersion}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] as BlueprintVersionRow | undefined : undefined;
+		return row ? fromBlueprintVersionRow(row) : null;
+	} catch (error) {
+		disableStudioBlueprintVersions(error);
+		const versions = studioBlueprintVersionsStore.get(blueprintId);
+		if (!versions) {
+			return null;
+		}
+		return versions.get(resolvedVersion) ?? null;
+	}
+}
+
+export async function saveBlueprintVersionStore(args: {
+	blueprintId: string;
+	blueprint: BlueprintVersionArtifact["blueprint"];
+	analysisSnapshot?: BlueprintVersionArtifact["analysisSnapshot"];
+	editorContext?: BlueprintVersionEditorContext;
+	lineage?: BlueprintVersionLineage;
+	version?: number;
+	setActive?: boolean;
+}) {
+	const blueprintRecord = await getBlueprintStore(args.blueprintId);
+	if (!blueprintRecord) {
+		throw new Error(`Blueprint ${args.blueprintId} not found`);
+	}
+
+	const nextVersion = args.version ?? (blueprintRecord.activeVersion + 1);
+	const saved: BlueprintVersionArtifact = {
+		blueprintId: args.blueprintId,
+		version: nextVersion,
+		blueprint: args.blueprint,
+		analysisSnapshot: args.analysisSnapshot,
+		editorContext: args.editorContext,
+		lineage: args.lineage,
+		createdAt: now(),
+	};
+
+	if (!canUseStudioBlueprintVersions()) {
+		const versions = studioBlueprintVersionsStore.get(args.blueprintId) ?? new Map<number, BlueprintVersionArtifact>();
+		versions.set(saved.version, saved);
+		studioBlueprintVersionsStore.set(args.blueprintId, versions);
+		if (args.setActive !== false) {
+			studioBlueprintStore.set(args.blueprintId, {
+				...blueprintRecord,
+				activeVersion: saved.version,
+				updatedAt: now(),
+			});
+		}
+		return saved;
+	}
+
+	try {
+		await supabaseRest(BLUEPRINT_VERSIONS_TABLE, {
+			method: "POST",
+			body: {
+				blueprint_id: saved.blueprintId,
+				version: saved.version,
+				analysis_snapshot: saved.analysisSnapshot ?? {},
+				blueprint_json: saved.blueprint,
+				editor_context: saved.editorContext ?? {},
+				lineage: saved.lineage ?? {},
+				created_at: saved.createdAt,
+			},
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} catch (error) {
+		disableStudioBlueprintVersions(error);
+		const versions = studioBlueprintVersionsStore.get(args.blueprintId) ?? new Map<number, BlueprintVersionArtifact>();
+		versions.set(saved.version, saved);
+		studioBlueprintVersionsStore.set(args.blueprintId, versions);
+		if (args.setActive !== false) {
+			studioBlueprintStore.set(args.blueprintId, {
+				...blueprintRecord,
+				activeVersion: saved.version,
+				updatedAt: now(),
+			});
+		}
+		return saved;
+	}
+
+	if (args.setActive !== false) {
+		try {
+			await supabaseRest(BLUEPRINTS_TABLE, {
+				method: "PATCH",
+				filters: { blueprint_id: `eq.${args.blueprintId}` },
+				body: {
+					active_version: saved.version,
+					updated_at: now(),
+				},
+				prefer: "return=minimal",
+			});
+		} catch (error) {
+			disableStudioBlueprints(error);
+			studioBlueprintStore.set(args.blueprintId, {
+				...blueprintRecord,
+				activeVersion: saved.version,
+				updatedAt: now(),
+			});
+		}
+		await setActiveBlueprintForSessionStore(blueprintRecord.sessionId, blueprintRecord.blueprintId);
+	}
+
+	return saved;
+}
+
+export async function getStudioOutputStore(outputId: string) {
+	if (!canUseStudioOutputs()) {
+		return studioOutputsStore.get(outputId) ?? null;
+	}
+	try {
+		const rows = await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			select: "output_id,session_id,blueprint_id,blueprint_version,output_type,target_type,target_id,teacher_id,unit_id,options,payload,render_model,status,created_at,updated_at",
+			filters: { output_id: `eq.${outputId}` },
+		});
+		const row = Array.isArray(rows) ? rows[0] as StudioOutputRow | undefined : undefined;
+		return row ? fromStudioOutputRow(row) : null;
+	} catch (error) {
+		disableStudioOutputs(error);
+		return studioOutputsStore.get(outputId) ?? null;
+	}
+}
+
+export async function listStudioOutputsForSessionStore(sessionId: string) {
+	if (!canUseStudioOutputs()) {
+		return [...studioOutputsStore.values()]
+			.filter((output) => output.sessionId === sessionId)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+	}
+
+	try {
+		const rows = await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			select: "output_id,session_id,blueprint_id,blueprint_version,output_type,target_type,target_id,teacher_id,unit_id,options,payload,render_model,status,created_at,updated_at",
+			filters: { session_id: `eq.${sessionId}`, order: "created_at.desc" },
+		});
+		return ((rows as StudioOutputRow[] | null) ?? []).map((row) => fromStudioOutputRow(row));
+	} catch (error) {
+		disableStudioOutputs(error);
+		return [...studioOutputsStore.values()]
+			.filter((output) => output.sessionId === sessionId)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+	}
+}
+
+export async function listStudioOutputsForBlueprintStore(blueprintId: string) {
+	if (!canUseStudioOutputs()) {
+		return [...studioOutputsStore.values()]
+			.filter((output) => output.blueprintId === blueprintId)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+	}
+
+	try {
+		const rows = await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			select: "output_id,session_id,blueprint_id,blueprint_version,output_type,target_type,target_id,teacher_id,unit_id,options,payload,render_model,status,created_at,updated_at",
+			filters: { blueprint_id: `eq.${blueprintId}`, order: "created_at.desc" },
+		});
+		return ((rows as StudioOutputRow[] | null) ?? []).map((row) => fromStudioOutputRow(row));
+	} catch (error) {
+		disableStudioOutputs(error);
+		return [...studioOutputsStore.values()]
+			.filter((output) => output.blueprintId === blueprintId)
+			.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+	}
+}
+
+export async function saveStudioOutputStore(args: {
+	sessionId: string;
+	blueprintId: string;
+	blueprintVersion: number;
+	outputType: TeacherStudioOutputType;
+	targetType?: TeacherStudioOutputArtifact["targetType"];
+	targetId?: string;
+	teacherId?: string;
+	unitId?: string;
+	options?: Record<string, unknown>;
+	payload: TeacherStudioOutputArtifact["payload"];
+	renderModel: TeacherStudioOutputArtifact["renderModel"];
+	outputId?: string;
+	status?: TeacherStudioOutputStatus;
+}) {
+	const createdAt = now();
+	const output: TeacherStudioOutputArtifact = {
+		outputId: args.outputId ?? createId("output"),
+		sessionId: args.sessionId,
+		blueprintId: args.blueprintId,
+		blueprintVersion: args.blueprintVersion,
+		outputType: args.outputType,
+		targetType: args.targetType,
+		targetId: args.targetId,
+		teacherId: args.teacherId,
+		unitId: args.unitId,
+		options: args.options ?? {},
+		payload: args.payload,
+		renderModel: args.renderModel,
+		status: args.status ?? "ready",
+		createdAt,
+		updatedAt: createdAt,
+	};
+
+	if (!canUseStudioOutputs()) {
+		studioOutputsStore.set(output.outputId, output);
+		await appendOutputToSessionStore(output.sessionId, output.outputId);
+		return output;
+	}
+	try {
+		await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			method: "POST",
+			body: {
+				output_id: output.outputId,
+				session_id: output.sessionId,
+				blueprint_id: output.blueprintId,
+				blueprint_version: output.blueprintVersion,
+				output_type: output.outputType,
+				target_type: output.targetType ?? null,
+				target_id: output.targetId ?? null,
+				teacher_id: output.teacherId ?? null,
+				unit_id: output.unitId ?? null,
+				options: output.options,
+				payload: output.payload,
+				render_model: output.renderModel,
+				status: output.status,
+				created_at: output.createdAt,
+				updated_at: output.updatedAt,
+			},
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} catch (error) {
+		disableStudioOutputs(error);
+		studioOutputsStore.set(output.outputId, output);
+		await appendOutputToSessionStore(output.sessionId, output.outputId);
+		return output;
+	}
+
+	await appendOutputToSessionStore(output.sessionId, output.outputId);
+	return output;
+}
+
+export async function markStudioOutputStaleStore(outputId: string) {
+	if (!canUseStudioOutputs()) {
+		const existing = studioOutputsStore.get(outputId);
+		if (!existing) {
+			return null;
+		}
+		const next = { ...existing, status: "stale" as const, updatedAt: now() };
+		studioOutputsStore.set(outputId, next);
+		return next;
+	}
+
+	try {
+		await supabaseRest(STUDIO_OUTPUTS_TABLE, {
+			method: "PATCH",
+			filters: { output_id: `eq.${outputId}` },
+			body: { status: "stale", updated_at: now() },
+			prefer: "return=minimal",
+		});
+	} catch (error) {
+		disableStudioOutputs(error);
+		const existing = studioOutputsStore.get(outputId);
+		if (!existing) {
+			return null;
+		}
+		const next = { ...existing, status: "stale" as const, updatedAt: now() };
+		studioOutputsStore.set(outputId, next);
+		return next;
+	}
+
+	return getStudioOutputStore(outputId);
+}
+
 async function loadBasePrismSessionContext(sessionId: string): Promise<PrismSessionContext | null> {
 	const start = Date.now();
 	const session = await getDocumentSessionStore(sessionId);
@@ -1068,5 +1783,12 @@ export function resetPrismSessionContextCache() {
 export function resetPrismSessionSnapshotStore() {
 	prismSessionSnapshotStore.clear();
 	prismSessionSnapshotsSupported = true;
+}
+
+export function resetStudioRegistryState() {
+	studioSessionEnvelopeExtrasStore.clear();
+	studioBlueprintStore.clear();
+	studioBlueprintVersionsStore.clear();
+	studioOutputsStore.clear();
 }
 
