@@ -62,6 +62,7 @@ export function createStudioBlueprintApi(args: {
 	teacherId?: string;
 	unitId?: string;
 	itemCount?: number;
+	conceptRankings?: Array<{ id: string; included: boolean; rank: number }>;
 }) {
 	return fetchJson<StudioBlueprintCreateResponse>(`/api/v4/studio/sessions/${encodeURIComponent(args.sessionId)}/blueprints`, {
 		method: "POST",
@@ -70,6 +71,7 @@ export function createStudioBlueprintApi(args: {
 			teacherId: args.teacherId,
 			unitId: args.unitId,
 			options: args.itemCount ? { itemCount: args.itemCount } : undefined,
+			conceptRankings: args.conceptRankings,
 		}),
 	});
 }
@@ -203,5 +205,16 @@ export function replaceStudioItemApi(outputId: string, itemId: string) {
 	return fetchJson<{ item: Record<string, unknown>; output: TeacherStudioOutputArtifact }>(
 		`/api/v4/studio/outputs/${encodeURIComponent(outputId)}/items/${encodeURIComponent(itemId)}/replace`,
 		{ method: "POST" },
+	);
+}
+
+export function changeFormatStudioItemApi(outputId: string, itemId: string, format: string) {
+	return fetchJson<{ item: Record<string, unknown>; output: TeacherStudioOutputArtifact }>(
+		`/api/v4/studio/outputs/${encodeURIComponent(outputId)}/items/${encodeURIComponent(itemId)}/change-format`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ format }),
+		},
 	);
 }

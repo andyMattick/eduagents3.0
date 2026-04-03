@@ -23,6 +23,7 @@ import { buildIntentPayload } from "../../../src/prism-v4/documents/intents/buil
 import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
 import { rewriteTestItem, replaceItemInTestPayload, type ItemRewriteIntent } from "../../../src/prism-v4/studio/rewriteItem";
 import type { TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
+import { enrichProductWithScenarios, generateScenarioSection, VALID_PROBLEM_FORMATS, type ProblemFormat } from "./generateScenarios";
 
 const DEFAULT_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -188,6 +189,51 @@ export async function handleStudioSessionAnalysis(req: VercelRequest, res: Verce
 	});
 }
 
+// ── Concept ranking → quota allocation ───────────────────────────────────────
+
+interface ConceptRankingInput {
+	id: string;
+	included: boolean;
+	rank: number;
+}
+
+/**
+ * Apply teacher-provided concept rankings to a seed blueprint.
+ * Converts rank order → proportional item quotas.
+ * Rank 1 = highest priority = most questions.
+ */
+export function applyConceptRankings(blueprint: BlueprintModel, rankings: ConceptRankingInput[], totalItems: number): BlueprintModel {
+	const included = rankings.filter((r) => r.included);
+	if (included.length === 0) return blueprint;
+
+	// Sort by rank ascending (rank 1 → most questions)
+	const sorted = [...included].sort((a, b) => a.rank - b.rank);
+	const n = sorted.length;
+
+	// Weight: rank position 1 gets weight n, rank 2 gets n-1, etc.
+	const weights = sorted.map((_, i) => n - i);
+	const totalWeight = weights.reduce((s, w) => s + w, 0);
+
+	// Proportional quotas, minimum 1
+	const rawQuotas = weights.map((w) => Math.max(1, Math.round((w / totalWeight) * totalItems)));
+
+	// Absorb rounding delta in top concept
+	const delta = totalItems - rawQuotas.reduce((s, q) => s + q, 0);
+	if (rawQuotas.length > 0) rawQuotas[0] = Math.max(1, (rawQuotas[0] ?? 1) + delta);
+
+	// Build update map
+	const updates = new Map<string, { included: boolean; quota: number; order: number }>();
+	sorted.forEach((r, i) => updates.set(r.id, { included: true, quota: rawQuotas[i]!, order: i }));
+	rankings.filter((r) => !r.included).forEach((r) => updates.set(r.id, { included: false, quota: 0, order: 999 }));
+
+	const updatedConcepts = blueprint.concepts.map((c) => {
+		const u = updates.get(c.id);
+		return u ? { ...c, included: u.included, quota: u.quota, order: u.order } : c;
+	});
+
+	return { ...blueprint, concepts: updatedConcepts };
+}
+
 export async function handleStudioSessionBlueprints(req: VercelRequest, res: VercelResponse) {
 	const sessionId = resolvePathParam(req, "sessionId");
 	if (!sessionId) {
@@ -211,13 +257,19 @@ export async function handleStudioSessionBlueprints(req: VercelRequest, res: Ver
 			unitId?: string;
 			options?: { itemCount?: number };
 			editorContext?: BlueprintVersionEditorContext;
+			conceptRankings?: ConceptRankingInput[];
 		}>(req.body, {});
-		const { analysis, blueprint } = await buildSeedBlueprint({
+		const { analysis, blueprint: seedBlueprint } = await buildSeedBlueprint({
 			sessionId,
 			teacherId: body.teacherId,
 			unitId: body.unitId,
 			itemCount: body.options?.itemCount,
 		});
+		const totalItems = body.options?.itemCount ?? countAnalysisItems(analysis);
+		const blueprint =
+			body.conceptRankings && body.conceptRankings.length > 0
+				? applyConceptRankings(seedBlueprint, body.conceptRankings, totalItems)
+				: seedBlueprint;
 		const blueprintRecord = await createBlueprintStore({
 			sessionId,
 			analysisSessionId: sessionId,
@@ -452,6 +504,14 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		fallbackItemCount: countAnalysisItems(buildInstructionalAnalysis(context)),
 	});
 
+	// Build the per-concept quota list for the Writer.
+	// Uses the same included concepts as blueprintToRequestParams, preserving order.
+	const includedConcepts = version.blueprint.concepts.filter((c) => c.included && c.quota > 0);
+	const conceptQuotas =
+		includedConcepts.length > 0
+			? includedConcepts.map((c) => ({ id: c.id, name: c.name || c.id, quota: c.quota }))
+			: undefined;
+
 	const request: IntentRequest & { intentType: "build-test" } = {
 		sessionId: blueprintRecord.sessionId,
 		documentIds: context.session.documentIds,
@@ -464,7 +524,13 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		},
 	};
 
-	const product = await buildIntentPayload(request, context);
+	const extracted = await buildIntentPayload(request, context);
+
+	// Drive scenario generation from blueprint quotas, not extracted sections.
+	// This ensures every teacher-ranked concept gets its assigned items even
+	// when the source document has sparse content for some concepts.
+	const seed = blueprintId + Date.now().toString(36);
+	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas);
 
 	const output = await saveStudioOutputStore({
 		sessionId: blueprintRecord.sessionId,
@@ -585,6 +651,67 @@ export async function handleStudioOutputItemReplace(req: VercelRequest, res: Ver
 
 	// Keep the original's slot identity but use the new prompt + metadata
 	const replacement = { ...candidate, itemId: `${itemId}-r` };
+	const nextPayload = replaceItemInTestPayload(testPayload, itemId, replacement);
+	if (!nextPayload) {
+		return res.status(404).json({ error: "Item not found in payload" });
+	}
+
+	const updated = await updateStudioOutputStore(outputId, { payload: nextPayload, renderModel: nextPayload });
+	if (!updated) {
+		return res.status(500).json({ error: "Failed to save updated output" });
+	}
+
+	return res.status(200).json({ item: replacement, output: updated });
+}
+
+// ── Change Format ──────────────────────────────────────────────────────────────
+// Re-generates a single item for the same concept slot but forces a specific
+// problem format (MC, TF, FRQ, etc.) via the generative LLM.
+
+export async function handleStudioOutputItemChangeFormat(req: VercelRequest, res: VercelResponse) {
+	if (req.method !== "POST") {
+		return res.status(405).json({ error: "Method not allowed" });
+	}
+
+	const outputId = resolvePathParam(req, "outputId");
+	const itemId = resolvePathParam(req, "itemId");
+	if (!outputId || !itemId) {
+		return res.status(400).json({ error: "outputId and itemId are required" });
+	}
+
+	const body = parseJsonBody<{ format?: unknown }>(req.body, {});
+	if (typeof body.format !== "string" || !(VALID_PROBLEM_FORMATS as string[]).includes(body.format)) {
+		return res.status(400).json({ error: `format must be one of: ${VALID_PROBLEM_FORMATS.join(", ")}` });
+	}
+	const targetFormat = body.format as ProblemFormat;
+
+	const output = await getStudioOutputStore(outputId);
+	if (!output) {
+		return res.status(404).json({ error: "Output not found" });
+	}
+
+	const testPayload = output.payload as TestProduct;
+	const allItems = testPayload.sections?.flatMap((s) => s.items) ?? [];
+	const target = allItems.find((i) => i.itemId === itemId);
+	if (!target) {
+		return res.status(404).json({ error: "Item not found" });
+	}
+
+	// Build a 1-item stub section for the concept slot and regenerate with forced format.
+	const seed = `cf-${outputId.slice(-6)}-${itemId.slice(-6)}`;
+	const stubSection = {
+		concept: target.concept,
+		sourceDocumentIds: [target.sourceDocumentId],
+		items: [{ ...target, itemId: `stub-cf` }],
+	};
+
+	const regenerated = await generateScenarioSection(stubSection, seed, [], targetFormat);
+	const candidate = regenerated.items[0];
+	if (!candidate) {
+		return res.status(500).json({ error: "No replacement item generated" });
+	}
+
+	const replacement = { ...candidate, itemId };
 	const nextPayload = replaceItemInTestPayload(testPayload, itemId, replacement);
 	if (!nextPayload) {
 		return res.status(404).json({ error: "Item not found in payload" });

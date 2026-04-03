@@ -372,10 +372,10 @@ const TEACHER_CONCEPT_LABELS: Record<string, string> = {
 };
 
 const ASSESSMENT_CLUSTER_ALIASES: Array<{ section: string; order: number; patterns: RegExp[] }> = [
-	{ section: "hypothesis testing", order: 1, patterns: [/hypothesis testing/, /p values? decision rules?/, /parameters? statistics?/] },
-	{ section: "one-sample proportion test", order: 2, patterns: [/one-sample proportion test/, /sample proportion/, /kissing couples/] },
-	{ section: "one-sample mean test", order: 3, patterns: [/one-sample mean test/, /sample mean/, /restaurant income/, /construction zone/] },
-	{ section: "simulation-based inference", order: 4, patterns: [/simulation-based inference/, /sampling distribution/, /dotplot/, /simulation/] },
+	{ section: "hypothesis testing", order: 1, patterns: [/hypothesis[ -]testing/, /p values? decision rules?/, /parameters? statistics?/] },
+	{ section: "one-sample proportion test", order: 2, patterns: [/one[ -]sample proportion test/, /proportion[ -]test/, /sample proportion/, /kissing couples/] },
+	{ section: "one-sample mean test", order: 3, patterns: [/one[ -]sample mean test/, /mean[ -]test/, /sample mean/, /restaurant income/, /construction zone/] },
+	{ section: "simulation-based inference", order: 4, patterns: [/simulation[ -]based inference/, /sampling distribution/, /dotplot/, /simulation/] },
 	{ section: "type i and type ii errors", order: 5, patterns: [/type i and type ii errors/, /type i/, /type ii/, /false positive/, /false negative/] },
 ];
 
@@ -945,6 +945,22 @@ function teacherFacingConceptLabel(value: string) {
 		.join(" ");
 }
 
+/** Returns only the leaf (last dot-separated segment) of a concept ID, title-cased.
+ *  e.g. "math.statistics.mean-test" → "Mean Test"
+ */
+function conceptLeafLabel(concept: string): string {
+	if (TEACHER_CONCEPT_LABELS[concept]) {
+		return TEACHER_CONCEPT_LABELS[concept]!;
+	}
+	const leaf = concept.split(".").pop() ?? concept;
+	return leaf
+		.replace(/[-_]+/g, " ")
+		.split(/\s+/)
+		.filter(Boolean)
+		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+		.join(" ");
+}
+
 function inferFallbackConceptForDomain(domain: string | undefined, focus: string | null) {
 	if (focus) {
 		return focus;
@@ -965,7 +981,7 @@ function inferFallbackConceptForDomain(domain: string | undefined, focus: string
 }
 
 function buildFallbackPrompt(domain: string | undefined, concept: string, index: number) {
-	const normalizedConcept = concept.toLowerCase();
+	const normalizedConcept = conceptLeafLabel(concept).toLowerCase();
 	if (conceptSortOrder(concept) !== Number.MAX_SAFE_INTEGER) {
 		const statsPrompts: Record<string, string[]> = {
 			"hypothesis testing": [
@@ -1344,7 +1360,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 		const canonicalDocumentConcepts = unique([
 			...(analyzed.insights.scoredConcepts ?? [])
 				.filter((concept) => !concept.isNoise)
-				.map((concept) => concept.concept),
+				.flatMap((concept) => inferCanonicalTeacherConcepts([concept.concept], documentTexts)),
 			...analyzed.insights.concepts
 				.filter((concept): concept is string => typeof concept === "string" && concept.trim().length > 0)
 				.flatMap((concept) => inferCanonicalTeacherConcepts([concept], documentTexts)),
@@ -1639,7 +1655,14 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 			return concepts.length > 0 ? concepts : ["general"];
 		}));
 	const effectiveConceptNames = conceptNames.length > 0 ? conceptNames : fallbackConceptNames;
-	const orderedConceptNames = sortAssessmentConceptNames(context, unique([...effectiveConceptNames, ...fingerprintConceptNames]));
+	const allConceptNames = unique([...effectiveConceptNames, ...fingerprintConceptNames]);
+	// If any concept clustered to a known assessment section (finite sort order),
+	// drop concepts that didn't cluster — they are cross-domain noise.
+	const hasKnownCluster = allConceptNames.some((c) => conceptSortOrder(c) !== Number.MAX_SAFE_INTEGER);
+	const filteredConceptNames = hasKnownCluster
+		? allConceptNames.filter((c) => conceptSortOrder(c) !== Number.MAX_SAFE_INTEGER)
+		: allConceptNames;
+	const orderedConceptNames = sortAssessmentConceptNames(context, filteredConceptNames);
 
 	const candidateItemsByConcept = new Map<string, TestItem[]>();
 	const emittedPromptKeys = new Set<string>();
@@ -1653,7 +1676,91 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					.includes(concept)
 					|| matchesFocus([entry.text, ...entry.unit.learningTargets], concept),
 		));
-		for (const unitEntry of conceptUnits) {
+
+		// ── Multi-part grouping ────────────────────────────────────────────────
+		// Entries sharing a groupId represent parts of the same source problem
+		// (e.g. "2a)", "2b)", "2c)" from a chapter review). Emit them as a single
+		// compound item with lettered sub-prompts instead of N flat items.
+		const multiPartGroups = new Map<string, InstructionalUnitEntry[]>();
+		const ungroupedEntries: InstructionalUnitEntry[] = [];
+		for (const entry of conceptUnits) {
+			if (entry.groupId) {
+				const existing = multiPartGroups.get(entry.groupId) ?? [];
+				existing.push(entry);
+				multiPartGroups.set(entry.groupId, existing);
+			} else {
+				ungroupedEntries.push(entry);
+			}
+		}
+		// Groups with a single entry are not truly multi-part — treat as ungrouped.
+		for (const [gid, entries] of multiPartGroups) {
+			if (entries.length < 2) {
+				ungroupedEntries.push(entries[0]!);
+				multiPartGroups.delete(gid);
+			}
+		}
+
+		// Emit multi-part groups as compound items.
+		for (const [groupId, groupEntries] of multiPartGroups) {
+			const groupKey = `group:${groupId}:${concept}`;
+			if (emittedPromptKeys.has(groupKey)) {
+				continue;
+			}
+			// Sort entries by unitId to preserve document order.
+			const sortedEntries = [...groupEntries].sort((a, b) => a.unit.unitId.localeCompare(b.unit.unitId));
+			// Collect actual extracted question text from each part — don't expand
+			// scaffolded templates here so each part stays as authored.
+			// If multiple questionTexts exist per entry, they may already be
+			// concatenated ("b) Find... c) Interpret..."). Split at letter-label
+			// boundaries before deduplicating.
+			const PART_LABEL_SPLIT = / (?=[a-z]\) )/g;
+			const rawParts = unique(
+				sortedEntries.flatMap((entry) => {
+					const texts = entry.questionTexts.length > 0
+						? entry.questionTexts
+						: entry.text
+							? [entry.text]
+							: [];
+					return texts.flatMap((t) => {
+						const splits = t.split(PART_LABEL_SPLIT).map((s) => s.trim()).filter(Boolean);
+						return splits.length > 1 ? splits : [t];
+					});
+				}).filter(Boolean),
+			);
+			if (rawParts.length === 0) {
+				continue;
+			}
+			// Semantic deduplication: discard a part that is a strict leading
+			// substring of another (handles "Explain." vs plain variants).
+			const deduped = rawParts.filter((part, _, arr) =>
+				!arr.some((other) => other !== part && other.startsWith(part.trimEnd())),
+			);
+			// Parts already carry their original letter labels — join with blank
+			// lines only, no synthetic a)/b)/c) on top.
+			const compoundPrompt = deduped.join("\n\n");
+			const primaryEntry = sortedEntries[0]!;
+			const item: TestItem = {
+				itemId: `item-group-${groupId.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+				prompt: compoundPrompt,
+				concept,
+				primaryConcepts: unique(sortedEntries.flatMap((e) => e.primaryConcepts)),
+				groupId,
+				sourceDocumentId: primaryEntry.primaryDocumentId,
+				sourceFileName: primaryEntry.primarySourceFileName,
+				sourceSpan: primaryEntry.sourceSpan,
+				difficulty: primaryEntry.difficultyBand,
+				cognitiveDemand: inferUnitCognitiveDemand(primaryEntry),
+				answerGuidance: sortedEntries.some((e) => e.unit.learningTargets.length > 0)
+					? `Look for evidence that the student can ${joinList(unique(sortedEntries.flatMap((e) => e.unit.learningTargets))).toLowerCase()}.`
+					: `Look for accurate reasoning about ${conceptLeafLabel(concept)}.`,
+				misconceptionTriggers: unique(sortedEntries.flatMap((e) => e.unit.misconceptions)),
+			};
+			candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
+			emittedPromptKeys.add(groupKey);
+		}
+
+		// Emit ungrouped entries via the standard single-item path.
+		for (const unitEntry of ungroupedEntries) {
 			for (const [promptIndex, prompt] of buildAssessmentPrompts(unitEntry, concept).entries()) {
 				const promptKey = `${concept}:${assessmentSemanticPromptKey(concept, prompt)}`;
 				if (emittedPromptKeys.has(promptKey)) {
@@ -1672,7 +1779,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					cognitiveDemand: inferUnitCognitiveDemand(unitEntry),
 					answerGuidance: unitEntry.unit.learningTargets.length > 0
 						? `Look for evidence that the student can ${joinList(unitEntry.unit.learningTargets).toLowerCase()}.`
-						: `Look for accurate reasoning about ${concept}.`,
+						: `Look for accurate reasoning about ${conceptLeafLabel(concept)}.`,
 					misconceptionTriggers: unitEntry.unit.misconceptions,
 				};
 				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);
@@ -1690,14 +1797,14 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 			if (!emittedPromptKeys.has(fallbackKey)) {
 				const item: TestItem = {
 					itemId: `item-concept-${concept.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "general"}`,
-					prompt: `Explain ${concept} and show how you would apply it.`,
+					prompt: `Describe what ${conceptLeafLabel(concept).toLowerCase()} is and give an example of how it is used.`,
 					concept,
 					primaryConcepts: [concept],
 					sourceDocumentId: sourceDocument,
 					sourceFileName,
 					difficulty: "medium",
 					cognitiveDemand: "conceptual",
-					answerGuidance: `Look for accurate reasoning about ${concept} and a valid application example.`,
+					answerGuidance: `Look for accurate reasoning about ${conceptLeafLabel(concept)} and a valid application example.`,
 					misconceptionTriggers: [],
 				};
 				candidateItemsByConcept.set(concept, [...(candidateItemsByConcept.get(concept) ?? []), item]);

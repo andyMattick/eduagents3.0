@@ -159,6 +159,12 @@ export interface TestItem {
 	difficulty: ExtractedProblemDifficulty;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
+	/** Format-specific structured answer (MC choices, ordering array, FRQ parts, etc.) */
+	structuredAnswer?: unknown;
+	/** Format identifier: "TF" | "MC" | "MS" | "Matching" | "DnD" | "Sorting" | "SA" | "FRQ" */
+	problemType?: string;
+	/** Estimated time in seconds based on format × difficulty */
+	estimatedTimeSeconds?: number;
 	misconceptionTriggers?: string[];
 	explanation?: TestItemExplanation;
 }
