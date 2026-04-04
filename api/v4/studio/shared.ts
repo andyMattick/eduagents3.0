@@ -492,6 +492,7 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 			allowedFormats?: string[];
 			difficultyBias?: "easy" | "mixed" | "hard";
 			teacherTone?: "conversational" | "formal";
+			targetTimeMinutes?: number;
 		};
 	}>(req.body, {});
 
@@ -500,6 +501,7 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		: undefined;
 	const difficultyBias = body.options?.difficultyBias ?? undefined;
 	const teacherTone = body.options?.teacherTone ?? undefined;
+	const targetTimeMinutes = body.options?.targetTimeMinutes ?? undefined;
 
 	const blueprintRecord = await getBlueprintStore(blueprintId);
 	if (!blueprintRecord) {
@@ -559,7 +561,7 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		outputType: "assessment",
 		teacherId: blueprintRecord.teacherId,
 		unitId: blueprintRecord.unitId,
-		options: { totalItems },
+		options: { totalItems, ...(targetTimeMinutes !== undefined ? { targetTimeMinutes } : {}) },
 		payload: product,
 		renderModel: product,
 	});

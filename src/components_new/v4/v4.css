@@ -1872,3 +1872,169 @@
     page-break-inside: avoid;
   }
 }
+
+/* ── Time chips (Screen 3) ─────────────────────────────────────────────── */
+
+.v4-viewer .v4-time-chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.v4-viewer .v4-time-chip {
+  padding: 0.45rem 1rem;
+  border: 1.5px solid rgba(156, 77, 43, 0.3);
+  border-radius: 20px;
+  background: transparent;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.v4-viewer .v4-time-chip:hover {
+  border-color: rgba(156, 77, 43, 0.6);
+  background: rgba(156, 77, 43, 0.04);
+}
+
+.v4-viewer .v4-time-chip--selected {
+  border-color: #9c4d2b;
+  background: #9c4d2b;
+  color: #fff;
+}
+
+/* ── Answer Key View (Screen 4) ────────────────────────────────────────── */
+
+.v4-viewer .v4-ak-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.v4-viewer .v4-answer-key-view {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(156, 77, 43, 0.15);
+  padding-top: 0.75rem;
+}
+
+.v4-viewer .v4-ak-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 0.5rem 0;
+}
+
+.v4-viewer .v4-ak-item-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  cursor: pointer;
+  padding: 0.3rem 0.2rem;
+  border-radius: 4px;
+  transition: background 0.1s;
+}
+
+.v4-viewer .v4-ak-item-header:hover {
+  background: rgba(156, 77, 43, 0.04);
+}
+
+.v4-viewer .v4-ak-num {
+  font-weight: 700;
+  min-width: 1.8rem;
+  font-size: 0.9rem;
+  color: #9c4d2b;
+}
+
+.v4-viewer .v4-ak-prompt {
+  flex: 1;
+  font-size: 0.88rem;
+  color: #444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v4-viewer .v4-ak-correct {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1e7840;
+  max-width: 200px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.v4-viewer .v4-ak-toggle {
+  font-size: 0.7rem;
+  color: #999;
+  min-width: 1rem;
+  text-align: right;
+}
+
+.v4-viewer .v4-ak-details {
+  padding: 0.5rem 0.4rem 0.75rem 2.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.v4-viewer .v4-ak-section-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b5040;
+  margin: 0;
+}
+
+.v4-viewer .v4-ak-section-label--warn {
+  color: #a0441a;
+}
+
+.v4-viewer .v4-ak-steps-list {
+  margin: 0.3rem 0 0 1.2rem;
+  padding: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.v4-viewer .v4-ak-frq-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+}
+
+.v4-viewer .v4-ak-frq-part {
+  font-size: 0.88rem;
+}
+
+.v4-viewer .v4-ak-misconception-row {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+}
+
+.v4-viewer .v4-ak-distractor {
+  font-weight: 600;
+  color: #a0441a;
+  min-width: 80px;
+}
+
+.v4-viewer .v4-ak-explanation {
+  color: #555;
+}
+
+.v4-viewer .v4-ak-meta {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.v4-viewer .v4-button-active {
+  border-color: #9c4d2b;
+  background: rgba(156, 77, 43, 0.08);
+}

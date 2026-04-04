@@ -11,7 +11,8 @@ import {
 import type { ItemRewriteIntent } from "../../lib/teacherStudioApi";
 import type { TeacherStudioOutputArtifact } from "../../prism-v4/studio/artifacts";
 import type { InstructionalAnalysis } from "../../prism-v4/session/InstructionalIntelligenceSession";
-import type { TestProduct, TestItem } from "../../prism-v4/schema/integration/IntentProduct";
+import type { TestProduct, TestItem, Misconception } from "../../prism-v4/schema/integration/IntentProduct";
+import { exportTestPDF, exportAnswerKeyPDF } from "../../utils/exportTestProductPDF";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -131,7 +132,7 @@ export function CreateDocumentFlow() {
 		}
 	}, [state.files]);
 
-	const handleGenerate = useCallback(async (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[]) => {
+	const handleGenerate = useCallback(async (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[], targetTimeMinutes?: number) => {
 		if (!state.sessionId) return;
 		setState((prev) => ({ ...prev, isLoading: true, error: null, outputMode: mode }));
 		try {
@@ -147,6 +148,7 @@ export function CreateDocumentFlow() {
 				adaptiveConditioning: true,
 				difficultyBias,
 				allowedFormats,
+				targetTimeMinutes,
 			});
 			setState((prev) => ({
 				...prev,
@@ -249,7 +251,7 @@ export function CreateDocumentFlow() {
 						conceptCount={state.conceptRankings.filter((r) => r.included !== false).length || (state.analysis?.concepts.filter((c) => !c.isNoise).length ?? 1)}
 						isLoading={state.isLoading}
 						error={state.error}
-						onGenerate={(mode, itemCount, difficultyBias, allowedFormats) => void handleGenerate(mode, itemCount, difficultyBias, allowedFormats)}
+						onGenerate={(mode, itemCount, difficultyBias, allowedFormats, targetTimeMinutes) => void handleGenerate(mode, itemCount, difficultyBias, allowedFormats, targetTimeMinutes)}
 					/>
 				)}
 				{state.step === 4 && (
@@ -702,13 +704,20 @@ const MULTI_DOC_OPTIONS: Array<{ mode: OutputMode; label: string; description: s
 	{ mode: "compare", label: "Compare documents", description: "Side-by-side analysis of content overlap" },
 ];
 
+const TIME_CHIPS: Array<{ label: string; value: number | null }> = [
+	{ label: "10 min", value: 10 },
+	{ label: "20 min", value: 20 },
+	{ label: "45 min", value: 45 },
+	{ label: "Custom", value: null },
+];
+
 interface Screen3Props {
 	docCount: number;
 	totalOpportunities: number;
 	conceptCount: number;
 	isLoading: boolean;
 	error: string | null;
-	onGenerate: (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[]) => void;
+	onGenerate: (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[], targetTimeMinutes?: number) => void;
 }
 
 const ALL_DIFFICULTY_OPTIONS: { value: "easy" | "mixed" | "hard"; label: string }[] = [
@@ -736,6 +745,13 @@ function Screen3({ docCount, totalOpportunities, conceptCount, isLoading, error,
 	const [itemCount, setItemCount] = useState(defaultCount > 0 ? defaultCount : 8);
 	const [difficultyBias, setDifficultyBias] = useState<"easy" | "mixed" | "hard">("mixed");
 	const [allowedFormats, setAllowedFormats] = useState<string[]>(ALL_FORMAT_OPTIONS.map((f) => f.value));
+	const [selectedTimeChip, setSelectedTimeChip] = useState<number | null | undefined>(undefined); // undefined = not set
+	const [customMinutes, setCustomMinutes] = useState<number>(30);
+
+	const targetTimeMinutes =
+		selectedTimeChip === null ? customMinutes :
+		selectedTimeChip !== undefined ? selectedTimeChip :
+		undefined;
 
 	const isCompare = selectedMode === "compare";
 
@@ -810,6 +826,37 @@ function Screen3({ docCount, totalOpportunities, conceptCount, isLoading, error,
 
 			{!isCompare && (
 				<section className="v4-panel v4-vector-span">
+					<p className="v4-kicker">Target time</p>
+					<div className="v4-time-chips">
+						{TIME_CHIPS.map((chip) => (
+							<button
+								key={chip.label}
+								type="button"
+								className={`v4-time-chip${selectedTimeChip === chip.value ? " v4-time-chip--selected" : ""}`}
+								onClick={() => setSelectedTimeChip(chip.value === selectedTimeChip ? undefined : chip.value)}
+							>
+								{chip.label}
+							</button>
+						))}
+					</div>
+					{selectedTimeChip === null && (
+						<div className="v4-item-count-row" style={{ marginTop: "0.5rem" }}>
+							<input
+								type="number"
+								className="v4-item-count-input"
+								min={5}
+								max={120}
+								value={customMinutes}
+								onChange={(e) => setCustomMinutes(Math.max(5, Number(e.target.value)))}
+							/>
+							<span className="v4-stat-label">minutes</span>
+						</div>
+					)}
+				</section>
+			)}
+
+			{!isCompare && (
+				<section className="v4-panel v4-vector-span">
 					<p className="v4-kicker">Question formats</p>
 					<div className="v4-format-checkboxes">
 						{ALL_FORMAT_OPTIONS.map((opt) => (
@@ -841,7 +888,7 @@ function Screen3({ docCount, totalOpportunities, conceptCount, isLoading, error,
 							className="v4-button"
 							type="button"
 							disabled={isLoading}
-							onClick={() => onGenerate(selectedMode, itemCount, difficultyBias, allowedFormats)}
+							onClick={() => onGenerate(selectedMode, itemCount, difficultyBias, allowedFormats, targetTimeMinutes)}
 						>
 							{isLoading ? "Generating…" : "Generate"}
 						</button>
@@ -849,6 +896,105 @@ function Screen3({ docCount, totalOpportunities, conceptCount, isLoading, error,
 				</div>
 			</section>
 		</>
+	);
+}
+
+// ---------------------------------------------------------------------------
+// AnswerKeyView — inline answer key for Screen 4
+// ---------------------------------------------------------------------------
+
+function AnswerKeyItem({ item, num, showMisconceptions }: { item: TestItem; num: number; showMisconceptions: boolean }) {
+	const [open, setOpen] = useState(false);
+	const fmt = item.problemType ?? "SA";
+	const sa = item.structuredAnswer as Record<string, unknown> | string | null | undefined;
+
+	let correctAnswer = "";
+	if (fmt === "TF") {
+		correctAnswer = typeof sa === "string" ? sa : item.answerGuidance ?? "—";
+	} else if (fmt === "MC") {
+		correctAnswer = (sa as { correct?: string } | null)?.correct ?? item.answerGuidance ?? "—";
+	} else if (fmt === "MS") {
+		const c = (sa as { correct?: string[] } | null)?.correct;
+		correctAnswer = Array.isArray(c) ? c.join(", ") : item.answerGuidance ?? "—";
+	} else if (fmt === "Matching") {
+		const pairs = (typeof sa === "object" && sa !== null && !Array.isArray(sa))
+			? Object.entries(sa as Record<string, string>).map(([t, d]) => `${t} → ${d}`).join("; ")
+			: item.answerGuidance ?? "—";
+		correctAnswer = pairs;
+	} else if (fmt === "Sorting") {
+		correctAnswer = Array.isArray(sa) ? (sa as string[]).join(" → ") : item.answerGuidance ?? "—";
+	} else if (fmt === "FRQ") {
+		correctAnswer = "See parts below";
+	} else {
+		correctAnswer = typeof sa === "string" ? sa : item.answerGuidance ?? "—";
+	}
+
+	return (
+		<div className="v4-ak-item">
+			<div className="v4-ak-item-header" onClick={() => setOpen((v) => !v)} role="button" aria-expanded={open} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setOpen((v) => !v)}>
+				<span className="v4-ak-num">{num}.</span>
+				<span className="v4-ak-prompt" title={item.prompt}>{item.prompt.length > 80 ? item.prompt.slice(0, 80) + "…" : item.prompt}</span>
+				<span className="v4-ak-correct">{correctAnswer}</span>
+				<span className="v4-ak-toggle">{open ? "▲" : "▼"}</span>
+			</div>
+			{open && (
+				<div className="v4-ak-details">
+					{fmt === "FRQ" && sa && typeof sa === "object" && !Array.isArray(sa) && (
+						<div className="v4-ak-frq-parts">
+							{Object.entries(sa as Record<string, string>).sort().map(([k, v]) => (
+								<div key={k} className="v4-ak-frq-part">
+									<strong>{k.replace("part", "Part ").toUpperCase()}:</strong> {v}
+								</div>
+							))}
+						</div>
+					)}
+					{item.solutionSteps && item.solutionSteps.length > 0 && (
+						<div className="v4-ak-steps">
+							<p className="v4-ak-section-label">Solution steps</p>
+							<ol className="v4-ak-steps-list">
+								{item.solutionSteps.map((step, i) => <li key={i}>{step}</li>)}
+							</ol>
+						</div>
+					)}
+					{showMisconceptions && item.misconceptions && item.misconceptions.length > 0 && (
+						<div className="v4-ak-misconceptions">
+							<p className="v4-ak-section-label v4-ak-section-label--warn">Common misconceptions</p>
+							{(item.misconceptions as Misconception[]).map((m, i) => (
+								<div key={i} className="v4-ak-misconception-row">
+									<span className="v4-ak-distractor">{m.distractor}</span>
+									<span className="v4-ak-explanation">{m.explanation}</span>
+								</div>
+							))}
+						</div>
+					)}
+					<div className="v4-ak-meta">
+						<span className="v4-pill">{item.concept}</span>
+						<span className="v4-pill">{item.difficulty}</span>
+						{item.estimatedTimeSeconds && <span className="v4-pill">{formatTime(item.estimatedTimeSeconds)}</span>}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function AnswerKeyView({ product, showMisconceptions }: { product: TestProduct; showMisconceptions: boolean }) {
+	const FORMAT_ORDER_AK = ["TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ"];
+	const allItems = product.sections.flatMap((s) => s.items);
+	const orderedItems: TestItem[] = [];
+	for (const fmt of FORMAT_ORDER_AK) {
+		orderedItems.push(...allItems.filter((it) => it.problemType === fmt));
+	}
+	// Items that didn't match any known format
+	const unknown = allItems.filter((it) => !FORMAT_ORDER_AK.includes(it.problemType ?? ""));
+	orderedItems.push(...unknown);
+
+	return (
+		<div className="v4-answer-key-view">
+			{orderedItems.map((item, i) => (
+				<AnswerKeyItem key={item.itemId} item={item} num={i + 1} showMisconceptions={showMisconceptions} />
+			))}
+		</div>
 	);
 }
 
@@ -1007,6 +1153,8 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 	const payload = output?.payload as TestProduct | null | undefined;
 	const sections = payload?.sections ?? [];
 	const totalItems = payload?.totalItemCount ?? sections.reduce((s, sec) => s + sec.items.length, 0);
+	const [showAnswerKey, setShowAnswerKey] = useState(false);
+	const [showMisconceptions, setShowMisconceptions] = useState(false);
 
 	// Group all items by problemType (format) instead of by concept section
 	const FORMAT_ORDER = ["TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ"];
@@ -1023,7 +1171,7 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 			<section className="v4-panel v4-vector-span v4-hero">
 				<div>
 					<p className="v4-kicker">Step 4 of 5</p>
-					<h1>{payload?.title || "Here's the document you asked for."}</h1>
+					<h1>{payload?.title || "Here’s the document you asked for."}</h1>
 					{payload?.overview && <p className="v4-subtitle">{payload.overview}</p>}
 				</div>
 				<div className="v4-upload-actions">
@@ -1039,6 +1187,15 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 					>
 						{isLoading ? "Working…" : "Create another version"}
 					</button>
+					{payload && (
+						<button
+							className="v4-button v4-button-secondary"
+							type="button"
+							onClick={() => exportTestPDF(payload, payload.title)}
+						>
+							Export Test → PDF
+						</button>
+					)}
 				</div>
 			</section>
 
@@ -1059,6 +1216,40 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 					onChangeFormat={onChangeFormat}
 				/>
 			))}
+
+			{payload && (
+				<section className="v4-panel v4-vector-span">
+					<div className="v4-ak-toolbar">
+						<button
+							className={`v4-button v4-button-secondary${showAnswerKey ? " v4-button-active" : ""}`}
+							type="button"
+							onClick={() => setShowAnswerKey((v) => !v)}
+						>
+							{showAnswerKey ? "Hide Answer Key" : "View Answer Key"}
+						</button>
+						{showAnswerKey && (
+							<>
+								<label className="v4-format-checkbox-label">
+									<input
+										type="checkbox"
+										checked={showMisconceptions}
+										onChange={() => setShowMisconceptions((v) => !v)}
+									/>
+									Show misconceptions
+								</label>
+								<button
+									className="v4-button v4-button-secondary"
+									type="button"
+									onClick={() => exportAnswerKeyPDF(payload, payload.title, showMisconceptions)}
+								>
+									Export Answer Key → PDF
+								</button>
+							</>
+						)}
+					</div>
+					{showAnswerKey && <AnswerKeyView product={payload} showMisconceptions={showMisconceptions} />}
+				</section>
+			)}
 
 			<section className="v4-panel v4-vector-span">
 				<div className="v4-upload-actions">
@@ -1393,6 +1584,7 @@ function Screen5({ output, onEdit, onStartOver }: Screen5Props) {
 	const payload = output?.payload as TestProduct | null | undefined;
 	const [versionName, setVersionName] = useState(payload?.title ?? "");
 	const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+	const [pdfMisconceptions, setPdfMisconceptions] = useState(false);
 
 	const totalItems = payload
 		? payload.totalItemCount ?? payload.sections.reduce((s, sec) => s + sec.items.length, 0)
@@ -1471,6 +1663,32 @@ function Screen5({ output, onEdit, onStartOver }: Screen5Props) {
 										? "Could not copy"
 										: "Copy to clipboard"}
 							</button>
+							{payload && (
+								<>
+									<button
+										className="v4-button v4-button-secondary"
+										type="button"
+										onClick={() => exportTestPDF(payload, versionName.trim() || payload.title)}
+									>
+										Export Test → PDF
+									</button>
+									<button
+										className="v4-button v4-button-secondary"
+										type="button"
+										onClick={() => exportAnswerKeyPDF(payload, versionName.trim() || payload.title, pdfMisconceptions)}
+									>
+										Export Answer Key → PDF
+									</button>
+									<label className="v4-format-checkbox-label">
+										<input
+											type="checkbox"
+											checked={pdfMisconceptions}
+											onChange={() => setPdfMisconceptions((v) => !v)}
+										/>
+										Include misconceptions
+									</label>
+								</>
+							)}
 						</div>
 					</section>
 
