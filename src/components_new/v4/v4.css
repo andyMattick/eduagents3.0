@@ -383,6 +383,56 @@
   margin-top: 0.5rem;
 }
 
+.v4-viewer .v4-format-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.v4-viewer .v4-format-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.v4-viewer .v4-format-checkbox-label input[type="checkbox"] {
+  accent-color: #9c4d2b;
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
+.v4-viewer .v4-custom-concept-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.v4-viewer .v4-custom-concept-row .v4-item-count-input {
+  flex: 1;
+  width: auto;
+}
+
+.v4-viewer .v4-concept-remove {
+  background: none;
+  border: none;
+  color: #9c4d2b;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.4rem;
+  margin-left: auto;
+  opacity: 0.7;
+}
+
+.v4-viewer .v4-concept-remove:hover {
+  opacity: 1;
+}
+
 .v4-viewer .v4-item-count-input {
   width: 5rem;
   padding: 0.45rem 0.6rem;
@@ -1723,16 +1773,6 @@
   font-weight: 500;
 }
 
-/* ── Sorting / DnD ordered list ──────────────────────────────────────────── */
-.v4-ordered-items {
-  margin: 0.5rem 0 0.4rem;
-  padding-left: 1.4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-}
-
 /* ── FRQ part blocks ──────────────────────────────────────────────────────── */
 .v4-frq-parts {
   margin: 0.5rem 0 0;
@@ -1773,38 +1813,6 @@
   animation: v4-flash 0.9s ease-out;
 }
 
-/* ── DnD category-mapping pairs ──────────────────────────────────────────── */
-.v4-dnd-pairs {
-  margin: 0.5rem 0 0.4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.v4-dnd-pair {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 0.5rem;
-  align-items: center;
-  font-size: 0.88rem;
-}
-
-.v4-dnd-item {
-  font-weight: 500;
-}
-
-.v4-dnd-arrow {
-  color: #888;
-  font-size: 0.9rem;
-}
-
-.v4-dnd-category {
-  color: #555;
-  background: rgba(0, 0, 0, 0.03);
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.07);
-}
 
 /* ── Print mode ───────────────────────────────────────────────────────────── */
 @media print {

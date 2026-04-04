@@ -9,7 +9,7 @@
  */
 
 import { callGemini } from "../../../lib/gemini";
-import type { TestItem, TestSection, TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
+import type { TestItem, TestSection, TestProduct, Misconception } from "../../../src/prism-v4/schema/integration/IntentProduct";
 import type { ExtractedProblemDifficulty, ExtractedProblemCognitiveDemand } from "../../../src/prism-v4/schema/semantic/ExtractedProblem";
 
 // ── Universal item-type menu ──────────────────────────────────────────────────
@@ -225,6 +225,25 @@ function mapDifficulty(d: number): ExtractedProblemDifficulty {
 	return "medium";
 }
 
+/**
+ * Probabilistic difficulty bias: mostly_easy → 70% items ≤ 2; mostly_hard → 70% items ≥ 4.
+ * Uses per-slot seed so distribution is deterministic and varied across items.
+ */
+function applyDifficultyBias(
+	diffInt: number,
+	bias: "easy" | "mixed" | "hard" | undefined,
+	slotSeed: number,
+): number {
+	if (!bias || bias === "mixed") return diffInt;
+	const roll = ((slotSeed * 1664525 + 1013904223) >>> 0) % 10; // 0–9
+	if (bias === "easy") {
+		// 70% → clamp to ≤ 2; 30% → clamp to ≤ 3
+		return roll < 7 ? Math.min(diffInt, 2) : Math.min(diffInt, 3);
+	}
+	// mostly_hard: 70% → boost to ≥ 4; 30% → boost to ≥ 3
+	return roll < 7 ? Math.max(diffInt, 4) : Math.max(diffInt, 3);
+}
+
 function mapCognitiveDemand(itemType: string): ExtractedProblemCognitiveDemand {
 	const t = itemType.toLowerCase();
 	if (t.includes("state") || t.includes("define")) return "recall";
@@ -233,6 +252,55 @@ function mapCognitiveDemand(itemType: string): ExtractedProblemCognitiveDemand {
 	if (t.includes("decide") || t.includes("evaluate")) return "analysis";
 	if (t.includes("explain") || t.includes("conclude")) return "conceptual";
 	return "procedural";
+}
+
+/**
+ * Shuffle MC/MS answer choices so the correct answer is not always in the same
+ * position (eliminates the "always B" pattern). Updates both `structuredAnswer`
+ * and `answerGuidance` to reflect the new order.
+ */
+function shuffleMCChoices(item: TestItem, slotSeed: number): TestItem {
+	const fmt = item.problemType;
+	if (fmt !== "MC" && fmt !== "MS") return item;
+	const sa = item.structuredAnswer;
+	if (!sa || typeof sa !== "object" || Array.isArray(sa)) return item;
+	const data = sa as { correct?: string | string[]; choices?: string[] };
+	if (!Array.isArray(data.choices) || data.choices.length < 2) return item;
+
+	// Fisher-Yates using slotSeed for determinism
+	const choices = [...data.choices];
+	for (let i = choices.length - 1; i > 0; i--) {
+		const j = ((slotSeed * (i + 7) * 1664525 + 1013904223) >>> 0) % (i + 1);
+		[choices[i], choices[j]] = [choices[j]!, choices[i]!];
+	}
+
+	// Re-label A, B, C … and track where the correct answer(s) ended up
+	const oldLabels = data.choices.map((c) => c.match(/^([A-E])\./)?.[1] ?? "");
+	const newLabels = choices.map((_, idx) => String.fromCharCode(65 + idx));
+	// Build old-label → new-label mapping
+	const labelMap = new Map<string, string>();
+	for (let i = 0; i < choices.length; i++) {
+		const oldLabel = oldLabels[data.choices.indexOf(choices[i]!)] ?? "";
+		if (oldLabel) labelMap.set(oldLabel, newLabels[i]!);
+	}
+	// Re-prefix choice text
+	const relabeledChoices = choices.map((c, i) => {
+		const text = c.replace(/^[A-E]\.\s*/, "");
+		return `${newLabels[i]}. ${text}`;
+	});
+
+	let newCorrect: string | string[];
+	if (Array.isArray(data.correct)) {
+		newCorrect = (data.correct as string[]).map((l) => labelMap.get(l) ?? l);
+	} else {
+		newCorrect = labelMap.get(data.correct as string) ?? (data.correct as string);
+	}
+
+	return {
+		...item,
+		structuredAnswer: { correct: newCorrect, choices: relabeledChoices },
+		answerGuidance: Array.isArray(newCorrect) ? newCorrect.join(", ") : (newCorrect as string),
+	};
 }
 
 // ── Problem-format system ─────────────────────────────────────────────────────
@@ -244,12 +312,12 @@ type ProblemFormat = "TF" | "MC" | "MS" | "Matching" | "DnD" | "Sorting" | "SA" 
 
 /** Which formats are valid for each item-type (drawn from the spec table). */
 const FORMAT_ALLOWED_BY_ITEM_TYPE: Record<UniversalItemType, ProblemFormat[]> = {
-	"State / Define": ["TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ"],
-	"Interpret":      ["TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ"],
-	"Apply":          ["MC", "MS", "DnD", "Sorting", "SA", "FRQ"],
-	"Decide":         ["TF", "MC", "MS", "DnD", "Sorting", "SA", "FRQ"],
+	"State / Define": ["TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ"],
+	"Interpret":      ["TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ"],
+	"Apply":          ["MC", "MS", "Sorting", "SA", "FRQ"],
+	"Decide":         ["TF", "MC", "MS", "Sorting", "SA", "FRQ"],
 	"Explain":        ["SA", "FRQ"],
-	"Evaluate":       ["MC", "MS", "DnD", "Sorting", "SA", "FRQ"],
+	"Evaluate":       ["MC", "MS", "Sorting", "SA", "FRQ"],
 	"Conclude":       ["TF", "MC", "MS", "SA", "FRQ"],
 };
 
@@ -345,8 +413,10 @@ const FORMAT_INSTRUCTIONS: Record<ProblemFormat, string> = {
  * using the item-position within the quota as extra entropy so successive
  * items for the same concept get different formats.
  */
-function selectFormat(concept: string, itemType: UniversalItemType, slotIndex: number): ProblemFormat {
-	const allowed = FORMAT_ALLOWED_BY_ITEM_TYPE[itemType];
+function selectFormat(concept: string, itemType: UniversalItemType, slotIndex: number, overrideAllowed?: ProblemFormat[]): ProblemFormat {
+	const allowed = overrideAllowed && overrideAllowed.length > 0
+		? overrideAllowed
+		: FORMAT_ALLOWED_BY_ITEM_TYPE[itemType];
 	const seed = hashString(`${concept}-${itemType}-${slotIndex}`);
 	return allowed[seed % allowed.length]!;
 }
@@ -371,6 +441,8 @@ function buildAssessmentPrompt(
 	scenarioStyle?: string,
 	/** FRQ structure template injected when FRQ items are expected. */
 	frqTemplate?: string,
+	/** Tone for question writing. Default: "conversational". */
+	teacherTone?: "conversational" | "formal",
 ): string {
 	const itemTypesList = itemTypes.join(", ");
 	// For the example shape we show the richer schema so the LLM learns the fields
@@ -403,6 +475,7 @@ function buildAssessmentPrompt(
 
 	return [
 		"You are an expert assessment writer who creates teacher-quality questions.",
+		`Tone: ${teacherTone ?? "conversational"}. Write questions in that voice.`,
 		"Your questions must:",
 		"- be fully original and never copy or paraphrase the source document",
 		"- use realistic, varied, domain-appropriate scenarios with specific details",
@@ -411,6 +484,7 @@ function buildAssessmentPrompt(
 		"- be concise, unambiguous, and instructionally sound",
 		"- avoid trick questions or unnecessary complexity",
 		"- for MC/MS: include misconception-based distractors that reflect real student errors",
+		"- be printable (no drag-and-drop or interactive-only interactions)",
 		"Always return valid JSON only. Never include explanations outside the JSON array.",
 		"",
 		`Generate ${quota} assessment item${quota !== 1 ? "s" : ""}.`,
@@ -495,6 +569,141 @@ function parseItemArray(raw: string): RawItem[] | null {
 	}
 }
 
+// ── Post-generation enrichment helpers ───────────────────────────────────────
+
+/**
+ * Generate step-by-step solution for a single item.
+ * Returns an empty array if Gemini is unavailable or parsing fails.
+ */
+async function generateSolutionSteps(item: TestItem): Promise<string[]> {
+	const concept = item.primaryConcepts?.[0] ?? item.concept;
+	const prompt = [
+		"You are an expert teacher explaining how to solve an assessment item.",
+		"",
+		`Item prompt:\n"${item.prompt}"`,
+		"",
+		`Concept: "${concept}"`,
+		"",
+		"Correct answer (structured):",
+		JSON.stringify(item.structuredAnswer ?? item.answerGuidance),
+		"",
+		"Write a clear, step-by-step solution a teacher could use as an answer key.",
+		"Each step must be a short sentence. Aim for 2–4 steps.",
+		"",
+		'Return JSON only: { "steps": ["Step 1...", "Step 2...", "Step 3..."] }',
+	].join("\n");
+
+	try {
+		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 512 });
+		const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+		const parsed = JSON.parse(text) as { steps?: unknown };
+		if (Array.isArray(parsed.steps)) {
+			return (parsed.steps as unknown[]).filter((s): s is string => typeof s === "string");
+		}
+	} catch {
+		// Silently degrade — steps are enrichment, not required
+	}
+	return [];
+}
+
+/**
+ * Generate a misconception explanation for a single distractor choice.
+ */
+async function generateMisconceptionForDistractor(
+	distractor: string,
+	correctAnswer: string,
+	concept: string,
+): Promise<{ label: string; explanation: string } | null> {
+	const prompt = [
+		"You are an expert teacher analyzing student misconceptions.",
+		"",
+		`Concept: "${concept}"`,
+		"",
+		`Correct answer: "${correctAnswer}"`,
+		"",
+		`Distractor: "${distractor}"`,
+		"",
+		"Explain why a student might choose this distractor and what misconception it reflects.",
+		"",
+		'Return JSON only: { "label": "short name of misconception", "explanation": "detailed explanation" }',
+	].join("\n");
+
+	try {
+		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 256 });
+		const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+		const parsed = JSON.parse(text) as { label?: unknown; explanation?: unknown };
+		if (typeof parsed.label === "string" && typeof parsed.explanation === "string") {
+			return { label: parsed.label, explanation: parsed.explanation };
+		}
+	} catch {
+		// Silently degrade
+	}
+	return null;
+}
+
+/**
+ * Generate Misconception entries for all non-correct choices in an MC/MS item.
+ */
+async function generateMisconceptionsForItem(item: TestItem): Promise<Misconception[] | undefined> {
+	const sa = item.structuredAnswer as { correct?: string | string[]; choices?: string[] } | null | undefined;
+	if (!sa || !Array.isArray(sa.choices) || sa.choices.length === 0) return undefined;
+
+	const correct: string[] = Array.isArray(sa.correct) ? sa.correct : sa.correct ? [sa.correct] : [];
+	const correctAnswer = Array.isArray(sa.correct) ? sa.correct.join(", ") : (sa.correct as string ?? "");
+	const concept = item.primaryConcepts?.[0] ?? item.concept;
+
+	const results = await Promise.allSettled(
+		sa.choices.map(async (choice) => {
+			const labelMatch = choice.match(/^([A-E])\./)?.[1] ?? "";
+			if (correct.includes(labelMatch)) return null; // skip correct answer
+			const text = choice.replace(/^[A-E]\.\s*/, "");
+			const result = await generateMisconceptionForDistractor(text, correctAnswer, concept);
+			if (!result) return null;
+			return { distractor: text, label: result.label, explanation: result.explanation } as Misconception;
+		}),
+	);
+
+	const misconceptions = results
+		.filter((r): r is PromiseFulfilledResult<Misconception> => r.status === "fulfilled" && r.value !== null)
+		.map((r) => r.value);
+
+	return misconceptions.length > 0 ? misconceptions : undefined;
+}
+
+/**
+ * Validate a generated item against format constraints.
+ * Returns false for items that should be dropped.
+ */
+function validateItem(item: TestItem): boolean {
+	// Reject DnD (not printable)
+	if (item.problemType === "DnD") return false;
+
+	// Reject items with empty prompt
+	if (!item.prompt?.trim()) return false;
+
+	// MC/MS: must have ≥ 3 choices
+	if (item.problemType === "MC" || item.problemType === "MS") {
+		const sa = item.structuredAnswer as { choices?: unknown[] } | null | undefined;
+		if (!sa || !Array.isArray(sa.choices) || sa.choices.length < 3) return false;
+		// Reject if inline A/B/C/D choices leaked into prompt
+		if (item.prompt.split("\n").some((l) => /^\s*[A-E]\.\s+/.test(l))) return false;
+	}
+
+	// FRQ: must have at least one named part
+	if (item.problemType === "FRQ") {
+		const sa = item.structuredAnswer as Record<string, unknown> | null | undefined;
+		if (!sa || typeof sa !== "object" || Array.isArray(sa)) return false;
+		if (!["partA", "partB", "partC", "partD"].some((k) => sa[k])) return false;
+	}
+
+	// Sorting: must have ≥ 2 items
+	if (item.problemType === "Sorting") {
+		if (!Array.isArray(item.structuredAnswer) || (item.structuredAnswer as unknown[]).length < 2) return false;
+	}
+
+	return true;
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -511,6 +720,12 @@ export async function generateScenarioSection(
 	seed: string,
 	relatedConcepts: string[] = [],
 	forcedFormat?: ProblemFormat,
+	/** Restrict which formats may be used (teacher-selected). Ignored when forcedFormat is set. */
+	allowedFormats?: ProblemFormat[],
+	/** Bias difficulty distribution: "easy" → mostly 1-2, "hard" → mostly 4-5. */
+	difficultyBias?: "easy" | "mixed" | "hard",
+	/** Writing tone passed to LLM. Default: "conversational". */
+	teacherTone?: "conversational" | "formal",
 ): Promise<TestSection> {
 	const concept = section.concept;
 	const quota = Math.max(1, section.items.length);
@@ -528,7 +743,7 @@ export async function generateScenarioSection(
 
 	let raw: string;
 	try {
-		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate);
+		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone);
 		raw = await callGemini({
 			model: "gemini-2.0-flash",
 			prompt,
@@ -548,34 +763,66 @@ export async function generateScenarioSection(
 
 	const generatedItems: TestItem[] = rawItems.map((r, i) => {
 		const diffInt = typeof r.difficulty === "number" ? r.difficulty : 3;
-		const difficulty = mapDifficulty(diffInt);
 		const itemType = (r.itemType ?? itemTypes[i % itemTypes.length] ?? "Apply") as UniversalItemType;
 
 		// Use forcedFormat > LLM-returned format > deterministic selection.
+		// If allowedFormats is set, constrain the deterministic picker to that subset.
+		const effectiveAllowed =
+			allowedFormats && allowedFormats.length > 0
+				? FORMAT_ALLOWED_BY_ITEM_TYPE[itemType].filter((f) => allowedFormats.includes(f))
+				: undefined;
 		const format: ProblemFormat =
 			forcedFormat ??
 			(r.problemFormat && r.problemFormat in FORMAT_BASE_SECONDS
 				? (r.problemFormat as ProblemFormat)
-				: selectFormat(concept, itemType, i));
+				: selectFormat(concept, itemType, i, effectiveAllowed));
 
-		return {
+		// Apply difficulty bias: probabilistic 70/30 split per slot
+		const biasedDiff = applyDifficultyBias(diffInt, difficultyBias, hashString(seed + concept + String(i)));
+
+		return shuffleMCChoices({
 			itemId: `gen-${seed.slice(-8)}-${concept.replace(/\s+/g, "-").slice(0, 24)}-${i}`,
 			prompt: r.prompt.trim(),
 			concept,
 			primaryConcepts: r.conceptIds && r.conceptIds.length > 0 ? r.conceptIds : [concept],
 			sourceDocumentId,
 			sourceFileName,
-			difficulty,
+			difficulty: mapDifficulty(biasedDiff),
 			cognitiveDemand: mapCognitiveDemand(r.itemType),
 			answerGuidance: r.answer.trim(),
 			structuredAnswer: r.structuredAnswer ?? r.answer.trim(),
 			problemType: format,
-			estimatedTimeSeconds: computeItemTimeSeconds(format, diffInt),
+			estimatedTimeSeconds: computeItemTimeSeconds(format, biasedDiff),
 			misconceptionTriggers: [],
-		};
+		}, hashString(seed + concept + String(i)));
 	});
 
-	return { ...section, items: generatedItems };
+	// Validation pass: drop items that fail format constraints
+	const validItems = generatedItems.filter(validateItem);
+	if (validItems.length < generatedItems.length) {
+		console.warn(
+			`[generateScenarios] Dropped ${generatedItems.length - validItems.length} invalid item(s) for "${concept}".`,
+		);
+	}
+
+	// Enrichment pass: generate solution steps + misconceptions in parallel
+	const enrichedItems: TestItem[] = await Promise.all(
+		validItems.map(async (item) => {
+			const [solutionSteps, misconceptions] = await Promise.all([
+				generateSolutionSteps(item),
+				item.problemType === "MC" || item.problemType === "MS"
+					? generateMisconceptionsForItem(item)
+					: Promise.resolve(undefined),
+			]);
+			return {
+				...item,
+				...(solutionSteps.length > 0 ? { solutionSteps } : {}),
+				...(misconceptions ? { misconceptions } : {}),
+			};
+		}),
+	);
+
+	return { ...section, items: enrichedItems };
 }
 
 /**
@@ -594,6 +841,9 @@ export async function enrichProductWithScenarios(
 	product: TestProduct,
 	seed: string,
 	conceptQuotas?: Array<{ id: string; name: string; quota: number }>,
+	allowedFormats?: ProblemFormat[],
+	difficultyBias?: "easy" | "mixed" | "hard",
+	teacherTone?: "conversational" | "formal",
 ): Promise<TestProduct> {
 	if (!process.env.GEMINI_API_KEY) {
 		console.log("[generateScenarios] GEMINI_API_KEY not set — using extracted items.");
@@ -648,7 +898,7 @@ export async function enrichProductWithScenarios(
 			const relatedConcepts = targets
 				.filter((_, j) => j !== idx)
 				.map((t) => t.concept);
-			return generateScenarioSection(stubSection, seed, relatedConcepts);
+			return generateScenarioSection(stubSection, seed, relatedConcepts, undefined, allowedFormats, difficultyBias, teacherTone);
 		}),
 	);
 
@@ -673,8 +923,9 @@ export async function enrichProductWithScenarios(
 
 // ── Internal exports for unit testing only ───────────────────────────────────
 // Not part of the public API surface. Import via @internal tag in tests.
+/** DnD is excluded — not printable. */
 export const VALID_PROBLEM_FORMATS: readonly ProblemFormat[] = [
-	"TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ",
+	"TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ",
 ] as const;
 
 export {
@@ -701,7 +952,6 @@ export type ItemFormat = ProblemFormat;
  *  MS  → { correct: string[]; choices: string[] }
  *  TF  → "True" | "False"
  *  Matching → Record<string, string>  (term → definition)
- *  DnD      → Record<string, string>  (item → category)
  *  Sorting  → string[]
  *  FRQ → { partA?: string; partB?: string; partC?: string; partD?: string }
  *  SA  → null

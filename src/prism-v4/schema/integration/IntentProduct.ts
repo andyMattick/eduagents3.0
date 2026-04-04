@@ -131,6 +131,13 @@ export interface ReviewProduct extends IntentProductMetadata {
 	generatedAt: string;
 }
 
+export interface Misconception {
+	distractor: string;
+	label?: string;
+	explanation: string;
+	conceptLink?: string;
+}
+
 export interface TestItemExplanation {
 	conceptId: string;
 	conceptReason: string;
@@ -166,6 +173,10 @@ export interface TestItem {
 	/** Estimated time in seconds based on format × difficulty */
 	estimatedTimeSeconds?: number;
 	misconceptionTriggers?: string[];
+	/** Step-by-step solution for answer key generation */
+	solutionSteps?: string[];
+	/** Per-distractor misconception explanations (MC/MS items only) */
+	misconceptions?: Misconception[];
 	explanation?: TestItemExplanation;
 }
 

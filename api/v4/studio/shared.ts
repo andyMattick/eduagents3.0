@@ -481,6 +481,26 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		return res.status(400).json({ error: "blueprintId is required" });
 	}
 
+	const body = parseJsonBody<{
+		version?: number;
+		teacherId?: string;
+		unitId?: string;
+		studentId?: string;
+		options?: {
+			itemCount?: number;
+			adaptiveConditioning?: boolean;
+			allowedFormats?: string[];
+			difficultyBias?: "easy" | "mixed" | "hard";
+			teacherTone?: "conversational" | "formal";
+		};
+	}>(req.body, {});
+
+	const allowedFormats = Array.isArray(body.options?.allowedFormats)
+		? (body.options!.allowedFormats as ProblemFormat[])
+		: undefined;
+	const difficultyBias = body.options?.difficultyBias ?? undefined;
+	const teacherTone = body.options?.teacherTone ?? undefined;
+
 	const blueprintRecord = await getBlueprintStore(blueprintId);
 	if (!blueprintRecord) {
 		return res.status(404).json({ error: "Blueprint not found" });
@@ -530,7 +550,7 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 	// This ensures every teacher-ranked concept gets its assigned items even
 	// when the source document has sparse content for some concepts.
 	const seed = blueprintId + Date.now().toString(36);
-	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas);
+	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas, allowedFormats, difficultyBias, teacherTone);
 
 	const output = await saveStudioOutputStore({
 		sessionId: blueprintRecord.sessionId,

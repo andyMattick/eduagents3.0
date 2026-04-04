@@ -26,6 +26,7 @@ export interface ConceptRanking {
 	id: string;
 	included: boolean;
 	rank: number; // 1 = highest priority
+	isCustom?: boolean; // true for teacher-added "Other" concepts
 }
 
 interface FlowState {
@@ -130,7 +131,7 @@ export function CreateDocumentFlow() {
 		}
 	}, [state.files]);
 
-	const handleGenerate = useCallback(async (mode: OutputMode, itemCount: number) => {
+	const handleGenerate = useCallback(async (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[]) => {
 		if (!state.sessionId) return;
 		setState((prev) => ({ ...prev, isLoading: true, error: null, outputMode: mode }));
 		try {
@@ -144,6 +145,8 @@ export function CreateDocumentFlow() {
 				version: version.version,
 				itemCount,
 				adaptiveConditioning: true,
+				difficultyBias,
+				allowedFormats,
 			});
 			setState((prev) => ({
 				...prev,
@@ -243,9 +246,10 @@ export function CreateDocumentFlow() {
 					<Screen3
 						docCount={state.files.length}
 						totalOpportunities={state.analysis?.problems.reduce((s, p) => s + p.problemCount, 0) ?? 0}
+						conceptCount={state.conceptRankings.filter((r) => r.included !== false).length || (state.analysis?.concepts.filter((c) => !c.isNoise).length ?? 1)}
 						isLoading={state.isLoading}
 						error={state.error}
-						onGenerate={(mode, itemCount) => void handleGenerate(mode, itemCount)}
+						onGenerate={(mode, itemCount, difficultyBias, allowedFormats) => void handleGenerate(mode, itemCount, difficultyBias, allowedFormats)}
 					/>
 				)}
 				{state.step === 4 && (
@@ -465,6 +469,8 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 	// ordered holds concept IDs in display order; order index = rank.
 	const [ordered, setOrdered] = useState<string[]>([]);
 	const [included, setIncluded] = useState<Set<string>>(new Set());
+	const [customConcepts, setCustomConcepts] = useState<string[]>([]);
+	const [customInput, setCustomInput] = useState("");
 	const dragSrcRef = useRef<string | null>(null);
 
 	// Initialize when analysis arrives.
@@ -510,7 +516,21 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 
 	// Derive ConceptRanking[] from current ordered/included state for onContinue.
 	function buildRankings(): ConceptRanking[] {
-		return ordered.map((id, i) => ({ id, included: included.has(id), rank: i + 1 }));
+		const baseRankings = ordered.map((id, i) => ({ id, included: included.has(id), rank: i + 1 }));
+		const customRankings = customConcepts.map((id, i) => ({
+			id,
+			included: true,
+			rank: ordered.length + i + 1,
+			isCustom: true,
+		}));
+		return [...baseRankings, ...customRankings];
+	}
+
+	function addCustomConcept() {
+		const trimmed = customInput.trim();
+		if (!trimmed || customConcepts.includes(trimmed) || ordered.includes(trimmed)) return;
+		setCustomConcepts((prev) => [...prev, trimmed]);
+		setCustomInput("");
 	}
 
 	if (isLoading) {
@@ -604,6 +624,44 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 				) : (
 					<p className="v4-body-copy">No concepts detected.</p>
 				)}
+
+				{customConcepts.length > 0 && (
+					<ul className="v4-concept-list" style={{ marginTop: "0.75rem" }}>
+						{customConcepts.map((id) => (
+							<li key={id} className="v4-concept-item">
+								<span className="v4-concept-handle v4-concept-handle--disabled" aria-hidden="true">⠿</span>
+								<span className="v4-concept-name">{id}</span>
+								<button
+									type="button"
+									className="v4-concept-remove"
+									aria-label={`Remove ${id}`}
+									onClick={() => setCustomConcepts((prev) => prev.filter((c) => c !== id))}
+								>
+									✕
+								</button>
+							</li>
+						))}
+					</ul>
+				)}
+
+				<div className="v4-custom-concept-row">
+					<input
+						className="v4-item-count-input"
+						type="text"
+						placeholder="Add another concept…"
+						value={customInput}
+						maxLength={80}
+						onChange={(e) => setCustomInput(e.target.value)}
+						onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustomConcept(); } }}
+					/>
+					<button
+						type="button"
+						className="v4-button v4-button-secondary v4-button-sm"
+						onClick={addCustomConcept}
+					>
+						Add
+					</button>
+				</div>
 			</section>
 
 			{skills.length > 0 && (
@@ -647,18 +705,47 @@ const MULTI_DOC_OPTIONS: Array<{ mode: OutputMode; label: string; description: s
 interface Screen3Props {
 	docCount: number;
 	totalOpportunities: number;
+	conceptCount: number;
 	isLoading: boolean;
 	error: string | null;
-	onGenerate: (mode: OutputMode, itemCount: number) => void;
+	onGenerate: (mode: OutputMode, itemCount: number, difficultyBias: "easy" | "mixed" | "hard", allowedFormats: string[]) => void;
 }
 
-function Screen3({ docCount, totalOpportunities, isLoading, error, onGenerate }: Screen3Props) {
+const ALL_DIFFICULTY_OPTIONS: { value: "easy" | "mixed" | "hard"; label: string }[] = [
+	{ value: "easy", label: "Easy" },
+	{ value: "mixed", label: "Mixed" },
+	{ value: "hard", label: "Hard" },
+];
+
+const ALL_FORMAT_OPTIONS: { value: string; label: string }[] = [
+	{ value: "TF", label: "True / False" },
+	{ value: "MC", label: "Multiple Choice" },
+	{ value: "MS", label: "Multi-Select" },
+	{ value: "Matching", label: "Matching" },
+	{ value: "Sorting", label: "Sorting" },
+	{ value: "SA", label: "Short Answer" },
+	{ value: "FRQ", label: "Free Response" },
+];
+
+function Screen3({ docCount, totalOpportunities, conceptCount, isLoading, error, onGenerate }: Screen3Props) {
 	const options = docCount > 1 ? MULTI_DOC_OPTIONS : SINGLE_DOC_OPTIONS;
-	const defaultCount = Math.min(totalOpportunities, 10);
+	// Max questions: concepts × formats × 2, capped at 40 (not limited by extracted problem count)
+	const maxQuestions = Math.min(Math.max(conceptCount * ALL_FORMAT_OPTIONS.length * 2, 20), 40);
+	const defaultCount = Math.min(totalOpportunities > 0 ? totalOpportunities : 10, maxQuestions);
 	const [selectedMode, setSelectedMode] = useState<OutputMode>(options[0].mode);
 	const [itemCount, setItemCount] = useState(defaultCount > 0 ? defaultCount : 8);
+	const [difficultyBias, setDifficultyBias] = useState<"easy" | "mixed" | "hard">("mixed");
+	const [allowedFormats, setAllowedFormats] = useState<string[]>(ALL_FORMAT_OPTIONS.map((f) => f.value));
 
 	const isCompare = selectedMode === "compare";
+
+	function toggleFormat(value: string) {
+		setAllowedFormats((prev) =>
+			prev.includes(value)
+				? prev.length > 1 ? prev.filter((f) => f !== value) : prev // keep at least 1
+				: [...prev, value]
+		);
+	}
 
 	return (
 		<>
@@ -694,13 +781,47 @@ function Screen3({ docCount, totalOpportunities, isLoading, error, onGenerate }:
 							className="v4-item-count-input"
 							type="number"
 							min={1}
-							max={totalOpportunities > 0 ? totalOpportunities : 100}
+							max={maxQuestions}
 							value={itemCount}
-							onChange={(e) => setItemCount(Math.max(1, Number(e.target.value)))}
+							onChange={(e) => setItemCount(Math.max(1, Math.min(maxQuestions, Number(e.target.value))))}
 						/>
-						{totalOpportunities > 0 && (
-							<span className="v4-stat-label">up to {totalOpportunities} available</span>
-						)}
+						<span className="v4-stat-label">up to {maxQuestions} questions</span>
+					</div>
+				</section>
+			)}
+
+			{!isCompare && (
+				<section className="v4-panel v4-vector-span">
+					<p className="v4-kicker">Difficulty distribution</p>
+					<div className="v4-mode-options">
+						{ALL_DIFFICULTY_OPTIONS.map((opt) => (
+							<button
+								key={opt.value}
+								type="button"
+								className={`v4-mode-card${difficultyBias === opt.value ? " v4-mode-card--selected" : ""}`}
+								onClick={() => setDifficultyBias(opt.value)}
+							>
+								<span className="v4-mode-label">{opt.label}</span>
+							</button>
+						))}
+					</div>
+				</section>
+			)}
+
+			{!isCompare && (
+				<section className="v4-panel v4-vector-span">
+					<p className="v4-kicker">Question formats</p>
+					<div className="v4-format-checkboxes">
+						{ALL_FORMAT_OPTIONS.map((opt) => (
+							<label key={opt.value} className="v4-format-checkbox-label">
+								<input
+									type="checkbox"
+									checked={allowedFormats.includes(opt.value)}
+									onChange={() => toggleFormat(opt.value)}
+								/>
+								{opt.label}
+							</label>
+						))}
 					</div>
 				</section>
 			)}
@@ -720,7 +841,7 @@ function Screen3({ docCount, totalOpportunities, isLoading, error, onGenerate }:
 							className="v4-button"
 							type="button"
 							disabled={isLoading}
-							onClick={() => onGenerate(selectedMode, itemCount)}
+							onClick={() => onGenerate(selectedMode, itemCount, difficultyBias, allowedFormats)}
 						>
 							{isLoading ? "Generating…" : "Generate"}
 						</button>
@@ -750,13 +871,12 @@ const FORMAT_DISPLAY: Record<string, string> = {
 	MC: "Multiple Choice",
 	MS: "Multiple Select",
 	Matching: "Matching",
-	DnD: "Drag & Drop",
 	Sorting: "Ordering",
 	SA: "Short Answer",
 	FRQ: "Free Response",
 };
 
-const ALL_FORMATS = ["TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ"] as const;
+const ALL_FORMATS = ["TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ"] as const;
 
 function formatTime(seconds: number): string {
 	if (seconds < 60) return `~${seconds}s`;
@@ -848,24 +968,6 @@ function StructuredAnswerView({ item }: { item: TestItem }) {
 		);
 	}
 
-	// DnD can also be { item: category } pairs
-	if (fmt === "DnD" && sa && typeof sa === "object" && !Array.isArray(sa)) {
-		const entries = Object.entries(sa as Record<string, string>);
-		if (entries.length > 0) {
-			return (
-				<div className="v4-dnd-pairs">
-					{entries.map(([label, category], i) => (
-						<div key={i} className="v4-dnd-pair">
-							<span className="v4-dnd-item">{label}</span>
-							<span className="v4-dnd-arrow">→</span>
-							<span className="v4-dnd-category">{category}</span>
-						</div>
-					))}
-				</div>
-			);
-		}
-	}
-
 	if (fmt === "FRQ" && sa && typeof sa === "object" && !Array.isArray(sa)) {
 		const parts = sa as Record<string, string>;
 		const keys = ["partA", "partB", "partC", "partD"].filter((k) => parts[k]);
@@ -906,6 +1008,16 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 	const sections = payload?.sections ?? [];
 	const totalItems = payload?.totalItemCount ?? sections.reduce((s, sec) => s + sec.items.length, 0);
 
+	// Group all items by problemType (format) instead of by concept section
+	const FORMAT_ORDER = ["TF", "MC", "MS", "Matching", "DnD", "Sorting", "SA", "FRQ"];
+	const allItems = sections.flatMap((s) => s.items);
+	const groupedSections = FORMAT_ORDER
+		.map((fmt) => ({
+			concept: FORMAT_DISPLAY[fmt] ?? fmt,
+			items: allItems.filter((item) => item.problemType === fmt),
+		}))
+		.filter((g) => g.items.length > 0);
+
 	return (
 		<>
 			<section className="v4-panel v4-vector-span v4-hero">
@@ -936,12 +1048,12 @@ function Screen4({ output, isLoading, error, onAnotherVersion, onRewriteItem, on
 				</section>
 			)}
 
-			{sections.map((section, sectionIndex) => (
+			{groupedSections.map((section, sectionIndex) => (
 				<AssessmentSection
 					key={section.concept}
 					section={section}
 					sectionIndex={sectionIndex}
-					startNumber={sections.slice(0, sectionIndex).reduce((s, sec) => s + sec.items.length, 1)}
+					startNumber={groupedSections.slice(0, sectionIndex).reduce((s, sec) => s + sec.items.length, 1)}
 					onRewriteItem={onRewriteItem}
 					onReplaceItem={onReplaceItem}
 					onChangeFormat={onChangeFormat}
@@ -1210,38 +1322,67 @@ function buildPlainText(product: TestProduct, versionName: string): string {
 	}
 	lines.push("");
 
-	const PART_LABEL_RE = /^[a-z]\) /;
-
-	function renderItem(n: number, prompt: string): string[] {
-		const out: string[] = [];
-		if (prompt.includes("\n\n")) {
-			const segs = prompt.split("\n\n");
-			const firstPart = segs.findIndex((s) => PART_LABEL_RE.test(s.trim()));
-			const stem = firstPart > 0 ? segs.slice(0, firstPart).join(" ") : null;
-			const parts = firstPart >= 0 ? segs.slice(firstPart) : segs;
-			if (stem) out.push(`${n}. ${stem}`);
-			else out.push(`${n}.`);
-			for (const part of parts) {
-				out.push("");
-				out.push(`   ${part.trim()}`);
-				out.push("");
-				out.push("   Answer: _______________________________________________");
-			}
-		} else {
-			out.push(`${n}. ${prompt}`);
-			out.push("");
-			out.push("Answer: _______________________________________________");
-		}
-		out.push("");
-		return out;
-	}
+	// Group by problemType (same order as Screen 4)
+	const FORMAT_ORDER = ["TF", "MC", "MS", "Matching", "Sorting", "SA", "FRQ"];
+	const allItems = product.sections.flatMap((s) => s.items);
+	const grouped = FORMAT_ORDER
+		.map((fmt) => ({ fmt, items: allItems.filter((item) => item.problemType === fmt) }))
+		.filter((g) => g.items.length > 0);
 
 	let questionNumber = 1;
-	for (const section of product.sections) {
-		lines.push(humanizeConcept(section.concept));
-		lines.push("-".repeat(humanizeConcept(section.concept).length));
-		for (const item of section.items) {
-			lines.push(...renderItem(questionNumber, item.prompt));
+	for (const { fmt, items } of grouped) {
+		const sectionLabel = FORMAT_DISPLAY[fmt] ?? fmt;
+		lines.push(sectionLabel);
+		lines.push("-".repeat(sectionLabel.length));
+		lines.push("");
+
+		for (const item of items) {
+			const prompt = (fmt === "MC" || fmt === "MS") ? stripInlineChoices(item.prompt) : item.prompt;
+			lines.push(`${questionNumber}. ${prompt}`);
+
+			// Render format-specific answer structure
+			const sa = item.structuredAnswer;
+			if ((fmt === "MC" || fmt === "MS") && sa && typeof sa === "object" && !Array.isArray(sa)) {
+				const data = sa as { choices?: string[] };
+				if (Array.isArray(data.choices)) {
+					lines.push("");
+					for (const choice of data.choices) lines.push(`   ${choice}`);
+				}
+				lines.push("");
+				lines.push("Answer: _______");
+			} else if (fmt === "TF") {
+				lines.push("");
+				lines.push("   True   /   False");
+				lines.push("");
+			} else if (fmt === "Matching" && sa && typeof sa === "object" && !Array.isArray(sa)) {
+				const pairs = sa as Record<string, string>;
+				lines.push("");
+				const terms = Object.keys(pairs);
+				const defs = Object.values(pairs);
+				for (let i = 0; i < terms.length; i++) {
+					lines.push(`   ${i + 1}. ${terms[i]!}   ____`);
+				}
+				lines.push("");
+				lines.push("   Definitions:");
+				defs.forEach((d, i) => lines.push(`   ${String.fromCharCode(65 + i)}. ${d}`));
+				lines.push("");
+			} else if (fmt === "Sorting" && Array.isArray(sa)) {
+				lines.push("");
+				for (const it of sa as string[]) lines.push(`   ○  ${it}`);
+				lines.push("");
+				lines.push("Order: ___");
+			} else if (fmt === "FRQ" && sa && typeof sa === "object" && !Array.isArray(sa)) {
+				const parts = sa as Record<string, string>;
+				const keys = ["partA", "partB", "partC", "partD"].filter((k) => parts[k]);
+				for (const key of keys) {
+					lines.push("");
+					lines.push(`   ${key.replace("part", "Part ")}: _______________________________________________`);
+				}
+			} else {
+				lines.push("");
+				lines.push("Answer: _______________________________________________");
+			}
+			lines.push("");
 			questionNumber++;
 		}
 	}

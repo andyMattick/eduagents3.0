@@ -8,9 +8,6 @@ import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
-import { DocumentUpload } from './components_new/v4/DocumentUpload';
-import { PrintProductPage } from './components_new/v4/PrintProductPage';
-import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { CreateDocumentFlow } from './components_new/v4/CreateDocumentFlow';
 import './App.css';
 
@@ -18,7 +15,7 @@ console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/studio/create']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -42,15 +39,6 @@ function TeacherAppContent() {
   const [pathname, setPathname] = useState<string>(window.location.pathname);
   const { logout, user } = useAuth();
 
-  function navigate(nextPath: string) {
-    if (window.location.pathname === nextPath) {
-      return;
-    }
-    window.history.pushState({}, '', nextPath);
-    setPathname(nextPath);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }
-
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname);
     window.addEventListener('popstate', onPopState);
@@ -73,29 +61,14 @@ function TeacherAppContent() {
       <header className="app-header v4-home-header">
         <div className="app-header-content v4-home-header-content">
           <div className="v4-home-brand">
-            <p className="v4-home-kicker">Agents of Education: Home</p>
+            <p className="v4-home-kicker">Agents of Education</p>
             <h1>
-              {pathname.startsWith('/print/')
-                ? 'Printable Product'
-                : pathname === '/studio'
-                  ? 'Teacher Studio'
-                  : pathname === '/studio/create'
-                    ? 'Create a Document'
-                    : 'Document Ingestion'}
+              AI Document Creation
             </h1>
 
           </div>
 
           <div className="v4-home-actions">
-            <button onClick={() => navigate('/')} className="logout-button" type="button">
-              Workspace
-            </button>
-            <button onClick={() => navigate('/studio')} className="logout-button" type="button">
-              Teacher Studio
-            </button>
-            <button onClick={() => navigate('/studio/create')} className={`logout-button${pathname === '/studio/create' ? ' logout-button--active' : ''}`} type="button">
-              Create a Document
-            </button>
             {user?.email && <span className="v4-home-user">{user.email}</span>}
             <button onClick={handleLogout} className="logout-button">
               Sign Out
@@ -105,13 +78,7 @@ function TeacherAppContent() {
       </header>
 
       <main className="app-content app-content--v4">
-        {pathname.startsWith('/print/')
-          ? <PrintProductPage />
-          : pathname === '/studio/create'
-            ? <CreateDocumentFlow />
-            : pathname === '/studio'
-              ? <TeacherStudioView />
-              : <DocumentUpload />}
+        <CreateDocumentFlow />
       </main>
     </div>
   );

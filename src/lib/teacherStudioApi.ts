@@ -115,6 +115,8 @@ export function requestAssessmentOutputApi(args: {
 	studentId?: string;
 	itemCount?: number;
 	adaptiveConditioning?: boolean;
+	allowedFormats?: string[];
+	difficultyBias?: "easy" | "mixed" | "hard";
 }) {
 	return fetchJson<{ output: TeacherStudioOutputArtifact }>(`/api/v4/studio/blueprints/${encodeURIComponent(args.blueprintId)}/outputs/assessment`, {
 		method: "POST",
@@ -127,6 +129,8 @@ export function requestAssessmentOutputApi(args: {
 			options: {
 				itemCount: args.itemCount,
 				adaptiveConditioning: args.adaptiveConditioning,
+				allowedFormats: args.allowedFormats,
+				difficultyBias: args.difficultyBias,
 			},
 		}),
 	});
