@@ -763,6 +763,17 @@ function formatTime(seconds: number): string {
 	return `~${Math.round(seconds / 60)}m`;
 }
 
+/** Strip trailing inline choice labels (A. B. C. D.) that the LLM sometimes
+ *  leaks into the prompt field despite the instruction to keep stem-only. */
+function stripInlineChoices(prompt: string): string {
+	// Remove lines that look like "A. some choice text" from the end of the prompt
+	return prompt
+		.split("\n")
+		.filter((line) => !/^\s*[A-E]\.\s+/.test(line))
+		.join("\n")
+		.trim();
+}
+
 // ── Structured answer renderer ─────────────────────────────────────────────
 // Renders format-specific answer choices/pairs/parts based on item.structuredAnswer.
 // Falls back to a plain answer-space line when structuredAnswer is absent or
@@ -837,6 +848,24 @@ function StructuredAnswerView({ item }: { item: TestItem }) {
 		);
 	}
 
+	// DnD can also be { item: category } pairs
+	if (fmt === "DnD" && sa && typeof sa === "object" && !Array.isArray(sa)) {
+		const entries = Object.entries(sa as Record<string, string>);
+		if (entries.length > 0) {
+			return (
+				<div className="v4-dnd-pairs">
+					{entries.map(([label, category], i) => (
+						<div key={i} className="v4-dnd-pair">
+							<span className="v4-dnd-item">{label}</span>
+							<span className="v4-dnd-arrow">→</span>
+							<span className="v4-dnd-category">{category}</span>
+						</div>
+					))}
+				</div>
+			);
+		}
+	}
+
 	if (fmt === "FRQ" && sa && typeof sa === "object" && !Array.isArray(sa)) {
 		const parts = sa as Record<string, string>;
 		const keys = ["partA", "partB", "partC", "partD"].filter((k) => parts[k]);
@@ -854,7 +883,10 @@ function StructuredAnswerView({ item }: { item: TestItem }) {
 		}
 	}
 
-	// Default: SA or unknown
+	// Default: SA (null structuredAnswer) or unknown fallback.
+	// If structuredAnswer is defined but none of the format branches above
+	// could render it (e.g. malformed LLM data), don't show a spurious blank line.
+	if (sa != null) return null;
 	return <div className="v4-question-answer-space" aria-hidden="true" />;
 }
 
@@ -971,6 +1003,20 @@ interface AssessmentItemProps {
 function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: AssessmentItemProps) {
 	const [busy, setBusy] = useState(false);
 	const [menuOpen, setMenuOpen] = useState<"rewrite" | "format" | null>(null);
+	const [justUpdated, setJustUpdated] = useState(false);
+
+	// Flash + scroll when the item content changes (format change or rewrite)
+	const prevPromptRef = useRef(item.prompt);
+	const wrapperRef = useRef<HTMLLIElement>(null);
+	useEffect(() => {
+		if (prevPromptRef.current !== item.prompt) {
+			prevPromptRef.current = item.prompt;
+			setJustUpdated(true);
+			wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+			const t = setTimeout(() => setJustUpdated(false), 900);
+			return () => clearTimeout(t);
+		}
+	}, [item.prompt]);
 
 	async function handleRewrite(intent: ItemRewriteIntent) {
 		setMenuOpen(null);
@@ -993,7 +1039,6 @@ function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: Assessme
 	}
 
 	// Close menus on outside click
-	const wrapperRef = useRef<HTMLLIElement>(null);
 	useEffect(() => {
 		if (!menuOpen) return;
 		function onOutside(e: MouseEvent) {
@@ -1008,9 +1053,12 @@ function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: Assessme
 	const fmt = item.problemType;
 	const timeLabel = item.estimatedTimeSeconds ? formatTime(item.estimatedTimeSeconds) : null;
 
+	// Sanitise prompt: strip any inline A/B/C/D choice lines the LLM leaked
+	const cleanPrompt = (fmt === "MC" || fmt === "MS") ? stripInlineChoices(item.prompt) : item.prompt;
+
 	// Stem / part splitting for legacy multi-part prompts (a) b) c) pattern)
 	const PART_LABEL = /^[a-z]\) /;
-	const segments = item.prompt.includes("\n\n") ? item.prompt.split("\n\n") : null;
+	const segments = cleanPrompt.includes("\n\n") ? cleanPrompt.split("\n\n") : null;
 	const firstPartIdx = segments ? segments.findIndex((s) => PART_LABEL.test(s.trim())) : -1;
 	const stemSegments = firstPartIdx > 0 ? segments!.slice(0, firstPartIdx) : [];
 	const partSegments = segments
@@ -1028,7 +1076,7 @@ function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: Assessme
 		Object.keys(item.structuredAnswer as object).some((k) => k.startsWith("part"));
 
 	return (
-		<li className="v4-question-item" ref={wrapperRef}>
+		<li id={item.itemId} className={`v4-question-item${justUpdated ? " v4-updated" : ""}`} ref={wrapperRef}>
 			{/* Format badge + estimated time */}
 			{(fmt || timeLabel) && (
 				<div className="v4-item-meta">
@@ -1041,31 +1089,31 @@ function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: Assessme
 
 			{/* Prompt / stem */}
 			{hasFrqParts ? (
-				<p className="v4-question-prompt">{item.prompt}</p>
-			) : stemSegments.length > 0 ? (
-				<>
-					<p className="v4-question-stem">{stemSegments.join(" ")}</p>
-					<div className="v4-question-parts">
-						{partSegments!.map((part, i) => (
-							<div key={i} className="v4-question-part">
-								<p className="v4-question-prompt">{part}</p>
-								<div className="v4-question-answer-space" aria-hidden="true" />
-							</div>
-						))}
-					</div>
-				</>
-			) : partSegments && partSegments.length > 0 ? (
+			<p className="v4-question-prompt">{cleanPrompt}</p>
+		) : stemSegments.length > 0 ? (
+			<>
+				<p className="v4-question-stem">{stemSegments.join(" ")}</p>
 				<div className="v4-question-parts">
-					{partSegments.map((part, i) => (
+					{partSegments!.map((part, i) => (
 						<div key={i} className="v4-question-part">
 							<p className="v4-question-prompt">{part}</p>
-							<div className="v4-question-answer-space" aria-hidden="true" />
+							{!item.structuredAnswer && <div className="v4-question-answer-space" aria-hidden="true" />}
 						</div>
 					))}
 				</div>
-			) : (
-				<p className="v4-question-prompt">{item.prompt}</p>
-			)}
+			</>
+		) : partSegments && partSegments.length > 0 ? (
+			<div className="v4-question-parts">
+				{partSegments.map((part, i) => (
+					<div key={i} className="v4-question-part">
+						<p className="v4-question-prompt">{part}</p>
+						{!item.structuredAnswer && <div className="v4-question-answer-space" aria-hidden="true" />}
+					</div>
+				))}
+			</div>
+		) : (
+			<p className="v4-question-prompt">{cleanPrompt}</p>
+		)}
 
 			{/* Format-specific answer display */}
 			<StructuredAnswerView item={item} />
@@ -1115,6 +1163,7 @@ function AssessmentItem({ item, onRewrite, onReplace, onChangeFormat }: Assessme
 									key={f}
 									className={`v4-rewrite-menu-item${f === fmt ? " v4-rewrite-menu-item--active" : ""}`}
 									type="button"
+									disabled={f === fmt}
 									onClick={() => void handleChangeFormat(f)}
 								>
 									{FORMAT_DISPLAY[f]}

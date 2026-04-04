@@ -52,6 +52,158 @@ function pickDomain(seed: string): string {
 	return SCENARIO_DOMAINS[hashString(seed) % SCENARIO_DOMAINS.length]!;
 }
 
+function pickFrom<T>(list: readonly T[], seed: string): T {
+	return list[hashString(seed) % list.length]!;
+}
+
+// ── Scenario Style Library ────────────────────────────────────────────────────
+// One style is deterministically selected per (concept × itemType) pair and
+// injected into the LLM prompt so scenarios stay varied across items.
+
+export const SCENARIO_STYLES: Record<string, readonly string[]> = {
+	"State / Define": [
+		"Everyday life example",
+		"Classroom or school setting",
+		"Consumer product or device",
+		"Simple scientific phenomenon",
+		"Basic business or workplace example",
+		"Health or wellness example",
+		"Transportation or travel scenario",
+	],
+	Interpret: [
+		"Research study summary",
+		"News headline or media claim",
+		"Graph or table description",
+		"Survey results",
+		"Scientific experiment outcome",
+		"Policy or public decision claim",
+		"Product performance comparison",
+	],
+	Apply: [
+		"Lab experiment with measurements",
+		"Business operations scenario",
+		"Public services (traffic, transit, utilities)",
+		"Health or medical data",
+		"Environmental data",
+		"Engineering or design scenario",
+		"Sports performance or training data",
+	],
+	Decide: [
+		"Hypothesis test with p-value",
+		"Quality control decision",
+		"Medical screening threshold",
+		"Policy approval decision",
+		"Product safety or performance threshold",
+		"Hiring or admissions decision",
+		"Environmental compliance decision",
+	],
+	Explain: [
+		"Student misconception explanation",
+		"Real-world phenomenon explanation",
+		"Policy or system explanation",
+		"Scientific mechanism",
+		"Mathematical reasoning",
+		"Everyday scenario requiring conceptual clarity",
+		"Technology or engineering explanation",
+	],
+	Evaluate: [
+		"Evaluate a flawed study",
+		"Evaluate a misleading claim",
+		"Evaluate a graph or chart",
+		"Evaluate a decision or policy",
+		"Evaluate a method or procedure",
+		"Evaluate a product claim",
+		"Evaluate a student's reasoning",
+	],
+	Conclude: [
+		"Hypothesis test conclusion",
+		"Trend identification",
+		"Cause vs correlation",
+		"Policy impact conclusion",
+		"Product performance conclusion",
+		"Scientific experiment conclusion",
+		"Business or operations conclusion",
+	],
+};
+
+// ── Subject-Specific Scenario Library ────────────────────────────────────────
+// When subject is known, these add domain flavour on top of the style.
+
+export const SUBJECT_SCENARIOS: Record<string, readonly string[]> = {
+	math: [
+		"Calculate the mean wait time at a hospital emergency room",
+		"Find the median income across zip codes in a city survey",
+		"Determine the standard deviation of test scores in a class",
+		"Compute the slope of a cost function for a small business",
+		"Model a proportional relationship between fuel use and distance",
+		"Interpret a scatter plot of study hours vs exam scores",
+		"Solve a linear equation representing a service subscription cost",
+	],
+	science: [
+		"Measure the effect of temperature on enzyme reaction rates",
+		"Analyse carbon dioxide levels in a greenhouse over a year",
+		"Predict the trajectory of a projectile given initial velocity",
+		"Calculate the half-life of a radioactive sample",
+		"Compare the density of liquids in a chemistry lab",
+		"Interpret results from a controlled biology experiment",
+		"Evaluate a hypothesis about plant growth under different light conditions",
+	],
+	ela: [
+		"Identify the author's claim in an editorial about school policy",
+		"Analyse the tone of a speech delivered at a public event",
+		"Evaluate the evidence a journalist uses to support a controversial claim",
+		"Determine the central idea of an informational article",
+		"Explain the effect of a figurative language choice in a novel excerpt",
+		"Compare two persuasive essays on the same topic",
+		"Construct an argument using evidence from a primary source document",
+	],
+	social_studies: [
+		"Analyse the cause of a major economic shift in the 20th century",
+		"Evaluate the effectiveness of a public health policy",
+		"Interpret a historical map showing trade routes",
+		"Compare the political systems of two countries",
+		"Explain the impact of a government decision on a local community",
+		"Evaluate the short- and long-term effects of a historical event",
+		"Determine how geography influenced settlement patterns in a region",
+	],
+};
+
+// ── FRQ Structure Templates ───────────────────────────────────────────────────
+// Per item-type templates guide part-structure when the LLM generates FRQs.
+
+export const FRQ_TEMPLATES: Record<string, readonly string[]> = {
+	Apply: [
+		"Part A: Set up the calculation. Part B: Solve and show work. Part C: Interpret what the answer means in context.",
+		"Part A: Identify the relevant formula or procedure. Part B: Apply it to the given data. Part C: Check the reasonableness of your answer.",
+		"Part A: Define the variables. Part B: Perform the computation. Part C: Explain what the result tells us.",
+	],
+	Decide: [
+		"Part A: State the null and alternative hypotheses. Part B: Perform the test and find the test statistic. Part C: Make a decision and justify it.",
+		"Part A: Identify the decision criteria. Part B: Evaluate the evidence. Part C: State your decision and explain your reasoning.",
+		"Part A: Describe the threshold or standard. Part B: Compare the data to the threshold. Part C: Conclude whether the standard is met.",
+	],
+	Interpret: [
+		"Part A: Describe what the graph or data shows. Part B: Identify any trend, pattern, or anomaly. Part C: Explain what the pattern means in context.",
+		"Part A: Summarise the key values or findings. Part B: Compare two or more aspects of the data. Part C: Draw a conclusion based on your comparison.",
+		"Part A: Identify the key claim or result. Part B: Evaluate whether the data supports it. Part C: Explain any limitations.",
+	],
+	Explain: [
+		"Part A: State the concept in your own words. Part B: Provide a real-world example that illustrates it. Part C: Explain why a common misconception about this concept is incorrect.",
+		"Part A: Define the key term or idea. Part B: Describe the mechanism or process. Part C: Explain the implications or applications.",
+		"Part A: Describe the phenomenon. Part B: Identify the underlying cause. Part C: Explain the effect or consequence.",
+	],
+	Evaluate: [
+		"Part A: Describe the claim or argument being evaluated. Part B: Identify a specific strength and a specific flaw. Part C: State your overall assessment and justify it.",
+		"Part A: Summarise the evidence presented. Part B: Evaluate whether the reasoning is valid. Part C: Explain how the argument could be improved.",
+		"Part A: Identify the criteria for evaluation. Part B: Apply the criteria to the case. Part C: Reach a justified conclusion.",
+	],
+	Conclude: [
+		"Part A: State the key finding from the data or analysis. Part B: Connect the finding back to the original question or hypothesis. Part C: Identify one limitation of this conclusion.",
+		"Part A: Summarise the evidence. Part B: State what conclusion the evidence supports. Part C: Describe one alternative explanation and why it is less likely.",
+		"Part A: Describe the result. Part B: Explain the significance of the result. Part C: Suggest a next step for investigation.",
+	],
+};
+
 /**
  * Deterministically select N item types for a concept by shuffling the
  * universal menu using the concept string as a seed.
@@ -126,16 +278,22 @@ const FORMAT_INSTRUCTIONS: Record<ProblemFormat, string> = {
 
 	MC: [
 		"Format: Multiple Choice",
-		"- Provide 1 correct answer and 3 plausible distractors. No 'all of the above'.",
-		"- Label choices A, B, C, D.",
-		'- The "answer" field: short string indicating the correct letter (e.g. "B").',
+		"- Write a clear question STEM ONLY. Do NOT include answer choices inside the prompt field.",
+		"- Provide exactly 1 correct answer and 3 plausible distractors.",
+		"- Label choices A, B, C, D. Return choices ONLY in the structuredAnswer block.",
+		"- Distractors must be realistic, conceptually relevant, and reflect common misconceptions about the topic.",
+		"- No 'all of the above' or 'none of the above' options.",
+		'- The "answer" field: the correct label only (e.g. "B").',
 		'- The "structuredAnswer" field must be:',
 		'  { "correct": "B", "choices": ["A. ...", "B. ...", "C. ...", "D. ..."] }',
 	].join("\n"),
 
 	MS: [
 		"Format: Multiple Select",
-		'- Provide 2-3 correct answers and 2-3 distractors. Prompt must say "Select all that apply."',
+		'- Write a clear question STEM ONLY. Do NOT include choices inside the prompt field.',
+		'- The prompt must end with "(Select all that apply.)"',
+		"- Provide 2-3 correct answers and 2-3 distractor options.",
+		"- Distractors must reflect plausible misconceptions, not obviously wrong answers.",
 		'- The "answer" field: comma-separated correct letters (e.g. "A, C").',
 		'- The "structuredAnswer" field must be:',
 		'  { "correct": ["A", "C"], "choices": ["A. ...", "B. ...", "C. ...", "D. ...", "E. ..."] }',
@@ -209,6 +367,10 @@ function buildAssessmentPrompt(
 	relatedConcepts: string[],
 	/** When set, override LLM format choice and use this exact format for every item. */
 	forcedFormat?: ProblemFormat,
+	/** Scenario style hint injected into the prompt (e.g. "Lab experiment with measurements"). */
+	scenarioStyle?: string,
+	/** FRQ structure template injected when FRQ items are expected. */
+	frqTemplate?: string,
 ): string {
 	const itemTypesList = itemTypes.join(", ");
 	// For the example shape we show the richer schema so the LLM learns the fields
@@ -231,13 +393,25 @@ function buildAssessmentPrompt(
 			? `Related concepts you may incorporate into items where appropriate: ${relatedConcepts.join(", ")}`
 			: "";
 
+	const scenarioLine = scenarioStyle
+		? `Scenario style to use: "${scenarioStyle}" — use this type of context for the scenario.`
+		: "";
+
+	const frqLine = frqTemplate
+		? `FRQ structure to follow (when generating FRQ items): ${frqTemplate}`
+		: "";
+
 	return [
-		"You are an expert assessment writer.",
-		"You generate clear, teacher-ready questions with realistic scenarios.",
-		"You never copy text from the source document.",
-		"You always generate fresh, realistic scenarios.",
-		"You follow the requested item-types and problem formats.",
-		"You return only valid JSON.",
+		"You are an expert assessment writer who creates teacher-quality questions.",
+		"Your questions must:",
+		"- be fully original and never copy or paraphrase the source document",
+		"- use realistic, varied, domain-appropriate scenarios with specific details",
+		"- reflect the target concept clearly and explicitly in the stem",
+		"- match the requested item-type and problem format exactly",
+		"- be concise, unambiguous, and instructionally sound",
+		"- avoid trick questions or unnecessary complexity",
+		"- for MC/MS: include misconception-based distractors that reflect real student errors",
+		"Always return valid JSON only. Never include explanations outside the JSON array.",
 		"",
 		`Generate ${quota} assessment item${quota !== 1 ? "s" : ""}.`,
 		"",
@@ -246,11 +420,14 @@ function buildAssessmentPrompt(
 		"",
 		`Item-type pool (use only these): ${itemTypesList}`,
 		`Draw the scenario from this real-world domain: ${domain}`,
+		scenarioLine,
+		frqLine,
 		"",
 		"For each item:",
 		"- Choose one item-type from the pool.",
 		"- Choose the best problem format for that item-type (see rules below).",
 		"- Write a self-contained question with a realistic scenario and specific numbers or details.",
+		"- Make the primary concept explicit in the scenario or stem — do not bury it.",
 		"- Write in clear, student-friendly language.",
 		"- Do NOT copy or paraphrase the teacher's source document.",
 		"- Include a short answer or explanation in the 'answer' field.",
@@ -342,9 +519,16 @@ export async function generateScenarioSection(
 	const domain = pickDomain(seed + concept);
 	const itemTypes = selectItemTypes(concept, Math.min(quota, 4));
 
+	// Pick a varied scenario style and FRQ template deterministically
+	const primaryItemType = itemTypes[0] ?? "Apply";
+	const styleList = SCENARIO_STYLES[primaryItemType] ?? SCENARIO_STYLES["Apply"]!;
+	const scenarioStyle = pickFrom(styleList, seed + concept + "style");
+	const frqTemplateList = FRQ_TEMPLATES[primaryItemType];
+	const frqTemplate = frqTemplateList ? pickFrom(frqTemplateList, seed + concept + "frq") : undefined;
+
 	let raw: string;
 	try {
-		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat);
+		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate);
 		raw = await callGemini({
 			model: "gemini-2.0-flash",
 			prompt,
@@ -499,10 +683,34 @@ export {
 	FORMAT_BASE_SECONDS,
 	DIFFICULTY_MULTIPLIER,
 	FORMAT_INSTRUCTIONS,
+	SCENARIO_DOMAINS,
 	selectFormat,
 	computeItemTimeSeconds,
 	selectItemTypes,
 	buildAssessmentPrompt,
 	parseItemArray,
+	pickFrom,
 };
 export type { ProblemFormat, UniversalItemType };
+
+// Convenience aliases used in docs and test tooling
+export type ItemFormat = ProblemFormat;
+
+/** Union of every valid structuredAnswer shape, keyed by format:
+ *  MC  → { correct: string; choices: string[] }
+ *  MS  → { correct: string[]; choices: string[] }
+ *  TF  → "True" | "False"
+ *  Matching → Record<string, string>  (term → definition)
+ *  DnD      → Record<string, string>  (item → category)
+ *  Sorting  → string[]
+ *  FRQ → { partA?: string; partB?: string; partC?: string; partD?: string }
+ *  SA  → null
+ */
+export type StructuredAnswer =
+	| { correct: string; choices: string[] }
+	| { correct: string[]; choices: string[] }
+	| "True" | "False"
+	| Record<string, string>
+	| string[]
+	| { partA?: string; partB?: string; partC?: string; partD?: string }
+	| null;

@@ -1759,4 +1759,108 @@
 .v4-rewrite-menu-item--active {
   font-weight: 600;
   color: #c95d37;
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ── Flash highlight when an item is regenerated ────────────────────────── */
+@keyframes v4-flash {
+  0%   { background-color: rgba(201, 93, 55, 0.1); }
+  100% { background-color: transparent; }
+}
+
+.v4-updated {
+  animation: v4-flash 0.9s ease-out;
+}
+
+/* ── DnD category-mapping pairs ──────────────────────────────────────────── */
+.v4-dnd-pairs {
+  margin: 0.5rem 0 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.v4-dnd-pair {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.v4-dnd-item {
+  font-weight: 500;
+}
+
+.v4-dnd-arrow {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.v4-dnd-category {
+  color: #555;
+  background: rgba(0, 0, 0, 0.03);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* ── Print mode ───────────────────────────────────────────────────────────── */
+@media print {
+  /* Hide all interactive controls */
+  .v4-question-actions,
+  .v4-rewrite-menu-wrapper,
+  .v4-upload-actions,
+  .v4-button {
+    display: none !important;
+  }
+
+  /* Hide badges on paper — they add noise */
+  .v4-format-badge,
+  .v4-time-badge {
+    display: none !important;
+  }
+
+  /* Ensure answer spaces are visible ruled lines */
+  .v4-question-answer-space {
+    border-bottom: 1px solid #999 !important;
+    height: 1.8rem !important;
+    background: none !important;
+    margin-top: 0.4rem;
+  }
+
+  /* Keep structured answer views but remove backgrounds */
+  .v4-choices-list,
+  .v4-tf-options,
+  .v4-matching-pairs,
+  .v4-dnd-pairs,
+  .v4-ordered-items,
+  .v4-frq-parts {
+    break-inside: avoid;
+  }
+
+  .v4-choice-row,
+  .v4-tf-option,
+  .v4-matching-row,
+  .v4-dnd-pair {
+    background: none !important;
+    border-color: #ccc !important;
+  }
+
+  /* FRQ answer spaces need more room on paper */
+  .v4-frq-part .v4-question-answer-space {
+    height: 3rem !important;
+  }
+
+  /* Prevent item bleeding across pages */
+  .v4-question-item {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .v4-assessment-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
