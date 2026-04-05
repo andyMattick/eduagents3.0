@@ -23,6 +23,7 @@ import { buildIntentPayload } from "../../../src/prism-v4/documents/intents/buil
 import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
 import { rewriteTestItem, replaceItemInTestPayload, type ItemRewriteIntent } from "../../../src/prism-v4/studio/rewriteItem";
 import type { TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
+import { extractConceptsFromDocuments } from "./extractConceptGraph";
 import { enrichProductWithScenarios, generateScenarioSection, VALID_PROBLEM_FORMATS, type ProblemFormat } from "./generateScenarios";
 
 const DEFAULT_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
@@ -182,9 +183,94 @@ export async function handleStudioSessionAnalysis(req: VercelRequest, res: Verce
 	}
 
 	const rawAnalysis = await getCollectionAnalysisStore(sessionId);
+
+	// Run the 5-layer concept extractor on all documents to produce a rich
+	// weighted concept graph.  Results are merged into the InstructionalAnalysis
+	// as `richConceptGraph` for Screen 2 and downstream ranking/planning.
+	const baseAnalysis = buildInstructionalAnalysis(context);
+	let richConceptGraph: (typeof baseAnalysis)["richConceptGraph"] = undefined;
+	try {
+		// Derive context headers from the first document's headings
+		const firstDoc = context.analyzedDocuments[0];
+		const headings = firstDoc?.document.nodes
+			.filter((n) => n.nodeType === "heading")
+			.map((n) => n.text ?? n.normalizedText ?? "")
+			.filter(Boolean) ?? [];
+
+		const richGraph = await extractConceptsFromDocuments(
+			context.analyzedDocuments,
+			{
+				unitTitle: headings[0],
+				sectionHeaders: headings.slice(1, 6),
+			},
+			{ useLLM: true, targetCount: 12 },
+		);
+
+		// Adapt to RichConceptMapModel shape (serialisable, no internal fields)
+		richConceptGraph = {
+			nodes: richGraph.nodes.map((n) => ({
+				id: n.id,
+				label: n.label,
+				weight: n.weight,
+				frequency: n.frequency,
+				appearsInMultiPartCluster: n.appearsInMultiPartCluster,
+				titleMatchScore: n.titleMatchScore,
+				headerMatchScore: n.headerMatchScore,
+				multiPartScore: n.multiPartScore,
+				bloomScore: n.bloomScore,
+				centralityScore: n.centralityScore,
+				frequencyScore: n.frequencyScore,
+				aliases: n.aliases,
+				clusterIds: n.clusterIds,
+			})),
+			edges: richGraph.edges.map((e) => ({
+				from: e.from,
+				to: e.to,
+				weight: e.strength,
+				relation: e.relation,
+				strength: e.strength,
+			})),
+			itemPlans: richGraph.itemPlans,
+			clusters: richGraph.clusters.map((c) => ({
+				id: c.id,
+				stem: c.stem,
+				subparts: c.subparts,
+				contextHeaders: c.contextHeaders,
+				isMultiPart: c.isMultiPart,
+			})),
+		};
+	} catch (err) {
+		// Non-fatal: the rich graph is enrichment only; standard analysis still returned
+		console.error("[concept-graph] extraction failed, continuing without rich graph:", err);
+	}
+
+	// When the rich graph is available, replace analysis.concepts with the
+	// weighted, semantically-meaningful nodes (sorted by weight) so Screen 2
+	// shows "Null hypothesis", "P-value", "Type I error"… instead of the old
+	// flat extraction output ("Hypothesis Testing", "Mean Test", "Inquiry").
+	const analysis = richConceptGraph
+		? {
+				...baseAnalysis,
+				richConceptGraph,
+				concepts: richConceptGraph.nodes
+					.filter((n) => n.weight > 0)
+					.sort((a, b) => b.weight - a.weight)
+					.map((n) => ({
+						concept: n.label,          // human-readable label shown in UI
+						documentCount: 1,
+						problemCount: n.frequency, // shown as "4 qs" etc.
+						coverage: Math.min(1, n.frequencyScore),
+						multipartPresence: n.multiPartScore,
+						semantcDensity: n.bloomScore,
+						score: n.weight,
+						isNoise: false,
+					})),
+		  }
+		: baseAnalysis;
+
 	return res.status(200).json({
 		sessionId,
-		analysis: buildInstructionalAnalysis(context),
+		analysis,
 		rawAnalysis,
 	});
 }
@@ -548,11 +634,44 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 
 	const extracted = await buildIntentPayload(request, context);
 
+	// Run the 5-layer concept extractor (rule-based only — fast, no extra LLM cost) to
+	// produce item plans that drive the generator loop. Falls back gracefully.
+	let richConceptGraph: Parameters<typeof enrichProductWithScenarios>[7] = undefined;
+	try {
+		const richGraph = await extractConceptsFromDocuments(
+			context.analyzedDocuments,
+			{},
+			{ useLLM: false, targetCount: totalItems },
+		);
+		if (richGraph.nodes.length > 0 && richGraph.itemPlans.length > 0) {
+			richConceptGraph = {
+				nodes: richGraph.nodes.map((n) => ({ id: n.id, label: n.label })),
+				edges: richGraph.edges.map((e) => ({ from: e.from, to: e.to, strength: e.strength })),
+				itemPlans: richGraph.itemPlans.map((p) => ({
+					id: p.id,
+					type: p.type,
+					concepts: p.concepts,
+					suggestedFormat: p.suggestedFormat,
+					parts: p.parts,
+					sourceClusterId: p.sourceClusterId,
+				})),
+				clusters: richGraph.clusters.map((c) => ({
+					id: c.id,
+					stem: c.stem,
+					subparts: c.subparts,
+				})),
+			};
+			console.log(`[studio] Rich concept graph: ${richGraph.nodes.length} nodes, ${richGraph.itemPlans.length} item plans.`);
+		}
+	} catch (err) {
+		console.warn("[studio] Concept graph extraction failed, falling back to concept quotas:", err);
+	}
+
 	// Drive scenario generation from blueprint quotas, not extracted sections.
 	// This ensures every teacher-ranked concept gets its assigned items even
 	// when the source document has sparse content for some concepts.
 	const seed = blueprintId + Date.now().toString(36);
-	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas, allowedFormats, difficultyBias, teacherTone);
+	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas, allowedFormats, difficultyBias, teacherTone, targetTimeMinutes, richConceptGraph);
 
 	const output = await saveStudioOutputStore({
 		sessionId: blueprintRecord.sessionId,

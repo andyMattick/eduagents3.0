@@ -434,8 +434,8 @@ function humanizeConcept(raw: string): string {
 		.join(" ");
 }
 
-function buildNarrative(analysis: InstructionalAnalysis, docCount: number): string {
-	const totalProblems = analysis.problems.reduce((sum, p) => sum + p.problemCount, 0);
+function buildNarrative(analysis: InstructionalAnalysis, docCount: number, totalOverride?: number): string {
+	const totalProblems = totalOverride ?? analysis.problems.reduce((sum, p) => sum + p.problemCount, 0);
 	const docLabel = docCount === 1 ? "your document" : `${docCount} documents`;
 	const q = totalProblems === 1 ? "question" : "questions";
 	return `I can create up to ${totalProblems} ${q} from ${docLabel}.`;
@@ -466,7 +466,14 @@ function deriveSkills(analysis: InstructionalAnalysis): string[] {
 }
 
 function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Props) {
-	const allConcepts = analysis?.concepts.filter((c) => !c.isNoise).slice(0, 8) ?? [];
+	// When a rich concept graph is available, derive the concept list exclusively
+	// from its weighted nodes so the old flat extraction never bleeds through.
+	const richGraph = analysis?.richConceptGraph;
+	const allConcepts = richGraph
+		? richGraph.nodes
+				.filter((n) => n.weight > 0)
+				.map((n) => ({ concept: n.id, problemCount: n.frequency, isNoise: false, score: n.weight }))
+		: (analysis?.concepts.filter((c) => !c.isNoise).slice(0, 15) ?? []);
 
 	// ordered holds concept IDs in display order; order index = rank.
 	const [ordered, setOrdered] = useState<string[]>([]);
@@ -557,9 +564,11 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 
 	if (!analysis) return null;
 
-	const totalOpportunities = analysis.problems.reduce((sum, p) => sum + p.problemCount, 0);
+	const totalOpportunities = richGraph
+		? richGraph.itemPlans.length
+		: analysis.problems.reduce((sum, p) => sum + p.problemCount, 0);
 	const skills = deriveSkills(analysis);
-	const narrative = buildNarrative(analysis, docCount);
+	const narrative = buildNarrative(analysis, docCount, richGraph ? richGraph.itemPlans.length : undefined);
 
 	return (
 		<>

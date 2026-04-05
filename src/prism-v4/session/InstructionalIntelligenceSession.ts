@@ -79,6 +79,9 @@ export interface InstructionalAnalysis {
 	scenarioSummary: ScenarioSummary;
 	difficultySummary: DifficultySummary;
 	domain: string;
+	/** Enriched concept graph produced by the 5-layer extractor. Present when
+	 *  the advanced concept extraction pass has been run on this session. */
+	richConceptGraph?: RichConceptMapModel;
 }
 
 export interface BlueprintModel {
@@ -92,6 +95,48 @@ export interface BlueprintModel {
 export interface ConceptMapModel {
 	nodes: Array<{ id: string; label: string; weight: number }>;
 	edges: Array<{ from: string; to: string; weight: number }>;
+}
+
+/** Richer concept graph produced by the 5-layer extractor (Layer 4 output). */
+export interface RichConceptMapModel {
+	nodes: Array<{
+		id: string;
+		label: string;
+		weight: number;
+		frequency: number;
+		appearsInMultiPartCluster: boolean;
+		titleMatchScore: number;
+		headerMatchScore: number;
+		multiPartScore: number;
+		bloomScore: number;
+		centralityScore: number;
+		frequencyScore: number;
+		aliases: string[];
+		clusterIds: string[];
+	}>;
+	edges: Array<{
+		from: string;
+		to: string;
+		weight: number;
+		relation: string;
+		strength: number;
+	}>;
+	itemPlans: Array<{
+		id: string;
+		type: "single" | "multi-concept" | "frq";
+		concepts: string[];
+		suggestedFormat?: string;
+		parts?: string[];
+		sourceClusterId?: string;
+		estimatedTimeSeconds?: number;
+	}>;
+	clusters: Array<{
+		id: string;
+		stem: string;
+		subparts: Array<{ id: string; text: string }>;
+		contextHeaders: string[];
+		isMultiPart: boolean;
+	}>;
 }
 
 export interface TeacherFingerprintModel {

@@ -12,6 +12,26 @@ import { callGemini } from "../../../lib/gemini";
 import type { TestItem, TestSection, TestProduct, Misconception } from "../../../src/prism-v4/schema/integration/IntentProduct";
 import type { ExtractedProblemDifficulty, ExtractedProblemCognitiveDemand } from "../../../src/prism-v4/schema/semantic/ExtractedProblem";
 
+// ── Rich concept graph input (structurally compatible with WeightedConceptGraph
+//    from extractConceptGraph.ts — defined locally to avoid circular imports) ──
+interface RichConceptGraphInput {
+	nodes: Array<{ id: string; label: string }>;
+	edges: Array<{ from: string; to: string; strength: number }>;
+	itemPlans: Array<{
+		id: string;
+		type: "single" | "multi-concept" | "frq";
+		concepts: string[];
+		suggestedFormat?: string;
+		parts?: string[];
+		sourceClusterId?: string;
+	}>;
+	clusters: Array<{
+		id: string;
+		stem: string;
+		subparts: Array<{ id: string; text: string }>;
+	}>;
+}
+
 // ── Universal item-type menu ──────────────────────────────────────────────────
 // These 7 families work for any concept, subject, or grade level.
 
@@ -339,7 +359,10 @@ const DIFFICULTY_MULTIPLIER: Record<number, number> = { 1: 0.8, 2: 1.0, 3: 1.2, 
 const FORMAT_INSTRUCTIONS: Record<ProblemFormat, string> = {
 	TF: [
 		"Format: True/False",
-		"- Write one unambiguous statement that is clearly true or clearly false.",
+		"- Write one unambiguous declarative STATEMENT that is clearly true or clearly false.",
+		"- Do NOT write a question. Do NOT end the stem with a question mark.",
+		"- Do NOT use open-ended phrasing such as 'Explain...', 'Describe...', or 'How...'.",
+		"- The stem must be a complete sentence that can be evaluated as true or false.",
 		'- The "answer" field must be exactly "True" or "False".',
 		'- The "structuredAnswer" field must be exactly "True" or "False".',
 	].join("\n"),
@@ -385,7 +408,9 @@ const FORMAT_INSTRUCTIONS: Record<ProblemFormat, string> = {
 
 	Sorting: [
 		"Format: Sorting / Ordering",
-		"- Provide 3-6 items that have a clear logical or procedural order.",
+		"- Provide 3-6 items that have a clear logical or procedural order (e.g. steps in a process, stages of a cycle, chronological events).",
+		"- Do NOT disguise a numeric calculation as an ordering task.",
+		"- Each item must be a discrete, labelable thing — not a number or formula.",
 		'- The "answer" field: a readable description of the correct order.',
 		'- The "structuredAnswer" field must be a JSON array in correct order:',
 		'  ["Step 1", "Step 2", "Step 3"]',
@@ -443,6 +468,12 @@ function buildAssessmentPrompt(
 	frqTemplate?: string,
 	/** Tone for question writing. Default: "conversational". */
 	teacherTone?: "conversational" | "formal",
+	/** Subject-specific scenario example injected for extra domain flavour. */
+	subjectScenarioHint?: string,
+	/** Per-concept time budget in minutes (e.g. "~8 min"). Injected as a calibration hint. */
+	timeBudgetHint?: string,
+	/** For multi-concept items: every listed concept MUST be jointly tested in one question. */
+	requiredConcepts?: string[],
 ): string {
 	const itemTypesList = itemTypes.join(", ");
 	// For the example shape we show the richer schema so the LLM learns the fields
@@ -465,12 +496,25 @@ function buildAssessmentPrompt(
 			? `Related concepts you may incorporate into items where appropriate: ${relatedConcepts.join(", ")}`
 			: "";
 
+	const requiredConceptsLine =
+		requiredConcepts && requiredConcepts.length > 1
+			? `REQUIRED: This single assessment item MUST explicitly and equally engage with ALL of these concepts together in one cohesive question: ${requiredConcepts.join(", ")}. Do NOT produce an item that tests only one of them in isolation.`
+			: "";
+
 	const scenarioLine = scenarioStyle
 		? `Scenario style to use: "${scenarioStyle}" — use this type of context for the scenario.`
 		: "";
 
 	const frqLine = frqTemplate
 		? `FRQ structure to follow (when generating FRQ items): ${frqTemplate}`
+		: "";
+
+	const subjectLine = subjectScenarioHint
+		? `Subject-specific scenario example (adapt freely, do not copy): "${subjectScenarioHint}"`
+		: "";
+
+	const timeBudgetLine = timeBudgetHint
+		? `Target time for this set of questions: ${timeBudgetHint}. Calibrate question complexity so students can reasonably complete all items in that time.`
 		: "";
 
 	return [
@@ -491,11 +535,14 @@ function buildAssessmentPrompt(
 		"",
 		`Primary concept: "${concept}"`,
 		relatedLine,
+		requiredConceptsLine,
 		"",
 		`Item-type pool (use only these): ${itemTypesList}`,
 		`Draw the scenario from this real-world domain: ${domain}`,
 		scenarioLine,
 		frqLine,
+		subjectLine,
+		timeBudgetLine,
 		"",
 		"For each item:",
 		"- Choose one item-type from the pool.",
@@ -701,7 +748,47 @@ function validateItem(item: TestItem): boolean {
 		if (!Array.isArray(item.structuredAnswer) || (item.structuredAnswer as unknown[]).length < 2) return false;
 	}
 
+	// TF: stem must be a declarative statement, not a question
+	if (item.problemType === "TF") {
+		const trimmed = item.prompt.trim();
+		// Reject if it ends with a question mark
+		if (trimmed.endsWith("?")) return false;
+		// Reject if it starts with common question words
+		if (/^(what|where|when|who|which|how|why|explain|describe|discuss|compare|calculate|solve|find)\b/i.test(trimmed)) return false;
+		// Reject if structuredAnswer is not "True" or "False"
+		const sa = item.structuredAnswer;
+		if (sa !== "True" && sa !== "False") return false;
+	}
+
+	// Matching: structuredAnswer must be an object with at least one key
+	if (item.problemType === "Matching") {
+		const sa = item.structuredAnswer as Record<string, unknown> | null | undefined;
+		if (!sa || typeof sa !== "object" || Array.isArray(sa) || Object.keys(sa).length === 0) return false;
+	}
+
+	// SA: structuredAnswer must be a non-empty string
+	if (item.problemType === "SA") {
+		if (typeof item.structuredAnswer !== "string" || !item.structuredAnswer.trim()) return false;
+	}
+
+	// Concept reference: primaryConcepts or concept must be populated
+	if (!item.concept && (!item.primaryConcepts || item.primaryConcepts.length === 0)) return false;
+
 	return true;
+}
+
+// ── Subject detection ─────────────────────────────────────────────────────────
+
+function detectSubject(concept: string): keyof typeof SUBJECT_SCENARIOS | null {
+	// Normalise rich concept IDs (e.g. "null-hypothesis") → "null hypothesis" for pattern matching.
+	const lower = concept.toLowerCase().replace(/-/g, " ");
+	// Inferential statistics terms (checked before the generic math pattern)
+	if (/\b(null hypothesis|alternative hypothesis|p-value|p value|type i error|type ii error|significance level|significance|test statistic|sampling distribution|confidence interval|proportion test|mean test|power of the test|decision rule|statistical power|hypothesis test)\b/.test(lower)) return "math";
+	if (/\b(math|algebra|geometry|calculus|statistics|equation|function|graph|number|probability|fraction|ratio|percent|slope|mean|median|mode)\b/.test(lower)) return "math";
+	if (/\b(science|biology|chemistry|physics|density|reaction|hypothesis|experiment|organism|cell|force|energy|atom|molecule|ecosystem|evolution|genetics|wave|current)\b/.test(lower)) return "science";
+	if (/\b(reading|writing|grammar|literature|author|tone|claim|evidence|narrative|figurative|persuasion|essay|text|poetry|theme|inference|syntax|rhetoric)\b/.test(lower)) return "ela";
+	if (/\b(history|social|geography|government|economics|policy|civilization|trade|political|culture|revolution|constitution|democracy|migration|economic|empire)\b/.test(lower)) return "social_studies";
+	return null;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -726,6 +813,10 @@ export async function generateScenarioSection(
 	difficultyBias?: "easy" | "mixed" | "hard",
 	/** Writing tone passed to LLM. Default: "conversational". */
 	teacherTone?: "conversational" | "formal",
+	/** Per-concept target time in minutes — passed as calibration hint to the LLM. */
+	timeBudgetMinutes?: number,
+	/** For multi-concept or FRQ plans: all listed labels MUST be tested jointly in one item. */
+	requiredConcepts?: string[],
 ): Promise<TestSection> {
 	const concept = section.concept;
 	const quota = Math.max(1, section.items.length);
@@ -741,9 +832,17 @@ export async function generateScenarioSection(
 	const frqTemplateList = FRQ_TEMPLATES[primaryItemType];
 	const frqTemplate = frqTemplateList ? pickFrom(frqTemplateList, seed + concept + "frq") : undefined;
 
+	// Detect subject from concept name to inject a relevant scenario example
+	const subjectKey = detectSubject(concept);
+	const subjectScenarioHint = subjectKey
+		? pickFrom(SUBJECT_SCENARIOS[subjectKey]!, seed + concept + "subject")
+		: undefined;
+
+	const timeBudgetHint = timeBudgetMinutes !== undefined ? `~${timeBudgetMinutes} min` : undefined;
+
 	let raw: string;
 	try {
-		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone);
+		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone, subjectScenarioHint, timeBudgetHint, requiredConcepts);
 		raw = await callGemini({
 			model: "gemini-2.0-flash",
 			prompt,
@@ -788,6 +887,7 @@ export async function generateScenarioSection(
 			sourceDocumentId,
 			sourceFileName,
 			difficulty: mapDifficulty(biasedDiff),
+			difficultyScore: biasedDiff,
 			cognitiveDemand: mapCognitiveDemand(r.itemType),
 			answerGuidance: r.answer.trim(),
 			structuredAnswer: r.structuredAnswer ?? r.answer.trim(),
@@ -805,9 +905,21 @@ export async function generateScenarioSection(
 		);
 	}
 
+	// Allowed-format guard: drop any item whose problemType falls outside the teacher's
+	// explicit allowed list (handles cases where the LLM returned a valid-but-disallowed format).
+	const formatGuardedItems =
+		allowedFormats && allowedFormats.length > 0 && !forcedFormat
+			? validItems.filter((item) => allowedFormats.includes(item.problemType as ProblemFormat))
+			: validItems;
+	if (formatGuardedItems.length < validItems.length) {
+		console.warn(
+			`[generateScenarios] Dropped ${validItems.length - formatGuardedItems.length} item(s) with disallowed format for "${concept}".`,
+		);
+	}
+
 	// Enrichment pass: generate solution steps + misconceptions in parallel
 	const enrichedItems: TestItem[] = await Promise.all(
-		validItems.map(async (item) => {
+		formatGuardedItems.map(async (item) => {
 			const [solutionSteps, misconceptions] = await Promise.all([
 				generateSolutionSteps(item),
 				item.problemType === "MC" || item.problemType === "MS"
@@ -844,6 +956,10 @@ export async function enrichProductWithScenarios(
 	allowedFormats?: ProblemFormat[],
 	difficultyBias?: "easy" | "mixed" | "hard",
 	teacherTone?: "conversational" | "formal",
+	targetTimeMinutes?: number,
+	/** When supplied (from the 5-layer concept extractor), drives the generation loop
+	 *  with item-level plans instead of the flat concept-quota list. */
+	richConceptGraph?: RichConceptGraphInput,
 ): Promise<TestProduct> {
 	if (!process.env.GEMINI_API_KEY) {
 		console.log("[generateScenarios] GEMINI_API_KEY not set — using extracted items.");
@@ -856,29 +972,69 @@ export async function enrichProductWithScenarios(
 		extractedByConceptId.set(section.concept, section);
 	}
 
-	// Decide which concepts to generate for:
-	//   - If blueprint quotas are provided, use them (one section per quota entry).
-	//   - Otherwise, fall back to whatever buildIntentPayload extracted.
-	const targets: Array<{ concept: string; quota: number; sourceDocumentIds: string[]; sourceFileName: string }> =
-		conceptQuotas && conceptQuotas.length > 0
-			? conceptQuotas.map((q) => {
-					const existing = extractedByConceptId.get(q.id);
+	// ── Build label lookup from rich graph nodes (id → human label) ─────────────
+	const labelByNodeId = new Map<string, string>();
+	if (richConceptGraph) {
+		for (const n of richConceptGraph.nodes) labelByNodeId.set(n.id, n.label);
+	}
+	/** Convert a concept ID like "null-hypothesis" → "Null hypothesis" using the
+	 *  node label map when available, otherwise a deterministic title-case heuristic. */
+	function idToLabel(id: string): string {
+		return labelByNodeId.get(id)
+			?? id.split("-").map((w, i) => i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w).join(" ");
+	}
+
+	// ── Decide generation strategy ────────────────────────────────────────────
+	// Priority 1: ItemPlans from the 5-layer concept graph (1 item per plan).
+	// Priority 2: Blueprint concept quotas (N items per concept).
+	// Priority 3: Fall back to whatever buildIntentPayload extracted.
+	type Target = {
+		concept: string;
+		quota: number;
+		sourceDocumentIds: string[];
+		sourceFileName: string;
+		requiredConcepts?: string[];  // multi-concept / FRQ plans
+		forcedFormat?: ProblemFormat; // FRQ plans force FRQ format
+	};
+
+	const targets: Target[] =
+		richConceptGraph && richConceptGraph.itemPlans.length > 0
+			? richConceptGraph.itemPlans.map((plan) => {
+					const primaryId = plan.concepts[0] ?? "concept";
+					const primaryLabel = idToLabel(primaryId);
+					const allLabels = plan.concepts.map(idToLabel);
+					const existing = extractedByConceptId.get(primaryId) ?? extractedByConceptId.get(primaryLabel);
 					return {
-						concept: q.name || q.id,
-						quota: q.quota,
+						concept: primaryLabel,
+						quota: 1, // one item per plan
 						sourceDocumentIds: existing?.sourceDocumentIds ?? product.sections[0]?.sourceDocumentIds ?? ["generated"],
 						sourceFileName: existing?.items[0]?.sourceFileName ?? "Generated",
+						requiredConcepts: plan.concepts.length > 1 ? allLabels : undefined,
+						forcedFormat:
+							plan.type === "frq" ? "FRQ" :
+							(plan.suggestedFormat as ProblemFormat | undefined),
 					};
 			  })
-			: product.sections.map((s) => ({
-					concept: s.concept,
-					quota: Math.max(1, s.items.length),
-					sourceDocumentIds: s.sourceDocumentIds,
-					sourceFileName: s.items[0]?.sourceFileName ?? "Generated",
-			  }));
+			: conceptQuotas && conceptQuotas.length > 0
+				? conceptQuotas.map((q) => {
+						const existing = extractedByConceptId.get(q.id);
+						return {
+							concept: q.name || q.id,
+							quota: q.quota,
+							sourceDocumentIds: existing?.sourceDocumentIds ?? product.sections[0]?.sourceDocumentIds ?? ["generated"],
+							sourceFileName: existing?.items[0]?.sourceFileName ?? "Generated",
+						};
+				  })
+				: product.sections.map((s) => ({
+						concept: s.concept,
+						quota: Math.max(1, s.items.length),
+						sourceDocumentIds: s.sourceDocumentIds,
+						sourceFileName: s.items[0]?.sourceFileName ?? "Generated",
+				  }));
 
 	const enrichedSections = await Promise.all(
-		targets.map(({ concept, quota, sourceDocumentIds, sourceFileName }, idx) => {
+		targets.map((target, idx) => {
+			const { concept, quota, sourceDocumentIds, sourceFileName } = target;
 			// Build a synthetic section so generateScenarioSection has the shape it needs
 			const stubSection: TestSection = {
 				concept,
@@ -894,11 +1050,20 @@ export async function enrichProductWithScenarios(
 					answerGuidance: "",
 				})),
 			};
-			// Pass all OTHER concepts as related context for multi-concept items
+			// Pass all OTHER concepts as related context.
+			// Exclude any concepts already in this plan's required set — they're primary, not secondary.
+			const ownIds = new Set(target.requiredConcepts ?? [concept]);
 			const relatedConcepts = targets
 				.filter((_, j) => j !== idx)
-				.map((t) => t.concept);
-			return generateScenarioSection(stubSection, seed, relatedConcepts, undefined, allowedFormats, difficultyBias, teacherTone);
+				.map((t) => t.concept)
+				.filter((c) => !ownIds.has(c));
+			// Distribute total time budget evenly across concepts (integer minutes per concept)
+			const perConceptMinutes = targetTimeMinutes !== undefined && targets.length > 0
+				? Math.max(1, Math.round(targetTimeMinutes / targets.length))
+				: undefined;
+			// Plan-specific overrides: forcedFormat locks the format; requiredConcepts
+			// are injected into the prompt so the LLM must cover all of them jointly.
+			return generateScenarioSection(stubSection, seed, relatedConcepts, target.forcedFormat, allowedFormats, difficultyBias, teacherTone, perConceptMinutes, target.requiredConcepts);
 		}),
 	);
 

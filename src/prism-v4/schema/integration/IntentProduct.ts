@@ -164,6 +164,8 @@ export interface TestItem {
 		lastPage: number;
 	};
 	difficulty: ExtractedProblemDifficulty;
+	/** Raw numeric difficulty score (1 = easiest, 5 = hardest). Complements the string `difficulty` label. */
+	difficultyScore?: number;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
 	/** Format-specific structured answer (MC choices, ordering array, FRQ parts, etc.) */
