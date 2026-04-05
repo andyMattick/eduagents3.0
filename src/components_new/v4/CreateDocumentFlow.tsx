@@ -10,7 +10,7 @@ import {
 } from "../../lib/teacherStudioApi";
 import type { ItemRewriteIntent } from "../../lib/teacherStudioApi";
 import type { TeacherStudioOutputArtifact } from "../../prism-v4/studio/artifacts";
-import type { InstructionalAnalysis } from "../../prism-v4/session/InstructionalIntelligenceSession";
+import type { InstructionalAnalysis, RichConceptMapModel } from "../../prism-v4/session/InstructionalIntelligenceSession";
 import type { TestProduct, TestItem, Misconception } from "../../prism-v4/schema/integration/IntentProduct";
 import { exportTestPDF, exportAnswerKeyPDF } from "../../utils/exportTestProductPDF";
 import "./v4.css";
@@ -441,6 +441,248 @@ function buildNarrative(analysis: InstructionalAnalysis, docCount: number, total
 	return `I can create up to ${totalProblems} ${q} from ${docLabel}.`;
 }
 
+// ---------------------------------------------------------------------------
+// Concept grouping helpers (rich concept graph → parent/child groups)
+// ---------------------------------------------------------------------------
+
+interface ConceptGroup {
+	parentId: string;
+	parentLabel: string;
+	childIds: string[];
+	questionCount: number;
+}
+
+// Legacy taxonomy prefixes: catches science.inquiry, math.statistics.*, etc.
+const LEGACY_TAXONOMY_RE = /^[a-z]+\.[a-z]/;
+
+// Noise label keywords — nodes whose label matches are extraction artifacts
+const NOISE_LABEL_RE = /\b(framework|general|basic|overview|introduction|context|background)\b/i;
+
+/**
+ * Build a document-specific merge map: redundantId → canonicalId.
+ *
+ * Pass 1 – drop legacy taxonomy nodes.
+ * Pass 2 – union-find on four signals:
+ *   a) shared aliases        b) shared cluster IDs
+ *   c) high-strength edges   d) label containment / near-identity
+ *
+ * For each merged group the highest-weight node becomes the canonical.
+ * Returns Map<redundantId, canonicalId> — canonical nodes are NOT in the map.
+ */
+function buildMergeMap(graph: RichConceptMapModel): Map<string, string> {
+	// Only work with nodes that pass the weight threshold and aren't noise
+	const eligible = graph.nodes.filter(
+		(n) =>
+			n.weight > 0.05 &&
+			!LEGACY_TAXONOMY_RE.test(n.id) &&
+			!NOISE_LABEL_RE.test(n.label),
+	);
+	const eligibleIds = new Set(eligible.map((n) => n.id));
+
+	// ── Union-Find ──────────────────────────────────────────────────────────
+	const parent = new Map<string, string>(eligible.map((n) => [n.id, n.id]));
+
+	function find(id: string): string {
+		let curr = id;
+		while (parent.get(curr) !== curr) {
+			const grandparent = parent.get(parent.get(curr)!)!;
+			parent.set(curr, grandparent); // path compression
+			curr = grandparent;
+		}
+		return curr;
+	}
+
+	function union(a: string, b: string) {
+		const ra = find(a), rb = find(b);
+		if (ra === rb) return;
+		// The node with higher weight becomes the root
+		const wa = graph.nodes.find((n) => n.id === ra)?.weight ?? 0;
+		const wb = graph.nodes.find((n) => n.id === rb)?.weight ?? 0;
+		parent.set(wb >= wa ? ra : rb, wb >= wa ? rb : ra);
+	}
+
+	const norm = (s: string) =>
+		s.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+
+	// a) Shared aliases
+	const aliasIndex = new Map<string, string>(); // normalised alias → first node id that claimed it
+	for (const node of eligible) {
+		for (const alias of node.aliases) {
+			const key = norm(alias);
+			if (!key) continue;
+			if (aliasIndex.has(key)) {
+				union(node.id, aliasIndex.get(key)!);
+			} else {
+				aliasIndex.set(key, node.id);
+			}
+		}
+	}
+
+	// b) Shared cluster IDs (multi-part clusters)
+	const clusterIndex = new Map<string, string>(); // clusterId → first node id
+	for (const node of eligible) {
+		for (const cid of node.clusterIds) {
+			if (clusterIndex.has(cid)) {
+				// Only merge when there is also an edge (prevents over-merging)
+				const other = clusterIndex.get(cid)!;
+				const hasEdge = graph.edges.some(
+					(e) =>
+						((e.from === node.id && e.to === other) ||
+							(e.from === other && e.to === node.id)) &&
+						e.strength >= 0.6,
+				);
+				if (hasEdge) union(node.id, other);
+			} else {
+				clusterIndex.set(cid, node.id);
+			}
+		}
+	}
+
+	// c) High-strength edges  (≥ 0.82 = nearly identical concepts)
+	for (const edge of graph.edges) {
+		if (!eligibleIds.has(edge.from) || !eligibleIds.has(edge.to)) continue;
+		if (edge.strength >= 0.82) union(edge.from, edge.to);
+	}
+
+	// d) Label containment / near-identity
+	for (const a of eligible) {
+		const na = norm(a.label);
+		for (const b of eligible) {
+			if (a.id >= b.id) continue; // avoid double-checking
+			const nb = norm(b.label);
+			if (na === nb) { union(a.id, b.id); continue; }
+			// One label is a prefix of the other AND they differ by ≤ 2 words
+			const longer = na.length >= nb.length ? na : nb;
+			const shorter = na.length < nb.length ? na : nb;
+			if (longer.startsWith(shorter) && longer.split(" ").length - shorter.split(" ").length <= 2) {
+				union(a.id, b.id);
+			}
+		}
+	}
+
+	// Build the final map: non-canonical → canonical
+	const mergeMap = new Map<string, string>();
+	for (const node of eligible) {
+		const canonical = find(node.id);
+		if (canonical !== node.id) mergeMap.set(node.id, canonical);
+	}
+	return mergeMap;
+}
+
+function buildConceptGroups(graph: RichConceptMapModel): ConceptGroup[] {
+	const mergeMap = buildMergeMap(graph);
+
+	// Keep only eligible, canonical nodes
+	const canonical = graph.nodes.filter(
+		(n) =>
+			n.weight > 0.05 &&
+			!LEGACY_TAXONOMY_RE.test(n.id) &&
+			!NOISE_LABEL_RE.test(n.label) &&
+			!mergeMap.has(n.id), // not merged into something else
+	);
+	const canonicalIds = new Set(canonical.map((n) => n.id));
+	const nodeMap = new Map(canonical.map((n) => [n.id, n]));
+
+	// Resolve any id (including merged ones) to its canonical id, or null if dropped
+	function resolve(id: string): string | null {
+		if (canonicalIds.has(id)) return id;
+		const c = mergeMap.get(id);
+		return c && canonicalIds.has(c) ? c : null;
+	}
+
+	// Map childId → parentId using edges (on canonical ids)
+	const parentOf = new Map<string, string>();
+	for (const edge of graph.edges) {
+		const from = resolve(edge.from);
+		const to = resolve(edge.to);
+		if (!from || !to || from === to) continue;
+		if (edge.relation === "contains" || edge.strength >= 0.75) {
+			// Clear hierarchical signal: `to` is a child of `from`
+			if (!parentOf.has(to)) parentOf.set(to, from);
+		} else if (edge.strength >= 0.5) {
+			// Moderate associative signal: group the lower-weight node under the higher-weight one
+			const fromNode = nodeMap.get(from);
+			const toNode = nodeMap.get(to);
+			if (!fromNode || !toNode) continue;
+			const [child, parent] = fromNode.weight >= toNode.weight ? [to, from] : [from, to];
+			if (!parentOf.has(child)) parentOf.set(child, parent);
+		}
+	}
+
+	// Label-prefix OR suffix grouping for still-ungrouped canonical nodes
+	const norm = (s: string) =>
+		s.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+	for (const node of canonical) {
+		if (parentOf.has(node.id)) continue;
+		const nodeNorm = norm(node.label);
+		let best: { id: string; len: number } | null = null;
+		for (const candidate of canonical) {
+			if (candidate.id === node.id) continue;
+			if (parentOf.get(candidate.id) === node.id) continue; // no cycles
+			const candNorm = norm(candidate.label);
+			// Prefix: "p-value calculation" starts with "p-value"
+			const isPrefix = nodeNorm !== candNorm && nodeNorm.startsWith(candNorm + " ");
+			// Suffix: "interpretation of p-value" ends with "p-value" (≥2-word anchor only)
+			const isSuffix =
+				nodeNorm !== candNorm &&
+				candNorm.split(" ").length >= 2 &&
+				nodeNorm.endsWith(" " + candNorm);
+			if (isPrefix || isSuffix) {
+				if (!best || candNorm.length > best.len) best = { id: candidate.id, len: candNorm.length };
+			}
+		}
+		if (best) parentOf.set(node.id, best.id);
+	}
+
+	// Resolve chain to root parent
+	function getRootParent(id: string): string {
+		const seen = new Set<string>();
+		let curr = id;
+		while (parentOf.has(curr) && !seen.has(curr)) {
+			seen.add(curr);
+			curr = parentOf.get(curr)!;
+		}
+		return curr;
+	}
+
+	// Group canonical nodes by root
+	const rootChildren = new Map<string, string[]>();
+	const allRoots = new Set<string>();
+	for (const node of canonical) {
+		const root = getRootParent(node.id);
+		allRoots.add(root);
+		if (node.id !== root) {
+			if (!rootChildren.has(root)) rootChildren.set(root, []);
+			rootChildren.get(root)!.push(node.id);
+		}
+	}
+
+	// Item plans can reference merged (non-canonical) ids — remap them
+	const groups: ConceptGroup[] = [];
+	for (const rootId of allRoots) {
+		const rootNode = nodeMap.get(rootId);
+		if (!rootNode) continue;
+		const childIds = rootChildren.get(rootId) ?? [];
+		const canonicalGroup = new Set([rootId, ...childIds]);
+
+		const questionCount = graph.itemPlans.filter((p) =>
+			p.concepts.some((c) => {
+				const r = resolve(c);
+				return r !== null && canonicalGroup.has(r);
+			}),
+		).length;
+
+		groups.push({ parentId: rootId, parentLabel: rootNode.label, childIds, questionCount });
+	}
+
+	// Defensive: a node that ended up as a child of another group should not
+	// also appear as a top-level group (covers edge cases from cycles / aliasing).
+	const allChildIds = new Set(groups.flatMap((g) => g.childIds));
+	return groups
+		.filter((g) => !allChildIds.has(g.parentId))
+		.sort((a, b) => b.questionCount - a.questionCount);
+}
+
 function deriveSkills(analysis: InstructionalAnalysis): string[] {
 	const modeLabels: Partial<Record<string, string>> = {
 		multiple_choice: "Multiple choice",
@@ -466,31 +708,66 @@ function deriveSkills(analysis: InstructionalAnalysis): string[] {
 }
 
 function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Props) {
-	// When a rich concept graph is available, derive the concept list exclusively
-	// from its weighted nodes so the old flat extraction never bleeds through.
 	const richGraph = analysis?.richConceptGraph;
+
+	// ── Rich graph path: grouped state ────────────────────────────────────────
+	const conceptGroups: ConceptGroup[] = richGraph ? buildConceptGroups(richGraph) : [];
+
+	// groupOrder holds parentIds in display order (rank = index)
+	const [groupOrder, setGroupOrder] = useState<string[]>([]);
+	const [excludedGroupIds, setExcludedGroupIds] = useState<Set<string>>(new Set());
+	const [openGroupIds, setOpenGroupIds] = useState<Set<string>>(new Set());
+
+	// ── Legacy flat path ──────────────────────────────────────────────────────
 	const allConcepts = richGraph
-		? richGraph.nodes
-				.filter((n) => n.weight > 0)
-				.map((n) => ({ concept: n.id, problemCount: n.frequency, isNoise: false, score: n.weight }))
+		? richGraph.nodes.map((n) => ({ concept: n.id, problemCount: (n as { problemCount?: number }).problemCount ?? 1 }))
 		: (analysis?.concepts.filter((c) => !c.isNoise).slice(0, 15) ?? []);
 
-	// ordered holds concept IDs in display order; order index = rank.
 	const [ordered, setOrdered] = useState<string[]>([]);
 	const [included, setIncluded] = useState<Set<string>>(new Set());
+
+	// ── Shared ────────────────────────────────────────────────────────────────
 	const [customConcepts, setCustomConcepts] = useState<string[]>([]);
 	const [customInput, setCustomInput] = useState("");
 	const dragSrcRef = useRef<string | null>(null);
 
-	// Initialize when analysis arrives.
+	// Initialize grouped state when analysis arrives
 	useEffect(() => {
+		if (!richGraph || conceptGroups.length === 0) return;
+		setGroupOrder(conceptGroups.map((g) => g.parentId));
+		setExcludedGroupIds(new Set());
+		setOpenGroupIds(new Set());
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [richGraph ? conceptGroups.map((g) => g.parentId).join(",") : ""]);
+
+	// Initialize legacy flat state
+	useEffect(() => {
+		if (richGraph) return; // ⬅️ STOP legacy initialization entirely
 		if (allConcepts.length === 0) return;
-		const ids = allConcepts.map((c) => c.concept);
-		setOrdered(ids);
-		setIncluded(new Set(ids));
+
+		setOrdered(allConcepts.map((c) => c.concept));
+		setIncluded(new Set(allConcepts.map((c) => c.concept)));
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [allConcepts.map((c) => c.concept).join(",")]);
 
+	// ── Group handlers ────────────────────────────────────────────────────────
+	function toggleGroup(parentId: string) {
+		setExcludedGroupIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(parentId)) next.delete(parentId); else next.add(parentId);
+			return next;
+		});
+	}
+
+	function toggleGroupOpen(parentId: string) {
+		setOpenGroupIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(parentId)) next.delete(parentId); else next.add(parentId);
+			return next;
+		});
+	}
+
+	// ── Legacy handlers ───────────────────────────────────────────────────────
 	function toggleIncluded(id: string) {
 		setIncluded((prev) => {
 			const next = new Set(prev);
@@ -499,45 +776,77 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 		});
 	}
 
+	// ── Drag handlers (work for both grouped and flat) ────────────────────────
 	function handleDragStart(id: string) {
-		if (!included.has(id)) return;
 		dragSrcRef.current = id;
 	}
 
 	function handleDragOver(e: React.DragEvent, id: string) {
 		e.preventDefault();
 		const src = dragSrcRef.current;
-		if (!src || src === id || !included.has(src)) return;
-		setOrdered((prev) => {
-			const next = [...prev];
-			const from = next.indexOf(src);
-			const to = next.indexOf(id);
-			if (from === -1 || to === -1) return prev;
-			next.splice(from, 1);
-			next.splice(to, 0, src);
-			return next;
-		});
+		if (!src || src === id) return;
+		if (richGraph) {
+			// Grouped: reorder groups
+			if (excludedGroupIds.has(src)) return;
+			setGroupOrder((prev) => {
+				const next = [...prev];
+				const from = next.indexOf(src);
+				const to = next.indexOf(id);
+				if (from === -1 || to === -1) return prev;
+				next.splice(from, 1);
+				next.splice(to, 0, src);
+				return next;
+			});
+		} else {
+			// Legacy: reorder flat list
+			if (!included.has(src)) return;
+			setOrdered((prev) => {
+				const next = [...prev];
+				const from = next.indexOf(src);
+				const to = next.indexOf(id);
+				if (from === -1 || to === -1) return prev;
+				next.splice(from, 1);
+				next.splice(to, 0, src);
+				return next;
+			});
+		}
 	}
 
 	function handleDragEnd() {
 		dragSrcRef.current = null;
 	}
 
-	// Derive ConceptRanking[] from current ordered/included state for onContinue.
+	// ── Build ConceptRanking[] for onContinue ─────────────────────────────────
 	function buildRankings(): ConceptRanking[] {
-		const baseRankings = ordered.map((id, i) => ({ id, included: included.has(id), rank: i + 1 }));
-		const customRankings = customConcepts.map((id, i) => ({
-			id,
-			included: true,
-			rank: ordered.length + i + 1,
-			isCustom: true,
-		}));
-		return [...baseRankings, ...customRankings];
+		const rankings: ConceptRanking[] = [];
+		let rank = 1;
+		if (richGraph) {
+			for (const parentId of groupOrder) {
+				const group = conceptGroups.find((g) => g.parentId === parentId);
+				if (!group) continue;
+				const isIncluded = !excludedGroupIds.has(parentId);
+				rankings.push({ id: parentId, included: isIncluded, rank: isIncluded ? rank++ : 0 });
+				for (const childId of group.childIds) {
+					rankings.push({ id: childId, included: isIncluded, rank: isIncluded ? rank++ : 0 });
+				}
+			}
+		} else {
+			for (const id of ordered) {
+				rankings.push({ id, included: included.has(id), rank: included.has(id) ? rank++ : 0 });
+			}
+		}
+		for (const id of customConcepts) {
+			rankings.push({ id, included: true, rank: rank++, isCustom: true });
+		}
+		return rankings;
 	}
 
 	function addCustomConcept() {
 		const trimmed = customInput.trim();
-		if (!trimmed || customConcepts.includes(trimmed) || ordered.includes(trimmed)) return;
+		const existingIds = richGraph
+			? groupOrder
+			: ordered;
+		if (!trimmed || customConcepts.includes(trimmed) || existingIds.includes(trimmed)) return;
 		setCustomConcepts((prev) => [...prev, trimmed]);
 		setCustomInput("");
 	}
@@ -570,6 +879,11 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 	const skills = deriveSkills(analysis);
 	const narrative = buildNarrative(analysis, docCount, richGraph ? richGraph.itemPlans.length : undefined);
 
+	// Stats for grouped view
+	const totalSubtopics = richGraph
+		? conceptGroups.reduce((sum, g) => sum + g.childIds.length, 0)
+		: 0;
+
 	return (
 		<>
 			<section className="v4-panel v4-vector-span v4-hero">
@@ -586,54 +900,155 @@ function Screen2({ analysis, isLoading, error, docCount, onContinue }: Screen2Pr
 				<p className="v4-stat-label">
 					across {analysis.problems.length} {analysis.problems.length === 1 ? "document" : "documents"}
 				</p>
+				{richGraph && conceptGroups.length > 0 && (
+					<p className="v4-stat-label" style={{ marginTop: "0.35rem" }}>
+						{conceptGroups.length} concept{conceptGroups.length !== 1 ? "s" : ""}
+						{totalSubtopics > 0 && (
+							<> · {totalSubtopics} sub-topic{totalSubtopics !== 1 ? "s" : ""}</>
+						)}
+					</p>
+				)}
 			</section>
 
 			<section className="v4-panel">
 				<p className="v4-kicker">Concepts</p>
 				<p className="v4-body-copy v4-concept-hint">Drag to set priority. Top = most questions. Toggle to include or exclude.</p>
-				{allConcepts.length > 0 ? (
-					<ul className="v4-concept-list">
-						{ordered.map((id, index) => {
-							const isIncluded = included.has(id);
-							const meta = allConcepts.find((c) => c.concept === id);
-							const position = index + 1;
-							return (
-								<li
-									key={id}
-									className={`v4-concept-item${isIncluded ? "" : " v4-concept-item--excluded"}`}
-									draggable={isIncluded}
-									onDragStart={() => handleDragStart(id)}
-									onDragOver={(e) => handleDragOver(e, id)}
-									onDragEnd={handleDragEnd}
-								>
-									<span
-										className={`v4-concept-handle${isIncluded ? "" : " v4-concept-handle--disabled"}`}
-										aria-hidden="true"
+
+				{richGraph ? (
+					/* ── Grouped view (rich concept graph) ── */
+					groupOrder.length > 0 ? (
+						<ul className="v4-concept-list">
+							{groupOrder.map((parentId, idx) => {
+								const group = conceptGroups.find((g) => g.parentId === parentId);
+								if (!group) return null;
+								const isIncluded = !excludedGroupIds.has(parentId);
+								const isOpen = openGroupIds.has(parentId);
+								const includedPosition = groupOrder.slice(0, idx + 1).filter((id) => !excludedGroupIds.has(id)).length;
+								const childNodes = group.childIds
+									.map((id) => richGraph.nodes.find((n) => n.id === id))
+									.filter((n): n is NonNullable<typeof n> => n !== undefined);
+								return (
+									<li
+										key={parentId}
+										className={`v4-concept-item v4-concept-group-item${isIncluded ? "" : " v4-concept-item--excluded"}`}
+										draggable={isIncluded}
+										onDragStart={() => handleDragStart(parentId)}
+										onDragOver={(e) => handleDragOver(e, parentId)}
+										onDragEnd={handleDragEnd}
 									>
-										⠿
-									</span>
-									<label className="v4-concept-toggle">
-										<input
-											type="checkbox"
-											checked={isIncluded}
-											onChange={() => toggleIncluded(id)}
-										/>
-										<span className="v4-concept-name">{humanizeConcept(id)}</span>
-									</label>
-									<div className="v4-concept-meta">
-										{meta && (
-											<span className="v4-stat-label">{meta.problemCount}{meta.problemCount === 1 ? " q" : " qs"}</span>
+										{/* Group header row */}
+										<div className="v4-concept-group-row">
+											<span
+												className={`v4-concept-handle${isIncluded ? "" : " v4-concept-handle--disabled"}`}
+												aria-hidden="true"
+											>
+												⠿
+											</span>
+											<label className="v4-concept-toggle">
+												<input
+													type="checkbox"
+													checked={isIncluded}
+													onChange={() => toggleGroup(parentId)}
+												/>
+												<span className="v4-concept-name">{group.parentLabel}</span>
+											</label>
+											<div className="v4-concept-meta">
+												{group.childIds.length > 0 && (
+													<span className="v4-stat-label">
+														{group.childIds.length} sub-topic{group.childIds.length !== 1 ? "s" : ""}
+													</span>
+												)}
+												{group.questionCount > 0 && (
+													<span className="v4-stat-label">
+														{group.questionCount} q{group.questionCount !== 1 ? "s" : ""}
+													</span>
+												)}
+												{isIncluded && (
+													<span className="v4-concept-position-badge">{includedPosition}</span>
+												)}
+												{group.childIds.length > 0 && (
+													<button
+														type="button"
+														className="v4-concept-expand-btn"
+														aria-label={isOpen ? `Collapse ${group.parentLabel}` : `Expand ${group.parentLabel}`}
+														onClick={(e) => { e.stopPropagation(); toggleGroupOpen(parentId); }}
+													>
+														{isOpen ? "▲" : "▼"}
+													</button>
+												)}
+											</div>
+										</div>
+										{/* Sub-topics (collapsible) */}
+										{isOpen && childNodes.length > 0 && (
+											<ul className="v4-concept-children">
+												{childNodes.map((child) => {
+													const childQs = richGraph.itemPlans.filter((p) =>
+														p.concepts.includes(child.id),
+													).length;
+													return (
+														<li key={child.id} className="v4-concept-child-item">
+															<span className="v4-concept-child-name">{child.label}</span>
+															{childQs > 0 && (
+																<span className="v4-stat-label">{childQs} q{childQs !== 1 ? "s" : ""}</span>
+															)}
+														</li>
+													);
+												})}
+											</ul>
 										)}
-										{isIncluded && (
-											<span className="v4-concept-position-badge">{position}</span>
-										)}
-									</div>
-								</li>
-							);
-						})}
-					</ul>
+									</li>
+								);
+							})}
+						</ul>
+					) : (
+						<p className="v4-body-copy">No concepts detected.</p>
+					)
 				) : (
-					<p className="v4-body-copy">No concepts detected.</p>
+					/* ── Legacy flat view ── */
+					allConcepts.length > 0 ? (
+						<ul className="v4-concept-list">
+							{ordered.map((id, index) => {
+								const isIncluded = included.has(id);
+								const meta = allConcepts.find((c) => c.concept === id);
+								const position = index + 1;
+								return (
+									<li
+										key={id}
+										className={`v4-concept-item${isIncluded ? "" : " v4-concept-item--excluded"}`}
+										draggable={isIncluded}
+										onDragStart={() => handleDragStart(id)}
+										onDragOver={(e) => handleDragOver(e, id)}
+										onDragEnd={handleDragEnd}
+									>
+										<span
+											className={`v4-concept-handle${isIncluded ? "" : " v4-concept-handle--disabled"}`}
+											aria-hidden="true"
+										>
+											⠿
+										</span>
+										<label className="v4-concept-toggle">
+											<input
+												type="checkbox"
+												checked={isIncluded}
+												onChange={() => toggleIncluded(id)}
+											/>
+											<span className="v4-concept-name">{humanizeConcept(id)}</span>
+										</label>
+										<div className="v4-concept-meta">
+											{meta && (
+												<span className="v4-stat-label">{meta.problemCount}{meta.problemCount === 1 ? " q" : " qs"}</span>
+											)}
+											{isIncluded && (
+												<span className="v4-concept-position-badge">{position}</span>
+											)}
+										</div>
+									</li>
+								);
+							})}
+						</ul>
+					) : (
+						<p className="v4-body-copy">No concepts detected.</p>
+					)
 				)}
 
 				{customConcepts.length > 0 && (

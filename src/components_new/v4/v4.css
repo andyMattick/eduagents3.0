@@ -328,6 +328,63 @@
   margin-bottom: 0.75rem;
 }
 
+/* Group item: column layout to accommodate child list below header */
+.v4-viewer .v4-concept-group-item {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+}
+
+.v4-viewer .v4-concept-group-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.v4-viewer .v4-concept-expand-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #b08060;
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+
+.v4-viewer .v4-concept-expand-btn:hover {
+  background: rgba(156, 77, 43, 0.1);
+}
+
+/* Children sub-list */
+.v4-viewer .v4-concept-children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.75rem 0.5rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border-top: 1px solid rgba(156, 77, 43, 0.08);
+}
+
+.v4-viewer .v4-concept-child-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.v4-viewer .v4-concept-child-name {
+  font-size: 0.85rem;
+  color: #5a3a25;
+  flex: 1;
+}
+
 .v4-viewer .v4-skills-row {
   display: flex;
   flex-wrap: wrap;
