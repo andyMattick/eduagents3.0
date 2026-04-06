@@ -1,0 +1,54 @@
+{
+  "concepts": [
+    {
+      "id": "stats.null_hypothesis",
+      "label": "Null hypothesis",
+      "subject": "statistics",
+      "prerequisites": [],
+      "misconceptions": ["stats.pvalue_means_null_true"]
+    },
+    {
+      "id": "stats.alternative_hypothesis",
+      "label": "Alternative hypothesis",
+      "subject": "statistics",
+      "prerequisites": ["stats.null_hypothesis"]
+    },
+    {
+      "id": "stats.p_value",
+      "label": "P-value",
+      "subject": "statistics",
+      "prerequisites": ["stats.null_hypothesis", "stats.alternative_hypothesis"]
+    },
+    {
+      "id": "stats.decision_rule",
+      "label": "Decision rule",
+      "subject": "statistics",
+      "prerequisites": ["stats.p_value"]
+    },
+    {
+      "id": "stats.significance_level",
+      "label": "Significance level",
+      "subject": "statistics",
+      "prerequisites": ["stats.p_value"],
+      "misconceptions": ["stats.significance_equals_importance"]
+    },
+    {
+      "id": "stats.one_proportion_test",
+      "label": "One-proportion z-test",
+      "subject": "statistics",
+      "prerequisites": ["stats.null_hypothesis", "stats.p_value", "stats.decision_rule"]
+    },
+    {
+      "id": "stats.type_i_error",
+      "label": "Type I error",
+      "subject": "statistics",
+      "prerequisites": ["stats.significance_level"]
+    },
+    {
+      "id": "stats.type_ii_error",
+      "label": "Type II error",
+      "subject": "statistics",
+      "prerequisites": ["stats.significance_level"]
+    }
+  ]
+}

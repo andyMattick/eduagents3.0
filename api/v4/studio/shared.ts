@@ -24,7 +24,11 @@ import type { IntentRequest } from "../../../src/prism-v4/schema/integration";
 import { rewriteTestItem, replaceItemInTestPayload, type ItemRewriteIntent } from "../../../src/prism-v4/studio/rewriteItem";
 import type { TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
 import { extractConceptsFromDocuments } from "./extractConceptGraph";
-import { enrichProductWithScenarios, generateScenarioSection, VALID_PROBLEM_FORMATS, type ProblemFormat } from "./generateScenarios";
+import { generateScenarioSection, VALID_PROBLEM_FORMATS, type ProblemFormat } from "./generateScenarios";
+import { buildConceptGroups } from "../../../src/components_new/v4/conceptGrouping";
+import type { ConceptGroup } from "../../../src/components_new/v4/conceptGrouping";
+import { buildAssessment } from "../../../src/components_new/v4/assessment/assessmentBuilder";
+import type { AssessmentRequest, ItemType, Assessment } from "../../../src/components_new/v4/assessment/assessmentTypes";
 
 const DEFAULT_TEACHER_ID = "00000000-0000-4000-8000-000000000001";
 
@@ -557,6 +561,70 @@ export function blueprintToRequestParams(args: {
 	return { totalItems, sectionOrder, itemCountOverrides, conceptBlueprintOption };
 }
 
+// ── Assessment Builder adapter helpers ──────────────────────────────────────
+
+function mapItemDifficulty(d: "easy" | "medium" | "hard"): "low" | "medium" | "high" {
+	if (d === "easy") return "low";
+	if (d === "hard") return "high";
+	return "medium";
+}
+
+function mapItemType(t: ItemType): string {
+	if (t === "mc") return "MC";
+	if (t === "short_answer") return "SA";
+	if (t === "frq") return "FRQ";
+	return "SA";
+}
+
+function mapFormatsToItemTypes(formats?: string[]): ItemType[] {
+	if (!formats || formats.length === 0) return ["mc", "short_answer", "frq"];
+	const result: ItemType[] = [];
+	if (formats.some((f) => f === "MC" || f === "MS")) result.push("mc");
+	if (formats.some((f) => f === "SA")) result.push("short_answer");
+	if (formats.some((f) => f === "FRQ")) result.push("frq");
+	return result.length > 0 ? result : ["mc", "short_answer", "frq"];
+}
+
+function assessmentToTestProduct(assessment: Assessment, sessionId: string): TestProduct {
+	const byConcept = new Map<string, Assessment["items"]>();
+	for (const item of assessment.items) {
+		const key = item.concepts[0] ?? "general";
+		const existing = byConcept.get(key) ?? [];
+		existing.push(item);
+		byConcept.set(key, existing);
+	}
+	const sections = Array.from(byConcept.entries()).map(([concept, items]) => ({
+		concept,
+		sourceDocumentIds: [sessionId],
+		items: items.map((item) => ({
+			itemId: item.id,
+			prompt: item.stem,
+			concept,
+			primaryConcepts: item.concepts,
+			sourceDocumentId: sessionId,
+			sourceFileName: "",
+			difficulty: mapItemDifficulty(item.difficulty),
+			cognitiveDemand: "conceptual" as const,
+			answerGuidance: Array.isArray(item.correctAnswer)
+				? (item.correctAnswer as string[]).join("; ")
+				: (item.correctAnswer as string),
+			problemType: mapItemType(item.type),
+			...(item.options ? { structuredAnswer: { choices: item.options } } : {}),
+			estimatedTimeSeconds: item.estimatedTimeSeconds,
+		})),
+	}));
+	return {
+		kind: "test",
+		focus: null,
+		title: "Assessment",
+		overview: "",
+		estimatedDurationMinutes: Math.ceil(assessment.totalTimeSeconds / 60),
+		sections,
+		totalItemCount: assessment.items.length,
+		generatedAt: new Date().toISOString(),
+	} as unknown as TestProduct;
+}
+
 export async function handleStudioAssessmentOutput(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") {
 		return res.status(405).json({ error: "Method not allowed" });
@@ -586,7 +654,6 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		? (body.options!.allowedFormats as ProblemFormat[])
 		: undefined;
 	const difficultyBias = body.options?.difficultyBias ?? undefined;
-	const teacherTone = body.options?.teacherTone ?? undefined;
 	const targetTimeMinutes = body.options?.targetTimeMinutes ?? undefined;
 
 	const blueprintRecord = await getBlueprintStore(blueprintId);
@@ -604,7 +671,7 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		return res.status(404).json({ error: "Session not found" });
 	}
 
-	const { totalItems, conceptBlueprintOption } = blueprintToRequestParams({
+	const { totalItems } = blueprintToRequestParams({
 		blueprint: version.blueprint,
 		blueprintId,
 		teacherId: blueprintRecord.teacherId,
@@ -612,31 +679,13 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 		fallbackItemCount: countAnalysisItems(buildInstructionalAnalysis(context)),
 	});
 
-	// Build the per-concept quota list for the Writer.
-	// Uses the same included concepts as blueprintToRequestParams, preserving order.
 	const includedConcepts = version.blueprint.concepts.filter((c) => c.included && c.quota > 0);
-	const conceptQuotas =
-		includedConcepts.length > 0
-			? includedConcepts.map((c) => ({ id: c.id, name: c.name || c.id, quota: c.quota }))
-			: undefined;
-
-	const request: IntentRequest & { intentType: "build-test" } = {
-		sessionId: blueprintRecord.sessionId,
-		documentIds: context.session.documentIds,
-		intentType: "build-test",
-		options: {
-			...(blueprintRecord.teacherId ? { teacherId: blueprintRecord.teacherId } : {}),
-			...(blueprintRecord.unitId ? { unitId: blueprintRecord.unitId } : {}),
-			itemCount: totalItems,
-			...(conceptBlueprintOption ? { conceptBlueprint: conceptBlueprintOption } : {}),
-		},
-	};
-
-	const extracted = await buildIntentPayload(request, context);
 
 	// Run the 5-layer concept extractor (rule-based only — fast, no extra LLM cost) to
-	// produce item plans that drive the generator loop. Falls back gracefully.
-	let richConceptGraph: Parameters<typeof enrichProductWithScenarios>[7] = undefined;
+	// produce item plans that drive concept grouping. Falls back gracefully.
+	let richGraphNodes: Array<{ id: string; label: string; weight: number; aliases: string[]; clusterIds: string[] }> = [];
+	let richGraphEdges: Array<{ from: string; to: string; strength: number }> = [];
+	let richGraphPlans: Array<{ id: string; concepts: string[] }> = [];
 	try {
 		const richGraph = await extractConceptsFromDocuments(
 			context.analyzedDocuments,
@@ -644,34 +693,42 @@ export async function handleStudioAssessmentOutput(req: VercelRequest, res: Verc
 			{ useLLM: false, targetCount: totalItems },
 		);
 		if (richGraph.nodes.length > 0 && richGraph.itemPlans.length > 0) {
-			richConceptGraph = {
-				nodes: richGraph.nodes.map((n) => ({ id: n.id, label: n.label })),
-				edges: richGraph.edges.map((e) => ({ from: e.from, to: e.to, strength: e.strength })),
-				itemPlans: richGraph.itemPlans.map((p) => ({
-					id: p.id,
-					type: p.type,
-					concepts: p.concepts,
-					suggestedFormat: p.suggestedFormat,
-					parts: p.parts,
-					sourceClusterId: p.sourceClusterId,
-				})),
-				clusters: richGraph.clusters.map((c) => ({
-					id: c.id,
-					stem: c.stem,
-					subparts: c.subparts,
-				})),
-			};
+			richGraphNodes = richGraph.nodes.map((n) => ({
+				id: n.id,
+				label: n.label,
+				weight: n.weight,
+				aliases: n.aliases,
+				clusterIds: n.clusterIds,
+			}));
+			richGraphEdges = richGraph.edges.map((e) => ({ from: e.from, to: e.to, strength: e.strength }));
+			richGraphPlans = richGraph.itemPlans.map((p) => ({ id: p.id, concepts: p.concepts }));
 			console.log(`[studio] Rich concept graph: ${richGraph.nodes.length} nodes, ${richGraph.itemPlans.length} item plans.`);
 		}
 	} catch (err) {
-		console.warn("[studio] Concept graph extraction failed, falling back to concept quotas:", err);
+		console.warn("[studio] Concept graph extraction failed, falling back to blueprint concepts:", err);
 	}
 
-	// Drive scenario generation from blueprint quotas, not extracted sections.
-	// This ensures every teacher-ranked concept gets its assigned items even
-	// when the source document has sparse content for some concepts.
-	const seed = blueprintId + Date.now().toString(36);
-	const product = await enrichProductWithScenarios(extracted as TestProduct, seed, conceptQuotas, allowedFormats, difficultyBias, teacherTone, targetTimeMinutes, richConceptGraph);
+	// Build ConceptGroup[] — prefer rich graph (document-grounded); fall back to blueprint quotas.
+	const rawGroups: ConceptGroup[] = richGraphNodes.length > 0
+		? buildConceptGroups(richGraphNodes, richGraphEdges, richGraphPlans)
+		: [];
+	const conceptGroups: ConceptGroup[] = rawGroups.length > 0
+		? rawGroups
+		: includedConcepts.map((c) => ({ parentId: c.id, parentLabel: c.name || c.id, questionCount: c.quota, children: [] }));
+
+	// Map UI format tokens → AssessmentItem types and difficulty.
+	const assembledTypes = mapFormatsToItemTypes(allowedFormats?.map((f) => f as string));
+	const assembledDifficulty: AssessmentRequest["difficulty"] = difficultyBias ?? "mixed";
+	const assessmentRequest: AssessmentRequest = {
+		count: totalItems,
+		types: assembledTypes,
+		difficulty: assembledDifficulty,
+		...(targetTimeMinutes !== undefined ? { timeMinutes: targetTimeMinutes } : {}),
+	};
+
+	// Generate items via the Assessment Builder (Layer 4).
+	const assessment = await buildAssessment(conceptGroups, assessmentRequest);
+	const product = assessmentToTestProduct(assessment, blueprintRecord.sessionId);
 
 	const output = await saveStudioOutputStore({
 		sessionId: blueprintRecord.sessionId,

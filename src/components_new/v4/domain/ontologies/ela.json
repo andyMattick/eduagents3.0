@@ -1,0 +1,70 @@
+{
+  "concepts": [
+    {
+      "id": "ela.narrative_structure",
+      "label": "Narrative structure",
+      "subject": "ela",
+      "prerequisites": []
+    },
+    {
+      "id": "ela.plot",
+      "label": "Plot",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"]
+    },
+    {
+      "id": "ela.conflict",
+      "label": "Conflict",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure", "ela.plot"]
+    },
+    {
+      "id": "ela.point_of_view",
+      "label": "Point of view",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"]
+    },
+    {
+      "id": "ela.figurative_language",
+      "label": "Figurative language",
+      "subject": "ela",
+      "prerequisites": []
+    },
+    {
+      "id": "ela.metaphor",
+      "label": "Metaphor",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"]
+    },
+    {
+      "id": "ela.simile",
+      "label": "Simile",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"]
+    },
+    {
+      "id": "ela.symbolism",
+      "label": "Symbolism",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"]
+    },
+    {
+      "id": "ela.theme",
+      "label": "Theme",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure", "ela.figurative_language"]
+    },
+    {
+      "id": "ela.motif",
+      "label": "Motif",
+      "subject": "ela",
+      "prerequisites": ["ela.theme"]
+    },
+    {
+      "id": "ela.characterization",
+      "label": "Characterization",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"]
+    }
+  ]
+}

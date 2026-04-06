@@ -1,0 +1,72 @@
+{
+  "concepts": [
+    {
+      "id": "bio.photosynthesis",
+      "label": "Photosynthesis",
+      "subject": "biology",
+      "prerequisites": [],
+      "misconceptions": ["bio.photosynthesis_only_in_light"]
+    },
+    {
+      "id": "bio.light_reactions",
+      "label": "Light reactions",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis"]
+    },
+    {
+      "id": "bio.calvin_cycle",
+      "label": "Calvin cycle",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis", "bio.light_reactions"]
+    },
+    {
+      "id": "bio.chloroplast",
+      "label": "Chloroplast",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis"]
+    },
+    {
+      "id": "bio.cellular_respiration",
+      "label": "Cellular Respiration",
+      "subject": "biology",
+      "prerequisites": [],
+      "misconceptions": ["bio.respiration_is_breathing"]
+    },
+    {
+      "id": "bio.glycolysis",
+      "label": "Glycolysis",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration"]
+    },
+    {
+      "id": "bio.atp_synthesis",
+      "label": "ATP synthesis",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration", "bio.glycolysis"]
+    },
+    {
+      "id": "bio.krebs_cycle",
+      "label": "Krebs cycle",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration", "bio.glycolysis"]
+    },
+    {
+      "id": "bio.ecosystem",
+      "label": "Ecosystem",
+      "subject": "biology",
+      "prerequisites": []
+    },
+    {
+      "id": "bio.food_chain",
+      "label": "Food chain",
+      "subject": "biology",
+      "prerequisites": ["bio.ecosystem"]
+    },
+    {
+      "id": "bio.energy_flow",
+      "label": "Energy flow",
+      "subject": "biology",
+      "prerequisites": ["bio.ecosystem", "bio.food_chain"]
+    }
+  ]
+}
