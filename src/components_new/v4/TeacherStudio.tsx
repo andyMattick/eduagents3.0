@@ -18,12 +18,14 @@ import {
 	runGenerateTestApi,
 	runMultiSimulatorApi,
 	runPreparednessSimulatorApi,
+	runRewriteApi,
 	runSingleSimulatorApi,
 } from "../../lib/simulatorApi";
 import type {
 	GeneratedTestData,
 	GeneratedTestItem,
 	ParallelSimulatorData,
+	RewriteResponse,
 	RewriteSuggestions,
 	SimulatorData,
 	SimulatorTestPreferences,
@@ -39,7 +41,7 @@ import "./v4.css";
 
 type Goal = "simulate" | "preparedness" | "compare" | "create";
 type Phase = "goal" | "upload" | "results";
-type ResultTab = "narrative" | "charts" | "suggestions" | "json";
+type ResultTab = "narrative" | "charts" | "suggestions" | "json" | "rewrite";
 
 interface StudioState {
 	goal: Goal | null;
@@ -57,6 +59,8 @@ interface StudioState {
 	narrative: string | null;
 	simData: SimulatorData | null;
 	parallelData: ParallelSimulatorData | null;
+	rewriteResults: RewriteResponse | null;
+	rewriteLoading: boolean;
 	primaryDragging: boolean;
 	secondaryDragging: boolean;
 	isLoading: boolean;
@@ -78,6 +82,8 @@ const INITIAL: StudioState = {
 	narrative: null,
 	simData: null,
 	parallelData: null,
+	rewriteResults: null,
+	rewriteLoading: false,
 	primaryDragging: false,
 	secondaryDragging: false,
 	isLoading: false,
@@ -362,7 +368,7 @@ function GeneratedTestView({ data }: { data: GeneratedTestData }) {
 // RewriteSuggestionsPanel sub-component
 // ---------------------------------------------------------------------------
 
-function RewriteSuggestionsPanel({ suggestions, onRewrite }: { suggestions?: RewriteSuggestions; onRewrite?: () => void }) {
+function RewriteSuggestionsPanel({ suggestions, onRewrite, rewriteLoading }: { suggestions?: RewriteSuggestions; onRewrite?: () => void; rewriteLoading?: boolean }) {
 	if (!suggestions) return null;
 
 	const itemKeys = Object.keys(suggestions.itemLevel).sort((a, b) => Number(a) - Number(b));
@@ -450,9 +456,10 @@ function RewriteSuggestionsPanel({ suggestions, onRewrite }: { suggestions?: Rew
 					type="button"
 					className="v4-button"
 					onClick={onRewrite}
+					disabled={rewriteLoading}
 					style={{ marginTop: "1.5rem" }}
 				>
-					Rewrite This Assessment
+					{rewriteLoading ? "Rewriting\u2026" : "Rewrite This Assessment"}
 				</button>
 			)}
 		</div>
@@ -713,6 +720,8 @@ export function TeacherStudio() {
 			simData: null,
 			parallelData: null,
 			testData: null,
+			rewriteResults: null,
+			rewriteLoading: false,
 			activeTab: "narrative",
 		}));
 
@@ -1210,10 +1219,12 @@ export function TeacherStudio() {
 												: state.goal === "create"
 												? state.testData !== null
 												: state.simData !== null;
+										const hasRewrite = state.rewriteResults !== null;
 										const tabs: Array<{ id: ResultTab; label: string }> = [
 											{ id: "narrative", label: "Narrative" },
 											...(hasCharts ? [{ id: "charts" as ResultTab, label: "Charts" }] : []),
 											...(hasSuggestions ? [{ id: "suggestions" as ResultTab, label: "Suggestions" }] : []),
+											...(hasRewrite ? [{ id: "rewrite" as ResultTab, label: "Rewrite" }] : []),
 											...(hasJson ? [{ id: "json" as ResultTab, label: "JSON" }] : []),
 										];
 										return tabs.length > 1 ? (
@@ -1304,14 +1315,66 @@ export function TeacherStudio() {
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions
 											}
-											onRewrite={() => {
-												// TODO: wire to rewrite engine route
+											rewriteLoading={state.rewriteLoading}
+											onRewrite={async () => {
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
-												console.log("[TeacherStudio] Rewrite requested", { sessionId: state.sessionId, suggestions });
+												if (!suggestions || !state.sessionId) return;
+												setState((prev) => ({ ...prev, rewriteLoading: true }));
+												try {
+													const result = await runRewriteApi({ sessionId: state.sessionId, suggestions });
+													setState((prev) => ({
+														...prev,
+														rewriteResults: result,
+														rewriteLoading: false,
+														activeTab: "rewrite",
+													}));
+												} catch (err) {
+													setState((prev) => ({
+														...prev,
+														rewriteLoading: false,
+														error: err instanceof Error ? err.message : "Rewrite failed",
+													}));
+												}
 											}}
 										/>
+									)}
+
+									{/* Tab: Rewrite */}
+									{state.activeTab === "rewrite" && state.rewriteResults && (
+										<div style={{ marginTop: "1.25rem", fontSize: "0.95rem" }}>
+											<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>
+												Rewritten Assessment — {state.rewriteResults.rewrittenItems.length} items
+											</p>
+											{state.rewriteResults.rewrittenItems.map((item) => (
+												<div
+													key={item.originalItemNumber}
+													style={{
+														background: "rgba(255,251,245,0.9)",
+														border: "1px solid rgba(86,57,32,0.14)",
+														borderRadius: "14px",
+														padding: "1rem 1.25rem",
+														marginBottom: "0.85rem",
+													}}
+												>
+													<p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "0.82rem", color: "#563920" }}>
+														Item {item.originalItemNumber}
+													</p>
+													<p style={{ margin: "0 0 0.5rem", lineHeight: 1.65 }}>
+														<strong>Rewritten:</strong> {item.rewrittenStem}
+													</p>
+													{item.rewrittenParts && item.rewrittenParts.length > 0 && (
+														<ul style={{ margin: "0 0 0.5rem", paddingLeft: "1.25rem", lineHeight: 1.7 }}>
+															{item.rewrittenParts.map((p, i) => <li key={i}>{p}</li>)}
+														</ul>
+													)}
+													<p style={{ margin: 0, fontSize: "0.82rem", color: "#6b5040", fontStyle: "italic" }}>
+														{item.notes}
+													</p>
+												</div>
+											))}
+										</div>
 									)}
 
 									{/* Tab: JSON */}

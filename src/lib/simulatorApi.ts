@@ -8,6 +8,8 @@ import type {
 	MultiProfileSimulatorResponse,
 	PreparednessSimulatorRequest,
 	PreparednessSimulatorResponse,
+	RewriteResponse,
+	RewriteSuggestions,
 	SingleSimulatorRequest,
 	SingleSimulatorResponse,
 } from "../types/simulator";
@@ -42,6 +44,18 @@ export function runMultiSimulatorApi(
 
 export function runGenerateTestApi(params: GenerateTestRequest) {
 	return fetchJson<GenerateTestResponse>("/api/v4/simulator/generate-test", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(params),
+	});
+}
+
+export function runRewriteApi(params: {
+	sessionId: string;
+	suggestions: RewriteSuggestions;
+	preferences?: Record<string, unknown>;
+}) {
+	return fetchJson<RewriteResponse>("/api/v4/rewrite", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(params),

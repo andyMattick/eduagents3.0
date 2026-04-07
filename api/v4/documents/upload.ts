@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
+import { supabaseAdmin, supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
 import {
 	createDocumentSessionStore,
@@ -81,9 +82,61 @@ function parseBody(body: unknown) {
 	};
 }
 
+function getClientIp(req: VercelRequest): string {
+	const forwarded = req.headers["x-forwarded-for"];
+	const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
+	const ip = raw.split(",")[0].trim();
+	return ip || "unknown";
+}
+
+async function getDailyUsageCount(userId: string, date: string): Promise<number> {
+	try {
+		const rows = await supabaseRest("user_daily_usage", {
+			method: "GET",
+			select: "count",
+			filters: { "user_id": `eq.${userId}`, "date": `eq.${date}` },
+		});
+		if (Array.isArray(rows) && rows.length > 0) {
+			return rows[0].count as number;
+		}
+		return 0;
+	} catch {
+		// If the table doesn't exist yet, don't block the upload
+		return 0;
+	}
+}
+
+async function incrementDailyUsage(userId: string, date: string): Promise<void> {
+	try {
+		const { url, key } = supabaseAdmin();
+		await fetch(`${url}/rest/v1/rpc/increment_daily_usage`, {
+			method: "POST",
+			headers: {
+				apikey: key,
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ uid: userId, d: date }),
+		});
+	} catch {
+		// Non-fatal — don't block the response if increment fails
+	}
+}
+
+const DAILY_DOCUMENT_LIMIT = 5;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") {
 		return res.status(405).json({ error: "Method not allowed" });
+	}
+
+	const userId = getClientIp(req);
+	const today = new Date().toISOString().slice(0, 10);
+	const usageCount = await getDailyUsageCount(userId, today);
+	if (usageCount >= DAILY_DOCUMENT_LIMIT) {
+		return res.status(429).json({
+			error: `Daily upload limit of ${DAILY_DOCUMENT_LIMIT} documents reached. Please try again tomorrow.`,
+		});
 	}
 
 	try {
@@ -105,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				? await ensureSessionDocumentsStore(requestedSessionId, registered.map((entry) => entry.documentId))
 				: await createDocumentSessionStore(registered.map((entry) => entry.documentId));
 
+		await incrementDailyUsage(userId, today);
 		return res.status(200).json({
 			documentIds: registered.map((entry) => entry.documentId),
 			sessionId: session?.sessionId ?? null,
@@ -147,6 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			rawBinary: buffer,
 		});
 		await saveAnalyzedDocumentStore(analyzedDocument, session.sessionId);
+		await incrementDailyUsage(userId, today);
 
 		return res.status(200).json({
 			documentId: registered.documentId,

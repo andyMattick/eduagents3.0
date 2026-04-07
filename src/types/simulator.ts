@@ -210,3 +210,18 @@ export interface MultiProfileSimulatorResponse {
 	narrative: string;
 	data: ParallelSimulatorData | null;
 }
+
+// ---------------------------------------------------------------------------
+// Rewrite engine
+// ---------------------------------------------------------------------------
+
+export interface RewrittenItem {
+	originalItemNumber: number;
+	rewrittenStem: string;
+	rewrittenParts?: string[];
+	notes: string;
+}
+
+export interface RewriteResponse {
+	rewrittenItems: RewrittenItem[];
+}
