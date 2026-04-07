@@ -5,6 +5,8 @@ export type CanonicalConcept = {
 	subject: string;
 	prerequisites: string[];
 	misconceptions?: string[];
+	/** Inclusive [min, max] step count for answer-key generation. Defaults to [2, 4]. */
+	typicalStepRange?: [number, number];
 };
 
 export type CanonicalMap = {

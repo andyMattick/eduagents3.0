@@ -611,6 +611,7 @@ function assessmentToTestProduct(assessment: Assessment, sessionId: string): Tes
 			problemType: mapItemType(item.type),
 			...(item.options ? { structuredAnswer: { choices: item.options } } : {}),
 			estimatedTimeSeconds: item.estimatedTimeSeconds,
+			...(item.stepCount !== undefined ? { stepCount: item.stepCount } : {}),
 		})),
 	}));
 	return {

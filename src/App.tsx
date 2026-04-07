@@ -9,13 +9,15 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
 import { CreateDocumentFlow } from './components_new/v4/CreateDocumentFlow';
+import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
+import { TeacherStudio } from './components_new/v4/TeacherStudio';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -63,7 +65,7 @@ function TeacherAppContent() {
           <div className="v4-home-brand">
             <p className="v4-home-kicker">Agents of Education</p>
             <h1>
-              AI Document Creation
+              Educational Simulation
             </h1>
 
           </div>
@@ -78,7 +80,7 @@ function TeacherAppContent() {
       </header>
 
       <main className="app-content app-content--v4">
-        <CreateDocumentFlow />
+        {pathname === '/legacy' ? <LegacyDocumentCreation /> : pathname === '/sim' ? <CreateDocumentFlow /> : <TeacherStudio />}
       </main>
     </div>
   );

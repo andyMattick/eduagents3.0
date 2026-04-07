@@ -20,6 +20,8 @@ export type AssessmentItem = {
 	concepts: string[];
 	difficulty: DifficultyLevel;
 	estimatedTimeSeconds: number;
+	/** Computed step count from the step engine (post-generation enrichment). */
+	stepCount?: number;
 };
 
 export type Assessment = {

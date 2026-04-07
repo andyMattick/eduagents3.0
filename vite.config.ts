@@ -234,6 +234,11 @@ const localPrismRoutes: LocalApiRoute[] = [
     modulePath: '/api/v4/studio/outputs/[outputId].ts',
     queryFromMatch: (match) => ({ outputId: decodeURIComponent(match[1] ?? '') }),
   },
+  { pattern: /^\/studio\/generateItems$/, modulePath: '/api/v4/studio/generateItems.ts' },
+  { pattern: /^\/simulator\/single$/, modulePath: '/api/v4/simulator/single.ts' },
+  { pattern: /^\/simulator\/preparedness$/, modulePath: '/api/v4/simulator/preparedness.ts' },
+  { pattern: /^\/simulator\/multi$/, modulePath: '/api/v4/simulator/multi.ts' },
+  { pattern: /^\/simulator\/generate-test$/, modulePath: '/api/v4/simulator/generate-test.ts' },
 ]
 
 async function invokeLocalApiRoute(server: any, req: any, res: any, route: LocalApiRoute, url: URL, match: RegExpMatchArray) {

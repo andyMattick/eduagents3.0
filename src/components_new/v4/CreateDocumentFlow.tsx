@@ -15,6 +15,7 @@ import type { TeacherStudioOutputArtifact } from "../../prism-v4/studio/artifact
 import type { InstructionalAnalysis, RichConceptMapModel } from "../../prism-v4/session/InstructionalIntelligenceSession";
 import type { TestProduct, TestItem, Misconception } from "../../prism-v4/schema/integration/IntentProduct";
 import { exportTestPDF, exportAnswerKeyPDF } from "../../utils/exportTestProductPDF";
+import { SimulatorPanel } from "./SimulatorPanel";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -50,7 +51,7 @@ interface FlowState {
 // CreateDocumentFlow
 // ---------------------------------------------------------------------------
 
-export function CreateDocumentFlow() {
+export function CreateDocumentFlow({ variant = "sim" }: { variant?: "sim" | "legacy" } = {}) {
 	const [state, setState] = useState<FlowState>({
 		step: 1,
 		files: [],
@@ -125,6 +126,21 @@ export function CreateDocumentFlow() {
 		try {
 			const { sessionId } = await createStudioSessionFromFilesApi(state.files);
 			setState((prev) => ({ ...prev, isLoading: false, sessionId, step: 2 }));
+		} catch (err) {
+			setState((prev) => ({
+				...prev,
+				isLoading: false,
+				error: err instanceof Error ? err.message : "Upload failed. Please try again.",
+			}));
+		}
+	}, [state.files]);
+
+	const handleUploadForSim = useCallback(async () => {
+		if (state.files.length === 0) return;
+		setState((prev) => ({ ...prev, isLoading: true, error: null }));
+		try {
+			const { sessionId } = await createStudioSessionFromFilesApi(state.files);
+			setState((prev) => ({ ...prev, isLoading: false, sessionId }));
 		} catch (err) {
 			setState((prev) => ({
 				...prev,
@@ -235,7 +251,12 @@ export function CreateDocumentFlow() {
 							onFileInputChange={handleFileInputChange}
 							onBrowseClick={() => fileInputRef.current?.click()}
 							onContinue={() => void handleContinue()}
+							onSimulate={() => void handleUploadForSim()}
+							variant={variant}
 						/>
+					)}
+					{variant === "sim" && state.step === 1 && state.sessionId && !state.isLoading && (
+						<SimulatorPanel sessionId={state.sessionId} />
 					)}
 					{state.step === 2 && (
 					<Screen2
@@ -289,6 +310,7 @@ export function CreateDocumentFlow() {
 						}
 					/>
 				)}
+
 				</div>
 			</div>
 		</div>
@@ -311,6 +333,8 @@ interface Screen1Props {
 	onFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 	onBrowseClick: () => void;
 	onContinue: () => void;
+	onSimulate: () => void;
+	variant?: "sim" | "legacy";
 }
 
 function Screen1({
@@ -325,6 +349,8 @@ function Screen1({
 	onFileInputChange,
 	onBrowseClick,
 	onContinue,
+	onSimulate,
+	variant = "sim",
 }: Screen1Props) {
 	const hasFiles = files.length > 0;
 	const multiDoc = files.length > 1;
@@ -333,7 +359,7 @@ function Screen1({
 		<>
 			<section className="v4-panel v4-vector-span v4-hero">
 				<div>
-					<p className="v4-kicker">Create a Document</p>
+					<p className="v4-kicker">Educational Simulation</p>
 					<h1>What documents do you want to upload?</h1>
 					<p className="v4-subtitle">
 						Upload review sheets, notes, or existing tests.
@@ -400,16 +426,27 @@ function Screen1({
 					</p>
 				)}
 
-				{/* Continue */}
+				{/* Continue / Simulate */}
 				<div className="v4-upload-actions">
-					<button
-						className="v4-button"
-						type="button"
-						disabled={!hasFiles || isLoading}
-						onClick={onContinue}
-					>
-						{isLoading ? "Uploading…" : "Continue"}
-					</button>
+					{variant === "legacy" ? (
+						<button
+							className="v4-button"
+							type="button"
+							disabled={!hasFiles || isLoading}
+							onClick={onContinue}
+						>
+							{isLoading ? "Uploading…" : "Continue"}
+						</button>
+					) : (
+						<button
+							className="v4-button v4-button-secondary"
+							type="button"
+							disabled={!hasFiles || isLoading}
+							onClick={onSimulate}
+						>
+							Simulate student experience
+						</button>
+					)}
 				</div>
 			</section>
 		</>
@@ -1304,6 +1341,9 @@ function AnswerKeyItem({ item, num, showMisconceptions }: { item: TestItem; num:
 						<span className="v4-pill">{item.concept}</span>
 						<span className="v4-pill">{item.difficulty}</span>
 						{item.estimatedTimeSeconds && <span className="v4-pill">{formatTime(item.estimatedTimeSeconds)}</span>}
+						{item.stepCount !== undefined && (
+							<span className="v4-pill v4-pill--steps">{item.stepCount} step{item.stepCount === 1 ? "" : "s"}</span>
+						)}
 					</div>
 				</div>
 			)}

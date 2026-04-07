@@ -1,0 +1,317 @@
+/**
+ * api/v4/simulator/shared.ts — Shared utilities for simulator routes
+ *
+ * Text retrieval: queries prism_v4_documents (already extracted during upload)
+ * and flattens all canonical node text for a session.  Zero pipeline dependency —
+ * we are only reading already-stored text, not re-processing anything.
+ *
+ * Profile formatting: turns a StudentProfile into an LLM-readable paragraph.
+ */
+
+import { supabaseRest } from "../../../lib/supabase";
+import type { StudentProfile } from "../../../src/types/simulator";
+
+// ---------------------------------------------------------------------------
+// Text retrieval
+// ---------------------------------------------------------------------------
+
+interface SupabaseDocumentRow {
+	document_id: string;
+	canonical_document: {
+		nodes?: Array<{ text?: string; normalizedText?: string; nodeType?: string }>;
+		paragraphs?: Array<{ text?: string }>;
+	} | null;
+	azure_extract: {
+		content?: string;
+		paragraphs?: Array<{ text?: string }>;
+	} | null;
+	source_file_name: string | null;
+}
+
+/**
+ * Fetch and flatten document text for every document belonging to `sessionId`.
+ * Falls back through:  canonical_document.nodes → azure_extract.content → ""
+ *
+ * Returns the combined text (all docs joined with "\n\n---\n\n") and the
+ * number of documents found.
+ */
+export async function fetchSessionText(sessionId: string): Promise<{ text: string; docCount: number }> {
+	const rows = (await supabaseRest("prism_v4_documents", {
+		select: "document_id,canonical_document,azure_extract,source_file_name",
+		filters: { session_id: `eq.${sessionId}` },
+	})) as SupabaseDocumentRow[] | null;
+
+	const docs: string[] = [];
+
+	for (const row of rows ?? []) {
+		const text = extractTextFromRow(row);
+		if (text) docs.push(text);
+	}
+
+	return { text: docs.join("\n\n---\n\n"), docCount: docs.length };
+}
+
+function extractTextFromRow(row: SupabaseDocumentRow): string {
+	// Priority 1 — canonical document nodes
+	const nodes = row.canonical_document?.nodes;
+	if (nodes && nodes.length > 0) {
+		return nodes
+			.map((n) => n.text ?? n.normalizedText ?? "")
+			.filter(Boolean)
+			.join("\n");
+	}
+
+	// Priority 2 — Azure full-text extraction
+	const azureContent = row.azure_extract?.content;
+	if (azureContent) return azureContent;
+
+	// Priority 3 — Azure paragraph list
+	const paras = row.azure_extract?.paragraphs;
+	if (paras && paras.length > 0) {
+		return paras.map((p) => p.text ?? "").filter(Boolean).join("\n");
+	}
+
+	return "";
+}
+
+// ---------------------------------------------------------------------------
+// Student profile → prompt string
+// ---------------------------------------------------------------------------
+
+export function formatStudentProfile(profile?: StudentProfile): string {
+	const p: StudentProfile = profile ?? {
+		confidence: "medium",
+		anxietyLevel: "medium",
+		pacingStyle: "steady",
+		readingProfile: "average",
+		attentionProfile: "average",
+		mathBackground: "average",
+	};
+
+	const lines: string[] = [
+		`- Confidence: ${p.confidence}`,
+		`- Anxiety level: ${p.anxietyLevel}`,
+		`- Pacing style: ${p.pacingStyle}`,
+		`- Reading profile: ${p.readingProfile}`,
+		`- Attention profile: ${p.attentionProfile}`,
+		`- Math background: ${p.mathBackground}`,
+	];
+
+	return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Two-part LLM response parser
+// ---------------------------------------------------------------------------
+
+/**
+ * The simulator prompts instruct the LLM to return:
+ *   1. NARRATIVE (teacher-friendly text)
+ *   2. DATA (JSON ONLY, no commentary) { … }
+ *
+ * This parser uses a three-strategy cascade:
+ *   1. Marker-based split — find "2. DATA" header, forward brace-match
+ *   2. Reverse brace-match — find last "}", walk backwards to matching "{"
+ *   3. First-to-last brute force — slice between first "{" and last "}"
+ *
+ * Code fences are stripped before any strategy runs.
+ * Only returns data: null when no strategy produces valid JSON.
+ */
+export function parseSimulatorResponse(raw: string): { narrative: string; data: unknown } {
+	if (!raw) return { narrative: "", data: null };
+	console.log("RAW LLM OUTPUT:\n", raw);
+
+	// Strip code fences (```json … ``` or ``` … ```)
+	const cleaned = raw.replace(/```(?:json)?\s*\n?/gi, "");
+
+	// --- Strategy 1: marker-based split (most reliable when LLM follows format) ---
+	const dataSplitMatch = cleaned.match(/\n\s*2\.\s*DATA[^\n]*\n/i)
+		?? cleaned.match(/\n\s*DATA\s*[\(\[]?JSON[^\n]*\n/i);
+
+	if (dataSplitMatch && dataSplitMatch.index !== undefined) {
+		const narrativePart = cleaned.slice(0, dataSplitMatch.index).trim();
+		const dataPart = cleaned.slice(dataSplitMatch.index + dataSplitMatch[0].length);
+
+		const jsonStart = dataPart.search(/[\[{]/);
+		if (jsonStart !== -1) {
+			const openChar = dataPart[jsonStart];
+			const closeChar = openChar === "{" ? "}" : "]";
+			let depth = 0;
+			let end = -1;
+			for (let i = jsonStart; i < dataPart.length; i++) {
+				if (dataPart[i] === openChar) depth++;
+				else if (dataPart[i] === closeChar) {
+					depth--;
+					if (depth === 0) { end = i + 1; break; }
+				}
+			}
+			if (end !== -1) {
+				try {
+					return { narrative: narrativePart, data: JSON.parse(dataPart.slice(jsonStart, end)) };
+				} catch { /* fall through to strategy 2 */ }
+			}
+		}
+	}
+
+	// --- Strategy 2: reverse brace-match from last "}" in full text ---
+	// JSON is always at the end; walking backwards finds it even without a marker.
+	const lastBrace = cleaned.lastIndexOf("}");
+	if (lastBrace !== -1) {
+		let depth = 0;
+		let start = -1;
+		for (let i = lastBrace; i >= 0; i--) {
+			if (cleaned[i] === "}") depth++;
+			if (cleaned[i] === "{") {
+				depth--;
+				if (depth === 0) { start = i; break; }
+			}
+		}
+		if (start !== -1) {
+			try {
+				return {
+					narrative: cleaned.slice(0, start).trim(),
+					data: JSON.parse(cleaned.slice(start, lastBrace + 1)),
+				};
+			} catch { /* fall through to strategy 3 */ }
+		}
+
+		// --- Strategy 3: first "{" to last "}" brute-force ---
+		const firstBrace = cleaned.indexOf("{");
+		if (firstBrace !== -1 && lastBrace > firstBrace) {
+			try {
+				return {
+					narrative: cleaned.slice(0, firstBrace).trim(),
+					data: JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)),
+				};
+			} catch { /* fall through */ }
+		}
+	}
+
+	// No valid JSON found
+	return { narrative: raw.trim(), data: null };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-profile parallel simulation prompt
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the parallel simulation prompt.
+ * documentText: already-fetched plaintext from the session.
+ * profiles: array of { label, profile } entries from the STUDENT_PROFILE_PRESETS.
+ * profileLabels: display names aligned with profiles array (index-matched).
+ */
+export function buildMultiProfilePrompt(documentText: string, profileLabels: string[], profiles: StudentProfile[]): string {
+	// Truncate aggressively: multi-profile output is large (N profiles × all items)
+	const truncatedText = documentText.substring(0, 4000);
+
+	const profilesText = profileLabels.map((label, i) => {
+		const p = profiles[i];
+		return `${label}:\n${formatStudentProfile(p)}`;
+	}).join("\n\n");
+
+	return `SYSTEM:
+You are a student-experience simulator for teachers.
+Given a test and multiple student profiles, simulate how EACH student would experience the assessment.
+
+For EACH student profile:
+- simulate cognitive load per item
+- identify confusion points
+- estimate pacing and time pressure
+- identify attention drift
+- estimate emotional responses (frustration, confidence dips, fatigue)
+- identify likely misconceptions
+- evaluate reading load, vocabulary difficulty, and clarity
+- identify red flags and time risks
+
+Then produce a CROSS-STUDENT COMPARISON showing:
+- which items are universally difficult (high cognitive load across ALL profiles)
+- which items disproportionately affect certain profiles (e.g. ADHD, dyslexia, ELL, low confidence)
+- where pacing diverges most
+- where cognitive load variance is highest across profiles
+
+IMPORTANT: All numeric fields (readingLoad, vocabularyDifficulty, cognitiveLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
+
+After completing the simulation, produce a final section called "rewriteSuggestions" inside the DATA JSON (top-level, alongside "students" and "comparison").
+Rewrite suggestions must be grounded ONLY in the metrics you generated:
+- high cognitiveLoad
+- high confusionRisk
+- high readingLoad
+- high vocabularyDifficulty
+- high misconceptionRisk
+- long timeToProcessSeconds
+- profile-specific difficulty patterns (items that disproportionately affect certain profiles)
+
+Rules for suggestions:
+- Suggestions must be actionable and teacher-friendly.
+- Suggestions must NOT rewrite the item directly.
+- Suggestions must NOT introduce new content.
+- Focus on clarity, pacing, cognitive load, vocabulary, and fairness.
+- testLevel: 2–5 whole-assessment suggestions.
+- itemLevel: only include items that scored high on risk metrics.
+
+IMPORTANT — STRICT OUTPUT FORMAT:
+- In the DATA section, output ONLY the raw JSON object.
+- Do NOT wrap the JSON in code fences (no \`\`\` or \`\`\`json).
+- Do NOT add any text, headings, or labels within the DATA section — only the JSON.
+- Start the JSON directly with "{" and end with "}".
+
+Return your answer in two parts:
+
+1. NARRATIVE (teacher-friendly text, 3–5 paragraphs)
+
+2. DATA (JSON ONLY, no commentary)
+{
+  "students": {
+    "PROFILE_NAME": {
+      "items": [
+        {
+          "itemNumber": number,
+          "readingLoad": number (0.0–1.0),
+          "wordCount": number,
+          "sentenceCount": number,
+          "vocabularyDifficulty": number (0.0–1.0),
+          "cognitiveLoad": number (0.0–1.0),
+          "confusionRisk": number (0.0–1.0),
+          "timeToProcessSeconds": number,
+          "misconceptionRisk": number (0.0–1.0),
+          "redFlags": [string]
+        }
+      ],
+      "overall": {
+        "totalItems": number,
+        "estimatedCompletionTimeSeconds": number,
+        "fatigueRisk": number (0.0–1.0),
+        "pacingRisk": number (0.0–1.0),
+        "majorRedFlags": [string]
+      }
+    }
+  },
+  "comparison": {
+    "universallyDifficultItems": [number],
+    "profileSpecificRisks": {
+      "PROFILE_NAME": [number]
+    },
+    "itemDifficultySpread": {
+      "ITEM_NUMBER": {
+        "min": number,
+        "max": number,
+        "variance": number
+      }
+    }
+  },
+  "rewriteSuggestions": {
+    "testLevel": [string],
+    "itemLevel": {
+      "ITEM_NUMBER": [string]
+    }
+  }
+}
+
+USER:
+Here is the test:
+${truncatedText}
+
+Here are the student profiles:
+${profilesText}`;
+}

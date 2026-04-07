@@ -15,6 +15,8 @@ import { SYSTEM_PROMPT, ITEM_TYPE_GUIDELINES } from "../../../src/components_new
 import { pickScenario } from "../../../src/components_new/v4/assessment/scenarioStyles";
 import { difficultyToTime } from "../../../src/components_new/v4/assessment/difficultyRules";
 import { allowedTypesForConcept } from "../../../src/components_new/v4/assessment/itemTypeMapping";
+import { computeStepCount } from "../../../src/components_new/v4/steps/stepEngine";
+import type { CanonicalConcept } from "../../../src/components_new/v4/domain/domainTypes";
 
 export const runtime = "nodejs";
 
@@ -36,6 +38,16 @@ function buildUserPrompt(params: GenerateItemsRequest): string {
 	const scenarioStyle = pickScenario(canonical?.subject, `${conceptId}__${type}`);
 	const estimatedTime = difficultyToTime(type, difficulty);
 
+	// Pre-generation step estimate using concept description as problem-text proxy
+	const concept = toCanonicalConcept(canonical, conceptId);
+	const targetSteps = computeStepCount(concept, {
+		conceptId: concept.id,
+		difficulty,
+		scenarioComplexity: "medium",
+		learnerProfile: "core",
+		problemText: description,
+	});
+
 	return `\
 ${typeGuideline}
 
@@ -52,6 +64,7 @@ Item Requirements:
 - Item Type: ${type}
 - Difficulty: ${difficulty}
 - Scenario Style: ${scenarioStyle}
+- Solution Steps: aim for ${targetSteps} step${targetSteps === 1 ? "" : "s"} in the answer key
 
 Output Format — a JSON array where every element matches this shape:
 {
@@ -75,6 +88,19 @@ interface CanonicalInfo {
 	subject?: string;
 	prerequisites: string[];
 	misconceptions?: string[];
+	typicalStepRange?: [number, number];
+}
+
+function toCanonicalConcept(canonical: CanonicalInfo | undefined, conceptId: string): CanonicalConcept {
+	return {
+		id: canonical?.id ?? conceptId,
+		label: canonical?.label ?? conceptId,
+		description: canonical?.description,
+		subject: canonical?.subject ?? "general",
+		prerequisites: canonical?.prerequisites ?? [],
+		misconceptions: canonical?.misconceptions,
+		typicalStepRange: canonical?.typicalStepRange,
+	};
 }
 
 interface GenerateItemsRequest {
@@ -191,8 +217,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		const items = parseItems(raw, params);
 
+		// Enrich each item with a step count derived from the actual generated stem
+		const concept = toCanonicalConcept(params.canonical, params.conceptId);
+		const enriched = items.map((item) => ({
+			...item,
+			stepCount: computeStepCount(concept, {
+				conceptId: concept.id,
+				difficulty: item.difficulty,
+				scenarioComplexity: "medium",
+				learnerProfile: "core",
+				problemText: item.stem,
+			}),
+		}));
+
 		// Ensure we never return more items than requested
-		return res.status(200).json({ items: items.slice(0, params.count) });
+		return res.status(200).json({ items: enriched.slice(0, params.count) });
 	} catch (err) {
 		console.error("[generate-items] Gemini or parse error:", err instanceof Error ? err.message : err);
 		// Graceful fallback — callers still get usable placeholder items

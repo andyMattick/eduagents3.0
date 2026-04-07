@@ -177,6 +177,8 @@ export interface TestItem {
 	misconceptionTriggers?: string[];
 	/** Step-by-step solution for answer key generation */
 	solutionSteps?: string[];
+	/** Computed cognitive step count (from step engine or enriched post-generation). */
+	stepCount?: number;
 	/** Per-distractor misconception explanations (MC/MS items only) */
 	misconceptions?: Misconception[];
 	explanation?: TestItemExplanation;

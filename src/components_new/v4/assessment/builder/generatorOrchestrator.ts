@@ -38,6 +38,7 @@ export async function generateItemsForConcept(
 							subject: canonical.subject,
 							prerequisites: canonical.prerequisites,
 							misconceptions: canonical.misconceptions,
+							typicalStepRange: canonical.typicalStepRange,
 					  }
 					: undefined,
 				type,

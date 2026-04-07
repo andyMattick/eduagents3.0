@@ -967,10 +967,11 @@
 }
 
 /* === V4 VIEWER FIX === */
+/* color: forces dark text on all HTML elements in the viewer */
+/* fill: intentionally NOT set here — it would override Recharts SVG fills */
 .v4-viewer,
 .v4-viewer * {
   color: #111 !important;
-  fill: #111 !important;
 }
 
 .v4-viewer {
