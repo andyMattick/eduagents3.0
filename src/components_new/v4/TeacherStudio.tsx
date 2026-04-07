@@ -49,6 +49,7 @@ interface StudioState {
 	primaryFiles: File[];
 	secondaryFiles: File[];   // prep material (preparedness)
 	sessionId: string | null;
+	documentId: string | null;
 	profile: StudentProfile;
 	selectedPreset: string;
 	// multi-profile compare
@@ -74,6 +75,7 @@ const INITIAL: StudioState = {
 	primaryFiles: [],
 	secondaryFiles: [],
 	sessionId: null,
+	documentId: null,
 	profile: DEFAULT_STUDENT_PROFILE,
 	selectedPreset: "Average Student",
 	selectedProfileLabels: ["Average Student", "ADHD", "ELL"],
@@ -726,13 +728,15 @@ export function TeacherStudio() {
 		}));
 
 		try {
-			const { sessionId } = await createStudioSessionFromFilesApi(state.primaryFiles);
+			const { sessionId, registered } = await createStudioSessionFromFilesApi(state.primaryFiles);
+			const documentId = registered[0]?.documentId ?? null;
 
 			if (state.goal === "simulate") {
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile });
 				setState((prev) => ({
 					...prev,
 					sessionId,
+					documentId,
 					narrative: res.narrative,
 					simData: res.data,
 					isLoading: false,
@@ -743,6 +747,7 @@ export function TeacherStudio() {
 				setState((prev) => ({
 					...prev,
 					sessionId,
+					documentId,
 					narrative: res.narrative,
 					simData: res.data,
 					isLoading: false,
@@ -755,6 +760,7 @@ export function TeacherStudio() {
 				setState((prev) => ({
 					...prev,
 					sessionId,
+					documentId,
 					narrative: res.narrative,
 					parallelData: res.data,
 					isLoading: false,
@@ -764,6 +770,7 @@ export function TeacherStudio() {
 				setState((prev) => ({
 					...prev,
 					sessionId,
+					documentId,
 					narrative: res.narrative,
 					testData: res.data,
 					isLoading: false,
@@ -1320,10 +1327,10 @@ export function TeacherStudio() {
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
-												if (!suggestions || !state.sessionId) return;
+												if (!suggestions || (!state.documentId && !state.sessionId)) return;
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
 												try {
-													const result = await runRewriteApi({ sessionId: state.sessionId, suggestions });
+													const result = await runRewriteApi({ documentId: state.documentId ?? undefined, sessionId: state.sessionId ?? undefined, suggestions });
 													setState((prev) => ({
 														...prev,
 														rewriteResults: result,

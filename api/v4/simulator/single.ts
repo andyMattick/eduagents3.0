@@ -9,7 +9,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
+import { callLLM } from "../../../lib/llm";
 import type { SimulatorData, StudentProfile } from "../../../src/types/simulator";
 import { fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
 
@@ -145,7 +145,7 @@ ${text.substring(0, 12000)}
 Here is the student profile:
 ${profileStr}`;
 
-	const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 8192 });
+	const raw = await callLLM({ prompt, metadata: { runType: "simulate-single", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
 
 	const { narrative, data } = parseSimulatorResponse(raw);
 

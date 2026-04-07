@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
+import { callLLM } from "../../../lib/llm";
 import type { GeneratedTestData, SimulatorTestPreferences } from "../../../src/types/simulator";
 import { fetchSessionText, parseSimulatorResponse } from "./shared";
 
@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userMsg = `Generate ${prefLine}\n\nDocument A:\n${text}${
       supplementText ? `\n\nDocument B:\n${supplementText}` : ""
     }`;
-    const raw = await callGemini({ model: "gemini-2.0-flash", prompt: `${SYSTEM_PROMPT}\n\nUSER:\n${userMsg}`, temperature: 0.4, maxOutputTokens: 4096 });
+    const raw = await callLLM({ prompt: `${SYSTEM_PROMPT}\n\nUSER:\n${userMsg}`, metadata: { runType: "generate-test", sessionId }, options: { temperature: 0.4, maxOutputTokens: 4096 } });
     const parsed = parseSimulatorResponse(raw);
     const data: GeneratedTestData | null =
       parsed.data && typeof parsed.data === "object" && "test" in (parsed.data as object)

@@ -315,3 +315,92 @@ ${truncatedText}
 Here are the student profiles:
 ${profilesText}`;
 }
+
+// ---------------------------------------------------------------------------
+// V4 item storage — v4_items table
+// ---------------------------------------------------------------------------
+
+/**
+ * A structured assessment item as stored in (and loaded from) `v4_items`.
+ * Contains no PII — only the assessment content and pedagogical metadata.
+ */
+export interface V4Item {
+	itemNumber: number;
+	type: string;
+	stem: string;
+	choices: unknown | null;
+	answerKey: unknown | null;
+	metadata: Record<string, unknown>;
+	sourcePageNumbers: number[];
+}
+
+/**
+ * Persist extracted items to `v4_items`.
+ *
+ * Called after `analyzeRegisteredDocument` during the upload pipeline so that
+ * every subsequent LLM route (simulator, rewrite, preparedness) can load items
+ * from the DB instead of re-reading raw document text.
+ *
+ * Safe to call multiple times — existing rows for the same document will be
+ * left in place (insert only, no upsert, so callers should call once per document).
+ */
+export async function saveItems(documentId: string, items: V4Item[]): Promise<void> {
+	if (!items.length) return;
+
+	const rows = items.map((item) => ({
+		document_id: documentId,
+		item_number: item.itemNumber,
+		type: item.type ?? "question",
+		stem: item.stem ?? "",
+		choices: item.choices ?? null,
+		answer_key: item.answerKey ?? null,
+		metadata: item.metadata ?? {},
+		source_page_numbers: item.sourcePageNumbers ?? [],
+	}));
+
+	await supabaseRest("v4_items", {
+		method: "POST",
+		body: rows,
+		prefer: "resolution=merge-duplicates",
+	});
+}
+
+/**
+ * Load all items for a document from `v4_items`, ordered by item_number.
+ *
+ * Returns an empty array (never throws) when no items are found so that
+ * callers can gracefully fall back to text-based prompts.
+ */
+export async function getItemsForDocument(documentId: string): Promise<V4Item[]> {
+	try {
+		const rows = (await supabaseRest("v4_items", {
+			method: "GET",
+			select: "item_number,type,stem,choices,answer_key,metadata,source_page_numbers",
+			filters: {
+				document_id: `eq.${documentId}`,
+				order:        "item_number.asc",
+			},
+		})) as Array<{
+			item_number: number;
+			type: string;
+			stem: string;
+			choices: unknown;
+			answer_key: unknown;
+			metadata: Record<string, unknown>;
+			source_page_numbers: number[];
+		}> | null;
+
+		return (rows ?? []).map((row) => ({
+			itemNumber:         row.item_number,
+			type:               row.type,
+			stem:               row.stem,
+			choices:            row.choices,
+			answerKey:          row.answer_key,
+			metadata:           row.metadata,
+			sourcePageNumbers:  row.source_page_numbers,
+		}));
+	} catch {
+		// Non-fatal: fall back to text-based prompts
+		return [];
+	}
+}

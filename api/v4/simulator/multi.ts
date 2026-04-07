@@ -11,7 +11,7 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
+import { callLLM } from "../../../lib/llm";
 import type { ParallelSimulatorData, StudentProfile } from "../../../src/types/simulator";
 import {
 	buildMultiProfilePrompt,
@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// Build the full prompt (system + user combined as a single Gemini user message)
 		const prompt = buildMultiProfilePrompt(text, labels, profiles);
 
-		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 8192 });
+		const raw = await callLLM({ prompt, metadata: { runType: "simulate-multi", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
 
 		const parsed = parseSimulatorResponse(raw);
 

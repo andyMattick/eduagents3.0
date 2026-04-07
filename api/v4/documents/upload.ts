@@ -9,6 +9,7 @@ import {
 	registerDocumentsStore,
 	saveAnalyzedDocumentStore,
 } from "../../../src/prism-v4/documents/registryStore";
+import { saveItems } from "../simulator/shared";
 
 export const runtime = "nodejs";
 export const config = {
@@ -201,6 +202,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			rawBinary: buffer,
 		});
 		await saveAnalyzedDocumentStore(analyzedDocument, session.sessionId);
+
+		// Persist structured items so simulator/rewrite routes can load by documentId
+		// without re-reading raw text.  No PII allowed: only assessment content + metadata.
+		const v4Items = (analyzedDocument.problems ?? []).map((problem, index) => ({
+			itemNumber:        index + 1,
+			type:              problem.cognitiveDemand ?? "question",
+			stem:              problem.text ?? "",
+			choices:           null,
+			answerKey:         null,
+			metadata: {
+				extractedProblemId: problem.id,
+				concepts:           problem.concepts ?? [],
+				representations:    problem.representations ?? [],
+				difficulty:         problem.difficulty ?? "medium",
+				misconceptions:     problem.misconceptions ?? [],
+				cognitiveDemand:    problem.cognitiveDemand ?? "recall",
+				sourceSpan:         problem.sourceSpan ?? null,
+			},
+			sourcePageNumbers: problem.sourceSpan
+				? Array.from(
+					{ length: (problem.sourceSpan.lastPage - problem.sourceSpan.firstPage) + 1 },
+					(_, i) => problem.sourceSpan!.firstPage + i,
+				  )
+				: [],
+		}));
+		// Fire-and-forget: non-fatal if DB is unavailable
+		saveItems(registered.documentId, v4Items).catch((err) =>
+			console.warn("[upload] saveItems failed (non-fatal):", err instanceof Error ? err.message : err),
+		);
+
 		await incrementDailyUsage(userId, today);
 
 		return res.status(200).json({

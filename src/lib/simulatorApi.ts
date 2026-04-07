@@ -51,7 +51,8 @@ export function runGenerateTestApi(params: GenerateTestRequest) {
 }
 
 export function runRewriteApi(params: {
-	sessionId: string;
+	documentId?: string;
+	sessionId?: string;
 	suggestions: RewriteSuggestions;
 	preferences?: Record<string, unknown>;
 }) {
