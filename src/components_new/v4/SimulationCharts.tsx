@@ -64,6 +64,18 @@ const SECTION_KICKER: React.CSSProperties = {
 	fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
 };
 
+// Readable tick/label color that works on both light and dark panel backgrounds
+const TICK_COLOR = "#a89070";
+
+// Consistent dark tooltip for all charts
+const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
+	backgroundColor: "rgba(10,6,3,0.88)",
+	border: "1px solid rgba(187,91,53,0.3)",
+	borderRadius: "8px",
+	color: "#f0e6d8",
+	fontSize: "0.78rem",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -111,15 +123,16 @@ export function CognitiveLoadChart({ data }: { data: ParallelSimulatorData }) {
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
 					<XAxis
 						dataKey="item"
-						label={{ value: "Item #", position: "insideBottom", offset: -2, fontSize: 11, fill: "#6b5040" }}
-						tick={{ fontSize: 10, fill: "#6b5040" }}
+						label={{ value: "Item #", position: "insideBottom", offset: -2, fontSize: 11, fill: TICK_COLOR }}
+						tick={{ fontSize: 10, fill: TICK_COLOR }}
 					/>
 					<YAxis
 						domain={[0, 1]}
 						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: "#6b5040" }}
+						tick={{ fontSize: 10, fill: TICK_COLOR }}
 					/>
 					<Tooltip
+						contentStyle={TOOLTIP_CONTENT_STYLE}
 						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
 						labelFormatter={(label) => `Item ${label}`}
 					/>
@@ -155,9 +168,10 @@ export function TimeToProcessChart({ data }: { data: ParallelSimulatorData }) {
 			<ResponsiveContainer width="100%" height={260}>
 				<BarChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis dataKey="item" tick={{ fontSize: 10, fill: "#6b5040" }} />
-					<YAxis tick={{ fontSize: 10, fill: "#6b5040" }} unit="s" />
+					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
+					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} unit="s" />
 					<Tooltip
+						contentStyle={TOOLTIP_CONTENT_STYLE}
 						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? value : 0}s`, name]}
 						labelFormatter={(label) => `Item ${label}`}
 					/>
@@ -195,19 +209,20 @@ export function ReadingVsCogScatter({ data }: { data: ParallelSimulatorData }) {
 						dataKey="x"
 						domain={[0, 1]}
 						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: "#6b5040" }}
-						label={{ value: "Reading Load", position: "insideBottom", offset: -2, fontSize: 11, fill: "#6b5040" }}
+						tick={{ fontSize: 10, fill: TICK_COLOR }}
+						label={{ value: "Reading Load", position: "insideBottom", offset: -2, fontSize: 11, fill: TICK_COLOR }}
 					/>
 					<YAxis
 						type="number"
 						dataKey="y"
 						domain={[0, 1]}
 						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: "#6b5040" }}
-						label={{ value: "Cognitive Load", angle: -90, position: "insideLeft", fontSize: 11, fill: "#6b5040" }}
+						tick={{ fontSize: 10, fill: TICK_COLOR }}
+						label={{ value: "Cognitive Load", angle: -90, position: "insideLeft", fontSize: 11, fill: TICK_COLOR }}
 					/>
 					<ZAxis range={[40, 40]} />
 					<Tooltip
+						contentStyle={TOOLTIP_CONTENT_STYLE}
 						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
 						cursor={{ strokeDasharray: "3 3" }}
 					/>
@@ -248,9 +263,9 @@ export function RedFlagDensityChart({ data }: { data: ParallelSimulatorData }) {
 			<ResponsiveContainer width="100%" height={220}>
 				<BarChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis dataKey="item" tick={{ fontSize: 10, fill: "#6b5040" }} />
-					<YAxis tick={{ fontSize: 10, fill: "#6b5040" }} allowDecimals={false} />
-					<Tooltip labelFormatter={(label) => `Item ${label}`} />
+					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
+					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} allowDecimals={false} />
+					<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelFormatter={(label) => `Item ${label}`} />
 					<Legend wrapperStyle={{ fontSize: "0.75rem" }} />
 					{profiles.map((profile, i) => (
 						<Bar
@@ -392,13 +407,14 @@ export function DifficultySpreadChart({ data }: { data: ParallelSimulatorData })
 			<ResponsiveContainer width="100%" height={240}>
 				<ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis dataKey="item" tick={{ fontSize: 10, fill: "#6b5040" }} />
+					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
 					<YAxis
 						domain={[0, 1]}
 						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: "#6b5040" }}
+						tick={{ fontSize: 10, fill: TICK_COLOR }}
 					/>
 					<Tooltip
+						contentStyle={TOOLTIP_CONTENT_STYLE}
 						formatter={(value: number | undefined, name: string | undefined) => {
 							if (name === "variance") return [(value ?? 0).toFixed(3), "Variance" as const];
 							return [`${Math.round((value ?? 0) * 100)}%`, "Midpoint" as const];

@@ -1,18 +1,22 @@
 /**
- * lib/llm.ts — PII-safe LLM choke point
+ * lib/llm.ts — LLM choke point with PII awareness
  *
  * ALL Gemini calls must go through `callLLM` rather than calling
  * `callGemini` directly.  This file:
- *   1. Detects PII patterns in the prompt before sending to Gemini.
- *   2. Throws if PII is found, preventing data leakage.
- *   3. Provides consistent model/token defaults for all routes.
+ *   1. Detects PII patterns in the prompt and logs a warning.
+ *   2. Never blocks the call — teacher-uploaded documents may contain
+ *      proper nouns (names, school references) by design.
+ *   3. Provides helpers to avoid ADDING new PII when building prompts.
+ *   4. Provides consistent model/token defaults for all routes.
  *
  * Privacy contract
  * ----------------
- * - Student names, teacher names, school names, IDs, emails, phone numbers,
- *   and addresses must NEVER appear in prompts.
- * - Use `toLLMStudentProfile` and `toLLMTeacherContext` to strip PII before
- *   building prompts.
+ * - Never inject teacher names, student names, or school names when
+ *   building LLM prompts from scratch.
+ * - Use `toLLMStudentProfile` and `toLLMTeacherContext` to strip PII
+ *   from structured objects before inserting them into prompts.
+ * - Teacher-uploaded document text is sent to Gemini as-is; teachers
+ *   are shown a disclosure at the time of upload.
  */
 
 import { callGemini } from "./gemini";
@@ -116,8 +120,9 @@ export async function callLLM({
   };
 }): Promise<string> {
   if (looksLikePII(prompt)) {
-    console.error("[callLLM] PII detected in prompt — aborting LLM call", { metadata });
-    throw new Error("PII detected in LLM prompt");
+    // Warning only — teacher documents legitimately contain proper nouns.
+    // The contract is: never ADD PII to prompts, not that prompts must be PII-free.
+    console.warn("[callLLM] PII pattern detected in prompt — verify no names were injected programmatically", { metadata });
   }
 
   return callGemini({

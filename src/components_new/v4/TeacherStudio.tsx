@@ -12,7 +12,7 @@
  * Flow:  goal → upload → results
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import {
 	runGenerateTestApi,
@@ -62,6 +62,9 @@ interface StudioState {
 	parallelData: ParallelSimulatorData | null;
 	rewriteResults: RewriteResponse | null;
 	rewriteLoading: boolean;
+	// interactive rewrite panel state
+	selectedSuggestions: Record<string, boolean>;  // key="test:idx" or "item:N:idx"
+	teacherNotes: string;
 	primaryDragging: boolean;
 	secondaryDragging: boolean;
 	isLoading: boolean;
@@ -979,6 +982,12 @@ export function TeacherStudio() {
 											setState((prev) => ({ ...prev, primaryFiles: [] }))
 										}
 									/>
+
+									{/* AI disclosure */}
+									<p style={{ fontSize: "0.75rem", color: "#9c4d2b", opacity: 0.75, margin: 0 }}>
+										Uploaded documents are processed by Google Gemini to generate analysis and suggestions.
+										Avoid uploading files that contain student names, ID numbers, or other personal information.
+									</p>
 
 									{/* Profile multi-select chips — compare only */}
 									{state.goal === "compare" && (
