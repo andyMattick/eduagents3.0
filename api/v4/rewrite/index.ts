@@ -18,6 +18,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
+import { supabaseRest } from "../../../lib/supabase";
 import type { RewriteSuggestions } from "../../../src/types/simulator";
 import { fetchSessionText, getItemsForDocument, type V4Item } from "../simulator/shared";
 
@@ -213,6 +214,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		const json = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+
+		// Persist rewrite run for PDF export (fire-and-forget, non-fatal)
+		if (documentId && Array.isArray(json.rewrittenItems)) {
+			supabaseRest("v4_rewrite_runs", {
+				method: "POST",
+				body: { document_id: documentId, rewritten_items: json.rewrittenItems },
+			}).catch(() => {});
+		}
+
 		return res.status(200).json(json);
 	} catch (err) {
 		console.error("[rewrite] error:", err);

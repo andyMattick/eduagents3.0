@@ -1,7 +1,8 @@
+import { randomUUID } from "crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
 import type { GeneratedTestData, SimulatorTestPreferences } from "../../../src/types/simulator";
-import { fetchSessionText, parseSimulatorResponse } from "./shared";
+import { fetchSessionText, parseSimulatorResponse, saveItems, type V4Item } from "./shared";
 
 export const runtime = "nodejs";
 
@@ -86,7 +87,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? (parsed.data as GeneratedTestData)
         : null;
 
-    return res.status(200).json({ narrative: parsed.narrative, data, meta: { docCount } });
+    // Persist generated items to v4_items so rewrite can load them later
+    const generatedDocumentId = randomUUID();
+    if (data && data.test.length > 0) {
+      const v4Items: V4Item[] = data.test.map((item, idx) => ({
+        itemNumber: idx + 1,
+        type: item.type.toLowerCase(),
+        stem: item.stem,
+        choices: item.options ?? null,
+        answerKey: item.answer ?? null,
+        metadata: {},
+        sourcePageNumbers: [],
+      }));
+      saveItems(generatedDocumentId, v4Items).catch(() => {}); // fire-and-forget
+    }
+
+    return res.status(200).json({ narrative: parsed.narrative, data, documentId: generatedDocumentId, meta: { docCount } });
   } catch (err) {
     console.error("[simulator/generate-test]", err);
     return res

@@ -185,6 +185,7 @@ export interface GenerateTestRequest {
 export interface GenerateTestResponse {
 	narrative: string;
 	data: GeneratedTestData | null;
+	documentId?: string;
 }
 
 // ---------------------------------------------------------------------------
