@@ -51,7 +51,6 @@ export function runGenerateTestApi(params: GenerateTestRequest) {
 
 export function runRewriteApi(params: {
 	documentId?: string;
-	sessionId?: string;
 	selectedSuggestions: {
 		testLevel: string[];
 		itemLevel: Record<string, string[]>;

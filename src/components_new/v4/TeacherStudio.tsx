@@ -1489,7 +1489,7 @@ export function TeacherStudio() {
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
-												if (!suggestions || (!state.documentId && !state.sessionId)) return;
+												if (!suggestions || !state.documentId) return;
 
 												// Build selectedSuggestions payload from checkbox state
 												const sel = state.selectedSuggestions ?? {};
@@ -1514,7 +1514,6 @@ export function TeacherStudio() {
 												try {
 													const result = await runRewriteApi({
 														documentId: state.documentId ?? undefined,
-														sessionId: state.sessionId ?? undefined,
 														selectedSuggestions: {
 															testLevel: selectedTestLevel,
 															itemLevel: selectedItemLevel,

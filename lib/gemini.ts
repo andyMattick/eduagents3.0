@@ -22,17 +22,31 @@ export async function callGemini({
     throw new Error("GEMINI_API_KEY missing");
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature, maxOutputTokens },
-      }),
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 50_000); // 50s safety net
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature, maxOutputTokens },
+        }),
+        signal: controller.signal,
+      }
+    );
+  } catch (err: unknown) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Gemini request timed out (50s)");
     }
-  );
+    throw err;
+  }
+  clearTimeout(timeout);
 
   if (!res.ok) {
     const text = await res.text();

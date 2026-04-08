@@ -20,7 +20,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
 import { supabaseRest } from "../../../lib/supabase";
 import type { RewriteSuggestions } from "../../../src/types/simulator";
-import { fetchSessionText, getItemsForDocument, type V4Item } from "../simulator/shared";
+import {
+	fetchSessionText,
+	getDocument,
+	getItemsForDocument,
+	getSectionsForDocument,
+	type V4Item,
+	type V4Section,
+} from "../simulator/shared";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -137,6 +144,96 @@ ${JSON.stringify(preferences ?? {}, null, 2)}`;
 }
 
 // ---------------------------------------------------------------------------
+// Notes-based prompt builder
+// ---------------------------------------------------------------------------
+
+function buildNotesRewritePrompt(
+	sections: V4Section[],
+	suggestions: RewriteSuggestions,
+	preferences: Record<string, unknown>,
+): string {
+	return `You are an instructional rewrite engine for teachers.
+Improve the following note sections using the provided suggestions.
+
+REWRITE RULES:
+- Preserve all factual content and learning objectives.
+- Do NOT introduce new concepts not present in the original.
+- Improve clarity, readability, or structure as directed.
+- Output ONLY a JSON object — no code fences, no commentary.
+
+OUTPUT SCHEMA:
+{
+  "rewrittenItems": [
+    {
+      "originalItemNumber": number,
+      "rewrittenStem": "rewritten section text",
+      "rewrittenParts": [],
+      "notes": "brief explanation of what was improved"
+    }
+  ]
+}
+
+SECTIONS:
+${JSON.stringify(sections.map((s, i) => ({ itemNumber: i + 1, title: s.title ?? null, text: s.text })), null, 2)}
+
+SUGGESTIONS:
+${JSON.stringify(suggestions, null, 2)}
+
+PREFERENCES:
+${JSON.stringify(preferences, null, 2)}
+
+Output ONLY the JSON object starting with "{".`;
+}
+
+// ---------------------------------------------------------------------------
+// Mixed prompt builder
+// ---------------------------------------------------------------------------
+
+function buildMixedRewritePrompt(
+	items: V4Item[],
+	sections: V4Section[],
+	suggestions: RewriteSuggestions,
+	preferences: Record<string, unknown>,
+): string {
+	return `You are an instructional rewrite engine for teachers.
+This document contains both assessment items and explanatory sections.
+Improve them using the provided suggestions.
+
+REWRITE RULES:
+- Preserve all learning objectives and factual content.
+- Do NOT introduce new content not present in the original.
+- Do NOT change the correct answer of any item.
+- Output ONLY a JSON object — no code fences, no commentary.
+
+OUTPUT SCHEMA:
+{
+  "rewrittenItems": [
+    {
+      "originalItemNumber": number,
+      "rewrittenStem": "...",
+      "rewrittenParts": [],
+      "notes": "brief explanation",
+      "kind": "item" | "section"
+    }
+  ]
+}
+
+ASSESSMENT ITEMS:
+${JSON.stringify(items, null, 2)}
+
+NOTE SECTIONS:
+${JSON.stringify(sections.map((s, i) => ({ itemNumber: i + 1, title: s.title ?? null, text: s.text })), null, 2)}
+
+SUGGESTIONS:
+${JSON.stringify(suggestions, null, 2)}
+
+PREFERENCES:
+${JSON.stringify(preferences, null, 2)}
+
+Output ONLY the JSON object starting with "{".`;
+}
+
+// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -195,40 +292,50 @@ const mergedSuggestions: RewriteSuggestions = {
 
 let prompt: string;
 
-	// --- Preferred path: item-based ---
+	// --- Preferred path: documentId present → load items + sections, branch by docType ---
 	if (documentId) {
-  const items = await getItemsForDocument(documentId);
+		const [doc, items, sections] = await Promise.all([
+			getDocument(documentId),
+			getItemsForDocument(documentId),
+			getSectionsForDocument(documentId),
+		]);
 
-  if (items.length === 0) {
-    // Items not yet persisted — fall back to text if sessionId is also present
-    if (!sessionId) {
-      return res.status(422).json({
-        error: "No stored items found for this document. Re-upload the document to enable item-based rewriting.",
-      });
-    }
+		if (items.length === 0 && sections.length === 0) {
+			if (!sessionId) {
+				return res.status(422).json({
+					error: "No stored items or sections found for this document. Re-upload the document to enable rewriting.",
+				});
+			}
+			// Fall back to text path when session available
+			const { text, docCount } = await fetchSessionText(sessionId);
+			if (!text) {
+				return res.status(422).json({ error: "No document text found for this session." });
+			}
+			prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
+		} else {
+			// Determine effective docType: use stored value, then infer from what's present
+			const docType = doc?.doc_type
+				?? (items.length > 0 && sections.length > 0 ? "mixed"
+				  : items.length > 0 ? "problem"
+				  : "notes");
 
-    // Fall through to text-based path below
-    const { text, docCount } = await fetchSessionText(sessionId);
-    if (!text) {
-      return res.status(422).json({ error: "No document text found for this session." });
-    }
-
-    // ✅ FIXED: correct argument order + mergedSuggestions
-    prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
-  } else {
-    // Item-based rewrite
-    prompt = buildRewritePrompt(items, mergedSuggestions, preferences ?? {});
-  }
-} else {
-  // --- Legacy text-based path ---
-  const { text, docCount } = await fetchSessionText(sessionId!);
-  if (!text) {
-    return res.status(422).json({ error: "No document text found for this session." });
-  }
-
-  // ✅ FIXED:
-  prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
-}
+			if (docType === "notes") {
+				prompt = buildNotesRewritePrompt(sections, mergedSuggestions, preferences ?? {});
+			} else if (docType === "mixed") {
+				prompt = buildMixedRewritePrompt(items, sections, mergedSuggestions, preferences ?? {});
+			} else {
+				// "problem" (default)
+				prompt = buildRewritePrompt(items, mergedSuggestions, preferences ?? {});
+			}
+		}
+	} else {
+		// --- Legacy text-based path ---
+		const { text, docCount } = await fetchSessionText(sessionId!);
+		if (!text) {
+			return res.status(422).json({ error: "No document text found for this session." });
+		}
+		prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
+	}
 
 	try {
 		const raw = await callLLM({

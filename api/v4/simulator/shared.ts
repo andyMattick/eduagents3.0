@@ -365,6 +365,178 @@ export async function saveItems(documentId: string, items: V4Item[]): Promise<vo
 	});
 }
 
+// ---------------------------------------------------------------------------
+// V4 section storage — v4_sections table
+// ---------------------------------------------------------------------------
+
+export interface V4Section {
+	sectionId: string;
+	order: number;
+	title?: string;
+	text: string;
+	metadata: Record<string, unknown>;
+}
+
+/**
+ * Persist extracted sections to `v4_sections`.
+ * Deletes existing rows for the document first (idempotent upsert).
+ */
+export async function saveSections(documentId: string, sections: V4Section[]): Promise<void> {
+	if (!sections.length) return;
+
+	// Delete existing sections for this document (idempotent)
+	try {
+		await supabaseRest("v4_sections", {
+			method: "DELETE",
+			filters: { document_id: `eq.${documentId}` },
+		});
+	} catch {
+		// Non-fatal — best effort delete before re-insert
+	}
+
+	const rows = sections.map((s) => ({
+		document_id: documentId,
+		section_id:  s.sectionId,
+		order:       s.order,
+		title:       s.title ?? null,
+		text:        s.text,
+		metadata:    s.metadata ?? {},
+	}));
+
+	await supabaseRest("v4_sections", {
+		method: "POST",
+		body: rows,
+		prefer: "resolution=merge-duplicates",
+	});
+}
+
+/**
+ * Load all sections for a document from `v4_sections`, ordered by `order`.
+ * Returns an empty array (never throws) when no sections are found.
+ */
+export async function getSectionsForDocument(documentId: string): Promise<V4Section[]> {
+	try {
+		const rows = (await supabaseRest("v4_sections", {
+			method: "GET",
+			select: "section_id,order,title,text,metadata",
+			filters: {
+				document_id: `eq.${documentId}`,
+				order:       "order.asc",
+			},
+		})) as Array<{
+			section_id: string;
+			order: number;
+			title: string | null;
+			text: string;
+			metadata: Record<string, unknown>;
+		}> | null;
+
+		return (rows ?? []).map((row) => ({
+			sectionId: row.section_id,
+			order:     row.order,
+			title:     row.title ?? undefined,
+			text:      row.text,
+			metadata:  row.metadata ?? {},
+		}));
+	} catch {
+		return [];
+	}
+}
+
+// ---------------------------------------------------------------------------
+// V4 analysis storage — v4_analysis table
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist structured analysis for a document to `v4_analysis`.
+ * Upserts by document_id.
+ */
+export async function saveAnalysis(
+	documentId: string,
+	docType: "problem" | "notes" | "mixed",
+	analyzed: {
+		insights?: {
+			concepts?: string[];
+			misconceptionThemes?: string[];
+		};
+		[key: string]: unknown;
+	},
+): Promise<void> {
+	try {
+		await supabaseRest("v4_analysis", {
+			method: "POST",
+			body: {
+				document_id:    documentId,
+				doc_type:       docType,
+				summary:        null,
+				key_concepts:   analyzed.insights?.concepts ?? [],
+				misconceptions: analyzed.insights?.misconceptionThemes ?? [],
+				cognitive_load: {},
+				charts:         {},
+				metadata:       {},
+			},
+			prefer: "resolution=merge-duplicates",
+		});
+	} catch (err) {
+		console.warn("[saveAnalysis] non-fatal:", err instanceof Error ? err.message : err);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// prism_v4_documents — doc_type writer
+// ---------------------------------------------------------------------------
+
+/**
+ * Persist the classified doc_type back to `prism_v4_documents`.
+ * Non-fatal — missing column (before migration) is swallowed.
+ */
+export async function setDocType(
+	documentId: string,
+	docType: "problem" | "notes" | "mixed",
+): Promise<void> {
+	try {
+		const { url, key } = (await import("../../../lib/supabase")).supabaseAdmin();
+		await fetch(`${url}/rest/v1/prism_v4_documents?document_id=eq.${encodeURIComponent(documentId)}`, {
+			method: "PATCH",
+			headers: {
+				apikey: key,
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+				Prefer: "return=minimal",
+			},
+			body: JSON.stringify({ doc_type: docType }),
+		});
+	} catch (err) {
+		console.warn("[setDocType] non-fatal:", err instanceof Error ? err.message : err);
+	}
+}
+
+/**
+ * Load a single prism_v4_documents row including doc_type.
+ * Returns null when not found.
+ */
+export async function getDocument(documentId: string): Promise<{
+	document_id: string;
+	doc_type: "problem" | "notes" | "mixed" | null;
+} | null> {
+	try {
+		const rows = (await supabaseRest("prism_v4_documents", {
+			method: "GET",
+			select: "document_id,doc_type",
+			filters: { document_id: `eq.${documentId}` },
+		})) as Array<{ document_id: string; doc_type: string | null }> | null;
+
+		if (!rows || rows.length === 0) return null;
+		const row = rows[0];
+		return {
+			document_id: row.document_id,
+			doc_type: (row.doc_type as "problem" | "notes" | "mixed" | null) ?? null,
+		};
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Load all items for a document from `v4_items`, ordered by item_number.
  *
