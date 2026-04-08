@@ -13,6 +13,7 @@ import type { SimulatorData, StudentProfile } from "../../../src/types/simulator
 import { fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const DATA_SCHEMA = `
 Return your answer in two parts:

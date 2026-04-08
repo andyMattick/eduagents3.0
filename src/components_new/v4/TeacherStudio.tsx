@@ -65,6 +65,9 @@ interface StudioState {
 	// interactive rewrite panel state
 	selectedSuggestions: Record<string, boolean>;  // key="test:idx" or "item:N:idx"
 	teacherNotes: string;
+	// daily usage
+	usageCount: number;
+	usageLimit: number;
 	primaryDragging: boolean;
 	secondaryDragging: boolean;
 	isLoading: boolean;
@@ -89,6 +92,10 @@ const INITIAL: StudioState = {
 	parallelData: null,
 	rewriteResults: null,
 	rewriteLoading: false,
+	selectedSuggestions: {},
+	teacherNotes: "",
+	usageCount: 0,
+	usageLimit: 5,
 	primaryDragging: false,
 	secondaryDragging: false,
 	isLoading: false,
@@ -373,13 +380,40 @@ function GeneratedTestView({ data }: { data: GeneratedTestData }) {
 // RewriteSuggestionsPanel sub-component
 // ---------------------------------------------------------------------------
 
-function RewriteSuggestionsPanel({ suggestions, onRewrite, rewriteLoading }: { suggestions?: RewriteSuggestions; onRewrite?: () => void; rewriteLoading?: boolean }) {
+function RewriteSuggestionsPanel({
+	suggestions,
+	selectedSuggestions,
+	teacherNotes,
+	onToggle,
+	onTeacherNotesChange,
+	onRewrite,
+	rewriteLoading,
+}: {
+	suggestions?: RewriteSuggestions;
+	selectedSuggestions: Record<string, boolean>;
+	teacherNotes: string;
+	onToggle: (key: string) => void;
+	onTeacherNotesChange: (val: string) => void;
+	onRewrite?: () => void;
+	rewriteLoading?: boolean;
+}) {
 	if (!suggestions) return null;
 
+	const sel = selectedSuggestions ?? {};
+	const notes = teacherNotes ?? "";
 	const itemKeys = Object.keys(suggestions.itemLevel).sort((a, b) => Number(a) - Number(b));
+
+	// Count how many are checked
+	const checkedCount = Object.values(sel).filter(Boolean).length;
+	const hasTeacherInput = notes.trim().length > 0;
+	const canRewrite = checkedCount > 0 || hasTeacherInput;
 
 	return (
 		<div style={{ marginTop: "1.25rem" }}>
+			<p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1rem" }}>
+				Select the suggestions you want to apply, then click Rewrite. You can also add your own.
+			</p>
+
 			{suggestions.testLevel.length > 0 && (
 				<div
 					style={{
@@ -402,11 +436,20 @@ function RewriteSuggestionsPanel({ suggestions, onRewrite, rewriteLoading }: { s
 					>
 						Test-Level Suggestions
 					</p>
-					<ul style={{ margin: 0, paddingLeft: "1.25rem", lineHeight: 1.8 }}>
-						{suggestions.testLevel.map((s, i) => (
-							<li key={i} style={{ fontSize: "0.85rem", marginBottom: "0.3rem" }}>{s}</li>
-						))}
-					</ul>
+					{suggestions.testLevel.map((s, i) => {
+						const key = `test:${i}`;
+						return (
+							<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.4rem", cursor: "pointer", fontSize: "0.85rem" }}>
+								<input
+									type="checkbox"
+									checked={!!sel[key]}
+									onChange={() => onToggle(key)}
+									style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
+								/>
+								<span>{s}</span>
+							</label>
+						);
+					})}
 				</div>
 			)}
 
@@ -445,15 +488,57 @@ function RewriteSuggestionsPanel({ suggestions, onRewrite, rewriteLoading }: { s
 							>
 								Item {itemNum}
 							</p>
-							<ul style={{ margin: 0, paddingLeft: "1.25rem", lineHeight: 1.7 }}>
-								{suggestions.itemLevel[itemNum].map((s, i) => (
-									<li key={i} style={{ fontSize: "0.83rem", marginBottom: "0.2rem" }}>{s}</li>
-								))}
-							</ul>
+							{suggestions.itemLevel[itemNum].map((s, i) => {
+								const key = `item:${itemNum}:${i}`;
+								return (
+									<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.3rem", cursor: "pointer", fontSize: "0.83rem" }}>
+										<input
+											type="checkbox"
+											checked={!!sel[key]}
+											onChange={() => onToggle(key)}
+											style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
+										/>
+										<span>{s}</span>
+									</label>
+								);
+							})}
 						</div>
 					))}
 				</div>
 			)}
+
+			{/* Teacher's own suggestions */}
+			<div style={{ marginTop: "1.25rem" }}>
+				<p
+					style={{
+						margin: "0 0 0.5rem",
+						textTransform: "uppercase",
+						letterSpacing: "0.14em",
+						fontSize: "0.74rem",
+						color: "#9c4d2b",
+						fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
+					}}
+				>
+					Your Own Suggestions
+				</p>
+				<textarea
+					value={notes}
+					onChange={(e) => onTeacherNotesChange(e.target.value)}
+					placeholder="Add your own rewrite suggestions here (one per line)…"
+					rows={3}
+					style={{
+						width: "100%",
+						padding: "0.75rem",
+						borderRadius: "10px",
+						border: "1px solid rgba(86,57,32,0.2)",
+						background: "rgba(255,251,245,0.7)",
+						fontFamily: "inherit",
+						fontSize: "0.85rem",
+						resize: "vertical",
+						color: "#1f1a17",
+					}}
+				/>
+			</div>
 
 			{/* Rewrite CTA */}
 			{onRewrite && (
@@ -461,10 +546,12 @@ function RewriteSuggestionsPanel({ suggestions, onRewrite, rewriteLoading }: { s
 					type="button"
 					className="v4-button"
 					onClick={onRewrite}
-					disabled={rewriteLoading}
+					disabled={rewriteLoading || !canRewrite}
 					style={{ marginTop: "1.5rem" }}
 				>
-					{rewriteLoading ? "Rewriting\u2026" : "Rewrite This Assessment"}
+					{rewriteLoading
+						? "Rewriting\u2026"
+						: `Rewrite Assessment (${checkedCount} suggestion${checkedCount !== 1 ? "s" : ""}${hasTeacherInput ? " + your notes" : ""})`}
 				</button>
 			)}
 		</div>
@@ -653,6 +740,18 @@ export function TeacherStudio() {
 	const primaryRef = useRef<HTMLInputElement>(null);
 	const secondaryRef = useRef<HTMLInputElement>(null);
 
+	// Fetch daily usage on mount
+	useEffect(() => {
+		fetch("/api/v4/usage/today")
+			.then((r) => r.json())
+			.then((d: { count?: number; limit?: number }) => {
+				if (typeof d.count === "number") {
+					setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 5 }));
+				}
+			})
+			.catch(() => {/* non-fatal */});
+	}, []);
+
 	const goalData = GOALS.find((g) => g.id === state.goal);
 
 	// ── Navigation ─────────────────────────────────────────────────────────
@@ -734,6 +833,16 @@ export function TeacherStudio() {
 			const { sessionId, registered } = await createStudioSessionFromFilesApi(state.primaryFiles);
 			const documentId = registered[0]?.documentId ?? null;
 
+			// Refresh usage counter after successful upload
+			fetch("/api/v4/usage/today")
+				.then((r) => r.json())
+				.then((d: { count?: number; limit?: number }) => {
+					if (typeof d.count === "number") {
+						setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 5 }));
+					}
+				})
+				.catch(() => {});
+
 			if (state.goal === "simulate") {
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile });
 				setState((prev) => ({
@@ -773,7 +882,8 @@ export function TeacherStudio() {
 				setState((prev) => ({
 					...prev,
 					sessionId,
-					documentId,
+					// Use the documentId the generate-test route created (where items were saved)
+					documentId: res.documentId ?? documentId,
 					narrative: res.narrative,
 					testData: res.data,
 					isLoading: false,
@@ -1129,6 +1239,31 @@ export function TeacherStudio() {
 										<p className="v4-error">{state.error}</p>
 									)}
 
+									{/* Daily usage badge */}
+									<div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+										<div
+											style={{
+												flex: 1,
+												height: "4px",
+												borderRadius: "2px",
+												background: "rgba(86,57,32,0.12)",
+											}}
+										>
+											<div
+												style={{
+													width: `${Math.min(100, (state.usageCount / state.usageLimit) * 100)}%`,
+													height: "4px",
+													borderRadius: "2px",
+													background: state.usageCount >= state.usageLimit ? "#dc2626" : "#bb5b35",
+													transition: "width 0.3s ease",
+												}}
+											/>
+										</div>
+										<span style={{ fontSize: "0.72rem", color: "#9c4d2b", whiteSpace: "nowrap", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif", letterSpacing: "0.06em" }}>
+											{state.usageCount} / {state.usageLimit} today
+										</span>
+									</div>
+
 									{/* Actions */}
 									<div className="v4-upload-actions">
 										<button
@@ -1295,6 +1430,7 @@ export function TeacherStudio() {
 												fontFamily: "inherit",
 												fontSize: "0.875rem",
 												lineHeight: 1.7,
+												color: "#1f1a17",
 											}}
 										>
 											{state.narrative}
@@ -1331,15 +1467,60 @@ export function TeacherStudio() {
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions
 											}
+											selectedSuggestions={state.selectedSuggestions}
+											teacherNotes={state.teacherNotes}
+											onToggle={(key) =>
+												setState((prev) => {
+													const base = prev.selectedSuggestions ?? {};
+													return {
+														...prev,
+														selectedSuggestions: {
+															...base,
+															[key]: !base[key],
+														},
+													};
+												})
+											}
+											onTeacherNotesChange={(val) =>
+												setState((prev) => ({ ...prev, teacherNotes: val }))
+											}
 											rewriteLoading={state.rewriteLoading}
 											onRewrite={async () => {
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
 												if (!suggestions || (!state.documentId && !state.sessionId)) return;
+
+												// Build selectedSuggestions payload from checkbox state
+												const sel = state.selectedSuggestions ?? {};
+												const selectedTestLevel = suggestions.testLevel.filter(
+													(_, i) => sel[`test:${i}`]
+												);
+												const selectedItemLevel: Record<string, string[]> = {};
+												for (const [itemNum, items] of Object.entries(suggestions.itemLevel)) {
+													const picked = items.filter(
+														(_, i) => sel[`item:${itemNum}:${i}`]
+													);
+													if (picked.length > 0) selectedItemLevel[itemNum] = picked;
+												}
+
+												// Teacher-authored suggestions (split by newline)
+												const teacherSuggestions = (state.teacherNotes ?? "")
+													.split("\n")
+													.map((l) => l.trim())
+													.filter(Boolean);
+
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
 												try {
-													const result = await runRewriteApi({ documentId: state.documentId ?? undefined, sessionId: state.sessionId ?? undefined, suggestions });
+													const result = await runRewriteApi({
+														documentId: state.documentId ?? undefined,
+														sessionId: state.sessionId ?? undefined,
+														selectedSuggestions: {
+															testLevel: selectedTestLevel,
+															itemLevel: selectedItemLevel,
+														},
+														teacherSuggestions: teacherSuggestions.length > 0 ? teacherSuggestions : undefined,
+													});
 													setState((prev) => ({
 														...prev,
 														rewriteResults: result,

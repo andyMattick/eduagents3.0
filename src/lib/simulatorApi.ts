@@ -9,7 +9,6 @@ import type {
 	PreparednessSimulatorRequest,
 	PreparednessSimulatorResponse,
 	RewriteResponse,
-	RewriteSuggestions,
 	SingleSimulatorRequest,
 	SingleSimulatorResponse,
 } from "../types/simulator";
@@ -53,7 +52,11 @@ export function runGenerateTestApi(params: GenerateTestRequest) {
 export function runRewriteApi(params: {
 	documentId?: string;
 	sessionId?: string;
-	suggestions: RewriteSuggestions;
+	selectedSuggestions: {
+		testLevel: string[];
+		itemLevel: Record<string, string[]>;
+	};
+	teacherSuggestions?: string[];
 	preferences?: Record<string, unknown>;
 }) {
 	return fetchJson<RewriteResponse>("/api/v4/rewrite", {

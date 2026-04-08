@@ -108,7 +108,6 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
  */
 export async function callLLM({
   prompt,
-  metadata,
   options,
 }: {
   prompt: string;
@@ -119,12 +118,6 @@ export async function callLLM({
     maxOutputTokens?: number;
   };
 }): Promise<string> {
-  if (looksLikePII(prompt)) {
-    // Warning only — teacher documents legitimately contain proper nouns.
-    // The contract is: never ADD PII to prompts, not that prompts must be PII-free.
-    console.warn("[callLLM] PII pattern detected in prompt — verify no names were injected programmatically", { metadata });
-  }
-
   return callGemini({
     model:           options?.model           ?? DEFAULT_MODEL,
     prompt,

@@ -75,6 +75,9 @@ const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
 	color: "#f0e6d8",
 	fontSize: "0.78rem",
 };
+const TOOLTIP_LABEL_STYLE: React.CSSProperties = { color: "#f0e6d8", fontWeight: 600 };
+const TOOLTIP_ITEM_STYLE: React.CSSProperties = { color: "#f0e6d8" };
+const LEGEND_STYLE: React.CSSProperties = { fontSize: "0.75rem", color: TICK_COLOR };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -133,10 +136,12 @@ export function CognitiveLoadChart({ data }: { data: ParallelSimulatorData }) {
 					/>
 					<Tooltip
 						contentStyle={TOOLTIP_CONTENT_STYLE}
-						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
-						labelFormatter={(label) => `Item ${label}`}
-					/>
-					<Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+					labelStyle={TOOLTIP_LABEL_STYLE}
+					itemStyle={TOOLTIP_ITEM_STYLE}
+					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
+					labelFormatter={(label) => `Item ${label}`}
+				/>
+				<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => (
 						<Line
 							key={profile}
@@ -172,10 +177,12 @@ export function TimeToProcessChart({ data }: { data: ParallelSimulatorData }) {
 					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} unit="s" />
 					<Tooltip
 						contentStyle={TOOLTIP_CONTENT_STYLE}
-						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? value : 0}s`, name]}
-						labelFormatter={(label) => `Item ${label}`}
-					/>
-					<Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+					labelStyle={TOOLTIP_LABEL_STYLE}
+					itemStyle={TOOLTIP_ITEM_STYLE}
+					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? value : 0}s`, name]}
+					labelFormatter={(label) => `Item ${label}`}
+				/>
+				<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => (
 						<Bar
 							key={profile}
@@ -223,10 +230,12 @@ export function ReadingVsCogScatter({ data }: { data: ParallelSimulatorData }) {
 					<ZAxis range={[40, 40]} />
 					<Tooltip
 						contentStyle={TOOLTIP_CONTENT_STYLE}
-						formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
-						cursor={{ strokeDasharray: "3 3" }}
-					/>
-					<Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+					labelStyle={TOOLTIP_LABEL_STYLE}
+					itemStyle={TOOLTIP_ITEM_STYLE}
+					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
+					cursor={{ strokeDasharray: "3 3" }}
+				/>
+				<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => {
 						const points = data.students[profile].items.map((item) => ({
 							x: item.readingLoad,
@@ -265,8 +274,8 @@ export function RedFlagDensityChart({ data }: { data: ParallelSimulatorData }) {
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
 					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
 					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} allowDecimals={false} />
-					<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelFormatter={(label) => `Item ${label}`} />
-					<Legend wrapperStyle={{ fontSize: "0.75rem" }} />
+		<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} labelFormatter={(label) => `Item ${label}`} />
+			<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => (
 						<Bar
 							key={profile}
@@ -415,6 +424,8 @@ export function DifficultySpreadChart({ data }: { data: ParallelSimulatorData })
 					/>
 					<Tooltip
 						contentStyle={TOOLTIP_CONTENT_STYLE}
+						labelStyle={TOOLTIP_LABEL_STYLE}
+						itemStyle={TOOLTIP_ITEM_STYLE}
 						formatter={(value: number | undefined, name: string | undefined) => {
 							if (name === "variance") return [(value ?? 0).toFixed(3), "Variance" as const];
 							return [`${Math.round((value ?? 0) * 100)}%`, "Midpoint" as const];

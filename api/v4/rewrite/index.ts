@@ -23,6 +23,7 @@ import type { RewriteSuggestions } from "../../../src/types/simulator";
 import { fetchSessionText, getItemsForDocument, type V4Item } from "../simulator/shared";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // ---------------------------------------------------------------------------
 // Prompt builder (item-based, PII-safe)
@@ -33,6 +34,12 @@ function buildRewritePrompt(
 	suggestions: RewriteSuggestions,
 	preferences: Record<string, unknown>,
 ): string {
+	// Only include items that have item-level suggestions to shrink the prompt
+	const itemNums = new Set(Object.keys(suggestions.itemLevel).map(Number));
+	const relevantItems = itemNums.size > 0
+		? items.filter((it) => itemNums.has(it.itemNumber))
+		: items; // test-level only → send all
+
 	return `You are an instructional rewrite engine for teachers.
 Your job is to improve assessment items using the provided rewrite suggestions.
 
@@ -69,7 +76,7 @@ OUTPUT RULES:
 }
 
 ASSESSMENT ITEMS (JSON):
-${JSON.stringify(items, null, 2)}
+${JSON.stringify(relevantItems, null, 2)}
 
 SELECTED + TEACHER-AUTHORED SUGGESTIONS (JSON):
 ${JSON.stringify(suggestions, null, 2)}
@@ -151,54 +158,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		try { body = JSON.parse(body); } catch { /* keep as-is */ }
 	}
 
-	const { sessionId, documentId, suggestions, preferences } = (body ?? {}) as {
-		sessionId?: string;
-		documentId?: string;
-		suggestions?: RewriteSuggestions;
-		preferences?: Record<string, unknown>;
+	const {
+	documentId,
+	sessionId,
+	selectedSuggestions,
+	teacherSuggestions,
+	selectedItems,
+	preferences
+	} = (body ?? {}) as {
+	documentId?: string;
+	sessionId?: string;
+	selectedSuggestions?: {
+		testLevel?: string[];
+		itemLevel?: Record<string, string[]>;
+	};
+	teacherSuggestions?: string[];
+	selectedItems?: number[];
+	preferences?: Record<string, unknown>;
 	};
 
+
 	if (!sessionId && !documentId) {
-		return res.status(400).json({ error: "sessionId or documentId is required" });
+		return res.status(400).json({ error: "documentId or sessionId is required" });
 	}
-	if (!suggestions) {
-		return res.status(400).json({ error: "suggestions are required" });
+	if (!selectedSuggestions) {
+		return res.status(400).json({ error: "selectedSuggestions are required" });
 	}
 
-	let prompt: string;
+const mergedSuggestions: RewriteSuggestions = {
+  testLevel: [
+    ...(selectedSuggestions?.testLevel ?? []),
+    ...(teacherSuggestions ?? []),
+  ],
+  itemLevel: selectedSuggestions?.itemLevel ?? {},
+};
+
+let prompt: string;
 
 	// --- Preferred path: item-based ---
 	if (documentId) {
-		const items = await getItemsForDocument(documentId);
-		if (items.length === 0) {
-			// Items not yet persisted — fall back to text if sessionId is also present
-			if (!sessionId) {
-				return res.status(422).json({
-					error: "No stored items found for this document. Re-upload the document to enable item-based rewriting.",
-				});
-			}
-			// Fall through to text-based path below
-			const { text, docCount } = await fetchSessionText(sessionId);
-			if (!text) {
-				return res.status(422).json({ error: "No document text found for this session." });
-			}
-			prompt = buildTextRewritePrompt(text, docCount, suggestions, preferences ?? {});
-		} else {
-			prompt = buildRewritePrompt(items, suggestions, preferences ?? {});
-		}
-	} else {
-		// --- Legacy text-based path ---
-		const { text, docCount } = await fetchSessionText(sessionId!);
-		if (!text) {
-			return res.status(422).json({ error: "No document text found for this session." });
-		}
-		prompt = buildTextRewritePrompt(text, docCount, suggestions, preferences ?? {});
-	}
+  const items = await getItemsForDocument(documentId);
+
+  if (items.length === 0) {
+    // Items not yet persisted — fall back to text if sessionId is also present
+    if (!sessionId) {
+      return res.status(422).json({
+        error: "No stored items found for this document. Re-upload the document to enable item-based rewriting.",
+      });
+    }
+
+    // Fall through to text-based path below
+    const { text, docCount } = await fetchSessionText(sessionId);
+    if (!text) {
+      return res.status(422).json({ error: "No document text found for this session." });
+    }
+
+    // ✅ FIXED: correct argument order + mergedSuggestions
+    prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
+  } else {
+    // Item-based rewrite
+    prompt = buildRewritePrompt(items, mergedSuggestions, preferences ?? {});
+  }
+} else {
+  // --- Legacy text-based path ---
+  const { text, docCount } = await fetchSessionText(sessionId!);
+  if (!text) {
+    return res.status(422).json({ error: "No document text found for this session." });
+  }
+
+  // ✅ FIXED:
+  prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
+}
 
 	try {
 		const raw = await callLLM({
-			prompt,
-			metadata: { runType: "rewrite", documentId, sessionId },
+			prompt,	
+			metadata: { runType: "rewrite", documentId },
 			options: { temperature: 0.3, maxOutputTokens: 8192 },
 		});
 

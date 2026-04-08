@@ -5,6 +5,7 @@ import type { GeneratedTestData, SimulatorTestPreferences } from "../../../src/t
 import { fetchSessionText, parseSimulatorResponse, saveItems, type V4Item } from "./shared";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 const DATA_SCHEMA = `
 Return your answer in two parts:
