@@ -15,6 +15,10 @@
  *
  * Returns { rewrittenItems: [...] }
  */
+import {
+  buildNotesRewritePrompt,
+  buildMixedRewritePrompt
+} from "./prompts"; // you will create this file in Step 4
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
@@ -35,6 +39,18 @@ export const maxDuration = 60;
 // ---------------------------------------------------------------------------
 // Prompt builder (item-based, PII-safe)
 // ---------------------------------------------------------------------------
+const doc = await getDocument(documentId);
+const docType = doc?.doc_type ?? null;
+
+const items = await getItemsForDocument(documentId);
+const sections = await getSectionsForDocument(documentId);
+
+if (!items.length && !sections.length) {
+  return NextResponse.json(
+    { error: "No stored items or sections found for this document." },
+    { status: 422 }
+  );
+}
 
 function buildRewritePrompt(
 	items: V4Item[],
@@ -292,50 +308,35 @@ const mergedSuggestions: RewriteSuggestions = {
 
 let prompt: string;
 
-	// --- Preferred path: documentId present → load items + sections, branch by docType ---
-	if (documentId) {
-		const [doc, items, sections] = await Promise.all([
-			getDocument(documentId),
-			getItemsForDocument(documentId),
-			getSectionsForDocument(documentId),
-		]);
+if (docType === "problem" || (!docType && items.length && !sections.length)) {
+  // existing item-based rewrite
+  prompt = buildRewritePrompt({
+    items,
+    selectedSuggestions,
+    teacherSuggestions,
+    selectedItems,
+    preferences
+  });
+} else if (docType === "notes" || (!docType && sections.length && !items.length)) {
+  // new notes rewrite
+  prompt = buildNotesRewritePrompt({
+    sections,
+    selectedSuggestions,
+    teacherSuggestions,
+    preferences
+  });
+} else {
+  // mixed rewrite
+  prompt = buildMixedRewritePrompt({
+    items,
+    sections,
+    selectedSuggestions,
+    teacherSuggestions,
+    selectedItems,
+    preferences
+  });
+}
 
-		if (items.length === 0 && sections.length === 0) {
-			if (!sessionId) {
-				return res.status(422).json({
-					error: "No stored items or sections found for this document. Re-upload the document to enable rewriting.",
-				});
-			}
-			// Fall back to text path when session available
-			const { text, docCount } = await fetchSessionText(sessionId);
-			if (!text) {
-				return res.status(422).json({ error: "No document text found for this session." });
-			}
-			prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
-		} else {
-			// Determine effective docType: use stored value, then infer from what's present
-			const docType = doc?.doc_type
-				?? (items.length > 0 && sections.length > 0 ? "mixed"
-				  : items.length > 0 ? "problem"
-				  : "notes");
-
-			if (docType === "notes") {
-				prompt = buildNotesRewritePrompt(sections, mergedSuggestions, preferences ?? {});
-			} else if (docType === "mixed") {
-				prompt = buildMixedRewritePrompt(items, sections, mergedSuggestions, preferences ?? {});
-			} else {
-				// "problem" (default)
-				prompt = buildRewritePrompt(items, mergedSuggestions, preferences ?? {});
-			}
-		}
-	} else {
-		// --- Legacy text-based path ---
-		const { text, docCount } = await fetchSessionText(sessionId!);
-		if (!text) {
-			return res.status(422).json({ error: "No document text found for this session." });
-		}
-		prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences ?? {});
-	}
 
 	try {
 		const raw = await callLLM({
