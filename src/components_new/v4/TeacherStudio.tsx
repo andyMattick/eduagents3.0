@@ -768,6 +768,7 @@ function GoalCard({
 
 export function TeacherStudio() {
 	const [state, setState] = useState<StudioState>(INITIAL);
+	const rewriteInFlightRef = useRef(false);
 	const primaryRef = useRef<HTMLInputElement>(null);
 	const secondaryRef = useRef<HTMLInputElement>(null);
 
@@ -943,16 +944,60 @@ export function TeacherStudio() {
 
 	// ── Rewrite Diff Viewer handlers ────────────────────────────────────────
 
+	function updateItemInDocument(
+		document: RewriteResponse | null,
+		id: string,
+		rewritten: string,
+	): RewriteResponse | null {
+		if (!document) return document;
+		const itemNumber = Number(id);
+		if (!Number.isFinite(itemNumber)) return document;
+
+		return {
+			...document,
+			rewrittenItems: document.rewrittenItems.map((item) =>
+				item.originalItemNumber === itemNumber
+					? { ...item, rewrittenStem: rewritten }
+					: item,
+			),
+			items: document.items?.map((item) =>
+				item.itemNumber === itemNumber ? { ...item, rewrittenStem: rewritten } : item,
+			),
+		};
+	}
+
+	function updateSectionInDocument(
+		document: RewriteResponse | null,
+		id: string,
+		rewritten: string,
+	): RewriteResponse | null {
+		if (!document || !document.sections) return document;
+		return {
+			...document,
+			sections: document.sections.map((section) =>
+				section.sectionId === id
+					? { ...section, rewrittenText: rewritten }
+					: section,
+			),
+		};
+	}
+
 	function handleReplace() {
 		const preview = state.rewritePreview;
 		if (!preview || !preview.rewritten) return;
 
-		// TODO: Implement updateItemInDocument and updateSectionInDocument
-		// For now, just close the modal
-		setState((prev) => ({
-			...prev,
-			rewritePreview: null,
-		}));
+		setState((prev) => {
+			const updatedDoc =
+				preview.type === "item"
+					? updateItemInDocument(prev.rewriteResults, preview.id, preview.rewritten)
+					: updateSectionInDocument(prev.rewriteResults, preview.id, preview.rewritten);
+
+			return {
+				...prev,
+				rewriteResults: updatedDoc,
+				rewritePreview: null,
+			};
+		});
 	}
 
 	function handleCopy() {
@@ -965,68 +1010,64 @@ export function TeacherStudio() {
 		setState((prev) => ({ ...prev, rewritePreview: null }));
 	}
 
-	async function handleExportBefore() {
+	function handleExportBefore() {
 		const preview = state.rewritePreview;
 		if (!preview) return;
 
-		try {
-			const jsPDF = (await import("jspdf")).jsPDF;
-			const doc = new jsPDF({ unit: "mm", format: "a4" });
-			const margin = 18;
-			const pageWidth = 210;
-			const contentWidth = pageWidth - margin * 2;
+		void (async () => {
+			try {
+				const jsPDF = (await import("jspdf")).jsPDF;
+				const doc = new jsPDF({ unit: "mm", format: "a4" });
+				const margin = 18;
+				const pageWidth = 210;
+				const contentWidth = pageWidth - margin * 2;
 
-			// Title
-			doc.setFont("helvetica", "bold");
-			doc.setFontSize(15);
-			doc.text(`Original — ${preview.type} ${preview.id}`, margin, margin);
-			doc.setLineWidth(0.4);
-			doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
+				doc.setFont("helvetica", "bold");
+				doc.setFontSize(15);
+				doc.text(`Original — ${preview.type} ${preview.id}`, margin, margin);
+				doc.setLineWidth(0.4);
+				doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
 
-			// Content
-			doc.setFont("helvetica", "normal");
-			doc.setFontSize(10.5);
-			const lines = doc.splitTextToSize(preview.original, contentWidth);
-			let y = margin + 10;
-			doc.text(lines as string[], margin, y);
+				doc.setFont("helvetica", "normal");
+				doc.setFontSize(10.5);
+				const lines = doc.splitTextToSize(preview.original, contentWidth);
+				doc.text(lines as string[], margin, margin + 10);
 
-			const filename = `original-${preview.type}-${preview.id}.pdf`;
-			doc.save(filename);
-		} catch (err) {
-			console.error("PDF export failed:", err);
-		}
+				doc.save(`original-${preview.type}-${preview.id}.pdf`);
+			} catch (err) {
+				console.error("PDF export failed:", err);
+			}
+		})();
 	}
 
-	async function handleExportAfter() {
+	function handleExportAfter() {
 		const preview = state.rewritePreview;
 		if (!preview?.rewritten) return;
 
-		try {
-			const jsPDF = (await import("jspdf")).jsPDF;
-			const doc = new jsPDF({ unit: "mm", format: "a4" });
-			const margin = 18;
-			const pageWidth = 210;
-			const contentWidth = pageWidth - margin * 2;
+		void (async () => {
+			try {
+				const jsPDF = (await import("jspdf")).jsPDF;
+				const doc = new jsPDF({ unit: "mm", format: "a4" });
+				const margin = 18;
+				const pageWidth = 210;
+				const contentWidth = pageWidth - margin * 2;
 
-			// Title
-			doc.setFont("helvetica", "bold");
-			doc.setFontSize(15);
-			doc.text(`Rewritten — ${preview.type} ${preview.id}`, margin, margin);
-			doc.setLineWidth(0.4);
-			doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
+				doc.setFont("helvetica", "bold");
+				doc.setFontSize(15);
+				doc.text(`Rewritten — ${preview.type} ${preview.id}`, margin, margin);
+				doc.setLineWidth(0.4);
+				doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
 
-			// Content
-			doc.setFont("helvetica", "normal");
-			doc.setFontSize(10.5);
-			const lines = doc.splitTextToSize(preview.rewritten, contentWidth);
-			let y = margin + 10;
-			doc.text(lines as string[], margin, y);
+				doc.setFont("helvetica", "normal");
+				doc.setFontSize(10.5);
+				const lines = doc.splitTextToSize(preview.rewritten, contentWidth);
+				doc.text(lines as string[], margin, margin + 10);
 
-			const filename = `rewritten-${preview.type}-${preview.id}.pdf`;
-			doc.save(filename);
-		} catch (err) {
-			console.error("PDF export failed:", err);
-		}
+				doc.save(`rewritten-${preview.type}-${preview.id}.pdf`);
+			} catch (err) {
+				console.error("PDF export failed:", err);
+			}
+		})();
 	}
 
 	// ── Render ─────────────────────────────────────────────────────────────
@@ -1610,6 +1651,7 @@ export function TeacherStudio() {
 											}
 											rewriteLoading={state.rewriteLoading}
 											onRewrite={async () => {
+													if (rewriteInFlightRef.current) return;
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
@@ -1635,6 +1677,7 @@ export function TeacherStudio() {
 													.filter(Boolean);
 
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
+													rewriteInFlightRef.current = true;
 												try {
 													const result = await runRewriteApi({
 														documentId: state.documentId ?? undefined,
@@ -1647,9 +1690,39 @@ export function TeacherStudio() {
 																		? { profile: state.differentiationProfile }
 																		: undefined,
 													});
+
+																const previous = state.rewriteResults;
+																let preview: RewritePreview | null = null;
+																if (result.rewrittenItems && result.rewrittenItems.length > 0) {
+																	const first = result.rewrittenItems[0];
+																	const prevItem = previous?.rewrittenItems?.find((entry) => entry.originalItemNumber === first.originalItemNumber);
+																	const generatedItem = state.testData?.test?.[first.originalItemNumber - 1];
+																	preview = {
+																		original: prevItem?.rewrittenStem ?? generatedItem?.stem ?? "Original text unavailable for this item.",
+																		rewritten: first.rewrittenStem,
+																		appliedSuggestions: result.testLevel ?? [],
+																		profileApplied: state.differentiationProfile || null,
+																		metadata: result.metadata,
+																		type: "item",
+																		id: String(first.originalItemNumber),
+																	};
+																} else if (result.sections && result.sections.length > 0) {
+																	const first = result.sections[0];
+																	const prevSection = previous?.sections?.find((entry) => entry.sectionId === first.sectionId);
+																	preview = {
+																		original: prevSection?.rewrittenText ?? "Original text unavailable for this section.",
+																		rewritten: first.rewrittenText,
+																		appliedSuggestions: result.testLevel ?? [],
+																		profileApplied: state.differentiationProfile || null,
+																		metadata: result.metadata,
+																		type: "section",
+																		id: first.sectionId,
+																	};
+																}
 													setState((prev) => ({
 														...prev,
 														rewriteResults: result,
+																	rewritePreview: preview,
 														rewriteLoading: false,
 														activeTab: "rewrite",
 													}));
@@ -1659,6 +1732,8 @@ export function TeacherStudio() {
 														rewriteLoading: false,
 														error: err instanceof Error ? err.message : "Rewrite failed",
 													}));
+															} finally {
+																rewriteInFlightRef.current = false;
 												}
 											}}
 										/>

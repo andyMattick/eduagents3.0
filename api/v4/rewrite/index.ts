@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { callLLM } from "../../../lib/llm";
+import { callGeminiWithRetry } from "../../../lib/gemini/callGeminiWithRetry";
+import { buildSlimRewritePrompt } from "../../../lib/rewrite/buildSlimRewritePrompt";
+import { estimateTokens } from "../../../lib/rewrite/estimateTokens";
 import { supabaseRest } from "../../../lib/supabase";
 import type { RewriteSuggestions } from "../../../src/types/simulator";
 import {
@@ -149,6 +151,37 @@ function extractJsonObject(raw: string) {
 	return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
 }
 
+const MAX_PROMPT_TOKENS = 7_500;
+const ITEM_BATCH_SIZE = 12;
+
+function chunkArray<T>(values: T[], size: number): T[][] {
+	if (!values.length) return [];
+	const out: T[][] = [];
+	for (let i = 0; i < values.length; i += size) {
+		out.push(values.slice(i, i + size));
+	}
+	return out;
+}
+
+function slimItemLevel(
+	itemLevel: Record<string, string[]>,
+	allowedItemNumbers: number[],
+): Record<string, string[]> {
+	const allowed = new Set(allowedItemNumbers.map(String));
+	const reduced: Record<string, string[]> = {};
+	for (const [key, value] of Object.entries(itemLevel)) {
+		if (allowed.has(key)) reduced[key] = value;
+	}
+	return reduced;
+}
+
+function assertPromptWithinBudget(prompt: string) {
+	const estimated = estimateTokens(prompt);
+	if (estimated > MAX_PROMPT_TOKENS) {
+		throw new Error(`Prompt exceeds token budget (${estimated} > ${MAX_PROMPT_TOKENS})`);
+	}
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method === "OPTIONS") {
 		return res.status(200)
@@ -185,8 +218,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	const mergedSuggestions = normalizeSuggestions(selectedSuggestions, teacherSuggestions);
 
+	try {
+
 	let prompt: string;
 	let persistenceDocumentId: string | undefined = documentId;
+	let responseJson: Record<string, unknown> | null = null;
 
 	if (documentId) {
 		const [doc, items, sections] = await Promise.all([
@@ -209,6 +245,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				teacherSuggestions,
 				preferences,
 			});
+			assertPromptWithinBudget(prompt);
+			const raw = await callGeminiWithRetry({
+				prompt,
+				metadata: { runType: "rewrite", documentId: persistenceDocumentId, sessionId },
+				options: { temperature: 0.3, maxOutputTokens: 8192 },
+			});
+			responseJson = extractJsonObject(raw);
 		} else if (doc?.doc_type === "mixed" || (!doc?.doc_type && sections.length > 0 && items.length > 0)) {
 			prompt = buildMixedRewritePrompt({
 				items,
@@ -221,8 +264,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				selectedItems,
 				preferences,
 			});
+			assertPromptWithinBudget(prompt);
+			const raw = await callGeminiWithRetry({
+				prompt,
+				metadata: { runType: "rewrite", documentId: persistenceDocumentId, sessionId },
+				options: { temperature: 0.3, maxOutputTokens: 8192 },
+			});
+			responseJson = extractJsonObject(raw);
 		} else {
-			prompt = buildItemRewritePrompt(items, mergedSuggestions, preferences);
+			const requested = Object.keys(mergedSuggestions.itemLevel).map(Number).filter((n) => !Number.isNaN(n));
+			const scopedItems = requested.length > 0
+				? items.filter((item) => requested.includes(item.itemNumber))
+				: items;
+
+			const batches = chunkArray(scopedItems, ITEM_BATCH_SIZE);
+			const rewrittenItems: Array<Record<string, unknown>> = [];
+			for (let index = 0; index < batches.length; index++) {
+				const batch = batches[index];
+				const batchItemNumbers = batch.map((item) => item.itemNumber);
+				const batchSuggestions = {
+					testLevel: index === 0 ? mergedSuggestions.testLevel : [],
+					itemLevel: slimItemLevel(mergedSuggestions.itemLevel, batchItemNumbers),
+				};
+
+				prompt = buildSlimRewritePrompt({
+					items: batch,
+					suggestions: batchSuggestions,
+					preferences,
+				});
+				assertPromptWithinBudget(prompt);
+				const raw = await callGeminiWithRetry({
+					prompt,
+					metadata: {
+						runType: "rewrite",
+						documentId: persistenceDocumentId,
+						sessionId,
+						batchIndex: index,
+						batchCount: batches.length,
+					},
+					options: { temperature: 0.3, maxOutputTokens: 4096 },
+				});
+				const json = extractJsonObject(raw) as { rewrittenItems?: Array<Record<string, unknown>> };
+				if (Array.isArray(json.rewrittenItems)) {
+					rewrittenItems.push(...json.rewrittenItems);
+				}
+			}
+
+			responseJson = {
+				rewrittenItems,
+				testLevel: mergedSuggestions.testLevel,
+				metadata: {
+					batched: true,
+					batchSize: ITEM_BATCH_SIZE,
+					batchCount: batches.length,
+				},
+			};
 		}
 	} else {
 		const { text, docCount } = await fetchSessionText(sessionId!);
@@ -230,26 +326,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(422).json({ error: "No document text found for this session." });
 		}
 		prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences);
-	}
-
-	try {
-		const raw = await callLLM({
+		assertPromptWithinBudget(prompt);
+		const raw = await callGeminiWithRetry({
 			prompt,
 			metadata: { runType: "rewrite", documentId: persistenceDocumentId, sessionId },
 			options: { temperature: 0.3, maxOutputTokens: 8192 },
 		});
+		responseJson = extractJsonObject(raw);
+	}
 
-		const json = extractJsonObject(raw);
+		const json = responseJson;
+		if (!json) {
+			return res.status(500).json({ error: "Rewrite failed: no response payload generated." });
+		}
 
 		if (persistenceDocumentId) {
 			supabaseRest("v4_rewrite_runs", {
 				method: "POST",
 				body: {
 					document_id: persistenceDocumentId,
-					rewritten_items: json.rewrittenItems ?? null,
+					rewritten_items: (json as { rewrittenItems?: unknown }).rewrittenItems ?? null,
 					metadata: {
-						hasSections: Array.isArray(json.sections),
-						hasItems: Array.isArray(json.items) || Array.isArray(json.rewrittenItems),
+						hasSections: Array.isArray((json as { sections?: unknown[] }).sections),
+						hasItems:
+							Array.isArray((json as { items?: unknown[] }).items) ||
+							Array.isArray((json as { rewrittenItems?: unknown[] }).rewrittenItems),
 					},
 				},
 			}).catch(() => {});
@@ -257,6 +358,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		return res.status(200).json(json);
 	} catch (err) {
+		if (err instanceof Error && err.message.includes("Prompt exceeds token budget")) {
+			return res.status(413).json({ error: err.message });
+		}
 		console.error("[rewrite] error:", err);
 		return res.status(500).json({ error: err instanceof Error ? err.message : "Rewrite failed" });
 	}
