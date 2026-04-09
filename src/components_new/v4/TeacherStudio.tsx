@@ -34,6 +34,7 @@ import type {
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
 import { DifferentiationPanel } from "./DifferentiationPanel";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
 import { SimulationCharts } from "./SimulationCharts";
 import { SimulationViewer } from "./SimulationViewer";
@@ -70,6 +71,8 @@ interface StudioState {
 	selectedSuggestions: Record<string, boolean>;  // key="test:idx" or "item:N:idx"
 	teacherNotes: string;
 	differentiationProfile: string;
+	// rewrite diff viewer modal
+	rewritePreview: RewritePreview | null;
 	// daily usage
 	usageCount: number;
 	usageLimit: number;
@@ -78,6 +81,16 @@ interface StudioState {
 	isLoading: boolean;
 	error: string | null;
 	activeTab: ResultTab;
+}
+
+interface RewritePreview {
+	original: string;
+	rewritten: string;
+	appliedSuggestions: string[];
+	profileApplied: string | null;
+	metadata?: Record<string, unknown>;
+	type: "item" | "section";
+	id: string;
 }
 
 const INITIAL: StudioState = {
@@ -100,6 +113,7 @@ const INITIAL: StudioState = {
 	selectedSuggestions: {},
 	teacherNotes: "",
 	differentiationProfile: "",
+	rewritePreview: null,
 	usageCount: 0,
 	usageLimit: 5,
 	primaryDragging: false,
@@ -927,6 +941,94 @@ export function TeacherStudio() {
 		URL.revokeObjectURL(url);
 	}
 
+	// ── Rewrite Diff Viewer handlers ────────────────────────────────────────
+
+	function handleReplace() {
+		const preview = state.rewritePreview;
+		if (!preview || !preview.rewritten) return;
+
+		// TODO: Implement updateItemInDocument and updateSectionInDocument
+		// For now, just close the modal
+		setState((prev) => ({
+			...prev,
+			rewritePreview: null,
+		}));
+	}
+
+	function handleCopy() {
+		const text = state.rewritePreview?.rewritten;
+		if (!text) return;
+		navigator.clipboard.writeText(text);
+	}
+
+	function handleDiscard() {
+		setState((prev) => ({ ...prev, rewritePreview: null }));
+	}
+
+	async function handleExportBefore() {
+		const preview = state.rewritePreview;
+		if (!preview) return;
+
+		try {
+			const jsPDF = (await import("jspdf")).jsPDF;
+			const doc = new jsPDF({ unit: "mm", format: "a4" });
+			const margin = 18;
+			const pageWidth = 210;
+			const contentWidth = pageWidth - margin * 2;
+
+			// Title
+			doc.setFont("helvetica", "bold");
+			doc.setFontSize(15);
+			doc.text(`Original — ${preview.type} ${preview.id}`, margin, margin);
+			doc.setLineWidth(0.4);
+			doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
+
+			// Content
+			doc.setFont("helvetica", "normal");
+			doc.setFontSize(10.5);
+			const lines = doc.splitTextToSize(preview.original, contentWidth);
+			let y = margin + 10;
+			doc.text(lines as string[], margin, y);
+
+			const filename = `original-${preview.type}-${preview.id}.pdf`;
+			doc.save(filename);
+		} catch (err) {
+			console.error("PDF export failed:", err);
+		}
+	}
+
+	async function handleExportAfter() {
+		const preview = state.rewritePreview;
+		if (!preview?.rewritten) return;
+
+		try {
+			const jsPDF = (await import("jspdf")).jsPDF;
+			const doc = new jsPDF({ unit: "mm", format: "a4" });
+			const margin = 18;
+			const pageWidth = 210;
+			const contentWidth = pageWidth - margin * 2;
+
+			// Title
+			doc.setFont("helvetica", "bold");
+			doc.setFontSize(15);
+			doc.text(`Rewritten — ${preview.type} ${preview.id}`, margin, margin);
+			doc.setLineWidth(0.4);
+			doc.line(margin, margin + 3, pageWidth - margin, margin + 3);
+
+			// Content
+			doc.setFont("helvetica", "normal");
+			doc.setFontSize(10.5);
+			const lines = doc.splitTextToSize(preview.rewritten, contentWidth);
+			let y = margin + 10;
+			doc.text(lines as string[], margin, y);
+
+			const filename = `rewritten-${preview.type}-${preview.id}.pdf`;
+			doc.save(filename);
+		} catch (err) {
+			console.error("PDF export failed:", err);
+		}
+	}
+
 	// ── Render ─────────────────────────────────────────────────────────────
 
 	const canRun =
@@ -1599,6 +1701,22 @@ export function TeacherStudio() {
 									{/* Generated test — create (always in narrative tab) */}
 									{state.activeTab === "narrative" && state.goal === "create" && state.testData && state.testData.test.length > 0 && (
 										<GeneratedTestView data={state.testData} />
+									)}
+
+									{/* Rewrite Diff Viewer Modal */}
+									{state.rewritePreview && (
+										<RewriteDiffViewer
+											original={state.rewritePreview.original}
+											rewritten={state.rewritePreview.rewritten}
+											appliedSuggestions={state.rewritePreview.appliedSuggestions}
+											profileApplied={state.rewritePreview.profileApplied}
+											metadata={state.rewritePreview.metadata}
+											onReplace={handleReplace}
+											onCopy={handleCopy}
+											onDiscard={handleDiscard}
+											onExportBefore={handleExportBefore}
+											onExportAfter={handleExportAfter}
+										/>
 									)}
 								</>
 							)}
