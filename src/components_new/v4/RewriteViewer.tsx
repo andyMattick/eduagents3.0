@@ -22,14 +22,16 @@ export function RewriteViewer({ rewrite, documentId = null }: Props) {
 	const [localSections, setLocalSections] = useState<RewrittenSection[]>(rewrite.sections ?? []);
 
 	const normalizedItems = useMemo(() => {
-		if (rewrite.items && rewrite.items.length > 0) {
-			return rewrite.items;
-		}
-		return rewrite.rewrittenItems.map((item) => ({
+		if (rewrite.items && rewrite.items.length > 0) return rewrite.items;
+		if (rewrite.rewrittenItems && rewrite.rewrittenItems.length > 0) {
+			return rewrite.rewrittenItems.map((item) => ({
 			itemNumber: item.originalItemNumber,
 			rewrittenStem: item.rewrittenStem,
-		}));
-	}, [rewrite.items, rewrite.rewrittenItems]);
+			}));
+		}
+		return []; // <-- THIS prevents the crash
+		}, [rewrite.items, rewrite.rewrittenItems]);
+
 
 	function updateSection(sectionId: string, rewrittenText: string) {
 		setLocalSections((current) => current.map((section) => (
