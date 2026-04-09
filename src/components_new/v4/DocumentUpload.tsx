@@ -7,6 +7,8 @@ import type { InstructionalSessionWorkspace } from "../../types/v4/Instructional
 
 import { useInstructionalSession } from "../../hooks/useInstructionalSession";
 import { useAuth } from "../Auth/useAuth";
+import { DocumentSubmit } from "../../components/studentPortal/DocumentSubmit";
+import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { ProductViewer } from "./ProductViewer";
 import "./v4.css";
 
@@ -437,11 +439,16 @@ export function DocumentUpload() {
                       </div>
                       <div className="v4-document-summary">
                         <p>{describeAnalyzedDocument(analyzed)}</p>
+                        <DocumentStatusBadge documentId={document.documentId} />
                       </div>
                     </article>
                   );
                 })}
               </div>
+            </section>
+
+            <section className="v4-panel">
+              <DocumentSubmit sessionId={workspace.sessionId} />
             </section>
 
             {workspace.instructionalSession ? (

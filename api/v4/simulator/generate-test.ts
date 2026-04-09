@@ -3,6 +3,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
 import type { GeneratedTestData, SimulatorTestPreferences } from "../../../src/types/simulator";
 import { fetchSessionText, parseSimulatorResponse, saveItems, type V4Item } from "./shared";
+import { ingestDocument } from "../../../src/prism-v4/ingestion/ingestDocument";
+import { registerDocumentsStore } from "../../../src/prism-v4/documents/registryStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -88,19 +90,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ? (parsed.data as GeneratedTestData)
         : null;
 
-    // Persist generated items to v4_items so rewrite can load them later
+    // STEP 7: Register generated document and run ingestion pipeline
+    // This ensures created documents get items, sections, analysis, and docType classification
     const generatedDocumentId = randomUUID();
+    
     if (data && data.test.length > 0) {
-      const v4Items: V4Item[] = data.test.map((item, idx) => ({
-        itemNumber: idx + 1,
-        type: item.type.toLowerCase(),
-        stem: item.stem,
-        choices: item.options ?? null,
-        answerKey: item.answer ?? null,
-        metadata: {},
-        sourcePageNumbers: [],
-      }));
-      saveItems(generatedDocumentId, v4Items).catch(() => {}); // fire-and-forget
+      // Reconstruct generated test as plain text for ingestion
+      const generatedTestText = data.test
+        .map((item, idx) => {
+          const itemText = `${idx + 1}. ${item.stem}`;
+          if (item.options && item.options.length > 0) {
+            const optionsText = item.options
+              .map((opt, optIdx) => `   ${String.fromCharCode(65 + optIdx)}) ${opt}`)
+              .join("\n");
+            return `${itemText}\n${optionsText}`;
+          }
+          return itemText;
+        })
+        .join("\n\n");
+
+      // Register document to prism_v4_documents
+      try {
+        await registerDocumentsStore([
+          {
+            sourceFileName: "generated-test.txt",
+            sourceMimeType: "text/plain",
+          },
+        ]);
+      } catch (err) {
+        // Non-fatal — document might already be registered
+      }
+
+      // Run unified ingestion pipeline: classifies doc type, extracts items/sections, saves analysis
+      // This replaces the old fire-and-forget saveItems call
+      ingestDocument({
+        source: "created",
+        documentId: generatedDocumentId,
+        rawText: generatedTestText,
+      }).catch((err) =>
+        console.warn("[generate-test] ingestDocument failed (non-fatal):", err instanceof Error ? err.message : err),
+      );
     }
 
     return res.status(200).json({ narrative: parsed.narrative, data, documentId: generatedDocumentId, meta: { docCount } });

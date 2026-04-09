@@ -37,6 +37,17 @@ Return your answer in two parts:
       "redFlags": [string]
     }
   ],
+	"sections": [
+		{
+			"sectionId": string,
+			"readingLoad": number (0.0–1.0),
+			"vocabularyDifficulty": number (0.0–1.0),
+			"cognitiveLoad": number (0.0–1.0),
+			"confusionRisk": number (0.0–1.0),
+			"fatigueRisk": number (0.0–1.0),
+			"redFlags": [string]
+		}
+	],
   "overall": {
     "totalItems": number,
     "estimatedCompletionTimeSeconds": number,
@@ -66,6 +77,14 @@ Focus on:
 - where sequencing creates difficulty
 - readability and clarity of wording
 - sentence length, vocabulary load, and unnecessary complexity
+
+If the document includes explanatory notes or sections, also evaluate each section for:
+- reading load
+- vocabulary difficulty
+- conceptual density via cognitiveLoad
+- confusion risk
+- fatigue risk
+- red flags
 
 IMPORTANT: All numeric fields (readingLoad, vocabularyDifficulty, cognitiveLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
 

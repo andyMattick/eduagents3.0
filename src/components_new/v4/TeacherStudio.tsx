@@ -32,7 +32,11 @@ import type {
 	StudentProfile,
 } from "../../types/simulator";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
+import { DifferentiationPanel } from "./DifferentiationPanel";
+import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { RewriteViewer } from "./RewriteViewer";
 import { SimulationCharts } from "./SimulationCharts";
+import { SimulationViewer } from "./SimulationViewer";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +69,7 @@ interface StudioState {
 	// interactive rewrite panel state
 	selectedSuggestions: Record<string, boolean>;  // key="test:idx" or "item:N:idx"
 	teacherNotes: string;
+	differentiationProfile: string;
 	// daily usage
 	usageCount: number;
 	usageLimit: number;
@@ -94,6 +99,7 @@ const INITIAL: StudioState = {
 	rewriteLoading: false,
 	selectedSuggestions: {},
 	teacherNotes: "",
+	differentiationProfile: "",
 	usageCount: 0,
 	usageLimit: 5,
 	primaryDragging: false,
@@ -386,6 +392,8 @@ function RewriteSuggestionsPanel({
 	teacherNotes,
 	onToggle,
 	onTeacherNotesChange,
+	differentiationProfile,
+	onDifferentiationProfileChange,
 	onRewrite,
 	rewriteLoading,
 }: {
@@ -394,6 +402,8 @@ function RewriteSuggestionsPanel({
 	teacherNotes: string;
 	onToggle: (key: string) => void;
 	onTeacherNotesChange: (val: string) => void;
+	differentiationProfile: string;
+	onDifferentiationProfileChange: (val: string) => void;
 	onRewrite?: () => void;
 	rewriteLoading?: boolean;
 }) {
@@ -539,6 +549,13 @@ function RewriteSuggestionsPanel({
 					}}
 				/>
 			</div>
+
+			<DifferentiationPanel
+				value={differentiationProfile}
+				onChange={onDifferentiationProfileChange}
+				onGenerate={onRewrite ?? null}
+				isLoading={rewriteLoading}
+			/>
 
 			{/* Rewrite CTA */}
 			{onRewrite && (
@@ -1332,6 +1349,7 @@ export function TeacherStudio() {
 											>
 												{goalData?.title}
 											</p>
+											{state.documentId ? <DocumentStatusBadge documentId={state.documentId} /> : null}
 										</div>
 										<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
 											<button
@@ -1445,6 +1463,7 @@ export function TeacherStudio() {
 												<>
 													<OverallStats data={state.simData} goal={state.goal!} />
 													<ItemTable data={state.simData} goal={state.goal!} />
+													<SimulationViewer sections={state.simData.sections} />
 												</>
 											)}
 
@@ -1459,6 +1478,10 @@ export function TeacherStudio() {
 										</div>
 									)}
 
+															differentiationProfile={state.differentiationProfile}
+															onDifferentiationProfileChange={(val) =>
+																setState((prev) => ({ ...prev, differentiationProfile: val }))
+															}
 									{/* Tab: Suggestions */}
 									{state.activeTab === "suggestions" && (
 										<RewriteSuggestionsPanel
@@ -1519,6 +1542,9 @@ export function TeacherStudio() {
 															itemLevel: selectedItemLevel,
 														},
 														teacherSuggestions: teacherSuggestions.length > 0 ? teacherSuggestions : undefined,
+																	preferences: state.differentiationProfile
+																		? { profile: state.differentiationProfile }
+																		: undefined,
 													});
 													setState((prev) => ({
 														...prev,
@@ -1539,38 +1565,7 @@ export function TeacherStudio() {
 
 									{/* Tab: Rewrite */}
 									{state.activeTab === "rewrite" && state.rewriteResults && (
-										<div style={{ marginTop: "1.25rem", fontSize: "0.95rem" }}>
-											<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>
-												Rewritten Assessment — {state.rewriteResults.rewrittenItems.length} items
-											</p>
-											{state.rewriteResults.rewrittenItems.map((item) => (
-												<div
-													key={item.originalItemNumber}
-													style={{
-														background: "rgba(255,251,245,0.9)",
-														border: "1px solid rgba(86,57,32,0.14)",
-														borderRadius: "14px",
-														padding: "1rem 1.25rem",
-														marginBottom: "0.85rem",
-													}}
-												>
-													<p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "0.82rem", color: "#563920" }}>
-														Item {item.originalItemNumber}
-													</p>
-													<p style={{ margin: "0 0 0.5rem", lineHeight: 1.65 }}>
-														<strong>Rewritten:</strong> {item.rewrittenStem}
-													</p>
-													{item.rewrittenParts && item.rewrittenParts.length > 0 && (
-														<ul style={{ margin: "0 0 0.5rem", paddingLeft: "1.25rem", lineHeight: 1.7 }}>
-															{item.rewrittenParts.map((p, i) => <li key={i}>{p}</li>)}
-														</ul>
-													)}
-													<p style={{ margin: 0, fontSize: "0.82rem", color: "#6b5040", fontStyle: "italic" }}>
-														{item.notes}
-													</p>
-												</div>
-											))}
-										</div>
+										<RewriteViewer rewrite={state.rewriteResults} documentId={state.documentId} />
 									)}
 
 									{/* Tab: JSON */}

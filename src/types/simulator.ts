@@ -108,6 +108,16 @@ export interface SimulatorItemData {
 	redFlags: string[];
 }
 
+export interface SimulatorSectionData {
+	sectionId: string;
+	readingLoad: number;
+	vocabularyDifficulty: number;
+	cognitiveLoad: number;
+	confusionRisk: number;
+	fatigueRisk: number;
+	redFlags: string[];
+}
+
 export interface SimulatorOverallData {
 	totalItems: number;
 	estimatedCompletionTimeSeconds: number;
@@ -126,6 +136,7 @@ export interface RewriteSuggestions {
 
 export interface SimulatorData {
 	items: SimulatorItemData[];
+	sections?: SimulatorSectionData[];
 	overall: SimulatorOverallData;
 	rewriteSuggestions?: RewriteSuggestions;
 }
@@ -223,6 +234,16 @@ export interface RewrittenItem {
 	notes: string;
 }
 
+export interface RewrittenSection {
+	sectionId: string;
+	rewrittenText: string;
+}
+
 export interface RewriteResponse {
 	rewrittenItems: RewrittenItem[];
+	docType?: "problem" | "notes" | "mixed";
+	sections?: RewrittenSection[];
+	items?: Array<{ itemNumber: number; rewrittenStem: string }>;
+	testLevel?: string[];
+	metadata?: Record<string, unknown>;
 }

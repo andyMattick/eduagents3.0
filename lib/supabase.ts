@@ -17,6 +17,15 @@ export function supabaseAdmin() {
   return { url, key };
 }
 
+export function hasSupabaseServiceRoleCredentials(): boolean {
+  const url = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) {
+    return false;
+  }
+  return /^https?:\/\//i.test(url);
+}
+
 /**
  * Thin wrapper around the Supabase REST API for server-side use.
  * Avoids pulling in the full @supabase/supabase-js package in API routes.

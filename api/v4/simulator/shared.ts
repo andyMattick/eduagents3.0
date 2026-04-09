@@ -8,8 +8,20 @@
  * Profile formatting: turns a StudentProfile into an LLM-readable paragraph.
  */
 
-import { supabaseRest } from "../../../lib/supabase";
+import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/supabase";
 import type { StudentProfile } from "../../../src/types/simulator";
+
+let warnedMissingServiceRoleForV4Writes = false;
+
+function canPersistV4IngestionWrites(): boolean {
+	return typeof window === "undefined" && hasSupabaseServiceRoleCredentials();
+}
+
+function warnMissingServiceRoleForV4Writes(): void {
+	if (warnedMissingServiceRoleForV4Writes) return;
+	warnedMissingServiceRoleForV4Writes = true;
+	console.warn("[v4-ingestion] SUPABASE_SERVICE_ROLE_KEY missing or invalid; skipping v4_* persistence writes. Set SUPABASE_SERVICE_ROLE_KEY to enable DB persistence.");
+}
 
 // ---------------------------------------------------------------------------
 // Text retrieval
@@ -223,6 +235,7 @@ For EACH student profile:
 - identify likely misconceptions
 - evaluate reading load, vocabulary difficulty, and clarity
 - identify red flags and time risks
+- when notes/explanatory sections are present, evaluate per-section reading load, vocabulary difficulty, cognitive load, confusion risk, fatigue risk, and red flags
 
 Then produce a CROSS-STUDENT COMPARISON showing:
 - which items are universally difficult (high cognitive load across ALL profiles)
@@ -278,6 +291,17 @@ Return your answer in two parts:
           "redFlags": [string]
         }
       ],
+			"sections": [
+				{
+					"sectionId": string,
+					"readingLoad": number (0.0–1.0),
+					"vocabularyDifficulty": number (0.0–1.0),
+					"cognitiveLoad": number (0.0–1.0),
+					"confusionRisk": number (0.0–1.0),
+					"fatigueRisk": number (0.0–1.0),
+					"redFlags": [string]
+				}
+			],
       "overall": {
         "totalItems": number,
         "estimatedCompletionTimeSeconds": number,
@@ -346,6 +370,10 @@ export interface V4Item {
  */
 export async function saveItems(documentId: string, items: V4Item[]): Promise<void> {
 	if (!items.length) return;
+	if (!canPersistV4IngestionWrites()) {
+		warnMissingServiceRoleForV4Writes();
+		return;
+	}
 
 	const rows = items.map((item) => ({
 		document_id: documentId,
@@ -383,6 +411,10 @@ export interface V4Section {
  */
 export async function saveSections(documentId: string, sections: V4Section[]): Promise<void> {
 	if (!sections.length) return;
+	if (!canPersistV4IngestionWrites()) {
+		warnMissingServiceRoleForV4Writes();
+		return;
+	}
 
 	// Delete existing sections for this document (idempotent)
 	try {
@@ -462,6 +494,11 @@ export async function saveAnalysis(
 		[key: string]: unknown;
 	},
 ): Promise<void> {
+	if (!canPersistV4IngestionWrites()) {
+		warnMissingServiceRoleForV4Writes();
+		return;
+	}
+
 	try {
 		await supabaseRest("v4_analysis", {
 			method: "POST",
@@ -494,6 +531,11 @@ export async function setDocType(
 	documentId: string,
 	docType: "problem" | "notes" | "mixed",
 ): Promise<void> {
+	if (!canPersistV4IngestionWrites()) {
+		warnMissingServiceRoleForV4Writes();
+		return;
+	}
+
 	try {
 		const { url, key } = (await import("../../../lib/supabase")).supabaseAdmin();
 		await fetch(`${url}/rest/v1/prism_v4_documents?document_id=eq.${encodeURIComponent(documentId)}`, {

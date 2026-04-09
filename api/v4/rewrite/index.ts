@@ -1,26 +1,5 @@
-/**
- * POST /api/v4/rewrite — Assessment rewrite engine
- *
- * Accepts { documentId?, sessionId?, suggestions, preferences? }.
- *
- * Preferred path (item-based):
- *   - documentId is provided → load structured items from v4_items and build
- *     a deterministic, PII-safe item-based prompt.
- *
- * Legacy path (text-based fallback):
- *   - Only sessionId provided → fetch raw document text and build a text-based
- *     prompt (same behaviour as the original route).
- *
- * All LLM calls go through callLLM(), which guards against PII in the prompt.
- *
- * Returns { rewrittenItems: [...] }
- */
-import {
-  buildNotesRewritePrompt,
-  buildMixedRewritePrompt
-} from "./prompts"; // you will create this file in Step 4
-
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+
 import { callLLM } from "../../../lib/llm";
 import { supabaseRest } from "../../../lib/supabase";
 import type { RewriteSuggestions } from "../../../src/types/simulator";
@@ -30,89 +9,93 @@ import {
 	getItemsForDocument,
 	getSectionsForDocument,
 	type V4Item,
-	type V4Section,
 } from "../simulator/shared";
+import {
+	buildMixedRewritePrompt,
+	buildNotesRewritePrompt,
+} from "./prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// ---------------------------------------------------------------------------
-// Prompt builder (item-based, PII-safe)
-// ---------------------------------------------------------------------------
-const doc = await getDocument(documentId);
-const docType = doc?.doc_type ?? null;
+type RewriteBody = {
+	documentId?: string;
+	sessionId?: string;
+	selectedSuggestions?: {
+		testLevel?: string[];
+		itemLevel?: Record<string, string[]>;
+	};
+	teacherSuggestions?: string[];
+	selectedItems?: number[];
+	preferences?: Record<string, unknown>;
+};
 
-const items = await getItemsForDocument(documentId);
-const sections = await getSectionsForDocument(documentId);
-
-if (!items.length && !sections.length) {
-  return NextResponse.json(
-    { error: "No stored items or sections found for this document." },
-    { status: 422 }
-  );
+function normalizeSuggestions(
+	selectedSuggestions: RewriteBody["selectedSuggestions"],
+	teacherSuggestions: string[],
+): RewriteSuggestions {
+	return {
+		testLevel: [
+			...(selectedSuggestions?.testLevel ?? []),
+			...teacherSuggestions,
+		],
+		itemLevel: selectedSuggestions?.itemLevel ?? {},
+	};
 }
 
-function buildRewritePrompt(
+function toNumericItemLevel(itemLevel: Record<string, string[]>) {
+	const out: Record<number, string[]> = {};
+	for (const [key, value] of Object.entries(itemLevel)) {
+		const parsed = Number(key);
+		if (!Number.isNaN(parsed)) {
+			out[parsed] = value;
+		}
+	}
+	return out;
+}
+
+function buildItemRewritePrompt(
 	items: V4Item[],
 	suggestions: RewriteSuggestions,
 	preferences: Record<string, unknown>,
 ): string {
-	// Only include items that have item-level suggestions to shrink the prompt
 	const itemNums = new Set(Object.keys(suggestions.itemLevel).map(Number));
 	const relevantItems = itemNums.size > 0
 		? items.filter((it) => itemNums.has(it.itemNumber))
-		: items; // test-level only → send all
+		: items;
 
 	return `You are an instructional rewrite engine for teachers.
-Your job is to improve assessment items using the provided rewrite suggestions.
-
-IMPORTANT PRIVACY RULES:
-- The student, teacher, and school identities are anonymized.
-- Do NOT invent names, locations, or personal identifiers.
-- Do NOT include any PII in your output.
+Improve assessment items using only the provided rewrite suggestions.
 
 REWRITE RULES:
-- Preserve the original learning objective.
-- Preserve the correct answer.
-- Do NOT introduce new content not present in the original item.
-- Do NOT increase difficulty.
-- Do NOT change the meaning of the question.
-- Do NOT add narrative, commentary, or explanation outside the JSON.
-- Apply ONLY the provided rewrite suggestions (AI-generated + teacher-authored).
-- If a suggestion conflicts with correctness or meaning, adjust it safely.
+- Preserve original learning objectives and correctness.
+- Do not add new content.
+- Do not increase difficulty unless explicitly requested.
+- Output JSON only, no markdown/code fences.
 
-OUTPUT RULES:
-- Output ONLY a JSON object.
-- Do NOT wrap the JSON in code fences.
-- Do NOT include headings, labels, or narrative outside the JSON.
-- Follow this exact schema:
-
+OUTPUT SCHEMA:
 {
   "rewrittenItems": [
     {
       "originalItemNumber": number,
       "rewrittenStem": "string",
-      "rewrittenParts": ["optional array of strings"],
-      "notes": "brief explanation of what was improved"
+      "rewrittenParts": ["optional strings"],
+      "notes": "brief explanation"
     }
   ]
 }
 
-ASSESSMENT ITEMS (JSON):
+ITEMS:
 ${JSON.stringify(relevantItems, null, 2)}
 
-SELECTED + TEACHER-AUTHORED SUGGESTIONS (JSON):
+SUGGESTIONS:
 ${JSON.stringify(suggestions, null, 2)}
 
-TEACHER PREFERENCES (JSON):
+PREFERENCES:
 ${JSON.stringify(preferences, null, 2)}
 
-Now produce the rewrittenItems JSON object only.`;
+Return only the JSON object.`;
 }
-
-// ---------------------------------------------------------------------------
-// Legacy text-based prompt builder
-// ---------------------------------------------------------------------------
 
 function buildTextRewritePrompt(
 	text: string,
@@ -122,136 +105,49 @@ function buildTextRewritePrompt(
 ): string {
 	return `You are an assessment rewrite engine for teachers.
 
-Below is a test or assessment document (from ${docCount} document${docCount === 1 ? "" : "s"}).
-Using the rewrite suggestions provided:
-- Rewrite ONLY the flagged items
-- Preserve the original learning objective for each item
-- Do NOT change the correct answer
-- Do NOT introduce new content beyond what is already in the document
-- Do NOT increase difficulty
-- Do NOT remove essential meaning
+Below is source material from ${docCount} document${docCount === 1 ? "" : "s"}.
+Apply rewrite suggestions conservatively.
 
-Return ONLY a JSON object with this shape:
+REWRITE RULES:
+- Preserve meaning and correctness.
+- Do not add new concepts.
+- Output JSON only.
 
+OUTPUT SCHEMA:
 {
   "rewrittenItems": [
     {
-      "originalItemNumber": NUMBER,
-      "rewrittenStem": "...",
-      "rewrittenParts": ["...", "..."],
-      "notes": "Short explanation of what was improved"
+      "originalItemNumber": number,
+      "rewrittenStem": "string",
+      "rewrittenParts": ["optional strings"],
+      "notes": "brief explanation"
     }
   ]
 }
-
-IMPORTANT — STRICT OUTPUT FORMAT:
-Do NOT wrap the JSON in code fences or backticks.
-Do NOT add any headings, labels, or commentary.
-Output ONLY the JSON object, starting with "{" and ending with "}".
 
 DOCUMENT:
 ${text.substring(0, 8000)}
 
-REWRITE SUGGESTIONS:
-${JSON.stringify(suggestions, null, 2)}
-
-TEACHER PREFERENCES:
-${JSON.stringify(preferences ?? {}, null, 2)}`;
-}
-
-// ---------------------------------------------------------------------------
-// Notes-based prompt builder
-// ---------------------------------------------------------------------------
-
-function buildNotesRewritePrompt(
-	sections: V4Section[],
-	suggestions: RewriteSuggestions,
-	preferences: Record<string, unknown>,
-): string {
-	return `You are an instructional rewrite engine for teachers.
-Improve the following note sections using the provided suggestions.
-
-REWRITE RULES:
-- Preserve all factual content and learning objectives.
-- Do NOT introduce new concepts not present in the original.
-- Improve clarity, readability, or structure as directed.
-- Output ONLY a JSON object — no code fences, no commentary.
-
-OUTPUT SCHEMA:
-{
-  "rewrittenItems": [
-    {
-      "originalItemNumber": number,
-      "rewrittenStem": "rewritten section text",
-      "rewrittenParts": [],
-      "notes": "brief explanation of what was improved"
-    }
-  ]
-}
-
-SECTIONS:
-${JSON.stringify(sections.map((s, i) => ({ itemNumber: i + 1, title: s.title ?? null, text: s.text })), null, 2)}
-
 SUGGESTIONS:
 ${JSON.stringify(suggestions, null, 2)}
 
 PREFERENCES:
-${JSON.stringify(preferences, null, 2)}
+${JSON.stringify(preferences ?? {}, null, 2)}
 
-Output ONLY the JSON object starting with "{".`;
+Return only the JSON object.`;
 }
 
-// ---------------------------------------------------------------------------
-// Mixed prompt builder
-// ---------------------------------------------------------------------------
-
-function buildMixedRewritePrompt(
-	items: V4Item[],
-	sections: V4Section[],
-	suggestions: RewriteSuggestions,
-	preferences: Record<string, unknown>,
-): string {
-	return `You are an instructional rewrite engine for teachers.
-This document contains both assessment items and explanatory sections.
-Improve them using the provided suggestions.
-
-REWRITE RULES:
-- Preserve all learning objectives and factual content.
-- Do NOT introduce new content not present in the original.
-- Do NOT change the correct answer of any item.
-- Output ONLY a JSON object — no code fences, no commentary.
-
-OUTPUT SCHEMA:
-{
-  "rewrittenItems": [
-    {
-      "originalItemNumber": number,
-      "rewrittenStem": "...",
-      "rewrittenParts": [],
-      "notes": "brief explanation",
-      "kind": "item" | "section"
-    }
-  ]
+function extractJsonObject(raw: string) {
+	const cleaned = raw
+		.replace(/```(?:json)?\s*\n?/gi, "")
+		.replace(/```\s*/g, "");
+	const firstBrace = cleaned.indexOf("{");
+	const lastBrace = cleaned.lastIndexOf("}");
+	if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+		throw new Error("Rewrite failed: could not extract JSON from response");
+	}
+	return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
 }
-
-ASSESSMENT ITEMS:
-${JSON.stringify(items, null, 2)}
-
-NOTE SECTIONS:
-${JSON.stringify(sections.map((s, i) => ({ itemNumber: i + 1, title: s.title ?? null, text: s.text })), null, 2)}
-
-SUGGESTIONS:
-${JSON.stringify(suggestions, null, 2)}
-
-PREFERENCES:
-${JSON.stringify(preferences, null, 2)}
-
-Output ONLY the JSON object starting with "{".`;
-}
-
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method === "OPTIONS") {
@@ -272,24 +168,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	}
 
 	const {
-	documentId,
-	sessionId,
-	selectedSuggestions,
-	teacherSuggestions,
-	selectedItems,
-	preferences
-	} = (body ?? {}) as {
-	documentId?: string;
-	sessionId?: string;
-	selectedSuggestions?: {
-		testLevel?: string[];
-		itemLevel?: Record<string, string[]>;
-	};
-	teacherSuggestions?: string[];
-	selectedItems?: number[];
-	preferences?: Record<string, unknown>;
-	};
-
+		documentId,
+		sessionId,
+		selectedSuggestions,
+		teacherSuggestions = [],
+		selectedItems = [],
+		preferences = {},
+	} = (body ?? {}) as RewriteBody;
 
 	if (!sessionId && !documentId) {
 		return res.status(400).json({ error: "documentId or sessionId is required" });
@@ -298,71 +183,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return res.status(400).json({ error: "selectedSuggestions are required" });
 	}
 
-const mergedSuggestions: RewriteSuggestions = {
-  testLevel: [
-    ...(selectedSuggestions?.testLevel ?? []),
-    ...(teacherSuggestions ?? []),
-  ],
-  itemLevel: selectedSuggestions?.itemLevel ?? {},
-};
+	const mergedSuggestions = normalizeSuggestions(selectedSuggestions, teacherSuggestions);
 
-let prompt: string;
+	let prompt: string;
+	let persistenceDocumentId: string | undefined = documentId;
 
-if (docType === "problem" || (!docType && items.length && !sections.length)) {
-  // existing item-based rewrite
-  prompt = buildRewritePrompt({
-    items,
-    selectedSuggestions,
-    teacherSuggestions,
-    selectedItems,
-    preferences
-  });
-} else if (docType === "notes" || (!docType && sections.length && !items.length)) {
-  // new notes rewrite
-  prompt = buildNotesRewritePrompt({
-    sections,
-    selectedSuggestions,
-    teacherSuggestions,
-    preferences
-  });
-} else {
-  // mixed rewrite
-  prompt = buildMixedRewritePrompt({
-    items,
-    sections,
-    selectedSuggestions,
-    teacherSuggestions,
-    selectedItems,
-    preferences
-  });
-}
+	if (documentId) {
+		const [doc, items, sections] = await Promise.all([
+			getDocument(documentId),
+			getItemsForDocument(documentId),
+			getSectionsForDocument(documentId),
+		]);
 
+		if (!items.length && !sections.length) {
+			return res.status(422).json({ error: "No stored items or sections found for this document." });
+		}
+
+		if (doc?.doc_type === "notes" || (!doc?.doc_type && sections.length > 0 && items.length === 0)) {
+			prompt = buildNotesRewritePrompt({
+				sections,
+				selectedSuggestions: {
+					testLevel: mergedSuggestions.testLevel,
+					itemLevel: toNumericItemLevel(mergedSuggestions.itemLevel),
+				},
+				teacherSuggestions,
+				preferences,
+			});
+		} else if (doc?.doc_type === "mixed" || (!doc?.doc_type && sections.length > 0 && items.length > 0)) {
+			prompt = buildMixedRewritePrompt({
+				items,
+				sections,
+				selectedSuggestions: {
+					testLevel: mergedSuggestions.testLevel,
+					itemLevel: toNumericItemLevel(mergedSuggestions.itemLevel),
+				},
+				teacherSuggestions,
+				selectedItems,
+				preferences,
+			});
+		} else {
+			prompt = buildItemRewritePrompt(items, mergedSuggestions, preferences);
+		}
+	} else {
+		const { text, docCount } = await fetchSessionText(sessionId!);
+		if (!text) {
+			return res.status(422).json({ error: "No document text found for this session." });
+		}
+		prompt = buildTextRewritePrompt(text, docCount, mergedSuggestions, preferences);
+	}
 
 	try {
 		const raw = await callLLM({
-			prompt,	
-			metadata: { runType: "rewrite", documentId },
+			prompt,
+			metadata: { runType: "rewrite", documentId: persistenceDocumentId, sessionId },
 			options: { temperature: 0.3, maxOutputTokens: 8192 },
 		});
 
-		// Strip code fences if LLM added them anyway
-		const cleaned = raw.replace(/```(?:json)?\s*\n?/gi, "").replace(/```\s*/g, "");
+		const json = extractJsonObject(raw);
 
-		const firstBrace = cleaned.indexOf("{");
-		const lastBrace  = cleaned.lastIndexOf("}");
-
-		if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-			console.error("[rewrite] No JSON found in LLM output:", raw.substring(0, 200));
-			return res.status(500).json({ error: "Rewrite failed: could not extract JSON from response" });
-		}
-
-		const json = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-
-		// Persist rewrite run for PDF export (fire-and-forget, non-fatal)
-		if (documentId && Array.isArray(json.rewrittenItems)) {
+		if (persistenceDocumentId) {
 			supabaseRest("v4_rewrite_runs", {
 				method: "POST",
-				body: { document_id: documentId, rewritten_items: json.rewrittenItems },
+				body: {
+					document_id: persistenceDocumentId,
+					rewritten_items: json.rewrittenItems ?? null,
+					metadata: {
+						hasSections: Array.isArray(json.sections),
+						hasItems: Array.isArray(json.items) || Array.isArray(json.rewrittenItems),
+					},
+				},
 			}).catch(() => {});
 		}
 

@@ -645,6 +645,24 @@
   background: rgba(135, 65, 34, 0.1);
 }
 
+.v4-viewer .v4-status-badge {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: #6b5040;
+}
+
+.v4-viewer .v4-status-badge span {
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  background: rgba(156, 77, 43, 0.1);
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .v4-viewer .v4-ranked-list {
   display: grid;
   gap: 0.5rem;

@@ -50,8 +50,24 @@ export async function callGemini({
 
   if (!res.ok) {
     const text = await res.text();
-    console.error("Gemini error:", res.status, text);
-    throw new Error(`Gemini failed (${res.status})`);
+    let providerMessage = text;
+
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { message?: string; status?: string; details?: Array<{ reason?: string }> };
+      };
+      const reason = parsed.error?.details?.find((detail) => typeof detail.reason === "string")?.reason;
+      providerMessage = [
+        parsed.error?.status,
+        reason,
+        parsed.error?.message,
+      ].filter(Boolean).join(" | ") || text;
+    } catch {
+      // Keep raw text if provider body is not JSON.
+    }
+
+    console.error("Gemini error:", res.status, providerMessage);
+    throw new Error(`Gemini failed (${res.status}): ${providerMessage}`);
   }
 
   const data = await res.json();

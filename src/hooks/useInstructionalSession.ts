@@ -16,6 +16,7 @@ import {
 	loadDifferentiatedBuildApi,
 	loadSessionBlueprintApi,
 	loadStudentProfileApi,
+	submitStudentPortalDocumentApi,
 	loadTeacherFingerprintApi,
 	updateTeacherFingerprintApi,
 } from "../lib/instructionalSessionApi";
@@ -362,6 +363,26 @@ export function useInstructionalSession() {
 		return payload;
 	}
 
+	async function submitStudentPortalDocument(
+		argsOrSessionId: {
+			sessionId: string;
+			text: string;
+			metadata?: Record<string, unknown>;
+		} | string,
+		textArg?: string,
+		metadataArg?: Record<string, unknown>,
+	) {
+		const args = typeof argsOrSessionId === "string"
+			? { sessionId: argsOrSessionId, text: textArg ?? "", metadata: metadataArg }
+			: argsOrSessionId;
+
+		const payload = await submitStudentPortalDocumentApi(args);
+		if (workspaceRef.current?.sessionId === args.sessionId) {
+			await refreshWorkspace(args.sessionId);
+		}
+		return payload;
+	}
+
 	function clearSession() {
 		replaceWorkspace(null);
 		setError(null);
@@ -387,6 +408,7 @@ export function useInstructionalSession() {
 		loadClassProfile,
 		loadDifferentiatedBuild,
 		generateProduct,
+		submitStudentPortalDocument,
 		clearSession,
 	};
 }

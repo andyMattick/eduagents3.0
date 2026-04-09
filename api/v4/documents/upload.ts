@@ -142,10 +142,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	try {
 		const headers = req.headers ?? {};
-		const contentType = getSingleHeaderValue(headers["content-type"]) ?? "application/octet-stream";
+		const contentType = getSingleHeaderValue(headers["content-type"]);
+			if (!contentType || typeof contentType !== "string") {
+			return res.status(400).json({ error: "Missing or invalid content-type header" });
+			}
+
+		const normalizedContentType = contentType.trim().toLowerCase();
+		const isJsonPayload = normalizedContentType.includes("application/json");
+
 		const fileName = getSingleHeaderValue(headers["x-file-name"]);
 		const requestedSessionId = getSingleHeaderValue(headers["x-session-id"]);
-		if (contentType.includes("application/json") || typeof req.body !== "undefined") {
+		if (isJsonPayload) {
 		const payload = parseBody(req.body ?? {});
 		const documents = (payload.documents ?? []).filter((entry) => entry.sourceFileName && entry.sourceMimeType);
 		if (documents.length === 0) {
@@ -177,16 +184,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			"application/vnd.openxmlformats-officedocument.presentationml.presentation",
 			"application/msword",
 		]);
-		if (!allowedMimeTypes.has(contentType)) {
+		if (!allowedMimeTypes.has(normalizedContentType)) {
 			return res.status(400).json({ error: "Unsupported file type. Allowed types: PDF, DOCX, PPTX." });
 		}
-
-		const buffer = await readRequestBody(req as IncomingMessage & { arrayBuffer?: () => Promise<ArrayBuffer> });
-		if (buffer.byteLength === 0) {
-			return res.status(400).json({ error: "Request body is empty." });
+		let buffer: Buffer;
+		try {
+			buffer = await readRequestBody(req);
 		}
-
-		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: contentType, rawBinary: buffer }], requestedSessionId ?? null);
+			catch (err) {
+			return res.status(400).json({ error: "Failed to read request body as binary data." });
+		}
+		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: normalizedContentType, rawBinary: buffer }], requestedSessionId ?? null);
 		const session = requestedSessionId
 			? await ensureSessionDocumentsStore(requestedSessionId, [registered.documentId])
 			: await createDocumentSessionStore([registered.documentId]);
@@ -203,8 +211,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		});
 		await saveAnalyzedDocumentStore(analyzedDocument, session.sessionId);
 
-		// Run unified ingestion pipeline: classifies doc type, persists items,
-		// sections, and analysis.  Fire-and-forget — never blocks upload response.
+		// Run unified ingestion pipeline after successful analysis.
+		// Non-blocking to keep upload latency low.
 		ingestDocument({
 			source:           "teacher-upload",
 			documentId:       registered.documentId,
@@ -219,6 +227,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			documentId: registered.documentId,
 			documentIds: [registered.documentId],
 			sessionId: session.sessionId,
+			ingestion: { queued: true },
 			registered: [
 				{
 					documentId: registered.documentId,

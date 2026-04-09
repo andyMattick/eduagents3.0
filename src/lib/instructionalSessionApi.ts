@@ -41,6 +41,16 @@ type DifferentiatedBuildResponse = {
 	differentiatedBuild: DifferentiatedBuildModel;
 };
 
+export type StudentPortalSubmitResponse = {
+	documentId: string;
+	sessionId: string;
+	ingestion: {
+		docType: "problem" | "notes" | "mixed";
+		itemCount: number;
+		sectionCount: number;
+	} | null;
+};
+
 type TeacherFingerprintResponse = {
 	teacherId: string;
 	fingerprint: TeacherFingerprintModel;
@@ -155,6 +165,18 @@ export function updateTeacherFingerprintApi(teacherId: string, patch: Partial<Te
 
 export function generateIntentProductApi(args: IntentRequest) {
 	return fetchJson<IntentProduct>("/api/v4/documents/intent", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(args),
+	});
+}
+
+export function submitStudentPortalDocumentApi(args: {
+	sessionId: string;
+	text: string;
+	metadata?: Record<string, unknown>;
+}) {
+	return fetchJson<StudentPortalSubmitResponse>("/api/v4/student-portal/documents/submit", {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(args),

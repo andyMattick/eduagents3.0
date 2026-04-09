@@ -116,6 +116,7 @@ const localPrismRoutes: LocalApiRoute[] = [
   },
   { pattern: /^\/documents\/intent$/, modulePath: '/api/v4/documents/intent.ts' },
   { pattern: /^\/documents\/analyze$/, modulePath: '/api/v4/documents/analyze.ts' },
+  { pattern: /^\/documents\/status$/, modulePath: '/api/v4/documents/status.ts' },
   { pattern: /^\/sessions\/assessment-preview$/, modulePath: '/api/v4/sessions/assessment-preview.ts' },
   { pattern: /^\/sessions\/builder-plan$/, modulePath: '/api/v4/sessions/builder-plan.ts' },
   { pattern: /^\/sessions\/blueprint$/, modulePath: '/api/v4/sessions/blueprint.ts' },
@@ -173,6 +174,7 @@ const localPrismRoutes: LocalApiRoute[] = [
     queryFromMatch: (match) => ({ canonicalProblemId: decodeURIComponent(match[1] ?? '') }),
   },
   { pattern: /^\/student-performance\/ingestAssessment$/, modulePath: '/api/v4/student-performance/ingestAssessment.ts' },
+  { pattern: /^\/student-portal\/documents\/submit$/, modulePath: '/api/v4/student-portal/documents/submit.ts' },
   // ── Studio routes ──────────────────────────────────────────────────────────
   {
     pattern: /^\/studio\/sessions\/([^/]+)$/,
@@ -725,6 +727,7 @@ export default defineConfig(({ mode }) => {
     }
   })
   const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
+  const devApiTarget = env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
 
   return {
     plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localPrismV4Proxy()],
@@ -733,7 +736,8 @@ export default defineConfig(({ mode }) => {
       open: true,
       proxy: {
         '/api/v4': {
-          target: 'http://localhost:3000',
+          target: devApiTarget,
+          secure: false,
           changeOrigin: true,
         },
       },

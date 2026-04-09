@@ -1,147 +1,217 @@
-# eduagents3.0
+Absolutely, Andy — here is a **developer‑onboarding README** written in the same tone and structure as your original, but focused on helping new engineers understand the system quickly and contribute confidently.
 
-An intelligent educational assessment pipeline that transforms static assignments into dynamic, multidimensional simulations for actionable student feedback and adaptive content generation.
+It’s crisp, operational, and gives a new dev exactly what they need to get productive without drowning them in architecture.
 
-## Overview
+---
 
-eduagents3.0 decomposes educational assessments into **problems** (Asteroids), evaluates them against **student profiles** (Astronauts) through a unified simulation engine, and produces analytics-driven rewrites for improved pedagogical quality.
+# **eduagents3.0 — Developer Onboarding Guide**
 
-## Key Features
+Welcome to eduagents3.0 — an intelligent, teacher‑centric assessment and instruction engine. This guide gives new contributors a fast, accurate understanding of how the system works, how to run it, and where to find the important pieces.
 
-- **Problem Decomposition**: Extract and tag assignments with Bloom's taxonomy, linguistic complexity, and novelty scores
-- **Student Profiling**: Model learner personas with accessibility overlays and trait profiles
-- **Simulation-Driven Feedback**: Generate realistic student-problem interactions producing aggregated analytics
-- **Iterative Refinement**: Rewrite problems for clarity, difficulty, and accessibility based on simulation output
-- **Incident Reporting**: Deterministic admin-readable reports from enriched assessments
+---
 
-## Development
+# **What This System Does**
 
-### Prerequisites
+eduagents3.0 transforms real classroom documents into structured, adaptive, simulation‑ready learning experiences. It:
 
-- Node.js 18+
-- npm
+- ingests worksheets, tests, notes, and mixed packets  
+- classifies them as **problems**, **notes**, or **mixed**  
+- extracts structured **items** and **sections**  
+- analyzes concepts, misconceptions, and difficulty  
+- simulates diverse student profiles  
+- rewrites content for clarity, pacing, and accessibility  
 
-### Installation
+Everything is built around a unified ingestion pipeline and a docType‑aware rewrite engine.
 
+---
+
+# **Core Concepts**
+
+### **Document Types**
+Every document becomes one of:
+
+- **problem** — assessment items only  
+- **notes** — instructional text only  
+- **mixed** — both items and notes  
+
+This determines how rewrite, simulation, and analysis behave.
+
+### **Structured Storage**
+After ingestion, all documents are represented through:
+
+- `v4_items` — extracted assessment items  
+- `v4_sections` — segmented instructional notes  
+- `v4_analysis` — concepts, misconceptions, metadata  
+- `prism_v4_documents.doc_type` — classification  
+
+This makes downstream features deterministic and reusable.
+
+---
+
+# **Local Development**
+
+### **Prerequisites**
+- Node.js 18+  
+- npm  
+- Supabase CLI (optional but recommended)
+
+### **Install Dependencies**
 ```bash
 npm install
 ```
 
-### Development Server
-
+### **Start Dev Server**
 ```bash
 npm run dev
 ```
 
-Starts Vite dev server on port 5173.
+Runs the Vite dev server on port **5173**.
 
-### Build
-
+### **Build**
 ```bash
 npm run build
 ```
 
-### Testing
-
+### **Tests**
 ```bash
 npm test
 ```
 
-## Architecture
+---
 
-### Pipeline Phases
+# **High‑Level Architecture**
 
-1. **Ingestion**: Document parsing (PDF, Word, plain text) → problem extraction
-2. **Analysis**: Tag extraction, Bloom classification, metadata enrichment
-3. **Simulation**: Student persona evaluation against problem set
-4. **Rewriting**: Adaptive content generation based on simulation results
-5. **Export**: Final assessment assembly and reporting
+eduagents3.0 is organized around a **five‑phase pipeline**:
 
-### Key Components
+### **1. Ingestion**
+- Parses PDFs, Word docs, or raw text  
+- Classifies docType  
+- Extracts items and/or sections  
+- Stores structured representations  
 
-- **Pipeline Orchestrator** (`src/pipeline/orchestrator/`) — Coordinates all stages
-- **Architect** (`src/pipeline/architectV3/`) — Assessment planning and feasibility analysis
-- **Writer** (`src/pipeline/agents/writer/`) — Problem generation and rewriting
-- **Gatekeeper** (`src/pipeline/agents/gatekeeper/`) — Validation and quality gates
-- **Scribe** (`src/pipeline/agents/scribe/`) — Final assessment output
+Code:  
+`src/prism-v4/ingestion/`
 
-## License
+### **2. Analysis**
+- Concept extraction  
+- Misconception themes  
+- Difficulty patterns  
+- Metadata enrichment  
 
-Proprietary
+Code:  
+`src/prism-v4/documents/analysis/`
 
-  ```sh
-  sudo dpkg -i <...>.deb
-  ```
+### **3. Simulation**
+- Multi‑profile student modeling  
+- Cognitive load, confusion risk, pacing, fatigue  
+- Cross‑profile comparison  
 
-  ```sh
-  sudo rpm -i <...>.rpm
-  ```
+Code:  
+`api/v4/simulator/`
 
-  ```sh
-  sudo pacman -U <...>.pkg.tar.zst
-  ```
-</details>
+### **4. Rewriting**
+- DocType‑aware rewrite (problems, notes, mixed)  
+- JSON‑safe prompt builders  
+- Teacher‑preference alignment  
 
-<details>
-  <summary><b>Other Platforms</b></summary>
+Code:  
+`api/v4/rewrite/`
 
-  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
+### **5. Export**
+- Structured JSON for UI  
+- Teacher‑ready rewritten content  
+- Simulation reports  
 
-  ```sh
-  go install github.com/supabase/cli@latest
-  ```
+---
 
-  Add a symlink to the binary in `$PATH` for easier access:
+# **Important Files & Directories**
 
-  ```sh
-  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
-  ```
-
-  This works on other non-standard Linux distros.
-</details>
-
-<details>
-  <summary><b>Community Maintained Packages</b></summary>
-
-  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
-  To install in your working directory:
-
-  ```bash
-  pkgx install supabase
-  ```
-
-  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
-</details>
-
-### Run the CLI
-
-```bash
-supabase bootstrap
+### **Ingestion Engine**
+```
+src/prism-v4/ingestion/
+  ingestDocument.ts        ← unified ingestion entry point
+  classifyDocType.ts       ← heuristic docType classifier
+  backfillDocument.ts      ← legacy document upgrader
 ```
 
-Or using npx:
-
-```bash
-npx supabase bootstrap
+### **Rewrite Engine**
+```
+api/v4/rewrite/
+  index.ts                 ← rewrite router (docType-aware)
+  prompts.ts               ← problem/notes/mixed prompt builders
 ```
 
-The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
-
-## Docs
-
-Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
-
-## Breaking changes
-
-We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
-
-However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
-
-## Developing
-
-To run from source:
-
-```sh
-# Go >= 1.22
-go run . help
+### **Simulation Engine**
 ```
+api/v4/simulator/
+  shared.ts                ← items, sections, analysis, docType storage
+  index.ts                 ← simulation route
+```
+
+### **Analysis Engine**
+```
+src/prism-v4/documents/analysis/
+  analyzeRegisteredDocument.ts
+```
+
+---
+
+# **How a Document Flows Through the System**
+
+1. **Upload or create a document**  
+2. `ingestDocument()` runs automatically  
+3. System stores:  
+   - docType  
+   - items  
+   - sections  
+   - analysis  
+4. Rewrite, simulation, and preparedness now operate on structured data  
+5. UI renders teacher‑friendly outputs  
+
+This ensures consistency across all features.
+
+---
+
+# **Common Development Tasks**
+
+### **Add a new ingestion source**
+Call:
+```ts
+await ingestDocument({ source: "api", documentId, rawText });
+```
+
+### **Add a new rewrite mode**
+- Add a prompt builder in `prompts.ts`  
+- Add a branch in `rewrite/index.ts`  
+
+### **Debug ingestion**
+Check:
+- `prism_v4_documents.doc_type`
+- `v4_items`
+- `v4_sections`
+- `v4_analysis`
+
+### **Debug rewrite**
+- Log the prompt  
+- Check JSON parse  
+- Verify docType  
+
+---
+
+# **Troubleshooting**
+
+### Items not appearing?
+- Check ingestion logs  
+- Ensure docType is `"problem"` or `"mixed"`  
+- Verify `v4_items` rows exist  
+
+### Notes not rewriting?
+- Ensure docType is `"notes"` or `"mixed"`  
+- Check `v4_sections`  
+
+### Simulation missing data?
+- Ensure items exist  
+- Check `analyzeRegisteredDocument` output  
+
+---
+

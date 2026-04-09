@@ -198,9 +198,18 @@ type StudioOutputRow = {
 };
 
 function canUseSupabase() {
-	return typeof window === "undefined"
-		&& Boolean(process.env.SUPABASE_URL)
-		&& Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+	const url = process.env.SUPABASE_URL;
+	const key = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+	if (!url || !key) {
+		return false;
+	}
+
+	// Ignore placeholder env values like "your_supabase_url_here".
+	if (!/^https?:\/\//i.test(url)) {
+		return false;
+	}
+
+	return typeof window === "undefined";
 }
 
 function isMissingSnapshotTableError(error: unknown) {
