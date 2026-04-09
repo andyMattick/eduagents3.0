@@ -230,6 +230,7 @@ export interface MultiProfileSimulatorResponse {
 export interface RewrittenItem {
 	originalItemNumber: number;
 	rewrittenStem: string;
+	original?: string;
 	rewrittenParts?: string[];
 	notes: string;
 }
@@ -237,6 +238,7 @@ export interface RewrittenItem {
 export interface RewrittenSection {
 	sectionId: string;
 	rewrittenText: string;
+	original?: string;
 }
 
 export interface RewriteResponse {
@@ -246,4 +248,8 @@ export interface RewriteResponse {
 	items?: Array<{ itemNumber: number; rewrittenStem: string }>;
 	testLevel?: string[];
 	metadata?: Record<string, unknown>;
+	original?: string;
+	rewritten?: string;
+	type?: "item" | "section";
+	id?: string;
 }

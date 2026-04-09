@@ -52,10 +52,12 @@ export function RewriteDiffViewer({
 				{/* Header */}
 				<div style={styles.header}>
 					<h3 style={styles.title}>Rewrite Preview</h3>
-					{profileApplied && <span style={styles.profilePill}>{profileApplied}</span>}
-					<button style={styles.closeButton} onClick={onDiscard} type="button" title="Close">
-						✕
-					</button>
+					<div style={styles.headerRight}>
+						{profileApplied && <span style={styles.profilePill}>{profileApplied}</span>}
+						<button style={styles.closeButton} onClick={onDiscard} type="button" title="Close">
+							✕
+						</button>
+					</div>
 				</div>
 
 				{/* Two-column layout */}
@@ -80,9 +82,26 @@ export function RewriteDiffViewer({
 								</button>
 							</>
 						) : (
-							<p style={styles.noRewrite}>No rewrite suggested.</p>
+							<p style={styles.noRewrite}>No rewrite needed.</p>
 						)}
 					</div>
+				</div>
+
+				{/* Action buttons */}
+				<div style={styles.actions}>
+					{rewritten && (
+						<>
+							<button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={onReplace} type="button">
+								Replace
+							</button>
+							<button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={onCopy} type="button">
+								Copy
+							</button>
+						</>
+					)}
+					<button style={{ ...styles.button, ...styles.buttonTertiary }} onClick={onDiscard} type="button">
+						Discard
+					</button>
 				</div>
 
 				{/* Applied suggestions section */}
@@ -112,23 +131,6 @@ export function RewriteDiffViewer({
 						</ul>
 					</div>
 				)}
-
-				{/* Action buttons */}
-				<div style={styles.actions}>
-					{rewritten && (
-						<>
-							<button style={{ ...styles.button, ...styles.buttonPrimary }} onClick={onReplace} type="button">
-								Replace
-							</button>
-							<button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={onCopy} type="button">
-								Copy
-							</button>
-						</>
-					)}
-					<button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={onDiscard} type="button">
-						Discard
-					</button>
-				</div>
 			</div>
 		</div>
 	);
@@ -155,7 +157,7 @@ const styles = {
 		left: 0,
 		right: 0,
 		bottom: 0,
-		background: "rgba(0, 0, 0, 0.5)",
+		background: "rgba(0, 0, 0, 0.4)",
 		cursor: "pointer",
 	},
 
@@ -163,204 +165,198 @@ const styles = {
 		position: "relative" as const,
 		display: "flex",
 		flexDirection: "column" as const,
-		gap: "1.25rem",
-		background: "rgba(255, 251, 245, 0.98)",
-		border: "1px solid rgba(86, 57, 32, 0.2)",
-		borderRadius: "16px",
-		boxShadow: "0 12px 40px rgba(0, 0, 0, 0.3)",
-		padding: "1.5rem",
-		maxWidth: "1000px",
-		maxHeight: "90vh",
+		background: "#ffffff",
+		borderRadius: "8px",
+		boxShadow: "0 10px 30px rgba(0, 0, 0, 0.15)",
+		padding: "24px",
+		width: "min(960px, 90vw)",
+		maxHeight: "80vh",
 		overflowY: "auto" as const,
-		width: "calc(100% - 32px)",
 	},
 
 	header: {
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "space-between",
-		gap: "1rem",
-		paddingBottom: "0.75rem",
-		borderBottom: "1px solid rgba(86, 57, 32, 0.12)",
+		gap: "12px",
+		paddingBottom: "16px",
+		marginBottom: "16px",
+		borderBottom: "1px solid #E5E7EB",
 	},
 
 	title: {
 		margin: 0,
-		fontSize: "1.25rem",
-		fontWeight: 700,
-		color: "#1f1a17",
-		fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
+		fontSize: "18px",
+		fontWeight: 600,
+		color: "#111827",
+	},
+
+	headerRight: {
+		display: "flex",
+		alignItems: "center",
+		gap: "8px",
 	},
 
 	profilePill: {
-		marginLeft: "auto",
-		padding: "0.35rem 0.75rem",
-		background: "rgba(187, 91, 53, 0.1)",
-		border: "1px solid rgba(187, 91, 53, 0.3)",
-		borderRadius: "20px",
-		fontSize: "0.75rem",
+		borderRadius: "999px",
+		padding: "4px 10px",
+		fontSize: "12px",
 		fontWeight: 600,
-		color: "#9c4d2b",
-		textTransform: "uppercase" as const,
-		letterSpacing: "0.08em",
+		background: "#E6F0FF",
+		color: "#1F4FD8",
 	},
 
 	closeButton: {
 		all: "unset",
 		cursor: "pointer",
-		fontSize: "1.5rem",
-		color: "#9c4d2b",
+		fontSize: "18px",
+		color: "#6B7280",
 		width: "32px",
 		height: "32px",
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "center",
-		transition: "color 0.2s",
+		borderRadius: "6px",
+		lineHeight: 1,
 	},
 
 	columns: {
 		display: "grid" as const,
 		gridTemplateColumns: "1fr 1fr",
-		gap: "1.5rem",
-		minHeight: "300px",
+		gap: "16px",
+		marginTop: "16px",
+		marginBottom: "16px",
 	},
 
 	column: {
 		display: "flex",
 		flexDirection: "column" as const,
-		gap: "0.75rem",
+		gap: "8px",
 	},
 
 	columnTitle: {
-		margin: "0 0 0.5rem",
-		fontSize: "0.95rem",
-		fontWeight: 700,
-		color: "#563920",
-		fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
-		textTransform: "uppercase" as const,
-		letterSpacing: "0.08em",
+		margin: 0,
+		fontSize: "14px",
+		fontWeight: 600,
+		color: "#111827",
 	},
 
 	content: {
-		flex: 1,
 		margin: 0,
-		padding: "0.75rem",
-		background: "rgba(30, 20, 10, 0.04)",
-		border: "1px solid rgba(86, 57, 32, 0.12)",
-		borderRadius: "10px",
-		fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-		fontSize: "0.8rem",
-		lineHeight: 1.6,
+		padding: "12px",
+		background: "#F9FAFB",
+		border: "1px solid #E5E7EB",
+		borderRadius: "6px",
+		fontSize: "14px",
+		lineHeight: 1.5,
 		whiteSpace: "pre-wrap" as const,
 		wordBreak: "break-word" as const,
-		color: "#1f1a17",
+		color: "#111827",
+		maxHeight: "40vh",
 		overflowY: "auto" as const,
 	},
 
 	noRewrite: {
-		margin: "1rem 0 0",
-		padding: "1rem",
-		background: "rgba(251, 191, 36, 0.08)",
-		border: "1px solid rgba(251, 191, 36, 0.2)",
-		borderRadius: "10px",
-		fontSize: "0.875rem",
-		color: "#9c4d2b",
-		textAlign: "center" as const,
+		margin: 0,
+		padding: "12px",
+		background: "#F9FAFB",
+		border: "1px solid #E5E7EB",
+		borderRadius: "6px",
+		fontSize: "14px",
+		lineHeight: 1.5,
+		color: "#6B7280",
 	},
 
 	exportButton: {
-		padding: "0.5rem 1rem",
-		background: "rgba(187, 91, 53, 0.08)",
-		border: "1px solid rgba(187, 91, 53, 0.24)",
-		borderRadius: "8px",
-		fontSize: "0.8rem",
+		padding: "6px 12px",
+		background: "#ffffff",
+		border: "1px solid #D1D5DB",
+		borderRadius: "6px",
+		fontSize: "12px",
 		fontWeight: 600,
-		color: "#bb5b35",
+		color: "#374151",
 		cursor: "pointer",
-		transition: "all 0.2s",
+		marginTop: "8px",
+		alignSelf: "flex-start" as const,
 	},
 
 	suggestionsSection: {
-		padding: "1rem",
-		background: "rgba(187, 91, 53, 0.05)",
-		border: "1px solid rgba(187, 91, 53, 0.18)",
-		borderRadius: "12px",
+		marginTop: "16px",
 	},
 
 	metadataSection: {
-		padding: "1rem",
-		background: "rgba(255, 251, 245, 0.5)",
-		border: "1px solid rgba(86, 57, 32, 0.12)",
-		borderRadius: "12px",
+		marginTop: "16px",
 	},
 
 	sectionTitle: {
-		margin: "0 0 0.75rem",
-		fontSize: "0.85rem",
-		fontWeight: 700,
-		color: "#563920",
-		fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
-		textTransform: "uppercase" as const,
-		letterSpacing: "0.08em",
+		margin: "0 0 4px",
+		fontSize: "14px",
+		fontWeight: 600,
+		color: "#111827",
 	},
 
 	suggestionsList: {
 		margin: 0,
-		paddingLeft: "1.25rem",
+		paddingLeft: "20px",
 		display: "flex",
 		flexDirection: "column" as const,
-		gap: "0.4rem",
+		gap: "4px",
 	},
 
 	suggestionItem: {
-		fontSize: "0.8rem",
-		color: "#433228",
-		lineHeight: 1.5,
+		fontSize: "14px",
+		lineHeight: 1.4,
+		color: "#374151",
 	},
 
 	glossaryList: {
 		margin: 0,
-		paddingLeft: "1.25rem",
+		paddingLeft: "20px",
 		display: "flex",
 		flexDirection: "column" as const,
-		gap: "0.4rem",
+		gap: "4px",
 	},
 
 	glossaryItem: {
-		fontSize: "0.8rem",
-		color: "#433228",
-		lineHeight: 1.5,
+		fontSize: "14px",
+		lineHeight: 1.4,
+		color: "#374151",
 	},
 
 	actions: {
 		display: "flex",
-		gap: "0.75rem",
+		gap: "8px",
 		justifyContent: "flex-end",
-		paddingTop: "0.75rem",
-		borderTop: "1px solid rgba(86, 57, 32, 0.12)",
+		paddingTop: "12px",
+		marginTop: "16px",
+		borderTop: "1px solid #E5E7EB",
 	},
 
 	button: {
-		padding: "0.6rem 1.25rem",
+		padding: "8px 16px",
 		fontFamily: "inherit",
-		fontSize: "0.8rem",
-		fontWeight: 600,
-		borderRadius: "8px",
+		fontSize: "14px",
+		fontWeight: 500,
+		borderRadius: "6px",
 		cursor: "pointer",
-		border: "none",
-		transition: "all 0.2s",
-		textTransform: "uppercase" as const,
-		letterSpacing: "0.08em",
+		border: "1px solid transparent",
 	},
 
 	buttonPrimary: {
-		background: "#bb5b35",
+		background: "#2563EB",
+		borderColor: "#2563EB",
 		color: "#fff",
 	},
 
 	buttonSecondary: {
-		background: "rgba(187, 91, 53, 0.1)",
-		color: "#bb5b35",
-		border: "1px solid rgba(187, 91, 53, 0.24)",
+		background: "#ffffff",
+		borderColor: "#D1D5DB",
+		color: "#374151",
+	},
+
+	buttonTertiary: {
+		background: "transparent",
+		borderColor: "transparent",
+		color: "#6B7280",
 	},
 };

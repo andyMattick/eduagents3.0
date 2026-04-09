@@ -1691,32 +1691,16 @@ export function TeacherStudio() {
 																		: undefined,
 													});
 
-																const previous = state.rewriteResults;
 																let preview: RewritePreview | null = null;
-																if (result.rewrittenItems && result.rewrittenItems.length > 0) {
-																	const first = result.rewrittenItems[0];
-																	const prevItem = previous?.rewrittenItems?.find((entry) => entry.originalItemNumber === first.originalItemNumber);
-																	const generatedItem = state.testData?.test?.[first.originalItemNumber - 1];
+																if (typeof result.original === "string" && typeof result.rewritten === "string") {
 																	preview = {
-																		original: prevItem?.rewrittenStem ?? generatedItem?.stem ?? "Original text unavailable for this item.",
-																		rewritten: first.rewrittenStem,
+																		original: result.original,
+																		rewritten: result.rewritten,
 																		appliedSuggestions: result.testLevel ?? [],
 																		profileApplied: state.differentiationProfile || null,
 																		metadata: result.metadata,
-																		type: "item",
-																		id: String(first.originalItemNumber),
-																	};
-																} else if (result.sections && result.sections.length > 0) {
-																	const first = result.sections[0];
-																	const prevSection = previous?.sections?.find((entry) => entry.sectionId === first.sectionId);
-																	preview = {
-																		original: prevSection?.rewrittenText ?? "Original text unavailable for this section.",
-																		rewritten: first.rewrittenText,
-																		appliedSuggestions: result.testLevel ?? [],
-																		profileApplied: state.differentiationProfile || null,
-																		metadata: result.metadata,
-																		type: "section",
-																		id: first.sectionId,
+																		type: result.type ?? "item",
+																		id: result.id ?? "1",
 																	};
 																}
 													setState((prev) => ({

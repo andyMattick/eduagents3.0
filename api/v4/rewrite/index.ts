@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { callGeminiWithRetry } from "../../../lib/gemini/callGeminiWithRetry";
-import { buildSlimRewritePrompt } from "../../../lib/rewrite/buildSlimRewritePrompt";
 import { estimateTokens } from "../../../lib/rewrite/estimateTokens";
 import { supabaseRest } from "../../../lib/supabase";
 import type { RewriteSuggestions } from "../../../src/types/simulator";
@@ -11,6 +10,7 @@ import {
 	getItemsForDocument,
 	getSectionsForDocument,
 	type V4Item,
+	type V4Section,
 } from "../simulator/shared";
 import {
 	buildMixedRewritePrompt,
@@ -182,6 +182,69 @@ function assertPromptWithinBudget(prompt: string) {
 	}
 }
 
+function enrichRewriteResponseWithOriginals(
+	json: Record<string, unknown>,
+	items: V4Item[],
+	sections: V4Section[],
+): Record<string, unknown> {
+	const payload: Record<string, unknown> = { ...json };
+
+	if (Array.isArray(json.rewrittenItems)) {
+		const rewrittenItems = json.rewrittenItems.map((entry) => {
+			const row = entry as Record<string, unknown>;
+			const itemNumber = Number(row.originalItemNumber);
+			const source = items.find((item) => item.itemNumber === itemNumber);
+			if (!source?.stem) return row;
+			return {
+				...row,
+				original: source.stem,
+			};
+		});
+		payload.rewrittenItems = rewrittenItems;
+
+		const first = rewrittenItems[0] as Record<string, unknown> | undefined;
+		if (
+			typeof first?.original === "string" &&
+			typeof first?.rewrittenStem === "string" &&
+			typeof first?.originalItemNumber !== "undefined"
+		) {
+			payload.original = first.original;
+			payload.rewritten = first.rewrittenStem;
+			payload.type = "item";
+			payload.id = String(first.originalItemNumber);
+		}
+	}
+
+	if (Array.isArray(json.sections)) {
+		const rewrittenSections = json.sections.map((entry) => {
+			const row = entry as Record<string, unknown>;
+			const sectionId = String(row.sectionId ?? "");
+			const source = sections.find((section) => section.sectionId === sectionId);
+			if (!source?.text) return row;
+			return {
+				...row,
+				original: source.text,
+			};
+		});
+		payload.sections = rewrittenSections;
+
+		const first = rewrittenSections[0] as Record<string, unknown> | undefined;
+		if (
+			typeof payload.original !== "string" &&
+			typeof first?.original === "string" &&
+			typeof first?.rewrittenText === "string" &&
+			typeof first?.sectionId === "string"
+		) {
+			payload.original = first.original;
+			payload.rewritten = first.rewrittenText;
+			payload.type = "section";
+			payload.id = first.sectionId;
+		}
+	}
+
+	return payload;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method === "OPTIONS") {
 		return res.status(200)
@@ -223,6 +286,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	let prompt: string;
 	let persistenceDocumentId: string | undefined = documentId;
 	let responseJson: Record<string, unknown> | null = null;
+	let sourceItems: V4Item[] = [];
+	let sourceSections: V4Section[] = [];
 
 	if (documentId) {
 		const [doc, items, sections] = await Promise.all([
@@ -230,6 +295,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			getItemsForDocument(documentId),
 			getSectionsForDocument(documentId),
 		]);
+		sourceItems = items;
+		sourceSections = sections;
 
 		if (!items.length && !sections.length) {
 			return res.status(422).json({ error: "No stored items or sections found for this document." });
@@ -287,11 +354,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 					itemLevel: slimItemLevel(mergedSuggestions.itemLevel, batchItemNumbers),
 				};
 
-				prompt = buildSlimRewritePrompt({
-					items: batch,
-					suggestions: batchSuggestions,
-					preferences,
-				});
+				prompt = buildItemRewritePrompt(batch, batchSuggestions, preferences);
 				assertPromptWithinBudget(prompt);
 				const raw = await callGeminiWithRetry({
 					prompt,
@@ -339,24 +402,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		if (!json) {
 			return res.status(500).json({ error: "Rewrite failed: no response payload generated." });
 		}
+		const enrichedJson = enrichRewriteResponseWithOriginals(json, sourceItems, sourceSections);
 
 		if (persistenceDocumentId) {
 			supabaseRest("v4_rewrite_runs", {
 				method: "POST",
 				body: {
 					document_id: persistenceDocumentId,
-					rewritten_items: (json as { rewrittenItems?: unknown }).rewrittenItems ?? null,
+					rewritten_items: (enrichedJson as { rewrittenItems?: unknown }).rewrittenItems ?? null,
 					metadata: {
-						hasSections: Array.isArray((json as { sections?: unknown[] }).sections),
+						hasSections: Array.isArray((enrichedJson as { sections?: unknown[] }).sections),
 						hasItems:
-							Array.isArray((json as { items?: unknown[] }).items) ||
-							Array.isArray((json as { rewrittenItems?: unknown[] }).rewrittenItems),
+							Array.isArray((enrichedJson as { items?: unknown[] }).items) ||
+							Array.isArray((enrichedJson as { rewrittenItems?: unknown[] }).rewrittenItems),
 					},
 				},
 			}).catch(() => {});
 		}
 
-		return res.status(200).json(json);
+		return res.status(200).json(enrichedJson);
 	} catch (err) {
 		if (err instanceof Error && err.message.includes("Prompt exceeds token budget")) {
 			return res.status(413).json({ error: err.message });
