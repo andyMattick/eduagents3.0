@@ -1477,11 +1477,6 @@ export function TeacherStudio() {
 											/>
 										</div>
 									)}
-
-															differentiationProfile={state.differentiationProfile}
-															onDifferentiationProfileChange={(val) =>
-																setState((prev) => ({ ...prev, differentiationProfile: val }))
-															}
 									{/* Tab: Suggestions */}
 									{state.activeTab === "suggestions" && (
 										<RewriteSuggestionsPanel
@@ -1506,6 +1501,10 @@ export function TeacherStudio() {
 											}
 											onTeacherNotesChange={(val) =>
 												setState((prev) => ({ ...prev, teacherNotes: val }))
+											}
+											differentiationProfile={state.differentiationProfile}
+											onDifferentiationProfileChange={(val: string) =>
+												setState((prev) => ({ ...prev, differentiationProfile: val }))
 											}
 											rewriteLoading={state.rewriteLoading}
 											onRewrite={async () => {
