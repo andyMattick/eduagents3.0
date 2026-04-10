@@ -5,7 +5,18 @@
  * and other API routes without duplicating the Gemini integration.
  */
 
-export async function callGemini({
+export type GeminiUsageMetadata = {
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+};
+
+export type GeminiCallResult = {
+  text: string;
+  usageMetadata?: GeminiUsageMetadata;
+};
+
+export async function callGeminiDetailed({
   model,
   prompt,
   temperature = 0.2,
@@ -15,7 +26,7 @@ export async function callGemini({
   prompt: string;
   temperature?: number;
   maxOutputTokens?: number;
-}): Promise<string> {
+}): Promise<GeminiCallResult> {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
@@ -75,5 +86,18 @@ export async function callGemini({
 
   if (!text) throw new Error("Empty Gemini response");
 
-  return text;
+  return {
+    text,
+    usageMetadata: data?.usageMetadata,
+  };
+}
+
+export async function callGemini(args: {
+  model: string;
+  prompt: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}): Promise<string> {
+  const result = await callGeminiDetailed(args);
+  return result.text;
 }

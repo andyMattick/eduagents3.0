@@ -13,8 +13,14 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "../Auth/useAuth";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import {
+	filterRewriteSuggestions,
+	isActionableRewriteSuggestion,
+} from "../../lib/rewriteSuggestionFilters";
+import {
+	reportBadRewriteApi,
 	runGenerateTestApi,
 	runMultiSimulatorApi,
 	runPreparednessSimulatorApi,
@@ -81,6 +87,9 @@ interface StudioState {
 	isLoading: boolean;
 	error: string | null;
 	activeTab: ResultTab;
+	reportSubmitting: boolean;
+	reportError: string | null;
+	reportSuccess: string | null;
 }
 
 interface RewritePreview {
@@ -91,6 +100,77 @@ interface RewritePreview {
 	metadata?: Record<string, unknown>;
 	type: "item" | "section";
 	id: string;
+}
+
+function pickRewritePreview(
+	result: RewriteResponse,
+	preferredItemNumbers: number[],
+	defaultProfile: string,
+): RewritePreview | null {
+	const preferred = new Set(preferredItemNumbers);
+
+	if (preferred.size > 0 && Array.isArray(result.rewrittenItems)) {
+		for (const entry of result.rewrittenItems) {
+			if (!preferred.has(entry.originalItemNumber)) continue;
+			if (typeof entry.original !== "string" || typeof entry.rewrittenStem !== "string") continue;
+			return {
+				original: entry.original,
+				rewritten: entry.rewrittenStem,
+				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
+				profileApplied: (result.profileApplied ?? defaultProfile) || null,
+				metadata: result.metadata,
+				type: "item",
+				id: String(entry.originalItemNumber),
+			};
+		}
+	}
+
+	if (preferred.size > 0 && Array.isArray(result.items)) {
+		for (const entry of result.items) {
+			if (!preferred.has(entry.itemNumber)) continue;
+			if (typeof entry.original !== "string" || typeof entry.rewrittenStem !== "string") continue;
+			return {
+				original: entry.original,
+				rewritten: entry.rewrittenStem,
+				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
+				profileApplied: (result.profileApplied ?? defaultProfile) || null,
+				metadata: result.metadata,
+				type: "item",
+				id: String(entry.itemNumber),
+			};
+		}
+	}
+
+	if (typeof result.original === "string" && typeof result.rewritten === "string") {
+		return {
+			original: result.original,
+			rewritten: result.rewritten,
+			appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
+			profileApplied: (result.profileApplied ?? defaultProfile) || null,
+			metadata: result.metadata,
+			type: result.type ?? "item",
+			id: result.id ?? "1",
+		};
+	}
+
+	if (Array.isArray(result.sections)) {
+		const firstWithOriginal = result.sections.find(
+			(entry) => typeof entry.original === "string" && typeof entry.rewrittenText === "string",
+		);
+		if (firstWithOriginal) {
+			return {
+				original: firstWithOriginal.original!,
+				rewritten: firstWithOriginal.rewrittenText,
+				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
+				profileApplied: (result.profileApplied ?? defaultProfile) || null,
+				metadata: result.metadata,
+				type: "section",
+				id: firstWithOriginal.sectionId,
+			};
+		}
+	}
+
+	return null;
 }
 
 const INITIAL: StudioState = {
@@ -115,12 +195,15 @@ const INITIAL: StudioState = {
 	differentiationProfile: "",
 	rewritePreview: null,
 	usageCount: 0,
-	usageLimit: 5,
+	usageLimit: 25_000,
 	primaryDragging: false,
 	secondaryDragging: false,
 	isLoading: false,
 	error: null,
 	activeTab: "narrative",
+	reportSubmitting: false,
+	reportError: null,
+	reportSuccess: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -425,11 +508,37 @@ function RewriteSuggestionsPanel({
 
 	const sel = selectedSuggestions ?? {};
 	const notes = teacherNotes ?? "";
-	const itemKeys = Object.keys(suggestions.itemLevel).sort((a, b) => Number(a) - Number(b));
+	const actionableTestSuggestions = suggestions.testLevel
+		.map((text, index) => ({ text, index }))
+		.filter((entry) => isActionableRewriteSuggestion(entry.text));
+	const actionableItemSuggestions = Object.fromEntries(
+		Object.entries(suggestions.itemLevel).map(([itemNum, entries]) => [
+			itemNum,
+			entries
+				.map((text, index) => ({ text, index }))
+				.filter((entry) => isActionableRewriteSuggestion(entry.text)),
+		]),
+	) as Record<string, Array<{ text: string; index: number }>>;
+	const itemKeys = Object.keys(actionableItemSuggestions)
+		.filter((itemNum) => actionableItemSuggestions[itemNum].length > 0)
+		.sort((a, b) => Number(a) - Number(b));
 
 	// Count how many are checked
-	const checkedCount = Object.values(sel).filter(Boolean).length;
-	const hasTeacherInput = notes.trim().length > 0;
+	const checkedCount =
+		actionableTestSuggestions.filter((entry) => Boolean(sel[`test:${entry.index}`])).length +
+		itemKeys.reduce((count, itemNum) => {
+			return (
+				count +
+				actionableItemSuggestions[itemNum].filter((entry) => Boolean(sel[`item:${itemNum}:${entry.index}`])).length
+			);
+		}, 0);
+	const actionableTeacherNotes = filterRewriteSuggestions(
+		notes
+			.split("\n")
+			.map((line) => line.trim())
+			.filter(Boolean),
+	);
+	const hasTeacherInput = actionableTeacherNotes.length > 0;
 	const canRewrite = checkedCount > 0 || hasTeacherInput;
 
 	return (
@@ -438,7 +547,7 @@ function RewriteSuggestionsPanel({
 				Select the suggestions you want to apply, then click Rewrite. You can also add your own.
 			</p>
 
-			{suggestions.testLevel.length > 0 && (
+			{actionableTestSuggestions.length > 0 && (
 				<div
 					style={{
 						background: "rgba(187,91,53,0.05)",
@@ -460,8 +569,8 @@ function RewriteSuggestionsPanel({
 					>
 						Test-Level Suggestions
 					</p>
-					{suggestions.testLevel.map((s, i) => {
-						const key = `test:${i}`;
+					{actionableTestSuggestions.map(({ text, index }) => {
+						const key = `test:${index}`;
 						return (
 							<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.4rem", cursor: "pointer", fontSize: "0.85rem" }}>
 								<input
@@ -470,7 +579,7 @@ function RewriteSuggestionsPanel({
 									onChange={() => onToggle(key)}
 									style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
 								/>
-								<span>{s}</span>
+								<span>{text}</span>
 							</label>
 						);
 					})}
@@ -512,8 +621,8 @@ function RewriteSuggestionsPanel({
 							>
 								Item {itemNum}
 							</p>
-							{suggestions.itemLevel[itemNum].map((s, i) => {
-								const key = `item:${itemNum}:${i}`;
+							{actionableItemSuggestions[itemNum].map(({ text, index }) => {
+								const key = `item:${itemNum}:${index}`;
 								return (
 									<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.3rem", cursor: "pointer", fontSize: "0.83rem" }}>
 										<input
@@ -522,7 +631,7 @@ function RewriteSuggestionsPanel({
 											onChange={() => onToggle(key)}
 											style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
 										/>
-										<span>{s}</span>
+										<span>{text}</span>
 									</label>
 								);
 							})}
@@ -562,6 +671,11 @@ function RewriteSuggestionsPanel({
 						color: "#1f1a17",
 					}}
 				/>
+				{notes.trim().length > 0 && actionableTeacherNotes.length === 0 && (
+					<p style={{ marginTop: "0.5rem", fontSize: "0.78rem", color: "#b45309" }}>
+						Your notes currently look non-actionable for rewrite. Use concrete rewrite actions (for example, add formula sheet, simplify language, add definitions).
+					</p>
+				)}
 			</div>
 
 			<DifferentiationPanel
@@ -767,6 +881,7 @@ function GoalCard({
 // ---------------------------------------------------------------------------
 
 export function TeacherStudio() {
+	const { user } = useAuth();
 	const [state, setState] = useState<StudioState>(INITIAL);
 	const rewriteInFlightRef = useRef(false);
 	const primaryRef = useRef<HTMLInputElement>(null);
@@ -774,15 +889,17 @@ export function TeacherStudio() {
 
 	// Fetch daily usage on mount
 	useEffect(() => {
-		fetch("/api/v4/usage/today")
+		fetch("/api/v4/usage/today", {
+			headers: user?.id ? { "x-user-id": user.id } : undefined,
+		})
 			.then((r) => r.json())
 			.then((d: { count?: number; limit?: number }) => {
 				if (typeof d.count === "number") {
-					setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 5 }));
+					setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 25_000 }));
 				}
 			})
 			.catch(() => {/* non-fatal */});
-	}, []);
+	}, [user?.id]);
 
 	const goalData = GOALS.find((g) => g.id === state.goal);
 
@@ -862,21 +979,23 @@ export function TeacherStudio() {
 		}));
 
 		try {
-			const { sessionId, registered } = await createStudioSessionFromFilesApi(state.primaryFiles);
+			const { sessionId, registered } = await createStudioSessionFromFilesApi(state.primaryFiles, user?.id);
 			const documentId = registered[0]?.documentId ?? null;
 
 			// Refresh usage counter after successful upload
-			fetch("/api/v4/usage/today")
+			fetch("/api/v4/usage/today", {
+				headers: user?.id ? { "x-user-id": user.id } : undefined,
+			})
 				.then((r) => r.json())
 				.then((d: { count?: number; limit?: number }) => {
 					if (typeof d.count === "number") {
-						setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 5 }));
+						setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 25_000 }));
 					}
 				})
 				.catch(() => {});
 
 			if (state.goal === "simulate") {
-				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile });
+				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile }, user?.id);
 				setState((prev) => ({
 					...prev,
 					sessionId,
@@ -887,7 +1006,7 @@ export function TeacherStudio() {
 				}));
 			} else if (state.goal === "preparedness") {
 				const prepText = (await Promise.all(state.secondaryFiles.map(readFileAsText))).join("\n\n");
-				const res = await runPreparednessSimulatorApi({ sessionId, prepText, studentProfile: state.profile });
+				const res = await runPreparednessSimulatorApi({ sessionId, prepText, studentProfile: state.profile }, user?.id);
 				setState((prev) => ({
 					...prev,
 					sessionId,
@@ -900,7 +1019,7 @@ export function TeacherStudio() {
 				const profileEntries = STUDENT_PROFILE_PRESETS.filter((p) =>
 					state.selectedProfileLabels.includes(p.label),
 				);
-				const res = await runMultiSimulatorApi(sessionId, profileEntries);
+				const res = await runMultiSimulatorApi(sessionId, profileEntries, user?.id);
 				setState((prev) => ({
 					...prev,
 					sessionId,
@@ -910,7 +1029,7 @@ export function TeacherStudio() {
 					isLoading: false,
 				}));
 			} else if (state.goal === "create") {
-				const res = await runGenerateTestApi({ sessionId, testPreferences: state.testPrefs });
+				const res = await runGenerateTestApi({ sessionId, testPreferences: state.testPrefs }, user?.id);
 				setState((prev) => ({
 					...prev,
 					sessionId,
@@ -929,7 +1048,7 @@ export function TeacherStudio() {
 				error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
 			}));
 		}
-	}, [state.goal, state.primaryFiles, state.secondaryFiles, state.profile, state.selectedProfileLabels, state.testPrefs]);
+	}, [state.goal, state.primaryFiles, state.secondaryFiles, state.profile, state.selectedProfileLabels, state.testPrefs, user?.id]);
 
 	function handleDownload() {
 		const content = state.narrative ?? "";
@@ -1007,7 +1126,57 @@ export function TeacherStudio() {
 	}
 
 	function handleDiscard() {
-		setState((prev) => ({ ...prev, rewritePreview: null }));
+		setState((prev) => ({
+			...prev,
+			rewritePreview: null,
+			reportError: null,
+			reportSuccess: null,
+			reportSubmitting: false,
+		}));
+	}
+
+	async function handleReportIssue(payload: {
+		teacherInput: string;
+		expectedOutput: string;
+		whatWasWrong: string;
+		additionalContext?: string;
+	}) {
+		const preview = state.rewritePreview;
+		if (!preview) return;
+
+		setState((prev) => ({
+			...prev,
+			reportSubmitting: true,
+			reportError: null,
+			reportSuccess: null,
+		}));
+
+		try {
+			await reportBadRewriteApi({
+				userId: user?.id,
+				sectionId: preview.id,
+				original: preview.original,
+				rewritten: preview.rewritten,
+				teacherInput: payload.teacherInput,
+				expectedOutput: payload.expectedOutput,
+				whatWasWrong: payload.whatWasWrong,
+				additionalContext: payload.additionalContext,
+			});
+
+			setState((prev) => ({
+				...prev,
+				reportSubmitting: false,
+				reportError: null,
+				reportSuccess: "Report submitted. Thank you for the details.",
+			}));
+		} catch (err) {
+			setState((prev) => ({
+				...prev,
+				reportSubmitting: false,
+				reportError: err instanceof Error ? err.message : "Failed to submit report",
+				reportSuccess: null,
+			}));
+		}
 	}
 
 	function handleExportBefore() {
@@ -1420,7 +1589,7 @@ export function TeacherStudio() {
 											/>
 										</div>
 										<span style={{ fontSize: "0.72rem", color: "#9c4d2b", whiteSpace: "nowrap", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif", letterSpacing: "0.06em" }}>
-											{state.usageCount} / {state.usageLimit} today
+											{state.usageCount} / {state.usageLimit} tokens today
 										</span>
 									</div>
 
@@ -1662,12 +1831,14 @@ export function TeacherStudio() {
 												const selectedTestLevel = suggestions.testLevel.filter(
 													(_, i) => sel[`test:${i}`]
 												);
+												const actionableTestLevel = filterRewriteSuggestions(selectedTestLevel);
 												const selectedItemLevel: Record<string, string[]> = {};
 												for (const [itemNum, items] of Object.entries(suggestions.itemLevel)) {
 													const picked = items.filter(
 														(_, i) => sel[`item:${itemNum}:${i}`]
 													);
-													if (picked.length > 0) selectedItemLevel[itemNum] = picked;
+													const actionablePicked = filterRewriteSuggestions(picked);
+													if (actionablePicked.length > 0) selectedItemLevel[itemNum] = actionablePicked;
 												}
 
 												// Teacher-authored suggestions (split by newline)
@@ -1675,38 +1846,43 @@ export function TeacherStudio() {
 													.split("\n")
 													.map((l) => l.trim())
 													.filter(Boolean);
+												const actionableTeacherSuggestions = filterRewriteSuggestions(teacherSuggestions);
+												const hasActionableItemSuggestions = Object.values(selectedItemLevel).some((entries) => entries.length > 0);
+												if (actionableTestLevel.length === 0 && !hasActionableItemSuggestions && actionableTeacherSuggestions.length === 0) {
+													setState((prev) => ({
+														...prev,
+														error: "Select at least one actionable rewrite suggestion.",
+													}));
+													return;
+												}
 
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
 													rewriteInFlightRef.current = true;
 												try {
+													const preferredItemNumbers = Object.keys(selectedItemLevel)
+														.map(Number)
+														.filter((value) => Number.isFinite(value));
 													const result = await runRewriteApi({
 														documentId: state.documentId ?? undefined,
 														selectedSuggestions: {
-															testLevel: selectedTestLevel,
+															testLevel: actionableTestLevel,
 															itemLevel: selectedItemLevel,
 														},
-														teacherSuggestions: teacherSuggestions.length > 0 ? teacherSuggestions : undefined,
+														teacherSuggestions: actionableTeacherSuggestions.length > 0 ? actionableTeacherSuggestions : undefined,
 																	preferences: state.differentiationProfile
 																		? { profile: state.differentiationProfile }
 																		: undefined,
-													});
+													}, user?.id);
 
-																let preview: RewritePreview | null = null;
-																if (typeof result.original === "string" && typeof result.rewritten === "string") {
-																	preview = {
-																		original: result.original,
-																		rewritten: result.rewritten,
-																		appliedSuggestions: result.testLevel ?? [],
-																		profileApplied: state.differentiationProfile || null,
-																		metadata: result.metadata,
-																		type: result.type ?? "item",
-																		id: result.id ?? "1",
-																	};
-																}
+																	const preview = pickRewritePreview(
+																		result,
+																		preferredItemNumbers,
+																		state.differentiationProfile,
+																	);
 													setState((prev) => ({
 														...prev,
 														rewriteResults: result,
-																	rewritePreview: preview,
+															rewritePreview: preview,
 														rewriteLoading: false,
 														activeTab: "rewrite",
 													}));
@@ -1770,6 +1946,19 @@ export function TeacherStudio() {
 											appliedSuggestions={state.rewritePreview.appliedSuggestions}
 											profileApplied={state.rewritePreview.profileApplied}
 											metadata={state.rewritePreview.metadata}
+											reportContext={[
+												state.rewritePreview.appliedSuggestions.length > 0
+													? `Applied suggestions:\n${state.rewritePreview.appliedSuggestions.join("\n")}`
+													: "",
+												state.teacherNotes ? `Teacher notes:\n${state.teacherNotes}` : "",
+												state.differentiationProfile ? `Differentiation profile:\n${state.differentiationProfile}` : "",
+											]
+												.filter(Boolean)
+												.join("\n\n")}
+											reportSubmitting={state.reportSubmitting}
+											reportError={state.reportError}
+											reportSuccess={state.reportSuccess}
+											onReportIssue={handleReportIssue}
 											onReplace={handleReplace}
 											onCopy={handleCopy}
 											onDiscard={handleDiscard}

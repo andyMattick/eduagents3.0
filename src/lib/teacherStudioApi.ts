@@ -138,7 +138,7 @@ export function requestAssessmentOutputApi(args: {
 	});
 }
 
-export async function createStudioSessionFromFilesApi(selectedFiles: File[]) {
+export async function createStudioSessionFromFilesApi(selectedFiles: File[], userId?: string) {
 	const registered: RegisteredDocumentSummary[] = [];
 	const nextFileMap: Record<string, File> = {};
 	let sessionId: string | null = null;
@@ -150,6 +150,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[]) {
 			headers: {
 				"Content-Type": file.type || "application/octet-stream",
 				"x-file-name": file.name,
+				...(userId ? { "x-user-id": userId } : {}),
 				...(sessionId ? { "x-session-id": sessionId } : {}),
 			},
 			body: buffer,

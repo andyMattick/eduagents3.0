@@ -15,12 +15,24 @@
  * - Alter pipeline logic
  */
 
+import { useMemo, useState } from "react";
+
 export interface RewriteDiffViewerProps {
 	original: string;
 	rewritten: string;
 	appliedSuggestions: string[];
 	profileApplied: string | null;
 	metadata?: Record<string, unknown>;
+	reportContext?: string;
+	reportSubmitting?: boolean;
+	reportError?: string | null;
+	reportSuccess?: string | null;
+	onReportIssue?: (payload: {
+		teacherInput: string;
+		expectedOutput: string;
+		whatWasWrong: string;
+		additionalContext?: string;
+	}) => void;
 	onReplace: () => void;
 	onCopy: () => void;
 	onDiscard: () => void;
@@ -34,13 +46,48 @@ export function RewriteDiffViewer({
 	appliedSuggestions,
 	profileApplied,
 	metadata,
+	reportContext,
+	reportSubmitting = false,
+	reportError,
+	reportSuccess,
+	onReportIssue,
 	onReplace,
 	onCopy,
 	onDiscard,
 	onExportBefore,
 	onExportAfter,
 }: RewriteDiffViewerProps) {
+	const [reportOpen, setReportOpen] = useState(false);
+	const [teacherInput, setTeacherInput] = useState("");
+	const [expectedOutput, setExpectedOutput] = useState("");
+	const [whatWasWrong, setWhatWasWrong] = useState("");
+	const [additionalContext, setAdditionalContext] = useState("");
 	const glossary = (metadata?.glossary as Record<string, string>) || null;
+
+	const computedReportContext = useMemo(() => {
+		const sections = [reportContext?.trim() ?? "", rewritten ? `Rewritten Output:\n${rewritten}` : ""]
+			.filter(Boolean)
+			.join("\n\n");
+		return sections;
+	}, [reportContext, rewritten]);
+
+	function openReportForm() {
+		setReportOpen(true);
+		if (!teacherInput && computedReportContext) {
+			setTeacherInput(computedReportContext);
+		}
+	}
+
+	function submitReport() {
+		if (!onReportIssue) return;
+		if (!teacherInput.trim() || !expectedOutput.trim() || !whatWasWrong.trim()) return;
+		onReportIssue({
+			teacherInput: teacherInput.trim(),
+			expectedOutput: expectedOutput.trim(),
+			whatWasWrong: whatWasWrong.trim(),
+			additionalContext: additionalContext.trim() || undefined,
+		});
+	}
 
 	return (
 		<div style={styles.modal}>
@@ -97,12 +144,84 @@ export function RewriteDiffViewer({
 							<button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={onCopy} type="button">
 								Copy
 							</button>
+							{onReportIssue && (
+								<button style={{ ...styles.button, ...styles.buttonSecondary }} onClick={openReportForm} type="button">
+									Report Issue
+								</button>
+							)}
 						</>
 					)}
 					<button style={{ ...styles.button, ...styles.buttonTertiary }} onClick={onDiscard} type="button">
 						Discard
 					</button>
 				</div>
+
+				{reportOpen && onReportIssue && (
+					<div style={styles.reportSection}>
+						<h4 style={styles.sectionTitle}>Report Rewrite Issue</h4>
+						<p style={styles.reportHint}>Tell us exactly what you entered, what you expected, and what was wrong.</p>
+						<label style={styles.reportLabel}>
+							What did you input? (required)
+							<textarea
+								style={styles.reportInput}
+								value={teacherInput}
+								onChange={(event) => setTeacherInput(event.target.value)}
+								placeholder="Include selected suggestions, notes, profile, and any context you entered."
+							/>
+						</label>
+						<label style={styles.reportLabel}>
+							What did you expect? (required)
+							<textarea
+								style={styles.reportInput}
+								value={expectedOutput}
+								onChange={(event) => setExpectedOutput(event.target.value)}
+								placeholder="Describe the expected rewrite result."
+							/>
+						</label>
+						<label style={styles.reportLabel}>
+							What was wrong? (required)
+							<textarea
+								style={styles.reportInput}
+								value={whatWasWrong}
+								onChange={(event) => setWhatWasWrong(event.target.value)}
+								placeholder="Describe inaccuracies, missing context, hallucinations, tone mismatch, etc."
+							/>
+						</label>
+						<label style={styles.reportLabel}>
+							Additional context (optional)
+							<textarea
+								style={styles.reportInput}
+								value={additionalContext}
+								onChange={(event) => setAdditionalContext(event.target.value)}
+								placeholder="Anything else that helps triage this issue quickly."
+							/>
+						</label>
+						<div style={styles.reportActions}>
+							<button
+								type="button"
+								style={{ ...styles.button, ...styles.buttonSecondary }}
+								onClick={() => setReportOpen(false)}
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								style={{ ...styles.button, ...styles.buttonPrimary }}
+								onClick={submitReport}
+								disabled={
+									reportSubmitting ||
+									!teacherInput.trim() ||
+									!expectedOutput.trim() ||
+									!whatWasWrong.trim()
+								}
+							>
+								{reportSubmitting ? "Submitting..." : "Submit Report"}
+							</button>
+						</div>
+						{reportError && <p style={styles.reportError}>{reportError}</p>}
+						{reportSuccess && <p style={styles.reportSuccess}>{reportSuccess}</p>}
+					</div>
+				)}
 
 				{/* Applied suggestions section */}
 				{appliedSuggestions && appliedSuggestions.length > 0 && (
@@ -358,5 +477,59 @@ const styles = {
 		background: "transparent",
 		borderColor: "transparent",
 		color: "#6B7280",
+	},
+
+	reportSection: {
+		marginTop: "16px",
+		paddingTop: "12px",
+		borderTop: "1px solid #E5E7EB",
+		display: "flex",
+		flexDirection: "column" as const,
+		gap: "10px",
+	},
+
+	reportHint: {
+		margin: 0,
+		fontSize: "13px",
+		color: "#4B5563",
+	},
+
+	reportLabel: {
+		display: "flex",
+		flexDirection: "column" as const,
+		gap: "6px",
+		fontSize: "13px",
+		color: "#111827",
+		fontWeight: 500,
+	},
+
+	reportInput: {
+		minHeight: "72px",
+		resize: "vertical" as const,
+		border: "1px solid #D1D5DB",
+		borderRadius: "6px",
+		padding: "8px 10px",
+		fontSize: "13px",
+		lineHeight: 1.4,
+		fontFamily: "inherit",
+		color: "#111827",
+	},
+
+	reportActions: {
+		display: "flex",
+		justifyContent: "flex-end",
+		gap: "8px",
+	},
+
+	reportError: {
+		margin: 0,
+		fontSize: "13px",
+		color: "#B91C1C",
+	},
+
+	reportSuccess: {
+		margin: 0,
+		fontSize: "13px",
+		color: "#047857",
 	},
 };

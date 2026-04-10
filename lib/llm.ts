@@ -19,7 +19,7 @@
  *   are shown a disclosure at the time of upload.
  */
 
-import { callGemini } from "./gemini";
+import { callGemini, callGeminiDetailed, type GeminiCallResult } from "./gemini";
 
 // ---------------------------------------------------------------------------
 // PII detection
@@ -119,6 +119,26 @@ export async function callLLM({
   };
 }): Promise<string> {
   return callGemini({
+    model:           options?.model           ?? DEFAULT_MODEL,
+    prompt,
+    temperature:     options?.temperature     ?? 0.2,
+    maxOutputTokens: options?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+  });
+}
+
+export async function callLLMWithUsage({
+  prompt,
+  options,
+}: {
+  prompt: string;
+  metadata?: Record<string, unknown>;
+  options?: {
+    model?: string;
+    temperature?: number;
+    maxOutputTokens?: number;
+  };
+}): Promise<GeminiCallResult> {
+  return callGeminiDetailed({
     model:           options?.model           ?? DEFAULT_MODEL,
     prompt,
     temperature:     options?.temperature     ?? 0.2,

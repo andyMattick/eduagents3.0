@@ -1,6 +1,7 @@
 # Project Guidelines
 
 ## Build And Test
+- Run commands from the repository root (`/workspaces/eduagents3.0`).
 - Install dependencies: `npm install`
 - Local development: `npm run dev`
 - Production build: `npm run build`
@@ -9,6 +10,7 @@
 - Required semantic and phase-3 validation before merge: `npm run phase3:check`
 - Legacy isolation gate (when touching shared areas): `npm run legacy:report:strict`
 - Regression slice for ingestion/doc flow changes: `npm test -- --run src/__tests__/pipelineRegression.test.ts`
+- Regression shortcut script: `npm run test:regression`
 
 ## Architecture
 - This repository is PRISM v4-first. Use PRISM as the learner-performance inference engine; application code prepares content, persistence, and integration payloads.
@@ -43,3 +45,4 @@
 - Keep pdf worker deployment intact for ingestion flows (`public/pdf.worker.min.js`).
 - v4 ingestion persistence requires `SUPABASE_SERVICE_ROLE_KEY` in server runtime; without it, writes are skipped by design.
 - If ingestion/write paths fail with `PGRST204`, run the v4 schema repair migration and refresh PostgREST schema cache.
+- Root `package.json` is the source of build/test scripts; nested `src/package.json` and `api/package.json` do not define runnable scripts.

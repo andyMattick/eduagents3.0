@@ -16,18 +16,26 @@ export function buildNotesRewritePrompt({
   preferences: Record<string, unknown>;
 }): string {
   const sectionText = sections
-    .map((s) => `SECTION ${s.order}:\n${s.text}`)
+    .map((s) => ({ sectionId: s.sectionId, order: s.order, text: s.text }))
+    .map((s) => JSON.stringify(s, null, 2))
     .join("\n\n");
 
   return `
 SYSTEM:
 You are rewriting instructional NOTES (not assessment items).
-Your goal is to improve clarity, pacing, conceptual accuracy, and accessibility.
+Apply ONLY the selected rewrite suggestions.
 
-Teacher suggestions:
+STRICT RULES:
+- Do not apply any suggestion that is not listed under Selected suggestions.
+- Preserve meaning, factual correctness, section count, section order, and section IDs.
+- Do not add new sections, tables, headings, or duplicated text unless explicitly requested.
+- If no change is needed for a section, return it unchanged.
+- Return valid JSON only.
+
+Selected teacher suggestions:
 ${teacherSuggestions.join("\n")}
 
-Test-level suggestions:
+Selected test-level suggestions:
 ${selectedSuggestions.testLevel.join("\n")}
 
 Preferences:
@@ -70,11 +78,13 @@ export function buildMixedRewritePrompt({
   preferences: Record<string, unknown>;
 }): string {
   const sectionText = sections
-    .map((s) => `SECTION ${s.order}:\n${s.text}`)
+    .map((s) => ({ sectionId: s.sectionId, order: s.order, text: s.text }))
+    .map((s) => JSON.stringify(s, null, 2))
     .join("\n\n");
 
   const itemText = items
-    .map((i) => `ITEM ${i.itemNumber}:\n${i.stem}`)
+    .map((i) => ({ itemNumber: i.itemNumber, stem: i.stem }))
+    .map((i) => JSON.stringify(i, null, 2))
     .join("\n\n");
 
   return `
@@ -83,12 +93,21 @@ You are rewriting a MIXED instructional document containing BOTH:
 1. Instructional notes
 2. Assessment items
 
-Rewrite BOTH parts while preserving meaning and grade-level intent.
+Apply ONLY the selected rewrite suggestions.
 
-Teacher suggestions:
+STRICT RULES:
+- Do not apply any suggestion that is not listed under Selected suggestions.
+- Preserve section IDs, section count, section order, item numbers, and item count.
+- Do not introduce new structure, tables, headings, or duplicated text unless explicitly requested.
+- Keep each rewritten section mapped to the same sectionId.
+- Keep each rewritten item mapped to the same itemNumber.
+- If no change is needed for an entry, return it unchanged.
+- Return valid JSON only.
+
+Selected teacher suggestions:
 ${teacherSuggestions.join("\n")}
 
-Test-level suggestions:
+Selected test-level suggestions:
 ${selectedSuggestions.testLevel.join("\n")}
 
 Preferences:

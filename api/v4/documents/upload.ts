@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
-import { supabaseAdmin, supabaseRest } from "../../../lib/supabase";
+import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
 import {
 	createDocumentSessionStore,
@@ -90,15 +90,33 @@ function getClientIp(req: VercelRequest): string {
 	return ip || "unknown";
 }
 
+function isUuid(value: string): boolean {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function resolveActor(req: VercelRequest): { actorKey: string; userId: string | null } {
+	const userIdHeader = getSingleHeaderValue(req.headers["x-user-id"]);
+	if (userIdHeader && isUuid(userIdHeader)) {
+		return {
+			actorKey: userIdHeader,
+			userId: userIdHeader,
+		};
+	}
+	return {
+		actorKey: getClientIp(req),
+		userId: null,
+	};
+}
+
 async function getDailyUsageCount(userId: string, date: string): Promise<number> {
 	try {
-		const rows = await supabaseRest("user_daily_usage", {
+		const rows = await supabaseRest("user_daily_tokens", {
 			method: "GET",
-			select: "count",
-			filters: { "user_id": `eq.${userId}`, "date": `eq.${date}` },
+			select: "tokens_used",
+			filters: { actor_key: `eq.${userId}`, date: `eq.${date}` },
 		});
 		if (Array.isArray(rows) && rows.length > 0) {
-			return rows[0].count as number;
+			return rows[0].tokens_used as number;
 		}
 		return 0;
 	} catch {
@@ -107,36 +125,54 @@ async function getDailyUsageCount(userId: string, date: string): Promise<number>
 	}
 }
 
-async function incrementDailyUsage(userId: string, date: string): Promise<void> {
+function estimateTokensFromText(value: string): number {
+	if (!value) return 0;
+	return Math.max(1, Math.ceil(value.length / 4));
+}
+
+async function logTokenUsageEvent(params: {
+	actorKey: string;
+	userId: string | null;
+	sessionId?: string | null;
+	documentId?: string | null;
+	stage: string;
+	tokens: number;
+	metadata?: Record<string, unknown>;
+}): Promise<void> {
+	if (!Number.isFinite(params.tokens) || params.tokens <= 0) return;
 	try {
-		const { url, key } = supabaseAdmin();
-		await fetch(`${url}/rest/v1/rpc/increment_daily_usage`, {
+		await supabaseRest("token_usage_events", {
 			method: "POST",
-			headers: {
-				apikey: key,
-				Authorization: `Bearer ${key}`,
-				"Content-Type": "application/json",
+			body: {
+				actor_key: params.actorKey,
+				user_id: params.userId,
+				session_id: params.sessionId ?? null,
+				document_id: params.documentId ?? null,
+				stage: params.stage,
+				endpoint: "/api/v4/documents/upload",
+				tokens: Math.max(1, Math.round(params.tokens)),
+				billed: false,
+				metadata: params.metadata ?? {},
 			},
-			body: JSON.stringify({ uid: userId, d: date }),
 		});
 	} catch {
-		// Non-fatal — don't block the response if increment fails
+		// Non-fatal logging
 	}
 }
 
-const DAILY_DOCUMENT_LIMIT = 5;
+const DAILY_TOKEN_LIMIT = 25_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "POST") {
 		return res.status(405).json({ error: "Method not allowed" });
 	}
 
-	const userId = getClientIp(req);
+	const actor = resolveActor(req);
 	const today = new Date().toISOString().slice(0, 10);
-	const usageCount = await getDailyUsageCount(userId, today);
-	if (usageCount >= DAILY_DOCUMENT_LIMIT) {
+	const usageCount = await getDailyUsageCount(actor.actorKey, today);
+	if (usageCount >= DAILY_TOKEN_LIMIT) {
 		return res.status(429).json({
-			error: `Daily upload limit of ${DAILY_DOCUMENT_LIMIT} documents reached. Please try again tomorrow.`,
+			error: `Daily token limit of ${DAILY_TOKEN_LIMIT} reached. Please try again tomorrow.`,
 		});
 	}
 
@@ -166,7 +202,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				? await ensureSessionDocumentsStore(requestedSessionId, registered.map((entry) => entry.documentId))
 				: await createDocumentSessionStore(registered.map((entry) => entry.documentId));
 
-		await incrementDailyUsage(userId, today);
+		for (let index = 0; index < registered.length; index++) {
+			const doc = documents[index];
+			const reg = registered[index];
+			const estimatedTokens = estimateTokensFromText(doc?.azureExtract?.content ?? `${doc?.sourceFileName ?? ""} ${doc?.sourceMimeType ?? ""}`);
+			await logTokenUsageEvent({
+				actorKey: actor.actorKey,
+				userId: actor.userId,
+				sessionId: session?.sessionId ?? null,
+				documentId: reg?.documentId ?? null,
+				stage: "upload_register_estimate",
+				tokens: estimatedTokens,
+				metadata: {
+					source_file_name: doc?.sourceFileName ?? null,
+					source_mime_type: doc?.sourceMimeType ?? null,
+				},
+			});
+		}
+
 		return res.status(200).json({
 			documentIds: registered.map((entry) => entry.documentId),
 			sessionId: session?.sessionId ?? null,
@@ -221,7 +274,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			console.warn("[upload] ingestDocument failed (non-fatal):", err instanceof Error ? err.message : err),
 		);
 
-		await incrementDailyUsage(userId, today);
+		await logTokenUsageEvent({
+			actorKey: actor.actorKey,
+			userId: actor.userId,
+			sessionId: session.sessionId,
+			documentId: registered.documentId,
+			stage: "upload_binary_estimate",
+			tokens: Math.max(1, Math.ceil(buffer.length / 4)),
+			metadata: {
+				source_file_name: registered.sourceFileName,
+				source_mime_type: registered.sourceMimeType,
+				binary_bytes: buffer.length,
+			},
+		});
 
 		return res.status(200).json({
 			documentId: registered.documentId,

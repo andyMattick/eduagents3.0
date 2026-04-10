@@ -245,11 +245,14 @@ export interface RewriteResponse {
 	rewrittenItems: RewrittenItem[];
 	docType?: "problem" | "notes" | "mixed";
 	sections?: RewrittenSection[];
-	items?: Array<{ itemNumber: number; rewrittenStem: string }>;
+	items?: Array<{ itemNumber: number; rewrittenStem: string; original?: string }>;
 	testLevel?: string[];
+	appliedSuggestions?: string[];
+	profileApplied?: string | null;
 	metadata?: Record<string, unknown>;
 	original?: string;
 	rewritten?: string;
 	type?: "item" | "section";
 	id?: string;
+	message?: string;
 }

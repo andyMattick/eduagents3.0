@@ -1,4 +1,5 @@
-import { callLLM } from "../llm";
+import { callLLM, callLLMWithUsage } from "../llm";
+import type { GeminiCallResult } from "../gemini";
 
 function parseStatusCode(message: string): number | null {
 	const match = message.match(/\((\d{3})\)/);
@@ -37,6 +38,34 @@ export async function callGeminiWithRetry(params: {
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			return await callLLM(rest);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			const status = parseStatusCode(message);
+			if (attempt >= maxRetries || !isRetryableStatus(status)) {
+				throw err;
+			}
+			await delay(backoffMs(attempt));
+		}
+	}
+
+	throw new Error("Gemini retry wrapper exhausted without returning output");
+}
+
+export async function callGeminiWithRetryWithUsage(params: {
+	prompt: string;
+	metadata?: Record<string, unknown>;
+	options?: {
+		model?: string;
+		temperature?: number;
+		maxOutputTokens?: number;
+	};
+	maxRetries?: number;
+}): Promise<GeminiCallResult> {
+	const { maxRetries = 2, ...rest } = params;
+
+	for (let attempt = 0; attempt <= maxRetries; attempt++) {
+		try {
+			return await callLLMWithUsage(rest);
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			const status = parseStatusCode(message);
