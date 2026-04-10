@@ -4,31 +4,23 @@
  * Recharts-based visualization suite for ParallelSimulatorData.
  * All charts receive the full data object and are self-contained.
  *
- * Charts:
- *   1. CognitiveLoadChart      — LineChart, one line per profile
- *   2. TimeToProcessChart      — BarChart, grouped bars per item
- *   3. ReadingVsCogScatter     — ScatterChart, one series per profile
- *   4. RedFlagDensityChart     — BarChart, stacked flags per item
- *   5. ConfusionMatrix         — CSS grid heat map (no extra library)
- *   6. DifficultySpreadChart   — ComposedChart with min/max/variance bars
+ * Charts (reduced set):
+ *   1. PrimaryItemGraph   — Item number vs cognitive load + reading level
+ *   2. TimeToProcessChart — BarChart, grouped bars per item
+ *   3. ConfusionMatrix    — CSS grid heat map (no extra library)
  */
 
 import {
 	BarChart,
 	Bar,
 	CartesianGrid,
-	ComposedChart,
-	ErrorBar,
 	Legend,
 	Line,
 	LineChart,
 	ResponsiveContainer,
-	Scatter,
-	ScatterChart,
 	Tooltip,
 	XAxis,
 	YAxis,
-	ZAxis,
 } from "recharts";
 import type { ParallelSimulatorData, SimulatorData } from "../../types/simulator";
 
@@ -97,11 +89,11 @@ function buildItemMatrix(data: ParallelSimulatorData): Array<Record<string, numb
 			if (!itemMap[item.itemNumber]) {
 				itemMap[item.itemNumber] = { item: item.itemNumber };
 			}
-			(itemMap[item.itemNumber] as Record<string, number | string>)[profile] = item.cognitiveLoad;
+			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_cognitive`] = item.cognitiveLoad;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_time`] = item.timeToProcessSeconds;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_confusion`] = item.confusionRisk;
+			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_misconception`] = item.misconceptionRisk;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_reading`] = item.readingLoad;
-			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_flags`] = item.redFlags.length;
 		}
 	}
 
@@ -110,17 +102,88 @@ function buildItemMatrix(data: ParallelSimulatorData): Array<Record<string, numb
 		.map(([, v]) => v);
 }
 
+function riskBand(value: number): "high" | "medium" | "low" {
+	if (value >= 0.7) return "high";
+	if (value >= 0.45) return "medium";
+	return "low";
+}
+
+function summarizePrimaryRiskItems(matrix: Array<Record<string, number | string>>, profiles: string[]): string[] {
+	const out: string[] = [];
+	for (const row of matrix) {
+		const item = Number(row.item ?? 0);
+		const hasHigh = profiles.some((profile) => {
+			const cognitive = Number(row[`${profile}_cognitive`] ?? 0);
+			const confusion = Number(row[`${profile}_confusion`] ?? 0);
+			const misconception = Number(row[`${profile}_misconception`] ?? 0);
+			return cognitive >= 0.75 || confusion >= 0.65 || misconception >= 0.65;
+		});
+		if (hasHigh) out.push(`#${item}`);
+	}
+	return out;
+}
+
 // ---------------------------------------------------------------------------
-// 1. Cognitive Load Curve
+// 1. Primary Item Graph
 // ---------------------------------------------------------------------------
 
-export function CognitiveLoadChart({ data }: { data: ParallelSimulatorData }) {
+function PrimaryGraphTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ payload: Record<string, number | string> }>; label?: string | number; }) {
+	if (!active || !payload || payload.length === 0) return null;
+	const row = payload[0].payload;
+	const profiles = Object.keys(row)
+		.filter((key) => key.endsWith("_cognitive"))
+		.map((key) => key.replace(/_cognitive$/, ""));
+
+	return (
+		<div style={TOOLTIP_CONTENT_STYLE}>
+			<div style={{ ...TOOLTIP_LABEL_STYLE, marginBottom: "0.4rem" }}>Item {label}</div>
+			{profiles.map((profile) => {
+				const cognitive = Number(row[`${profile}_cognitive`] ?? 0);
+				const reading = Number(row[`${profile}_reading`] ?? 0);
+				const confusion = Number(row[`${profile}_confusion`] ?? 0);
+				const misconception = Number(row[`${profile}_misconception`] ?? 0);
+				const time = Number(row[`${profile}_time`] ?? 0);
+				const delta = cognitive - reading;
+				const band = riskBand(Math.max(cognitive, confusion, misconception));
+				const bandColor = band === "high" ? "#fca5a5" : band === "medium" ? "#fde68a" : "#86efac";
+				return (
+					<div key={profile} style={{ marginBottom: "0.45rem" }}>
+						<div style={{ ...TOOLTIP_ITEM_STYLE, fontWeight: 700, display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
+							<span>{profile}</span>
+							<span style={{ color: bandColor, textTransform: "uppercase", fontSize: "0.68rem", letterSpacing: "0.07em" }}>{band} risk</span>
+						</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Cognitive: {Math.round(cognitive * 100)}%</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Reading: {Math.round(reading * 100)}%</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Gap (Cog-Read): {delta >= 0 ? "+" : ""}{Math.round(delta * 100)} pts</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Confusion: {Math.round(confusion * 100)}%</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Misconception: {Math.round(misconception * 100)}%</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Time: {time}s</div>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+export function PrimaryItemGraph({ data }: { data: ParallelSimulatorData }) {
 	const profiles = getProfiles(data);
 	const matrix = buildItemMatrix(data);
+	const highRiskItems = summarizePrimaryRiskItems(matrix, profiles);
 
 	return (
 		<div style={CHART_STYLE}>
-			<p style={SECTION_KICKER}>Cognitive Load Curve</p>
+			<p style={SECTION_KICKER}>Primary Item Graph (Cognitive + Reading)</p>
+			<p style={{ margin: "0 0 0.5rem", fontSize: "0.78rem", color: "#7c5a46", lineHeight: 1.5 }}>
+				Solid line = cognitive load. Dashed line = reading load. Use the tooltip for confusion, misconception, and time signals.
+			</p>
+			{highRiskItems.length > 0 && (
+				<p style={{ margin: "0 0 0.65rem", fontSize: "0.76rem", color: "#9a3412" }}>
+					Priority items to inspect: {highRiskItems.join(", ")}
+				</p>
+			)}
+			<p style={{ margin: highRiskItems.length > 0 ? "-0.2rem 0 0.7rem" : "0 0 0.7rem", fontSize: "0.72rem", color: "#7c5a46" }}>
+				Thresholds: High risk = cognitive ≥ 70% or confusion/misconception ≥ 65%. Medium risk = cognitive ≥ 45%.
+			</p>
 			<ResponsiveContainer width="100%" height={260}>
 				<LineChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
@@ -134,24 +197,33 @@ export function CognitiveLoadChart({ data }: { data: ParallelSimulatorData }) {
 						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
 						tick={{ fontSize: 10, fill: TICK_COLOR }}
 					/>
-					<Tooltip
-						contentStyle={TOOLTIP_CONTENT_STYLE}
-					labelStyle={TOOLTIP_LABEL_STYLE}
-					itemStyle={TOOLTIP_ITEM_STYLE}
-					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
-					labelFormatter={(label) => `Item ${label}`}
-				/>
-				<Legend wrapperStyle={LEGEND_STYLE} />
+					<Tooltip content={<PrimaryGraphTooltip />} />
+					<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => (
-						<Line
-							key={profile}
-							type="monotone"
-							dataKey={profile}
-							stroke={profileColor(i)}
-							strokeWidth={2}
-							dot={{ r: 3 }}
-							activeDot={{ r: 5 }}
-						/>
+						[
+							<Line
+								key={`${profile}-cognitive`}
+								type="monotone"
+								name={`${profile} Cognitive`}
+								dataKey={`${profile}_cognitive`}
+								stroke={profileColor(i)}
+								strokeWidth={2.2}
+								dot={{ r: 3 }}
+								activeDot={{ r: 5 }}
+							/>,
+							<Line
+								key={`${profile}-reading`}
+								type="monotone"
+								name={`${profile} Reading`}
+								dataKey={`${profile}_reading`}
+								stroke={profileColor(i)}
+								strokeOpacity={0.85}
+								strokeDasharray="5 4"
+								strokeWidth={2}
+								dot={{ r: 2 }}
+								activeDot={{ r: 4 }}
+							/>
+						]
 					))}
 				</LineChart>
 			</ResponsiveContainer>
@@ -199,101 +271,8 @@ export function TimeToProcessChart({ data }: { data: ParallelSimulatorData }) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Reading Load vs Cognitive Load Scatter
 // ---------------------------------------------------------------------------
-
-export function ReadingVsCogScatter({ data }: { data: ParallelSimulatorData }) {
-	const profiles = getProfiles(data);
-
-	return (
-		<div style={CHART_STYLE}>
-			<p style={SECTION_KICKER}>Reading Load vs Cognitive Load</p>
-			<ResponsiveContainer width="100%" height={260}>
-				<ScatterChart margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis
-						type="number"
-						dataKey="x"
-						domain={[0, 1]}
-						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: TICK_COLOR }}
-						label={{ value: "Reading Load", position: "insideBottom", offset: -2, fontSize: 11, fill: TICK_COLOR }}
-					/>
-					<YAxis
-						type="number"
-						dataKey="y"
-						domain={[0, 1]}
-						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: TICK_COLOR }}
-						label={{ value: "Cognitive Load", angle: -90, position: "insideLeft", fontSize: 11, fill: TICK_COLOR }}
-					/>
-					<ZAxis range={[40, 40]} />
-					<Tooltip
-						contentStyle={TOOLTIP_CONTENT_STYLE}
-					labelStyle={TOOLTIP_LABEL_STYLE}
-					itemStyle={TOOLTIP_ITEM_STYLE}
-					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? Math.round(value * 100) : 0}%`, name]}
-					cursor={{ strokeDasharray: "3 3" }}
-				/>
-				<Legend wrapperStyle={LEGEND_STYLE} />
-					{profiles.map((profile, i) => {
-						const points = data.students[profile].items.map((item) => ({
-							x: item.readingLoad,
-							y: item.cognitiveLoad,
-							item: item.itemNumber,
-						}));
-						return (
-							<Scatter
-								key={profile}
-								name={profile}
-								data={points}
-								fill={profileColor(i)}
-								fillOpacity={0.75}
-							/>
-						);
-					})}
-				</ScatterChart>
-			</ResponsiveContainer>
-		</div>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// 4. Red Flag Density Chart
-// ---------------------------------------------------------------------------
-
-export function RedFlagDensityChart({ data }: { data: ParallelSimulatorData }) {
-	const profiles = getProfiles(data);
-	const matrix = buildItemMatrix(data);
-
-	return (
-		<div style={CHART_STYLE}>
-			<p style={SECTION_KICKER}>Red Flag Density (flags per item)</p>
-			<ResponsiveContainer width="100%" height={220}>
-				<BarChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
-					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} allowDecimals={false} />
-		<Tooltip contentStyle={TOOLTIP_CONTENT_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} labelFormatter={(label) => `Item ${label}`} />
-			<Legend wrapperStyle={LEGEND_STYLE} />
-					{profiles.map((profile, i) => (
-						<Bar
-							key={profile}
-							dataKey={`${profile}_flags`}
-							name={profile}
-							stackId="flags"
-							fill={profileColor(i)}
-							fillOpacity={0.85}
-						/>
-					))}
-				</BarChart>
-			</ResponsiveContainer>
-		</div>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// 5. Confusion Matrix (CSS grid — no extra library)
+// 3. Confusion Matrix (CSS grid — no extra library)
 // ---------------------------------------------------------------------------
 
 function confusionColor(value: number): string {
@@ -386,62 +365,6 @@ export function ConfusionMatrix({ data }: { data: ParallelSimulatorData }) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Difficulty Spread Chart (min/max/variance per item)
-// ---------------------------------------------------------------------------
-
-export function DifficultySpreadChart({ data }: { data: ParallelSimulatorData }) {
-	const spread = data.comparison.itemDifficultySpread;
-
-	// Recharts ErrorBar needs: value = midpoint, errorY = [lowerDelta, upperDelta]
-	const chartData = Object.entries(spread)
-		.sort(([a], [b]) => Number(a) - Number(b))
-		.map(([itemNum, s]) => {
-			const mid = (s.min + s.max) / 2;
-			return {
-				item: Number(itemNum),
-				mid: parseFloat(mid.toFixed(3)),
-				variance: parseFloat(s.variance.toFixed(3)),
-				errorY: [
-					parseFloat((mid - s.min).toFixed(3)),
-					parseFloat((s.max - mid).toFixed(3)),
-				],
-			};
-		});
-
-	if (chartData.length === 0) return null;
-
-	return (
-		<div style={CHART_STYLE}>
-			<p style={SECTION_KICKER}>Difficulty Spread (min / mid / max cognitive load per item)</p>
-			<ResponsiveContainer width="100%" height={240}>
-				<ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
-					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
-					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
-					<YAxis
-						domain={[0, 1]}
-						tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
-						tick={{ fontSize: 10, fill: TICK_COLOR }}
-					/>
-					<Tooltip
-						contentStyle={TOOLTIP_CONTENT_STYLE}
-						labelStyle={TOOLTIP_LABEL_STYLE}
-						itemStyle={TOOLTIP_ITEM_STYLE}
-						formatter={(value: number | undefined, name: string | undefined) => {
-							if (name === "variance") return [(value ?? 0).toFixed(3), "Variance" as const];
-							return [`${Math.round((value ?? 0) * 100)}%`, "Midpoint" as const];
-						}}
-						labelFormatter={(label) => `Item ${label}`}
-					/>
-					<Bar dataKey="mid" name="Midpoint" fill="#bb5b35" fillOpacity={0.75} radius={[4, 4, 0, 0]}>
-						<ErrorBar dataKey="errorY" width={6} strokeWidth={2} stroke="#874122" direction="y" />
-					</Bar>
-				</ComposedChart>
-			</ResponsiveContainer>
-		</div>
-	);
-}
-
-// ---------------------------------------------------------------------------
 // Comparison Insights block
 // ---------------------------------------------------------------------------
 
@@ -452,13 +375,7 @@ export function ComparisonInsights({ data }: { data: ParallelSimulatorData }) {
 		([, items]) => items.length > 0,
 	);
 
-	const highVarianceItems = Object.entries(comparison.itemDifficultySpread)
-		.filter(([, s]) => s.variance > 0.05)
-		.sort(([, a], [, b]) => b.variance - a.variance)
-		.slice(0, 5)
-		.map(([n]) => Number(n));
-
-	if (!hasUniversal && profileRisks.length === 0 && highVarianceItems.length === 0) return null;
+	if (!hasUniversal && profileRisks.length === 0) return null;
 
 	return (
 		<div
@@ -488,14 +405,6 @@ export function ComparisonInsights({ data }: { data: ParallelSimulatorData }) {
 				</div>
 			))}
 
-			{highVarianceItems.length > 0 && (
-				<div style={{ marginTop: "0.5rem" }}>
-					<span style={{ fontWeight: 700, fontSize: "0.85rem" }}>Highest equity risk (widest difficulty spread): </span>
-					<span style={{ fontSize: "0.85rem" }}>
-						{highVarianceItems.map((n) => `#${n}`).join(", ")} — these items affect learners very differently.
-					</span>
-				</div>
-			)}
 		</div>
 	);
 }
@@ -508,12 +417,9 @@ export function ParallelSimulationResults({ data }: { data: ParallelSimulatorDat
 	return (
 		<div style={{ width: "100%", minWidth: 0, display: "block" }}>
 			<ComparisonInsights data={data} />
-			<CognitiveLoadChart data={data} />
+			<PrimaryItemGraph data={data} />
 			<ConfusionMatrix data={data} />
 			<TimeToProcessChart data={data} />
-			<RedFlagDensityChart data={data} />
-			<ReadingVsCogScatter data={data} />
-			<DifficultySpreadChart data={data} />
 		</div>
 	);
 }
@@ -550,12 +456,9 @@ export function SimulationCharts({ data }: { data: SimulatorData | ParallelSimul
 	return (
 		<div style={{ width: "100%", minWidth: 0, display: "block" }}>
 			{isMulti && <ComparisonInsights data={parallel} />}
-			<CognitiveLoadChart data={parallel} />
+			<PrimaryItemGraph data={parallel} />
 			<ConfusionMatrix data={parallel} />
 			<TimeToProcessChart data={parallel} />
-			<RedFlagDensityChart data={parallel} />
-			<ReadingVsCogScatter data={parallel} />
-			{isMulti && <DifficultySpreadChart data={parallel} />}
 		</div>
 	);
 }

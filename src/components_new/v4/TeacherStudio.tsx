@@ -16,7 +16,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../Auth/useAuth";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import {
-	filterRewriteSuggestions,
 	isActionableRewriteSuggestion,
 } from "../../lib/rewriteSuggestionFilters";
 import {
@@ -37,13 +36,13 @@ import type {
 	SimulatorTestPreferences,
 	StudentProfile,
 } from "../../types/simulator";
+import type { RewriteSuggestion } from "../../types/v4/suggestions";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
 import { DifferentiationPanel } from "./DifferentiationPanel";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
 import { SimulationCharts } from "./SimulationCharts";
-import { SimulationViewer } from "./SimulationViewer";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -383,7 +382,7 @@ function ItemTable({ data, goal }: { data: SimulatorData; goal: Goal }) {
 			<table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
 				<thead>
 					<tr style={{ borderBottom: "2px solid rgba(86,57,32,0.16)" }}>
-						{["#", "Words", "Cog. Load", "Confusion", "Time (s)", ...(showAlignment ? ["Alignment"] : []), "Flags"].map(
+						{["#", "Words", "Cog. Load", "Confusion", "Time (s)", ...(showAlignment ? ["Alignment"] : [])].map(
 							(h) => (
 								<th
 									key={h}
@@ -428,9 +427,6 @@ function ItemTable({ data, goal }: { data: SimulatorData; goal: Goal }) {
 											: "—"}
 									</td>
 								)}
-								<td style={{ padding: "0.35rem 0.5rem", color: "#dc2626", maxWidth: "200px" }}>
-									{item.redFlags.join(", ") || "—"}
-								</td>
 							</tr>
 						);
 					})}
@@ -485,6 +481,7 @@ function GeneratedTestView({ data }: { data: GeneratedTestData }) {
 
 function RewriteSuggestionsPanel({
 	suggestions,
+	itemRedFlags,
 	selectedSuggestions,
 	teacherNotes,
 	onToggle,
@@ -493,8 +490,10 @@ function RewriteSuggestionsPanel({
 	onDifferentiationProfileChange,
 	onRewrite,
 	rewriteLoading,
+	rewriteDisabledReason,
 }: {
 	suggestions?: RewriteSuggestions;
+	itemRedFlags?: Record<string, string[]>;
 	selectedSuggestions: Record<string, boolean>;
 	teacherNotes: string;
 	onToggle: (key: string) => void;
@@ -503,51 +502,64 @@ function RewriteSuggestionsPanel({
 	onDifferentiationProfileChange: (val: string) => void;
 	onRewrite?: () => void;
 	rewriteLoading?: boolean;
+	rewriteDisabledReason?: string | null;
 }) {
 	if (!suggestions) return null;
 
 	const sel = selectedSuggestions ?? {};
 	const notes = teacherNotes ?? "";
-	const actionableTestSuggestions = suggestions.testLevel
-		.map((text, index) => ({ text, index }))
-		.filter((entry) => isActionableRewriteSuggestion(entry.text));
-	const actionableItemSuggestions = Object.fromEntries(
+	const testSuggestions = suggestions.testLevel
+		.map((text, index) => ({ text, index }));
+	const itemSuggestions = Object.fromEntries(
 		Object.entries(suggestions.itemLevel).map(([itemNum, entries]) => [
 			itemNum,
 			entries
-				.map((text, index) => ({ text, index }))
-				.filter((entry) => isActionableRewriteSuggestion(entry.text)),
+				.map((text, index) => ({ text, index })),
 		]),
 	) as Record<string, Array<{ text: string; index: number }>>;
-	const itemKeys = Object.keys(actionableItemSuggestions)
-		.filter((itemNum) => actionableItemSuggestions[itemNum].length > 0)
+	const itemKeys = Object.keys(itemSuggestions)
+		.filter((itemNum) => itemSuggestions[itemNum].length > 0)
 		.sort((a, b) => Number(a) - Number(b));
 
 	// Count how many are checked
 	const checkedCount =
-		actionableTestSuggestions.filter((entry) => Boolean(sel[`test:${entry.index}`])).length +
+		testSuggestions.filter((entry) => Boolean(sel[`test:${entry.index}`])).length +
 		itemKeys.reduce((count, itemNum) => {
 			return (
 				count +
-				actionableItemSuggestions[itemNum].filter((entry) => Boolean(sel[`item:${itemNum}:${entry.index}`])).length
+				itemSuggestions[itemNum].filter((entry) => Boolean(sel[`item:${itemNum}:${entry.index}`])).length
 			);
 		}, 0);
-	const actionableTeacherNotes = filterRewriteSuggestions(
+	const teacherNotesLines =
 		notes
 			.split("\n")
 			.map((line) => line.trim())
-			.filter(Boolean),
-	);
-	const hasTeacherInput = actionableTeacherNotes.length > 0;
-	const canRewrite = checkedCount > 0 || hasTeacherInput;
+			.filter(Boolean);
+	const hasTeacherInput = teacherNotesLines.length > 0;
+	const canRewrite = (checkedCount > 0 || hasTeacherInput) && !rewriteDisabledReason;
 
 	return (
 		<div style={{ marginTop: "1.25rem" }}>
+			{rewriteDisabledReason && (
+				<div
+					style={{
+						background: "rgba(251,191,36,0.12)",
+						border: "1px solid rgba(180,83,9,0.3)",
+						color: "#7c2d12",
+						borderRadius: "12px",
+						padding: "0.8rem 0.95rem",
+						marginBottom: "0.85rem",
+						fontSize: "0.82rem",
+					}}
+				>
+					{rewriteDisabledReason}
+				</div>
+			)}
 			<p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1rem" }}>
 				Select the suggestions you want to apply, then click Rewrite. You can also add your own.
 			</p>
 
-			{actionableTestSuggestions.length > 0 && (
+			{testSuggestions.length > 0 && (
 				<div
 					style={{
 						background: "rgba(187,91,53,0.05)",
@@ -569,8 +581,9 @@ function RewriteSuggestionsPanel({
 					>
 						Test-Level Suggestions
 					</p>
-					{actionableTestSuggestions.map(({ text, index }) => {
+					{testSuggestions.map(({ text, index }) => {
 						const key = `test:${index}`;
+						const actionable = isActionableRewriteSuggestion(text);
 						return (
 							<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.4rem", cursor: "pointer", fontSize: "0.85rem" }}>
 								<input
@@ -579,7 +592,12 @@ function RewriteSuggestionsPanel({
 									onChange={() => onToggle(key)}
 									style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
 								/>
-								<span>{text}</span>
+								<span>
+									{text}
+									{!actionable && (
+										<span style={{ marginLeft: "0.5rem", fontSize: "0.74rem", color: "#b45309" }}>(may be non-actionable)</span>
+									)}
+								</span>
 							</label>
 						);
 					})}
@@ -621,8 +639,21 @@ function RewriteSuggestionsPanel({
 							>
 								Item {itemNum}
 							</p>
-							{actionableItemSuggestions[itemNum].map(({ text, index }) => {
+							{(itemRedFlags?.[itemNum]?.length ?? 0) > 0 && (
+								<div style={{ marginBottom: "0.45rem", padding: "0.5rem 0.6rem", background: "rgba(251,191,36,0.14)", borderRadius: "8px" }}>
+									<p style={{ margin: "0 0 0.3rem", fontSize: "0.74rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#92400e" }}>
+										Red Flags
+									</p>
+									<ul style={{ margin: 0, paddingLeft: "1rem", fontSize: "0.8rem", color: "#7c2d12" }}>
+										{itemRedFlags?.[itemNum]?.map((flag, idx) => (
+											<li key={`${itemNum}-flag-${idx}`}>{flag}</li>
+										))}
+									</ul>
+								</div>
+							)}
+							{itemSuggestions[itemNum].map(({ text, index }) => {
 								const key = `item:${itemNum}:${index}`;
+								const actionable = isActionableRewriteSuggestion(text);
 								return (
 									<label key={key} style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", marginBottom: "0.3rem", cursor: "pointer", fontSize: "0.83rem" }}>
 										<input
@@ -631,7 +662,12 @@ function RewriteSuggestionsPanel({
 											onChange={() => onToggle(key)}
 											style={{ marginTop: "0.2rem", accentColor: "#9c4d2b" }}
 										/>
-										<span>{text}</span>
+										<span>
+											{text}
+											{!actionable && (
+												<span style={{ marginLeft: "0.5rem", fontSize: "0.72rem", color: "#b45309" }}>(may be non-actionable)</span>
+											)}
+										</span>
 									</label>
 								);
 							})}
@@ -671,9 +707,9 @@ function RewriteSuggestionsPanel({
 						color: "#1f1a17",
 					}}
 				/>
-				{notes.trim().length > 0 && actionableTeacherNotes.length === 0 && (
+				{notes.trim().length > 0 && teacherNotesLines.length === 0 && (
 					<p style={{ marginTop: "0.5rem", fontSize: "0.78rem", color: "#b45309" }}>
-						Your notes currently look non-actionable for rewrite. Use concrete rewrite actions (for example, add formula sheet, simplify language, add definitions).
+						Add one suggestion per line.
 					</p>
 				)}
 			</div>
@@ -696,6 +732,8 @@ function RewriteSuggestionsPanel({
 				>
 					{rewriteLoading
 						? "Rewriting\u2026"
+						: rewriteDisabledReason
+						? "Rewrite unavailable"
 						: `Rewrite Assessment (${checkedCount} suggestion${checkedCount !== 1 ? "s" : ""}${hasTeacherInput ? " + your notes" : ""})`}
 				</button>
 			)}
@@ -1775,7 +1813,6 @@ export function TeacherStudio() {
 												<>
 													<OverallStats data={state.simData} goal={state.goal!} />
 													<ItemTable data={state.simData} goal={state.goal!} />
-													<SimulationViewer sections={state.simData.sections} />
 												</>
 											)}
 
@@ -1797,6 +1834,9 @@ export function TeacherStudio() {
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions
 											}
+												itemRedFlags={Object.fromEntries(
+													(state.simData?.items ?? []).map((item) => [String(item.itemNumber), item.redFlags ?? []]),
+												)}
 											selectedSuggestions={state.selectedSuggestions}
 											teacherNotes={state.teacherNotes}
 											onToggle={(key) =>
@@ -1819,39 +1859,74 @@ export function TeacherStudio() {
 												setState((prev) => ({ ...prev, differentiationProfile: val }))
 											}
 											rewriteLoading={state.rewriteLoading}
+											rewriteDisabledReason={state.goal !== "compare" && state.simData && state.simData.items.length === 0
+												? "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments."
+												: null}
 											onRewrite={async () => {
 													if (rewriteInFlightRef.current) return;
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
 												if (!suggestions || !state.documentId) return;
-
-												// Build selectedSuggestions payload from checkbox state
-												const sel = state.selectedSuggestions ?? {};
-												const selectedTestLevel = suggestions.testLevel.filter(
-													(_, i) => sel[`test:${i}`]
-												);
-												const actionableTestLevel = filterRewriteSuggestions(selectedTestLevel);
-												const selectedItemLevel: Record<string, string[]> = {};
-												for (const [itemNum, items] of Object.entries(suggestions.itemLevel)) {
-													const picked = items.filter(
-														(_, i) => sel[`item:${itemNum}:${i}`]
-													);
-													const actionablePicked = filterRewriteSuggestions(picked);
-													if (actionablePicked.length > 0) selectedItemLevel[itemNum] = actionablePicked;
+												if (state.goal !== "compare" && state.simData && state.simData.items.length === 0) {
+													setState((prev) => ({
+														...prev,
+														error: "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments.",
+													}));
+													return;
 												}
+
+												// Build selected suggestion ID set from checkbox state
+												const sel = state.selectedSuggestions ?? {};
 
 												// Teacher-authored suggestions (split by newline)
 												const teacherSuggestions = (state.teacherNotes ?? "")
 													.split("\n")
 													.map((l) => l.trim())
 													.filter(Boolean);
-												const actionableTeacherSuggestions = filterRewriteSuggestions(teacherSuggestions);
-												const hasActionableItemSuggestions = Object.values(selectedItemLevel).some((entries) => entries.length > 0);
-												if (actionableTestLevel.length === 0 && !hasActionableItemSuggestions && actionableTeacherSuggestions.length === 0) {
+
+												const flattenedSuggestions: RewriteSuggestion[] = [];
+												for (const [index, text] of suggestions.testLevel.entries()) {
+													flattenedSuggestions.push({
+														id: `test:${index}`,
+														scope: "testLevel",
+														text,
+														source: "system",
+														actionable: true,
+														selected: Boolean(sel[`test:${index}`]),
+													});
+												}
+												for (const [itemNum, entries] of Object.entries(suggestions.itemLevel)) {
+													for (const [index, text] of entries.entries()) {
+														flattenedSuggestions.push({
+															id: `item:${itemNum}:${index}`,
+															scope: "itemLevel",
+															itemId: itemNum,
+															text,
+															source: "system",
+															actionable: true,
+															selected: Boolean(sel[`item:${itemNum}:${index}`]),
+														});
+													}
+												}
+												for (const [index, text] of teacherSuggestions.entries()) {
+													flattenedSuggestions.push({
+														id: `teacher:${index}`,
+														scope: "testLevel",
+														text,
+														source: "teacher",
+														actionable: true,
+														selected: true,
+													});
+												}
+
+												const selectedSuggestionIds = flattenedSuggestions
+													.filter((entry) => entry.selected)
+													.map((entry) => entry.id);
+												if (selectedSuggestionIds.length === 0) {
 													setState((prev) => ({
 														...prev,
-														error: "Select at least one actionable rewrite suggestion.",
+														error: "Select at least one rewrite suggestion.",
 													}));
 													return;
 												}
@@ -1859,16 +1934,14 @@ export function TeacherStudio() {
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
 													rewriteInFlightRef.current = true;
 												try {
-													const preferredItemNumbers = Object.keys(selectedItemLevel)
-														.map(Number)
+													const preferredItemNumbers = flattenedSuggestions
+														.filter((entry) => entry.selected && entry.scope === "itemLevel")
+														.map((entry) => Number(entry.itemId))
 														.filter((value) => Number.isFinite(value));
 													const result = await runRewriteApi({
 														documentId: state.documentId ?? undefined,
-														selectedSuggestions: {
-															testLevel: actionableTestLevel,
-															itemLevel: selectedItemLevel,
-														},
-														teacherSuggestions: actionableTeacherSuggestions.length > 0 ? actionableTeacherSuggestions : undefined,
+														suggestions: flattenedSuggestions,
+														selectedSuggestionIds,
 																	preferences: state.differentiationProfile
 																		? { profile: state.differentiationProfile }
 																		: undefined,

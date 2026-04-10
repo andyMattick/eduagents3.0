@@ -17,7 +17,6 @@ import {
 } from "../simulator/shared";
 import {
 	buildMixedRewritePrompt,
-	buildNotesRewritePrompt,
 } from "./prompts";
 
 export const runtime = "nodejs";
@@ -28,8 +27,11 @@ const REWRITE_MODEL = "gemini-2.0-flash";
 type RewriteBody = {
 	documentId?: string;
 	sessionId?: string;
+	docType?: "assignment" | "assessment" | "mixed" | "notes";
+	original?: string;
 	// New: flat array of suggestions (replaces nested selectedSuggestions)
 	suggestions?: RewriteSuggestion[];
+	selectedSuggestionIds?: string[];
 	// Legacy: kept for backward compatibility, will be migrated
 	selectedSuggestions?: {
 		testLevel?: string[];
@@ -593,12 +595,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const {
 		documentId,
 		sessionId,
+		docType,
 		suggestions = [],
+		selectedSuggestionIds = [],
 		selectedSuggestions,
 		teacherSuggestions = [],
 		selectedItems = [],
 		preferences = {},
 	} = (body ?? {}) as RewriteBody;
+
+	if (docType === "notes") {
+		return res.status(400).json({
+			error: "Rewrite is not supported for notes documents.",
+			details: "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments.",
+		});
+	}
 
 	// NEW: Filter and classify suggestions server-side
 	let suggestionFilter: SuggestionFilterResult = {
@@ -612,7 +623,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	if (suggestions && suggestions.length > 0) {
 		try {
-			suggestionFilter = filterAndClassifySuggestions(suggestions);
+			const selectedIdSet = new Set(selectedSuggestionIds);
+			const suggestionsWithSelection = selectedSuggestionIds.length > 0
+				? suggestions.map((s) => ({ ...s, selected: selectedIdSet.has(s.id) }))
+				: suggestions;
+			suggestionFilter = filterAndClassifySuggestions(suggestionsWithSelection);
 		} catch (err) {
 			return res.status(400).json({
 				error: "Invalid suggestion structure",
@@ -702,35 +717,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 
 		if (doc?.doc_type === "notes" || (!doc?.doc_type && sections.length > 0 && items.length === 0)) {
-			prompt = buildNotesRewritePrompt({
-				sections,
-				selectedSuggestions: {
-					testLevel: mergedSuggestions.testLevel,
-					itemLevel: toNumericItemLevel(mergedSuggestions.itemLevel),
-				},
-				teacherSuggestions: actionableTeacherSuggestions,
-				preferences,
+			return res.status(400).json({
+				error: "Rewrite is not supported for notes documents.",
+				details: "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments.",
 			});
-			assertPromptWithinBudget(prompt);
-			promptHistory.push(prompt);
-			const llm = await callGeminiWithRetryWithUsage({
-				prompt,
-				metadata: { runType: "rewrite", documentId: persistenceDocumentId, sessionId },
-				options: { model: REWRITE_MODEL, temperature: 0.3, maxOutputTokens: 8192 },
-			});
-			const used = llm.usageMetadata?.totalTokenCount
-				?? (llm.usageMetadata?.promptTokenCount ?? 0) + (llm.usageMetadata?.candidatesTokenCount ?? 0);
-			meteredTokens += Math.max(0, used);
-			llmTokenEvents.push({
-				stage: "rewrite_llm_notes",
-				tokens: Math.max(0, used),
-				metadata: {
-					prompt_tokens: llm.usageMetadata?.promptTokenCount ?? null,
-					output_tokens: llm.usageMetadata?.candidatesTokenCount ?? null,
-					total_tokens: used,
-				},
-			});
-			responseJson = extractJsonObject(llm.text);
 		} else if (doc?.doc_type === "mixed" || (!doc?.doc_type && sections.length > 0 && items.length > 0)) {
 			prompt = buildMixedRewritePrompt({
 				items,

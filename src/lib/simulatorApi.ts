@@ -12,6 +12,7 @@ import type {
 	SingleSimulatorRequest,
 	SingleSimulatorResponse,
 } from "../types/simulator";
+import type { RewriteSuggestion } from "../types/v4/suggestions";
 import { fetchJson } from "./instructionalSessionApi";
 
 function buildJsonHeaders(userId?: string): Record<string, string> {
@@ -59,11 +60,10 @@ export function runGenerateTestApi(params: GenerateTestRequest, userId?: string)
 
 export function runRewriteApi(params: {
 	documentId?: string;
-	selectedSuggestions: {
-		testLevel: string[];
-		itemLevel: Record<string, string[]>;
-	};
-	teacherSuggestions?: string[];
+	docType?: "assignment" | "assessment" | "mixed" | "notes";
+	original?: string;
+	suggestions: RewriteSuggestion[];
+	selectedSuggestionIds: string[];
 	preferences?: Record<string, unknown>;
 }, userId?: string) {
 	return fetchJson<RewriteResponse>("/api/v4/rewrite", {
