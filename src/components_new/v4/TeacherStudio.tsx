@@ -39,7 +39,6 @@ import type {
 } from "../../types/simulator";
 import type { RewriteRequest, RewriteResponse, RewriteSuggestion } from "../../types/rewrite";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
-import { DifferentiationPanel } from "./DifferentiationPanel";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
@@ -472,8 +471,6 @@ function RewriteSuggestionsPanel({
 	teacherNotes,
 	onToggle,
 	onTeacherNotesChange,
-	differentiationProfile,
-	onDifferentiationProfileChange,
 	onRewrite,
 	rewriteLoading,
 	rewriteDisabledReason,
@@ -484,8 +481,6 @@ function RewriteSuggestionsPanel({
 	teacherNotes: string;
 	onToggle: (key: string) => void;
 	onTeacherNotesChange: (val: string) => void;
-	differentiationProfile: string;
-	onDifferentiationProfileChange: (val: string) => void;
 	onRewrite?: () => void;
 	rewriteLoading?: boolean;
 	rewriteDisabledReason?: string | null;
@@ -699,13 +694,6 @@ function RewriteSuggestionsPanel({
 					</p>
 				)}
 			</div>
-
-			<DifferentiationPanel
-				value={differentiationProfile}
-				onChange={onDifferentiationProfileChange}
-				onGenerate={onRewrite ?? null}
-				isLoading={rewriteLoading}
-			/>
 
 			{/* Rewrite CTA */}
 			{onRewrite && (
@@ -1832,10 +1820,6 @@ export function TeacherStudio() {
 											}
 											onTeacherNotesChange={(val) =>
 												setState((prev) => ({ ...prev, teacherNotes: val }))
-											}
-											differentiationProfile={state.differentiationProfile}
-											onDifferentiationProfileChange={(val: string) =>
-												setState((prev) => ({ ...prev, differentiationProfile: val }))
 											}
 											rewriteLoading={state.rewriteLoading}
 											rewriteDisabledReason={!canRewriteFromDocType(state.documentDocType)
