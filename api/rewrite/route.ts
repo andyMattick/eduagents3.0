@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { normalizeDocumentForRewrite } from "../../lib/rewrite/normalizeDocumentForRewrite";
+
 //
 // Types
 //
@@ -119,8 +121,10 @@ export async function POST(req: Request) {
   //
   // 5. Build prompt
   //
+  const normalizedOriginal = normalizeDocumentForRewrite(original);
+
   const prompt = buildRewritePrompt({
-    original,
+    original: normalizedOriginal,
     docType,
     profileApplied,
     actionableSuggestions: actionable

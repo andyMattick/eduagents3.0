@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { callGeminiWithRetryWithUsage } from "../../lib/gemini/callGeminiWithRetry";
 import { estimateTokens } from "../../lib/rewrite/estimateTokens";
+import { normalizeDocumentForRewrite } from "../../lib/rewrite/normalizeDocumentForRewrite";
 import { supabaseAdmin, supabaseRest } from "../../lib/supabase";
 import { rewriteRequestSchema } from "../../src/schemas/rewrite";
 import type { DocType, RewriteRequest, RewriteSuggestion } from "../../src/types/rewrite";
@@ -294,6 +295,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	}
 
 	const nonActionableSelected = selectedSuggestions.filter((suggestion) => suggestion.actionable === false);
+	const normalizedOriginal = normalizeDocumentForRewrite(original);
 	const validatorReport: Record<string, unknown> = {
 		requestValidation: {
 			valid: true,
@@ -307,7 +309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	try {
 		const prompt = buildRewritePrompt({
-			original,
+			original: normalizedOriginal,
 			docType,
 			profileApplied,
 			actionableSuggestions: actionableSelected,
