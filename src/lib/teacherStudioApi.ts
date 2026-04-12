@@ -15,7 +15,17 @@ type UploadDocumentResponse = {
 	documentId: string;
 	sessionId: string;
 	registered: RegisteredDocumentSummary[];
+	analyzedDocument?: AnalyzedDocument;
 };
+
+function extractOriginalText(analyzedDocument?: AnalyzedDocument): string {
+	if (!analyzedDocument) return "";
+	const chunks = analyzedDocument.document.nodes
+		.map((node) => node.normalizedText ?? node.text ?? "")
+		.map((text) => text.trim())
+		.filter((text) => text.length > 0);
+	return chunks.join("\n\n");
+}
 
 type SessionDocumentsPayload = {
 	session: DocumentSession;
@@ -141,6 +151,7 @@ export function requestAssessmentOutputApi(args: {
 export async function createStudioSessionFromFilesApi(selectedFiles: File[], userId?: string) {
 	const registered: RegisteredDocumentSummary[] = [];
 	const nextFileMap: Record<string, File> = {};
+	const originalTextMap: Record<string, string> = {};
 	let sessionId: string | null = null;
 
 	for (const file of selectedFiles) {
@@ -161,6 +172,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 		}
 		registered.push(uploaded);
 		nextFileMap[uploaded.documentId] = file;
+		originalTextMap[uploaded.documentId] = extractOriginalText(uploadPayload.analyzedDocument);
 		sessionId = sessionId ?? uploadPayload.sessionId;
 	}
 
@@ -168,7 +180,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 		throw new Error("Workspace creation did not return a sessionId.");
 	}
 
-	return { sessionId, registered, nextFileMap };
+	return { sessionId, registered, nextFileMap, originalTextMap };
 }
 
 export function bindDocumentsToSessionApi(args: {

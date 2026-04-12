@@ -18,6 +18,17 @@
 - Teacher workflow and API spine are documented in `src/prism-v4/documents/README.md`.
 - Canonical v4 subsystem overview is in `src/prism-v4/README.md`.
 
+## Code Structure
+| Directory | Purpose |
+|-----------|---------|
+| `src/` | Vite frontend app |
+| `api/` | Vercel serverless functions (route handlers) |
+| `lib/` | Shared server-side utilities (Azure, Gemini, Supabase, RAG) |
+| `src/components_new/v4/` | **Active** teacher UI — use this for new UI work |
+| `src/components/` | Older component surface — do not add new features here |
+| `src/prism-v4/` | PRISM v4 subsystems: ingestion, schema, semantic, documents |
+| `legacy/v3/` | Isolated legacy code — do not import from v4 features |
+
 ## Conventions
 - Do not reintroduce simulation-era terms into v4 paths (`astronaut`, `playtest`, `simulateStudents`).
 - Use `content_complexity` for local app concepts; reserve `predicted_difficulty` for PRISM response boundaries only.
@@ -46,3 +57,5 @@
 - v4 ingestion persistence requires `SUPABASE_SERVICE_ROLE_KEY` in server runtime; without it, writes are skipped by design.
 - If ingestion/write paths fail with `PGRST204`, run the v4 schema repair migration and refresh PostgREST schema cache.
 - Root `package.json` is the source of build/test scripts; nested `src/package.json` and `api/package.json` do not define runnable scripts.
+- Active teacher workspace UI is `src/components_new/v4/DocumentUpload.tsx`; `src/components_new/v4/SemanticViewer.tsx` is a debug/inspection panel, not the primary destination.
+- Ingestion debug: set `INGESTION_DEBUG_AZURE=true` to retain raw Azure layout output (short-lived); see `src/prism-v4/ingestion/README.md`.

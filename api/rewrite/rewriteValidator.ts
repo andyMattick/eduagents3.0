@@ -34,10 +34,6 @@ export function validateRewriteRequest({
     errors.push("No actionable suggestions selected.");
   }
 
-  if (Array.isArray(appliedSuggestions) && actionableSuggestions.length > 0 && appliedSuggestions.length !== actionableSuggestions.length) {
-    errors.push("Some selected suggestions are not actionable.");
-  }
-
   if (typeof profileApplied !== "undefined" && profileApplied !== null && typeof profileApplied !== "string") {
     errors.push("Profile context must be a string.");
   }

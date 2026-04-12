@@ -8,11 +8,52 @@ export const runtime = "nodejs";
 
 type DocumentStatusResponse = {
 	documentId: string;
-	docType: "problem" | "notes" | "mixed" | null;
-	items: number;
-	sections: number;
-	analysis: boolean;
+	docType: "assignment" | "assessment" | "mixed" | "notes" | null;
+	analysisAvailable: boolean;
+	rewriteEligible: boolean;
 };
+
+function normalizeDocType(value: unknown): DocumentStatusResponse["docType"] {
+	if (typeof value !== "string") return null;
+	const normalized = value.trim().toLowerCase();
+	if (!normalized) return null;
+
+	if (normalized === "problem" || normalized === "assessment" || normalized === "test") {
+		return "assessment";
+	}
+	if (normalized === "assignment") return "assignment";
+	if (normalized === "mixed") return "mixed";
+	if (normalized === "notes" || normalized === "review" || normalized === "slides" || normalized === "article") {
+		return "notes";
+	}
+
+	return null;
+}
+
+function extractDocTypeFromSessionRoles(sessionRoles: unknown, documentId: string): DocumentStatusResponse["docType"] {
+	if (!sessionRoles || typeof sessionRoles !== "object") return null;
+
+	const byDocument = (sessionRoles as Record<string, unknown>)[documentId];
+	if (Array.isArray(byDocument)) {
+		for (const entry of byDocument) {
+			const parsed = normalizeDocType(entry);
+			if (parsed) return parsed;
+		}
+	}
+
+	if (byDocument && typeof byDocument === "object") {
+		const typed = byDocument as Record<string, unknown>;
+		const parsed = normalizeDocType(typed.docType ?? typed.documentType ?? typed.type);
+		if (parsed) return parsed;
+	}
+
+	const topLevel = sessionRoles as Record<string, unknown>;
+	return normalizeDocType(topLevel.docType ?? topLevel.documentType ?? topLevel.type);
+}
+
+function isRewriteEligible(docType: DocumentStatusResponse["docType"]) {
+	return docType === "assignment" || docType === "assessment" || docType === "mixed";
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 	if (req.method !== "GET") {
@@ -25,26 +66,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	}
 
 	try {
-		const [document, items, sections, analysisRows, analysisTarget] = await Promise.all([
+		const [document, items, sections, analysisTarget] = await Promise.all([
 			getDocument(documentId),
 			getItemsForDocument(documentId),
 			getSectionsForDocument(documentId),
-			supabaseRest("v4_analysis", {
-				method: "GET",
-				select: "document_id",
-				filters: { document_id: `eq.${documentId}` },
-			}),
 			loadPrismDocumentAnalysisTarget(documentId).catch(() => null),
 		]);
 
-		const analysisFromSupabase = Array.isArray(analysisRows) && analysisRows.length > 0;
-		const analysis = analysisFromSupabase || Boolean(analysisTarget?.analyzedDocument);
+		const sessionId = analysisTarget?.sessionId ?? null;
+		const sessionRows = sessionId
+			? await supabaseRest("prism_v4_sessions", {
+				method: "GET",
+				select: "session_id,session_roles,created_at",
+				filters: { session_id: `eq.${sessionId}` },
+			})
+			: await supabaseRest("prism_v4_sessions", {
+				method: "GET",
+				select: "session_id,session_roles,created_at",
+				filters: { document_ids: `cs.{${documentId}}` },
+			});
+
+		const session = Array.isArray(sessionRows) && sessionRows.length > 0
+			? (sessionRows[0] as { session_roles?: unknown; created_at?: string | null })
+			: null;
+		const sessionDocType = extractDocTypeFromSessionRoles(session?.session_roles, documentId);
+		const fallbackDocType = normalizeDocType(document?.doc_type);
+		const inferredDocType = sessionDocType ?? fallbackDocType ?? (
+			sections.length > 0 && items.length > 0
+				? "mixed"
+				: sections.length > 0
+				? "notes"
+				: items.length > 0
+				? "assessment"
+				: null
+		);
+		const analysisAvailable = Boolean(analysisTarget?.analyzedDocument) || Boolean(session?.created_at);
 		const payload: DocumentStatusResponse = {
 			documentId,
-			docType: document?.doc_type ?? null,
-			items: items.length,
-			sections: sections.length,
-			analysis,
+			docType: inferredDocType,
+			analysisAvailable,
+			rewriteEligible: isRewriteEligible(inferredDocType),
 		};
 
 		return res.status(200).json(payload);
@@ -52,9 +113,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const fallback: DocumentStatusResponse = {
 			documentId,
 			docType: null,
-			items: 0,
-			sections: 0,
-			analysis: false,
+			analysisAvailable: false,
+			rewriteEligible: false,
 		};
 		return res.status(200).json(fallback);
 	}

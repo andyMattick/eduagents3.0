@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../Auth/useAuth";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import type { DocumentStatus } from "../../lib/documentStatusApi";
+import { getDocumentStatus } from "../../lib/documentStatusApi";
 import {
 	isActionableRewriteSuggestion,
 } from "../../lib/rewriteSuggestionFilters";
@@ -30,13 +32,12 @@ import type {
 	GeneratedTestData,
 	GeneratedTestItem,
 	ParallelSimulatorData,
-	RewriteResponse,
 	RewriteSuggestions,
 	SimulatorData,
 	SimulatorTestPreferences,
 	StudentProfile,
 } from "../../types/simulator";
-import type { RewriteSuggestion } from "../../types/v4/suggestions";
+import type { RewriteRequest, RewriteResponse, RewriteSuggestion } from "../../types/rewrite";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
 import { DifferentiationPanel } from "./DifferentiationPanel";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
@@ -60,6 +61,8 @@ interface StudioState {
 	secondaryFiles: File[];   // prep material (preparedness)
 	sessionId: string | null;
 	documentId: string | null;
+	documentDocType: DocumentStatus["docType"];
+	originalText: string | null;
 	profile: StudentProfile;
 	selectedPreset: string;
 	// multi-profile compare
@@ -103,69 +106,18 @@ interface RewritePreview {
 
 function pickRewritePreview(
 	result: RewriteResponse,
-	preferredItemNumbers: number[],
+	original: string,
+	appliedSuggestions: string[],
 	defaultProfile: string,
 ): RewritePreview | null {
-	const preferred = new Set(preferredItemNumbers);
-
-	if (preferred.size > 0 && Array.isArray(result.rewrittenItems)) {
-		for (const entry of result.rewrittenItems) {
-			if (!preferred.has(entry.originalItemNumber)) continue;
-			if (typeof entry.original !== "string" || typeof entry.rewrittenStem !== "string") continue;
-			return {
-				original: entry.original,
-				rewritten: entry.rewrittenStem,
-				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
-				profileApplied: (result.profileApplied ?? defaultProfile) || null,
-				metadata: result.metadata,
-				type: "item",
-				id: String(entry.originalItemNumber),
-			};
-		}
-	}
-
-	if (preferred.size > 0 && Array.isArray(result.items)) {
-		for (const entry of result.items) {
-			if (!preferred.has(entry.itemNumber)) continue;
-			if (typeof entry.original !== "string" || typeof entry.rewrittenStem !== "string") continue;
-			return {
-				original: entry.original,
-				rewritten: entry.rewrittenStem,
-				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
-				profileApplied: (result.profileApplied ?? defaultProfile) || null,
-				metadata: result.metadata,
-				type: "item",
-				id: String(entry.itemNumber),
-			};
-		}
-	}
-
-	if (typeof result.original === "string" && typeof result.rewritten === "string") {
+	if (typeof result.rewritten === "string" && result.rewritten.trim().length > 0) {
 		return {
-			original: result.original,
+			original,
 			rewritten: result.rewritten,
-			appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
-			profileApplied: (result.profileApplied ?? defaultProfile) || null,
-			metadata: result.metadata,
-			type: result.type ?? "item",
-			id: result.id ?? "1",
-		};
-	}
-
-	if (Array.isArray(result.sections)) {
-		const firstWithOriginal = result.sections.find(
-			(entry) => typeof entry.original === "string" && typeof entry.rewrittenText === "string",
-		);
-		if (firstWithOriginal) {
-			return {
-				original: firstWithOriginal.original!,
-				rewritten: firstWithOriginal.rewrittenText,
-				appliedSuggestions: result.appliedSuggestions ?? result.testLevel ?? [],
-				profileApplied: (result.profileApplied ?? defaultProfile) || null,
-				metadata: result.metadata,
-				type: "section",
-				id: firstWithOriginal.sectionId,
-			};
+			appliedSuggestions,
+			profileApplied: defaultProfile || null,
+			type: "item",
+			id: "1",
 		}
 	}
 
@@ -179,6 +131,8 @@ const INITIAL: StudioState = {
 	secondaryFiles: [],
 	sessionId: null,
 	documentId: null,
+	documentDocType: null,
+	originalText: null,
 	profile: DEFAULT_STUDENT_PROFILE,
 	selectedPreset: "Average Student",
 	selectedProfileLabels: ["Average Student", "ADHD", "ELL"],
@@ -205,6 +159,10 @@ const INITIAL: StudioState = {
 	reportSuccess: null,
 };
 
+function canRewriteFromDocType(docType: DocumentStatus["docType"]): boolean {
+	return docType === "assignment" || docType === "assessment" || docType === "mixed";
+}
+
 // ---------------------------------------------------------------------------
 // File helpers
 // ---------------------------------------------------------------------------
@@ -216,6 +174,34 @@ function readFileAsText(file: File): Promise<string> {
 		reader.onerror = () => reject(new Error("Could not read file"));
 		reader.readAsText(file, "utf-8");
 	});
+}
+
+async function buildRewriteOriginalText(
+	files: File[],
+	originalText: string | null,
+	fallback: string | null,
+): Promise<string> {
+	if (originalText && originalText.trim().length > 0) {
+		return originalText.trim();
+	}
+
+	const chunks: string[] = [];
+	for (const file of files) {
+		try {
+			const text = await readFileAsText(file);
+			if (text.trim().length > 0) {
+				chunks.push(text.trim());
+			}
+		} catch {
+			// Ignore unreadable files and rely on the fallback below.
+		}
+	}
+
+	if (chunks.length > 0) {
+		return chunks.join("\n\n");
+	}
+
+	return (fallback ?? "").trim();
 }
 
 const ACCEPTED_DOCS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -925,19 +911,45 @@ export function TeacherStudio() {
 	const primaryRef = useRef<HTMLInputElement>(null);
 	const secondaryRef = useRef<HTMLInputElement>(null);
 
+	const refreshUsage = useCallback(async () => {
+		try {
+			const response = await fetch("/api/v4/usage/today", {
+				headers: user?.id ? { "x-user-id": user.id } : undefined,
+			});
+			const payload = (await response.json()) as { count?: number; limit?: number };
+			if (typeof payload.count === "number") {
+				setState((prev) => ({
+					...prev,
+					usageCount: payload.count,
+					usageLimit: payload.limit ?? 25_000,
+				}));
+			}
+		} catch {
+			// non-fatal
+		}
+	}, [user?.id]);
+
 	// Fetch daily usage on mount
 	useEffect(() => {
-		fetch("/api/v4/usage/today", {
-			headers: user?.id ? { "x-user-id": user.id } : undefined,
-		})
-			.then((r) => r.json())
-			.then((d: { count?: number; limit?: number }) => {
-				if (typeof d.count === "number") {
-					setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 25_000 }));
-				}
+		void refreshUsage();
+	}, [refreshUsage]);
+
+	useEffect(() => {
+		if (!state.documentId) return;
+		let isMounted = true;
+		void getDocumentStatus(state.documentId)
+			.then((status) => {
+				if (!isMounted) return;
+				setState((prev) => ({ ...prev, documentDocType: status.docType }));
 			})
-			.catch(() => {/* non-fatal */});
-	}, [user?.id]);
+			.catch(() => {
+				if (!isMounted) return;
+				setState((prev) => ({ ...prev, documentDocType: null }));
+			});
+		return () => {
+			isMounted = false;
+		};
+	}, [state.documentId]);
 
 	const goalData = GOALS.find((g) => g.id === state.goal);
 
@@ -948,11 +960,20 @@ export function TeacherStudio() {
 	}
 
 	function goBackToGoals() {
-		setState((prev) => ({ ...INITIAL, goal: prev.goal }));
+		setState((prev) => ({
+			...INITIAL,
+			goal: prev.goal,
+			usageCount: prev.usageCount,
+			usageLimit: prev.usageLimit,
+		}));
 	}
 
 	function startOver() {
-		setState(INITIAL);
+		setState((prev) => ({
+			...INITIAL,
+			usageCount: prev.usageCount,
+			usageLimit: prev.usageLimit,
+		}));
 	}
 
 	// ── Drag & drop ────────────────────────────────────────────────────────
@@ -1007,6 +1028,7 @@ export function TeacherStudio() {
 			isLoading: true,
 			error: null,
 			phase: "results",
+			documentDocType: null,
 			narrative: null,
 			simData: null,
 			parallelData: null,
@@ -1017,20 +1039,13 @@ export function TeacherStudio() {
 		}));
 
 		try {
-			const { sessionId, registered } = await createStudioSessionFromFilesApi(state.primaryFiles, user?.id);
+			const { sessionId, registered, originalTextMap } = await createStudioSessionFromFilesApi(state.primaryFiles, user?.id);
 			const documentId = registered[0]?.documentId ?? null;
-
-			// Refresh usage counter after successful upload
-			fetch("/api/v4/usage/today", {
-				headers: user?.id ? { "x-user-id": user.id } : undefined,
-			})
-				.then((r) => r.json())
-				.then((d: { count?: number; limit?: number }) => {
-					if (typeof d.count === "number") {
-						setState((prev) => ({ ...prev, usageCount: d.count!, usageLimit: d.limit ?? 25_000 }));
-					}
-				})
-				.catch(() => {});
+			const originalText = registered
+				.map((entry) => originalTextMap[entry.documentId] ?? "")
+				.filter((value) => value.trim().length > 0)
+				.join("\n\n");
+			void refreshUsage();
 
 			if (state.goal === "simulate") {
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile }, user?.id);
@@ -1038,6 +1053,7 @@ export function TeacherStudio() {
 					...prev,
 					sessionId,
 					documentId,
+					originalText,
 					narrative: res.narrative,
 					simData: res.data,
 					isLoading: false,
@@ -1049,6 +1065,7 @@ export function TeacherStudio() {
 					...prev,
 					sessionId,
 					documentId,
+					originalText,
 					narrative: res.narrative,
 					simData: res.data,
 					isLoading: false,
@@ -1062,6 +1079,7 @@ export function TeacherStudio() {
 					...prev,
 					sessionId,
 					documentId,
+					originalText,
 					narrative: res.narrative,
 					parallelData: res.data,
 					isLoading: false,
@@ -1073,11 +1091,13 @@ export function TeacherStudio() {
 					sessionId,
 					// Use the documentId the generate-test route created (where items were saved)
 					documentId: res.documentId ?? documentId,
+					originalText,
 					narrative: res.narrative,
 					testData: res.data,
 					isLoading: false,
 				}));
 			}
+			void refreshUsage();
 		} catch (err) {
 			setState((prev) => ({
 				...prev,
@@ -1086,7 +1106,7 @@ export function TeacherStudio() {
 				error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
 			}));
 		}
-	}, [state.goal, state.primaryFiles, state.secondaryFiles, state.profile, state.selectedProfileLabels, state.testPrefs, user?.id]);
+	}, [refreshUsage, state.goal, state.primaryFiles, state.secondaryFiles, state.profile, state.selectedProfileLabels, state.testPrefs, user?.id]);
 
 	function handleDownload() {
 		const content = state.narrative ?? "";
@@ -1101,57 +1121,16 @@ export function TeacherStudio() {
 
 	// ── Rewrite Diff Viewer handlers ────────────────────────────────────────
 
-	function updateItemInDocument(
-		document: RewriteResponse | null,
-		id: string,
-		rewritten: string,
-	): RewriteResponse | null {
-		if (!document) return document;
-		const itemNumber = Number(id);
-		if (!Number.isFinite(itemNumber)) return document;
-
-		return {
-			...document,
-			rewrittenItems: document.rewrittenItems.map((item) =>
-				item.originalItemNumber === itemNumber
-					? { ...item, rewrittenStem: rewritten }
-					: item,
-			),
-			items: document.items?.map((item) =>
-				item.itemNumber === itemNumber ? { ...item, rewrittenStem: rewritten } : item,
-			),
-		};
-	}
-
-	function updateSectionInDocument(
-		document: RewriteResponse | null,
-		id: string,
-		rewritten: string,
-	): RewriteResponse | null {
-		if (!document || !document.sections) return document;
-		return {
-			...document,
-			sections: document.sections.map((section) =>
-				section.sectionId === id
-					? { ...section, rewrittenText: rewritten }
-					: section,
-			),
-		};
-	}
-
 	function handleReplace() {
 		const preview = state.rewritePreview;
 		if (!preview || !preview.rewritten) return;
 
 		setState((prev) => {
-			const updatedDoc =
-				preview.type === "item"
-					? updateItemInDocument(prev.rewriteResults, preview.id, preview.rewritten)
-					: updateSectionInDocument(prev.rewriteResults, preview.id, preview.rewritten);
-
 			return {
 				...prev,
-				rewriteResults: updatedDoc,
+				rewriteResults: prev.rewriteResults
+					? { ...prev.rewriteResults, rewritten: preview.rewritten }
+					: prev.rewriteResults,
 				rewritePreview: null,
 			};
 		});
@@ -1859,19 +1838,19 @@ export function TeacherStudio() {
 												setState((prev) => ({ ...prev, differentiationProfile: val }))
 											}
 											rewriteLoading={state.rewriteLoading}
-											rewriteDisabledReason={state.goal !== "compare" && state.simData && state.simData.items.length === 0
-												? "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments."
+											rewriteDisabledReason={!canRewriteFromDocType(state.documentDocType)
+												? "Rewriting is only supported for assignment, assessment, or mixed documents."
 												: null}
 											onRewrite={async () => {
 													if (rewriteInFlightRef.current) return;
 												const suggestions = state.goal === "compare"
 													? state.parallelData?.rewriteSuggestions
 													: state.simData?.rewriteSuggestions;
-												if (!suggestions || !state.documentId) return;
-												if (state.goal !== "compare" && state.simData && state.simData.items.length === 0) {
+												if (!suggestions) return;
+												if (!canRewriteFromDocType(state.documentDocType)) {
 													setState((prev) => ({
 														...prev,
-														error: "This document appears to be notes. Analysis is available, but rewriting is only supported for assignments and assessments.",
+														error: "Rewriting is only supported for assignment, assessment, or mixed documents.",
 													}));
 													return;
 												}
@@ -1889,39 +1868,41 @@ export function TeacherStudio() {
 												for (const [index, text] of suggestions.testLevel.entries()) {
 													flattenedSuggestions.push({
 														id: `test:${index}`,
-														scope: "testLevel",
-														text,
-														source: "system",
+														label: `Global suggestion ${index + 1}`,
+														instruction: text,
+														rationale: "Generated from simulation risk signals.",
+														severity: "medium",
 														actionable: true,
-														selected: Boolean(sel[`test:${index}`]),
 													});
 												}
 												for (const [itemNum, entries] of Object.entries(suggestions.itemLevel)) {
 													for (const [index, text] of entries.entries()) {
 														flattenedSuggestions.push({
 															id: `item:${itemNum}:${index}`,
-															scope: "itemLevel",
-															itemId: itemNum,
-															text,
-															source: "system",
+															label: `Item ${itemNum} suggestion ${index + 1}`,
+															instruction: text,
+															rationale: `Targets risk observed for item ${itemNum}.`,
+															severity: "medium",
 															actionable: true,
-															selected: Boolean(sel[`item:${itemNum}:${index}`]),
 														});
 													}
 												}
 												for (const [index, text] of teacherSuggestions.entries()) {
 													flattenedSuggestions.push({
 														id: `teacher:${index}`,
-														scope: "testLevel",
-														text,
-														source: "teacher",
+														label: `Teacher note ${index + 1}`,
+														instruction: text,
+														rationale: "Teacher-authored rewrite directive.",
+														severity: "high",
 														actionable: true,
-														selected: true,
 													});
 												}
 
 												const selectedSuggestionIds = flattenedSuggestions
-													.filter((entry) => entry.selected)
+													.filter((entry) => {
+														if (entry.id.startsWith("teacher:")) return true;
+														return Boolean(sel[entry.id]);
+													})
 													.map((entry) => entry.id);
 												if (selectedSuggestionIds.length === 0) {
 													setState((prev) => ({
@@ -1931,25 +1912,38 @@ export function TeacherStudio() {
 													return;
 												}
 
+												const originalText = await buildRewriteOriginalText(
+													state.primaryFiles,
+													state.originalText,
+													state.narrative,
+												);
+												if (!originalText) {
+													setState((prev) => ({
+														...prev,
+														error: "Original document text is required for rewrite.",
+													}));
+													return;
+												}
+
 												setState((prev) => ({ ...prev, rewriteLoading: true }));
 													rewriteInFlightRef.current = true;
 												try {
-													const preferredItemNumbers = flattenedSuggestions
-														.filter((entry) => entry.selected && entry.scope === "itemLevel")
-														.map((entry) => Number(entry.itemId))
-														.filter((value) => Number.isFinite(value));
-													const result = await runRewriteApi({
-														documentId: state.documentId ?? undefined,
+													const request: RewriteRequest = {
+														docType: state.documentDocType ?? undefined,
+														original: originalText,
 														suggestions: flattenedSuggestions,
 														selectedSuggestionIds,
-																	preferences: state.differentiationProfile
-																		? { profile: state.differentiationProfile }
-																		: undefined,
-													}, user?.id);
+														profileApplied: state.differentiationProfile || undefined,
+													};
+													const result = await runRewriteApi(request, user?.id);
+													const appliedSuggestions = flattenedSuggestions
+														.filter((entry) => result.appliedSuggestionIds.includes(entry.id))
+														.map((entry) => entry.instruction);
 
 																	const preview = pickRewritePreview(
 																		result,
-																		preferredItemNumbers,
+																			originalText,
+																			appliedSuggestions,
 																		state.differentiationProfile,
 																	);
 													setState((prev) => ({
@@ -1967,6 +1961,7 @@ export function TeacherStudio() {
 													}));
 															} finally {
 																rewriteInFlightRef.current = false;
+																void refreshUsage();
 												}
 											}}
 										/>

@@ -18,7 +18,6 @@ type PipelineErrorRow = {
   user_id: string | null;
   endpoint: string;
   error_message: string;
-  payload: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -34,7 +33,20 @@ type TokenEventDetail = {
 };
 
 type RewriteEventRow = {
+  id: number;
+  created_at: string;
+  actor_key: string;
+  user_id: string | null;
+  section_id: string | null;
+  suggestions_selected: Array<Record<string, unknown>> | null;
+  suggestions_actionable_selected: Array<Record<string, unknown>> | null;
+  suggestions_non_actionable_selected: Array<Record<string, unknown>> | null;
+  model: string | null;
+};
+
+type RewriteEventDetail = {
   rewrite_event_id: number;
+  rewrite_created_at: string;
   actor_key: string;
   user_id: string | null;
   section_id: string | null;
@@ -49,7 +61,6 @@ type RewriteEventRow = {
   billed_tokens: number;
   non_billed_tokens: number;
   token_events: TokenEventDetail[] | null;
-  rewrite_created_at: string;
   suggestions_all: Array<Record<string, unknown>> | null;
   suggestions_selected: Array<Record<string, unknown>> | null;
   suggestions_actionable_selected: Array<Record<string, unknown>> | null;
@@ -104,7 +115,14 @@ export const AdminDashboard = () => {
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
 
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
-  const [selectedRewriteEvent, setSelectedRewriteEvent] = useState<RewriteEventRow | null>(null);
+  const [selectedRewriteEvent, setSelectedRewriteEvent] = useState<RewriteEventDetail | null>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
+
+function isoDaysAgo(days: number): string {
+  const now = new Date();
+  now.setDate(now.getDate() - days);
+  return now.toISOString();
+}
 
   const [tokenFilters, setTokenFilters] = useState({
     email: "",
@@ -164,7 +182,7 @@ export const AdminDashboard = () => {
       const emailOk = email.toLowerCase().includes(rewriteFilters.email.trim().toLowerCase());
       const userOk = (row.user_id ?? "").toLowerCase().includes(rewriteFilters.user_id.trim().toLowerCase());
       const sectionOk = (row.section_id ?? "").toLowerCase().includes(rewriteFilters.section_id.trim().toLowerCase());
-      const dateOk = !rewriteFilters.date || row.rewrite_created_at.slice(0, 10) === rewriteFilters.date;
+      const dateOk = !rewriteFilters.date || row.created_at.slice(0, 10) === rewriteFilters.date;
       return emailOk && userOk && sectionOk && dateOk;
     });
   }, [rewriteEvents, emailByUserId, rewriteFilters]);
@@ -183,6 +201,8 @@ export const AdminDashboard = () => {
     setLoading(true);
     setError(null);
 
+    const sevenDaysAgo = isoDaysAgo(7);
+
     const [tokenRes, errorRes, rewriteRes, badRes, teacherRes] = await Promise.all([
       supabase
         .from("admin_token_usage_today")
@@ -191,13 +211,15 @@ export const AdminDashboard = () => {
         .limit(200),
       supabase
         .from("pipeline_errors")
-        .select("id, actor_key, user_id, endpoint, error_message, payload, created_at")
+        .select("id, actor_key, user_id, endpoint, error_message, created_at")
+        .gte("created_at", sevenDaysAgo)
         .order("created_at", { ascending: false })
         .limit(200),
       supabase
-        .from("admin_rewrite_event_token_totals")
-        .select("rewrite_event_id, rewrite_created_at, actor_key, user_id, section_id, applied_suggestions, profile, original, rewritten, prompt, validator_report, model, total_tokens, billed_tokens, non_billed_tokens, token_events, suggestions_all, suggestions_selected, suggestions_actionable_selected, suggestions_non_actionable_selected")
-        .order("rewrite_created_at", { ascending: false })
+        .from("rewrite_events")
+        .select("id, user_id, actor_key, model, section_id, created_at, suggestions_selected, suggestions_actionable_selected, suggestions_non_actionable_selected")
+        .gte("created_at", sevenDaysAgo)
+        .order("created_at", { ascending: false })
         .limit(200),
       supabase
         .from("admin_bad_rewrite_reports_recent")
@@ -223,6 +245,70 @@ export const AdminDashboard = () => {
     setTeachers((teacherRes.data ?? []) as TeacherRow[]);
 
     setLoading(false);
+  }
+
+  async function handleInspectRewriteEvent(row: RewriteEventRow) {
+    setInspectorLoading(true);
+    setSelectedRewriteEvent(null);
+
+    const [rewriteRes, tokenRes] = await Promise.all([
+      supabase
+        .from("rewrite_events")
+        .select("id, actor_key, user_id, section_id, applied_suggestions, profile, original, rewritten, prompt, validator_report, model, created_at, suggestions_all, suggestions_selected, suggestions_actionable_selected, suggestions_non_actionable_selected")
+        .eq("id", row.id)
+        .maybeSingle(),
+      supabase
+        .from("token_usage_events")
+        .select("id, stage, endpoint, model, tokens, billed, created_at, metadata")
+        .eq("rewrite_event_id", row.id)
+        .order("created_at", { ascending: true }),
+    ]);
+
+    if (rewriteRes.error) {
+      setError(rewriteRes.error.message);
+      setInspectorLoading(false);
+      return;
+    }
+    if (tokenRes.error) {
+      setError(tokenRes.error.message);
+      setInspectorLoading(false);
+      return;
+    }
+    if (!rewriteRes.data) {
+      setError("Rewrite event not found.");
+      setInspectorLoading(false);
+      return;
+    }
+
+    const tokenEvents = (tokenRes.data ?? []) as TokenEventDetail[];
+    const totalTokens = tokenEvents.reduce((sum, event) => sum + (event.tokens ?? 0), 0);
+    const billedTokens = tokenEvents
+      .filter((event) => event.billed)
+      .reduce((sum, event) => sum + (event.tokens ?? 0), 0);
+
+    setSelectedRewriteEvent({
+      rewrite_event_id: rewriteRes.data.id,
+      rewrite_created_at: rewriteRes.data.created_at,
+      actor_key: rewriteRes.data.actor_key,
+      user_id: rewriteRes.data.user_id,
+      section_id: rewriteRes.data.section_id,
+      applied_suggestions: rewriteRes.data.applied_suggestions,
+      profile: rewriteRes.data.profile,
+      original: rewriteRes.data.original,
+      rewritten: rewriteRes.data.rewritten,
+      prompt: rewriteRes.data.prompt,
+      validator_report: rewriteRes.data.validator_report as Record<string, unknown> | null,
+      model: rewriteRes.data.model,
+      total_tokens: totalTokens,
+      billed_tokens: billedTokens,
+      non_billed_tokens: Math.max(0, totalTokens - billedTokens),
+      token_events: tokenEvents,
+      suggestions_all: rewriteRes.data.suggestions_all as Array<Record<string, unknown>> | null,
+      suggestions_selected: rewriteRes.data.suggestions_selected as Array<Record<string, unknown>> | null,
+      suggestions_actionable_selected: rewriteRes.data.suggestions_actionable_selected as Array<Record<string, unknown>> | null,
+      suggestions_non_actionable_selected: rewriteRes.data.suggestions_non_actionable_selected as Array<Record<string, unknown>> | null,
+    });
+    setInspectorLoading(false);
   }
 
   async function handleResetTokens(userId: string) {
@@ -436,28 +522,26 @@ export const AdminDashboard = () => {
                 <th>Email</th>
                 <th>User ID</th>
                 <th>Section</th>
-                <th>Suggestions</th>
-                <th>Profile</th>
-                <th>Total Tokens</th>
-                <th>Original</th>
-                <th>Rewritten</th>
+                <th>Selected</th>
+                <th>Actionable</th>
+                <th>Non-Actionable</th>
+                <th>Model</th>
                 <th className="action-cell">Inspect</th>
               </tr>
             </thead>
             <tbody>
               {rewriteEventsFiltered.map((row) => (
-                <tr key={row.rewrite_event_id}>
-                  <td>{fmtDate(row.rewrite_created_at)}</td>
+                <tr key={row.id}>
+                  <td>{fmtDate(row.created_at)}</td>
                   <td>{row.user_id ? (emailByUserId.get(row.user_id) ?? "-") : "-"}</td>
                   <td>{row.user_id ?? "-"}</td>
                   <td>{row.section_id ?? "-"}</td>
-                  <td>{Array.isArray(row.applied_suggestions) ? row.applied_suggestions.join("; ") : "-"}</td>
-                  <td>{row.profile ?? "-"}</td>
-                  <td>{row.total_tokens.toLocaleString()}</td>
-                  <td>{clip(row.original)}</td>
-                  <td>{clip(row.rewritten)}</td>
+                  <td>{row.suggestions_selected?.length ?? 0}</td>
+                  <td>{row.suggestions_actionable_selected?.length ?? 0}</td>
+                  <td>{row.suggestions_non_actionable_selected?.length ?? 0}</td>
+                  <td>{row.model ?? "-"}</td>
                   <td className="action-cell">
-                    <button type="button" className="admin-button" onClick={() => setSelectedRewriteEvent(row)}>
+                    <button type="button" className="admin-button" onClick={() => void handleInspectRewriteEvent(row)}>
                       Inspect
                     </button>
                   </td>
@@ -465,7 +549,7 @@ export const AdminDashboard = () => {
               ))}
               {!loading && rewriteEventsFiltered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="admin-muted">No rewrite events yet.</td>
+                  <td colSpan={9} className="admin-muted">No rewrite events yet.</td>
                 </tr>
               )}
             </tbody>
@@ -533,6 +617,14 @@ export const AdminDashboard = () => {
           </table>
         </div>
       </section>
+
+      {inspectorLoading && (
+        <div className="admin-modal-overlay">
+          <div className="admin-modal rewrite-inspector">
+            <p className="admin-muted">Loading rewrite inspector...</p>
+          </div>
+        </div>
+      )}
 
       {selectedRewriteEvent && (
         <div className="admin-modal-overlay" onClick={() => setSelectedRewriteEvent(null)}>

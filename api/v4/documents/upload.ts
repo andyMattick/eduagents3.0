@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
+import { supabaseAdmin } from "../../../lib/supabase";
 import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
 import {
@@ -160,6 +161,28 @@ async function logTokenUsageEvent(params: {
 	}
 }
 
+async function incrementTokenUsage(actorKey: string, userId: string | null, tokens: number): Promise<void> {
+	if (!Number.isFinite(tokens) || tokens <= 0) return;
+	try {
+		const { url, key } = supabaseAdmin();
+		await fetch(`${url}/rest/v1/rpc/increment_token_usage`, {
+			method: "POST",
+			headers: {
+				apikey: key,
+				Authorization: `Bearer ${key}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				p_actor_key: actorKey,
+				p_tokens: Math.max(1, Math.round(tokens)),
+				p_user_id: userId,
+			}),
+		});
+	} catch {
+		// Non-fatal metering write failure.
+	}
+}
+
 const DAILY_TOKEN_LIMIT = 25_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -206,6 +229,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			const doc = documents[index];
 			const reg = registered[index];
 			const estimatedTokens = estimateTokensFromText(doc?.azureExtract?.content ?? `${doc?.sourceFileName ?? ""} ${doc?.sourceMimeType ?? ""}`);
+			await incrementTokenUsage(actor.actorKey, actor.userId, estimatedTokens);
 			await logTokenUsageEvent({
 				actorKey: actor.actorKey,
 				userId: actor.userId,
@@ -287,6 +311,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				binary_bytes: buffer.length,
 			},
 		});
+
+		await incrementTokenUsage(actor.actorKey, actor.userId, Math.max(1, Math.ceil(buffer.length / 4)));
 
 		return res.status(200).json({
 			documentId: registered.documentId,

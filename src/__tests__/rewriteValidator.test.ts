@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isNoOpRewrite, validateRewriteRequest } from "../../api/v4/rewrite/rewriteValidator";
+import { isNoOpRewrite, validateRewriteRequest } from "../../api/rewrite/rewriteValidator";
 
 describe("rewriteValidator", () => {
   it("fails when original is missing", () => {
@@ -27,7 +27,7 @@ describe("rewriteValidator", () => {
     expect(result.errors).toContain("No actionable suggestions selected.");
   });
 
-  it("fails when selected suggestions include non-actionable entries", () => {
+  it("passes when at least one selected suggestion is actionable", () => {
     const result = validateRewriteRequest({
       original: "Some text",
       appliedSuggestions: ["clarify", "review in class"],
@@ -35,8 +35,8 @@ describe("rewriteValidator", () => {
       profileApplied: "",
     });
 
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain("Some selected suggestions are not actionable.");
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it("passes with valid inputs", () => {

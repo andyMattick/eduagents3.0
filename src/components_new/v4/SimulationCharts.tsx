@@ -43,6 +43,20 @@ function profileColor(index: number): string {
 	return PALETTE[index % PALETTE.length];
 }
 
+function readingSeriesColor(index: number): string {
+	const palette = [
+		"#10b981",
+		"#14b8a6",
+		"#22c55e",
+		"#06b6d4",
+		"#84cc16",
+		"#0ea5e9",
+		"#2dd4bf",
+		"#34d399",
+	];
+	return palette[index % palette.length];
+}
+
 const CHART_STYLE: React.CSSProperties = {
 	marginTop: "2rem",
 };
@@ -59,16 +73,16 @@ const SECTION_KICKER: React.CSSProperties = {
 // Readable tick/label color that works on both light and dark panel backgrounds
 const TICK_COLOR = "#a89070";
 
-// Consistent dark tooltip for all charts
+// Consistent readable tooltip for all charts
 const TOOLTIP_CONTENT_STYLE: React.CSSProperties = {
-	backgroundColor: "rgba(10,6,3,0.88)",
-	border: "1px solid rgba(187,91,53,0.3)",
+	backgroundColor: "#fffdf8",
+	border: "1px solid rgba(86,57,32,0.2)",
 	borderRadius: "8px",
-	color: "#f0e6d8",
+	color: "#1f1a17",
 	fontSize: "0.78rem",
 };
-const TOOLTIP_LABEL_STYLE: React.CSSProperties = { color: "#f0e6d8", fontWeight: 600 };
-const TOOLTIP_ITEM_STYLE: React.CSSProperties = { color: "#f0e6d8" };
+const TOOLTIP_LABEL_STYLE: React.CSSProperties = { color: "#1f1a17", fontWeight: 600 };
+const TOOLTIP_ITEM_STYLE: React.CSSProperties = { color: "#1f1a17" };
 const LEGEND_STYLE: React.CSSProperties = { fontSize: "0.75rem", color: TICK_COLOR };
 
 // ---------------------------------------------------------------------------
@@ -85,15 +99,21 @@ function buildItemMatrix(data: ParallelSimulatorData): Array<Record<string, numb
 	const itemMap: Record<number, Record<string, number | string>> = {};
 
 	for (const profile of profiles) {
+		let cumulativeTime = 0;
 		for (const item of data.students[profile].items) {
 			if (!itemMap[item.itemNumber]) {
 				itemMap[item.itemNumber] = { item: item.itemNumber };
 			}
+			cumulativeTime += item.timeToProcessSeconds;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_cognitive`] = item.cognitiveLoad;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_time`] = item.timeToProcessSeconds;
+			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_cumulative_time`] = cumulativeTime;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_confusion`] = item.confusionRisk;
 			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_misconception`] = item.misconceptionRisk;
-			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_reading`] = item.readingLoad;
+			const readingLevel = typeof (item as { readingLevel?: number }).readingLevel === "number"
+				? (item as { readingLevel: number }).readingLevel
+				: item.readingLoad;
+			(itemMap[item.itemNumber] as Record<string, number | string>)[`${profile}_reading`] = readingLevel;
 		}
 	}
 
@@ -140,29 +160,41 @@ function PrimaryGraphTooltip({ active, payload, label }: { active?: boolean; pay
 			{profiles.map((profile) => {
 				const cognitive = Number(row[`${profile}_cognitive`] ?? 0);
 				const reading = Number(row[`${profile}_reading`] ?? 0);
-				const confusion = Number(row[`${profile}_confusion`] ?? 0);
-				const misconception = Number(row[`${profile}_misconception`] ?? 0);
-				const time = Number(row[`${profile}_time`] ?? 0);
-				const delta = cognitive - reading;
-				const band = riskBand(Math.max(cognitive, confusion, misconception));
-				const bandColor = band === "high" ? "#fca5a5" : band === "medium" ? "#fde68a" : "#86efac";
+				const band = riskBand(Math.max(cognitive, reading));
+				const bandColor = band === "high" ? "#b91c1c" : band === "medium" ? "#a16207" : "#166534";
 				return (
 					<div key={profile} style={{ marginBottom: "0.45rem" }}>
 						<div style={{ ...TOOLTIP_ITEM_STYLE, fontWeight: 700, display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
 							<span>{profile}</span>
 							<span style={{ color: bandColor, textTransform: "uppercase", fontSize: "0.68rem", letterSpacing: "0.07em" }}>{band} risk</span>
 						</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Cognitive: {Math.round(cognitive * 100)}%</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Reading: {Math.round(reading * 100)}%</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Gap (Cog-Read): {delta >= 0 ? "+" : ""}{Math.round(delta * 100)} pts</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Confusion: {Math.round(confusion * 100)}%</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Misconception: {Math.round(misconception * 100)}%</div>
-						<div style={TOOLTIP_ITEM_STYLE}>Time: {time}s</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Cognitive Level: {Math.round(cognitive * 100)}%</div>
+						<div style={TOOLTIP_ITEM_STYLE}>Reading Level: {Math.round(reading * 100)}%</div>
 					</div>
 				);
 			})}
 		</div>
 	);
+}
+
+function explainHeatmapReason(item: SimulatorData["items"][number]): string {
+	const explicitReason = (item as { reason?: unknown }).reason;
+	if (typeof explicitReason === "string" && explicitReason.trim().length > 0) {
+		return explicitReason;
+	}
+
+	if (Array.isArray(item.redFlags) && item.redFlags.length > 0) {
+		return item.redFlags[0];
+	}
+
+	const reasons: string[] = [];
+	if (item.cognitiveLoad >= 0.7) reasons.push("multi-step reasoning demand");
+	if (item.readingLoad >= 0.6) reasons.push("higher reading demand");
+	if (item.misconceptionRisk >= 0.65) reasons.push("misconception risk spike");
+	if (item.confusionRisk >= 0.65) reasons.push("confusion spike");
+	if (item.timeToProcessSeconds >= 60) reasons.push("longer processing time");
+
+	return reasons.length > 0 ? reasons.join("; ") : "Moderate combined processing demand";
 }
 
 export function PrimaryItemGraph({ data }: { data: ParallelSimulatorData }) {
@@ -207,6 +239,7 @@ export function PrimaryItemGraph({ data }: { data: ParallelSimulatorData }) {
 								name={`${profile} Cognitive`}
 								dataKey={`${profile}_cognitive`}
 								stroke={profileColor(i)}
+								legendType="line"
 								strokeWidth={2.2}
 								dot={{ r: 3 }}
 								activeDot={{ r: 5 }}
@@ -214,10 +247,11 @@ export function PrimaryItemGraph({ data }: { data: ParallelSimulatorData }) {
 							<Line
 								key={`${profile}-reading`}
 								type="monotone"
-								name={`${profile} Reading`}
+								name={`${profile} Reading Level`}
 								dataKey={`${profile}_reading`}
-								stroke={profileColor(i)}
-								strokeOpacity={0.85}
+								stroke={readingSeriesColor(i)}
+								legendType="rect"
+								strokeOpacity={0.95}
 								strokeDasharray="5 4"
 								strokeWidth={2}
 								dot={{ r: 2 }}
@@ -232,7 +266,7 @@ export function PrimaryItemGraph({ data }: { data: ParallelSimulatorData }) {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Time-to-Process Bar Chart
+// 2. Cumulative Time-to-Process Chart
 // ---------------------------------------------------------------------------
 
 export function TimeToProcessChart({ data }: { data: ParallelSimulatorData }) {
@@ -241,30 +275,39 @@ export function TimeToProcessChart({ data }: { data: ParallelSimulatorData }) {
 
 	return (
 		<div style={CHART_STYLE}>
-			<p style={SECTION_KICKER}>Time to Process (seconds per item)</p>
+			<p style={SECTION_KICKER}>Cumulative Time to Process</p>
+			<p style={{ margin: "0 0 0.5rem", fontSize: "0.78rem", color: "#7c5a46", lineHeight: 1.5 }}>
+				This curve shows accumulated processing time by item, making pacing spikes and fatigue buildup easier to see.
+			</p>
 			<ResponsiveContainer width="100%" height={260}>
-				<BarChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+				<LineChart data={matrix} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
 					<CartesianGrid strokeDasharray="3 3" stroke="rgba(86,57,32,0.1)" />
 					<XAxis dataKey="item" tick={{ fontSize: 10, fill: TICK_COLOR }} />
 					<YAxis tick={{ fontSize: 10, fill: TICK_COLOR }} unit="s" />
 					<Tooltip
 						contentStyle={TOOLTIP_CONTENT_STYLE}
-					labelStyle={TOOLTIP_LABEL_STYLE}
-					itemStyle={TOOLTIP_ITEM_STYLE}
-					formatter={(value: number | undefined, name: string | undefined) => [`${value !== undefined ? value : 0}s`, name]}
-					labelFormatter={(label) => `Item ${label}`}
-				/>
-				<Legend wrapperStyle={LEGEND_STYLE} />
+						labelStyle={TOOLTIP_LABEL_STYLE}
+						itemStyle={TOOLTIP_ITEM_STYLE}
+						formatter={(value: number | undefined, name: string | undefined) => {
+							const seconds = value !== undefined ? value : 0;
+							return [`${seconds}s (${(seconds / 60).toFixed(1)} min)`, name];
+						}}
+						labelFormatter={(label) => `Through item ${label}`}
+					/>
+					<Legend wrapperStyle={LEGEND_STYLE} />
 					{profiles.map((profile, i) => (
-						<Bar
+						<Line
 							key={profile}
-							dataKey={`${profile}_time`}
+							type="monotone"
+							dataKey={`${profile}_cumulative_time`}
 							name={profile}
-							fill={profileColor(i)}
-							fillOpacity={0.8}
+							stroke={profileColor(i)}
+							strokeWidth={2.4}
+							dot={{ r: 3 }}
+							activeDot={{ r: 5 }}
 						/>
 					))}
-				</BarChart>
+				</LineChart>
 			</ResponsiveContainer>
 		</div>
 	);
@@ -339,7 +382,7 @@ export function ConfusionMatrix({ data }: { data: ParallelSimulatorData }) {
 								{data.students[profile].items.map((item) => (
 									<td
 										key={item.itemNumber}
-										title={`${profile} — Item ${item.itemNumber}: ${Math.round(item.confusionRisk * 100)}%`}
+										title={`${profile} — Item ${item.itemNumber}: ${Math.round(item.confusionRisk * 100)}% • ${explainHeatmapReason(item)}`}
 										style={{
 											padding: "0.25rem 0.4rem",
 											textAlign: "center",
@@ -357,7 +400,7 @@ export function ConfusionMatrix({ data }: { data: ParallelSimulatorData }) {
 					</tbody>
 				</table>
 				<p style={{ marginTop: "0.4rem", fontSize: "0.72rem", color: "#6b5040" }}>
-					Values are confusion risk % (0–100). Red = high risk.
+					Values are confusion risk % (0–100). Hover a cell to see why risk is elevated.
 				</p>
 			</div>
 		</div>

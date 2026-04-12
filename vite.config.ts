@@ -245,6 +245,11 @@ const localPrismRoutes: LocalApiRoute[] = [
   { pattern: /^\/usage\/today$/, modulePath: '/api/v4/usage/today.ts' },
 ]
 
+const localApiRoutes: LocalApiRoute[] = [
+  { pattern: /^\/rewrite$/, modulePath: '/api/rewrite/index.ts' },
+  { pattern: /^\/rewrite\/report-bad$/, modulePath: '/api/rewrite/report-bad.ts' },
+]
+
 async function invokeLocalApiRoute(server: any, req: any, res: any, route: LocalApiRoute, url: URL, match: RegExpMatchArray) {
   const mod = await server.ssrLoadModule(route.modulePath)
   const handler = mod?.default
@@ -717,6 +722,43 @@ function localPrismV4Proxy(): Plugin {
   }
 }
 
+function localApiProxy(): Plugin {
+  return {
+    name: 'local-api-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api', async (req, res, next) => {
+        const url = new URL(req.url ?? '/', 'http://localhost')
+        const pathname = url.pathname.replace(/\/+$/, '') || '/'
+
+        const route = localApiRoutes.find((entry) => entry.pattern.test(pathname))
+        if (!route) {
+          next()
+          return
+        }
+
+        setApiCors(res, 'GET, POST, PATCH, DELETE, OPTIONS')
+
+        if (req.method === 'OPTIONS') {
+          sendJson(res, 200, {})
+          return
+        }
+
+        try {
+          const match = pathname.match(route.pattern)
+          if (!match) {
+            next()
+            return
+          }
+
+          await invokeLocalApiRoute(server, req, res, route, url, match)
+        } catch (err: any) {
+          sendJson(res, 500, { error: err?.message ?? 'Local API proxy failed' })
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig(({ mode }) => {
   // loadEnv reads .env, .env.local, .env.[mode], .env.[mode].local
   // The third arg '' means load ALL vars (not just VITE_ prefixed ones)
@@ -730,7 +772,7 @@ export default defineConfig(({ mode }) => {
   const devApiTarget = env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
 
   return {
-    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localPrismV4Proxy()],
+    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localPrismV4Proxy(), localApiProxy()],
     server: {
       port: 3000,
       open: true,

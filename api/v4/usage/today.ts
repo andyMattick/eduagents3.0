@@ -44,12 +44,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	const today = new Date().toISOString().slice(0, 10);
 
 	try {
-		const rows = await supabaseRest("user_daily_tokens", {
+		const usageRows = await supabaseRest("user_daily_usage", {
+			method: "GET",
+			select: "tokens_used",
+			filters: { actor_key: `eq.${userId}`, usage_date: `eq.${today}` },
+		}).catch(() => null);
+		const usageCount = Array.isArray(usageRows) && usageRows.length > 0
+			? Number((usageRows[0] as { tokens_used?: number }).tokens_used ?? 0)
+			: 0;
+
+		if (Array.isArray(usageRows) && usageRows.length > 0) {
+			// Keep checking legacy table too to avoid under-reporting during migration drift.
+		}
+
+		const legacyRows = await supabaseRest("user_daily_tokens", {
 			method: "GET",
 			select: "tokens_used",
 			filters: { actor_key: `eq.${userId}`, date: `eq.${today}` },
-		});
-		const count = Array.isArray(rows) && rows.length > 0 ? (rows[0].tokens_used as number) : 0;
+		}).catch(() => null);
+		const legacyCount = Array.isArray(legacyRows) && legacyRows.length > 0
+			? Number((legacyRows[0] as { tokens_used?: number }).tokens_used ?? 0)
+			: 0;
+
+		const count = Math.max(usageCount, legacyCount);
 		return res.status(200).json({ count, limit: DAILY_TOKEN_LIMIT });
 	} catch {
 		// If table doesn't exist yet, return 0 — don't block the UI

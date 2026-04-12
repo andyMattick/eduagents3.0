@@ -1,14 +1,40 @@
 import { useMemo, useState } from "react";
 
-import type { RewrittenSection, RewriteResponse } from "../../types/simulator";
+import type { RewriteResponse } from "../../types/rewrite";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 
+type RewrittenSection = {
+	sectionId: string;
+	rewrittenText: string;
+	original?: string;
+};
+
+type LegacyItem = {
+	itemNumber: number;
+	rewrittenStem: string;
+	original?: string;
+};
+
+type LegacyRewrittenItem = {
+	originalItemNumber: number;
+	rewrittenStem: string;
+	original?: string;
+};
+
+type ViewerRewrite = RewriteResponse & {
+	docType?: "problem" | "notes" | "mixed";
+	sections?: RewrittenSection[];
+	items?: LegacyItem[];
+	rewrittenItems?: LegacyRewrittenItem[];
+	testLevel?: string[];
+};
+
 type Props = {
-	rewrite: RewriteResponse;
+	rewrite: ViewerRewrite;
 	documentId?: string | null;
 };
 
-function detectDocType(rewrite: RewriteResponse): "problem" | "notes" | "mixed" {
+function detectDocType(rewrite: ViewerRewrite): "problem" | "notes" | "mixed" {
 	if (rewrite.docType) return rewrite.docType;
 	const hasSections = (rewrite.sections?.length ?? 0) > 0;
 	const hasItems = (rewrite.items?.length ?? 0) > 0 || (rewrite.rewrittenItems?.length ?? 0) > 0;
@@ -103,6 +129,21 @@ export function RewriteViewer({ rewrite, documentId = null }: Props) {
 							<p style={{ margin: 0, lineHeight: 1.65 }}>{item.rewrittenStem}</p>
 						</div>
 					))}
+				</div>
+			) : null}
+
+			{normalizedItems.length === 0 && localSections.length === 0 && typeof rewrite.rewritten === "string" ? (
+				<div
+					style={{
+						background: "rgba(255,251,245,0.9)",
+						border: "1px solid rgba(86,57,32,0.14)",
+						borderRadius: "14px",
+						padding: "1rem 1.25rem",
+						marginBottom: "0.75rem",
+					}}
+				>
+					<h4 style={{ margin: "0 0 0.5rem" }}>Rewritten Document</h4>
+					<p style={{ margin: 0, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{rewrite.rewritten}</p>
 				</div>
 			) : null}
 

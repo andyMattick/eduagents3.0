@@ -41,10 +41,17 @@ export function DocumentStatusBadge({ documentId }: Props) {
 
 	return (
 		<div className="v4-status-badge">
-			<span>DocType: {status.docType ?? "unknown"}</span>
-			<span>Items: {status.items}</span>
-			<span>Sections: {status.sections}</span>
-			<span>Analysis: {status.analysis ? "Yes" : "No"}</span>
+			<span>Document Type: {formatDocKind(status.docType)}</span>
+			<span>Analysis: {status.analysisAvailable ? "Ready" : "Unavailable"}</span>
+			<span>Rewrite: {status.rewriteEligible ? "Enabled" : "Unavailable"}</span>
 		</div>
 	);
+}
+
+function formatDocKind(docType: DocumentStatus["docType"]): string {
+	if (docType === "notes") return "Notes";
+	if (docType === "assessment") return "Assessment";
+	if (docType === "assignment") return "Assignment";
+	if (docType === "mixed") return "Mixed";
+	return "Unknown";
 }

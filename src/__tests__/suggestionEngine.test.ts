@@ -4,7 +4,7 @@ import {
 	filterAndClassifySuggestions,
 	validateSuggestionSelection,
 	getActionableSelectedTexts,
-} from "../../api/v4/rewrite/suggestionEngine";
+} from "../../api/rewrite/suggestionEngine";
 import {
 	classifyActionable,
 	generateSuggestionId,

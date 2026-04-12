@@ -1,5 +1,5 @@
 /**
- * api/v4/rewrite/suggestionEngine.ts — Suggestion validation and filtering
+ * api/rewrite/suggestionEngine.ts — Suggestion validation and filtering
  *
  * Core pipeline for processing suggestions:
  * 1. Parse and validate incoming suggestion structure
@@ -12,7 +12,7 @@
 import type {
 	RewriteSuggestion,
 	SuggestionFilterResult,
-} from "../../../src/types/v4/suggestions";
+} from "../../src/types/v4/suggestions";
 import {
 	classifyActionable,
 	generateSuggestionId,
@@ -21,7 +21,7 @@ import {
 	getNonActionableSelectedSuggestions,
 	separateBySuggestionSource,
 	normalizeSuggestion,
-} from "../../../src/types/v4/suggestions";
+} from "../../src/types/v4/suggestions";
 
 /**
  * Validate and classify an incoming suggestion from the client.

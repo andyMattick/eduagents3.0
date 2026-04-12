@@ -8,11 +8,10 @@ import type {
 	MultiProfileSimulatorResponse,
 	PreparednessSimulatorRequest,
 	PreparednessSimulatorResponse,
-	RewriteResponse,
 	SingleSimulatorRequest,
 	SingleSimulatorResponse,
 } from "../types/simulator";
-import type { RewriteSuggestion } from "../types/v4/suggestions";
+import type { RewriteRequest, RewriteResponse } from "../types/rewrite";
 import { fetchJson } from "./instructionalSessionApi";
 
 function buildJsonHeaders(userId?: string): Record<string, string> {
@@ -58,15 +57,8 @@ export function runGenerateTestApi(params: GenerateTestRequest, userId?: string)
 	});
 }
 
-export function runRewriteApi(params: {
-	documentId?: string;
-	docType?: "assignment" | "assessment" | "mixed" | "notes";
-	original?: string;
-	suggestions: RewriteSuggestion[];
-	selectedSuggestionIds: string[];
-	preferences?: Record<string, unknown>;
-}, userId?: string) {
-	return fetchJson<RewriteResponse>("/api/v4/rewrite", {
+export function runRewriteApi(params: RewriteRequest, userId?: string) {
+	return fetchJson<RewriteResponse>("/api/rewrite", {
 		method: "POST",
 		headers: buildJsonHeaders(userId),
 		body: JSON.stringify(params),
@@ -83,7 +75,7 @@ export function reportBadRewriteApi(params: {
 	whatWasWrong: string;
 	additionalContext?: string;
 }) {
-	return fetchJson<{ ok: boolean }>("/api/v4/rewrite/report-bad", {
+	return fetchJson<{ ok: boolean }>("/api/rewrite/report-bad", {
 		method: "POST",
 		headers: buildJsonHeaders(params.userId),
 		body: JSON.stringify(params),

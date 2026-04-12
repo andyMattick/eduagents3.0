@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { supabaseRest } from "../../../lib/supabase";
+import { supabaseRest } from "../../lib/supabase";
 
 export const runtime = "nodejs";
 
