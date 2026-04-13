@@ -25,12 +25,83 @@ export interface ReverseAlignmentRecord {
   testEvidence: ReverseAlignmentEvidence[];
 }
 
-export type ReverseAlignmentResult = ReverseAlignmentRecord[];
+export interface ReverseAlignmentResult {
+  reverseCoverage: ReverseAlignmentRecord[];
+}
+
+export interface CoveredReportItem {
+  assessmentItemNumber: number;
+  concepts: ConceptItem[];
+  difficulty: number;
+  prepDifficulty: number;
+  alignment: "aligned" | "slightly_above" | "misaligned_above";
+  teacherAction: "add_prep_support" | "remove_question" | "no_action";
+}
+
+export interface UncoveredReportItem {
+  assessmentItemNumber: number;
+  concepts: [];
+  difficulty: number;
+  prepDifficulty: 0;
+  alignment: "missing_in_prep";
+}
+
+export interface TeacherCorrection {
+  assessmentItemNumber: number;
+  overrideAlignment?: "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
+  overrideConcepts?: string[];
+  overrideDifficulty?: number;
+  overrideSuggestionType?: "none" | "add_prep_support" | "remove_question";
+}
+
+export interface TeacherOverrideEvent {
+  assessmentItemNumber: number;
+  field: "alignment" | "concepts" | "difficulty" | "suggestionType";
+  modelValue: string;
+  teacherValue: string;
+}
+
+export interface AdminIssue {
+  assessmentItemNumber?: number;
+  issue: string;
+  concept?: string;
+}
+
+export interface LlmPhaseError {
+  phase: string;
+  errorType: string;
+}
+
+export interface AdminReportPayload {
+  llmErrors: LlmPhaseError[];
+  teacherOverrides: TeacherOverrideEvent[];
+  modelAnomalies: AdminIssue[];
+  uncoveredItems: number[];
+  rewriteIssues: AdminIssue[];
+  reverseAlignmentIssues: AdminIssue[];
+}
+
+export interface CorrectedPreparednessResult {
+  correctedAlignment: {
+    coveredItems: CoveredReportItem[];
+    uncoveredItems: UncoveredReportItem[];
+  };
+  correctedSuggestions: Array<{
+    assessmentItemNumber: number;
+    issue: "slightly_above" | "misaligned_above" | "missing_in_prep";
+    suggestionType: "remove_question" | "add_prep_support";
+  }>;
+  correctedRewrite: {
+    rewrittenAssessment: string;
+    prepAddendum: string[];
+  };
+}
 
 export interface PreparednessReportResult {
-  section1: unknown[];
-  section2: unknown[];
-  section3: unknown[];
-  section4: string[];
+  covered: CoveredReportItem[];
+  uncovered: UncoveredReportItem[];
+  prepAddendum: string[];
+  reverseCoverage: ReverseAlignmentRecord[];
   fullText: string;
+  adminReport?: AdminReportPayload;
 }

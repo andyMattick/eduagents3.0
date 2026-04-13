@@ -26,7 +26,7 @@ export interface ConceptItem {
 export interface AlignmentRecord {
   assessmentItemNumber: number;
   concepts: ConceptItem[];
-  difficulty: number;    // 1–5 test difficulty
+  difficulty: number; // 1–5 test difficulty
   prepDifficulty: number; // 1–5 prep difficulty
   alignment: AlignmentStatus;
 }
@@ -34,7 +34,10 @@ export interface AlignmentRecord {
 /**
  * Complete alignment analysis result.
  */
-export type AlignmentResult = AlignmentRecord[];
+export interface AlignmentResult {
+  coveredItems: AlignmentRecord[];
+  uncoveredItems: AlignmentRecord[];
+}
 
 /**
  * Input documents for alignment analysis.

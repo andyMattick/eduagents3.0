@@ -8,14 +8,14 @@ export type SuggestionType =
   | "remove_question"
   | "add_prep_support";
 
-export type IssueType = "missing_in_prep" | "misaligned_above";
+export type IssueType = "slightly_above" | "misaligned_above" | "missing_in_prep";
 
 /**
  * A single suggestion produced by the alignment engine.
  */
 export interface Suggestion {
   assessmentItemNumber: number;
-  issue: string;
+  issue: IssueType;
   suggestionType: SuggestionType;
 }
 

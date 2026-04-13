@@ -14,6 +14,9 @@ import type {
   ReverseAlignmentResult,
   PreparednessReportResult,
   Suggestion,
+  TeacherCorrection,
+  CorrectedPreparednessResult,
+  AdminReportPayload,
 } from "../prism-v4/schema/domain/Preparedness";
 
 export interface PreparedenessServiceError {
@@ -175,6 +178,69 @@ export async function generatePreparednessReport(
 
 export const getPreparednessReport = generatePreparednessReport;
 
+export async function applyTeacherCorrections(
+  alignment: AlignmentResult,
+  suggestions: SuggestionsResult,
+  rewrite: RewriteResult,
+  teacherCorrections: TeacherCorrection[]
+): Promise<CorrectedPreparednessResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "teacher_input",
+      alignment,
+      suggestions,
+      rewrite,
+      teacherCorrections,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to apply teacher corrections",
+      phase: "teacher_input",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function getAdminReport(params: {
+  modelOutput: {
+    alignment: AlignmentResult;
+    suggestions: SuggestionsResult;
+    rewrite: RewriteResult;
+    reverseAlignment: ReverseAlignmentResult;
+  };
+  teacherCorrections: TeacherCorrection[];
+  llmErrors?: Array<{ phase: string; errorType: string }>;
+}): Promise<AdminReportPayload> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "admin_report",
+      modelOutput: params.modelOutput,
+      teacherCorrections: params.teacherCorrections,
+      llmErrors: params.llmErrors ?? [],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to generate admin report",
+      phase: "admin_report",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
 export async function runPreparednessPipeline(params: {
   prep: PrepDocument;
   assessment: AssessmentDocument;
@@ -185,22 +251,23 @@ export async function runPreparednessPipeline(params: {
   // 1. alignment
   const alignment = await getAlignment(prep, assessment);
   // 2. suggestions
-  await getSuggestions(alignment);
+  const suggestionsResult = await getSuggestions(alignment);
+  const suggestionsToApply = finalSuggestions.length > 0 ? finalSuggestions : suggestionsResult;
   // 3. rewrite (using finalSuggestions from UI)
-  const rewriteResult = await applyRewrite(assessment, finalSuggestions);
+  const rewriteResult = await applyRewrite(assessment, suggestionsToApply);
   // 4. reverse alignment
   const reverseAlignment = await getReverseAlignment(prep, assessment);
   // 5. report
   const report = await getPreparednessReport(
     alignment,
     reverseAlignment,
-    finalSuggestions as SuggestionsResult,
+    suggestionsToApply as SuggestionsResult,
     rewriteResult
   );
 
   return {
     alignment,
-    suggestions: finalSuggestions as SuggestionsResult,
+    suggestions: suggestionsResult,
     rewriteResult,
     reverseAlignment,
     report,
@@ -241,9 +308,7 @@ export function getAlignmentStatusLabel(status: string): string {
 export function getSuggestionTypeLabel(type: string): string {
   const labels: Record<string, string> = {
     remove_question: "Remove Question",
-    lower_bloom_level: "Lower Bloom Level",
     add_prep_support: "Add Prep Support",
-    raise_prep_level: "Raise Prep Level",
   };
   return labels[type] || type;
 }

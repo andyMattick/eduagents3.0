@@ -16,6 +16,7 @@ import type {
   PreparednessReportResult,
   Suggestion,
   SuggestionsResult as SuggestionsList,
+  TeacherCorrection,
 } from "../../prism-v4/schema/domain/Preparedness";
 import {
   getAlignment,
@@ -23,6 +24,8 @@ import {
   getReverseAlignment,
   applyRewrite,
   generatePreparednessReport,
+  applyTeacherCorrections,
+  getAdminReport,
 } from "../../services_new/preparednessService";
 import { AlignmentTable } from "./AlignmentTable";
 import { SuggestionsPanel } from "./SuggestionsPanel";
@@ -35,7 +38,7 @@ interface PreparednessPageProps {
   assessment?: AssessmentDocument;
 }
 
-type Phase = "upload" | "alignment" | "suggestions" | "rewrite" | "report";
+type Phase = "upload" | "alignment" | "suggestions" | "rewrite" | "teacher" | "report";
 
 interface PreparednessState {
   prep: PrepDocument | null;
@@ -64,6 +67,19 @@ interface ErrorState {
   rewrite: string | null;
   report: string | null;
 }
+
+type TeacherOverrideAlignment = "" | "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
+type TeacherOverrideSuggestion = "" | "none" | "add_prep_support" | "remove_question";
+
+interface TeacherCorrectionDraft {
+  assessmentItemNumber: number;
+  overrideAlignment: TeacherOverrideAlignment;
+  overrideConcepts: string;
+  overrideDifficulty: string;
+  overrideSuggestionType: TeacherOverrideSuggestion;
+}
+
+type TeacherReviewFilter = "all" | "missing" | "overridden";
 
 export const PreparednessPage: React.FC<PreparednessPageProps> = ({
   prep: initialPrep,
@@ -103,6 +119,32 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const [selectedFixes, setSelectedFixes] = useState<Record<number, "remove_question" | "add_prep_support" | undefined>>({});
+  const [teacherCorrectionDrafts, setTeacherCorrectionDrafts] = useState<Record<number, TeacherCorrectionDraft>>({});
+  const [teacherReviewFilter, setTeacherReviewFilter] = useState<TeacherReviewFilter>("all");
+
+  const allAlignmentItems = state.alignment
+    ? [...state.alignment.coveredItems, ...state.alignment.uncoveredItems]
+    : [];
+
+  const hasDraftOverride = (draft?: TeacherCorrectionDraft) => {
+    if (!draft) return false;
+    return Boolean(
+      draft.overrideAlignment ||
+      draft.overrideConcepts.trim() ||
+      draft.overrideDifficulty.trim() ||
+      draft.overrideSuggestionType
+    );
+  };
+
+  const filteredTeacherItems = allAlignmentItems.filter((item) => {
+    if (teacherReviewFilter === "all") {
+      return true;
+    }
+    if (teacherReviewFilter === "missing") {
+      return item.alignment === "missing_in_prep";
+    }
+    return hasDraftOverride(teacherCorrectionDrafts[item.assessmentItemNumber]);
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -232,13 +274,74 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         setLoading((prev) => ({ ...prev, reverseAlignment: false }));
       }
 
-      const report = await generatePreparednessReport(
+      const parsedCorrections: TeacherCorrection[] = Object.values(teacherCorrectionDrafts)
+        .map((draft) => {
+          const concepts = draft.overrideConcepts
+            .split(",")
+            .map((c) => c.trim())
+            .filter(Boolean);
+
+          const difficultyNum = Number(draft.overrideDifficulty);
+
+          const correction: TeacherCorrection = {
+            assessmentItemNumber: draft.assessmentItemNumber,
+          };
+
+          if (draft.overrideAlignment) {
+            correction.overrideAlignment = draft.overrideAlignment;
+          }
+          if (concepts.length > 0) {
+            correction.overrideConcepts = concepts;
+          }
+          if (Number.isFinite(difficultyNum) && draft.overrideDifficulty.trim() !== "") {
+            correction.overrideDifficulty = difficultyNum;
+          }
+          if (draft.overrideSuggestionType) {
+            correction.overrideSuggestionType = draft.overrideSuggestionType;
+          }
+
+          return correction;
+        })
+        .filter((correction) =>
+          Boolean(
+            correction.overrideAlignment ||
+              correction.overrideConcepts?.length ||
+              correction.overrideDifficulty !== undefined ||
+              correction.overrideSuggestionType
+          )
+        );
+
+      const corrected = await applyTeacherCorrections(
         state.alignment,
-        reverseAlignment,
         suggestionsForReport,
-        state.rewrite
+        state.rewrite,
+        parsedCorrections
       );
-      setState((prev) => ({ ...prev, report }));
+
+      const report = await generatePreparednessReport(
+        corrected.correctedAlignment,
+        reverseAlignment,
+        corrected.correctedSuggestions,
+        corrected.correctedRewrite
+      );
+
+      const adminReport = await getAdminReport({
+        modelOutput: {
+          alignment: corrected.correctedAlignment,
+          suggestions: corrected.correctedSuggestions,
+          rewrite: corrected.correctedRewrite,
+          reverseAlignment,
+        },
+        teacherCorrections: parsedCorrections,
+      });
+
+      setState((prev) => ({
+        ...prev,
+        alignment: corrected.correctedAlignment,
+        suggestions: corrected.correctedSuggestions,
+        rewrite: corrected.correctedRewrite,
+        report: { ...report, adminReport },
+      }));
       setPhase("report");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -256,7 +359,27 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     state.reverseAlignment,
     state.rewrite,
     state.suggestions,
+    teacherCorrectionDrafts,
   ]);
+
+  useEffect(() => {
+    if (phase !== "teacher" || !state.alignment) {
+      return;
+    }
+
+    const nextDrafts: Record<number, TeacherCorrectionDraft> = {};
+    const sourceItems = [...state.alignment.coveredItems, ...state.alignment.uncoveredItems];
+    for (const item of sourceItems) {
+      nextDrafts[item.assessmentItemNumber] = {
+        assessmentItemNumber: item.assessmentItemNumber,
+        overrideAlignment: "",
+        overrideConcepts: "",
+        overrideDifficulty: "",
+        overrideSuggestionType: "",
+      };
+    }
+    setTeacherCorrectionDrafts(nextDrafts);
+  }, [phase, state.alignment]);
 
   useEffect(() => {
     if (
@@ -319,6 +442,8 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setPhase("upload");
     setSelectedSuggestions(new Set());
     setSelectedFixes({});
+    setTeacherCorrectionDrafts({});
+    setTeacherReviewFilter("all");
     setErrors({
       alignment: null,
       reverseAlignment: null,
@@ -363,7 +488,9 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
           <div style={{ color: "#9ca3af" }}>›</div>
           <div style={{ color: phase === "rewrite" ? "#2563eb" : "#9ca3af" }}>3. Rewrite</div>
           <div style={{ color: "#9ca3af" }}>›</div>
-          <div style={{ color: phase === "report" ? "#2563eb" : "#9ca3af" }}>4. Report</div>
+          <div style={{ color: phase === "teacher" ? "#2563eb" : "#9ca3af" }}>4. Teacher Review</div>
+          <div style={{ color: "#9ca3af" }}>›</div>
+          <div style={{ color: phase === "report" ? "#2563eb" : "#9ca3af" }}>5. Report</div>
         </div>
       )}
 
@@ -663,7 +790,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                   rewrite={state.rewrite}
                   originalAssessment={state.assessment}
                   originalPrepTitle={state.prep?.title}
-                  onGenerateReport={handleGenerateReport}
+                  onGenerateReport={() => setPhase("teacher")}
                   isGeneratingReport={loading.report}
                 />
               </div>
@@ -707,10 +834,241 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         </div>
       )}
 
+      {/* TEACHER INPUT PHASE */}
+      {phase === "teacher" && (
+        <div>
+          <h2 style={{ marginBottom: "1.5rem", fontSize: "1.5rem", fontWeight: "600" }}>
+            Teacher Corrections
+          </h2>
+
+          <p style={{ color: "#555", marginTop: 0 }}>
+            Optional: override model decisions per question. Only filled fields are applied.
+          </p>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="v4-button v4-button-secondary"
+                onClick={() => setTeacherReviewFilter("all")}
+                style={{ backgroundColor: teacherReviewFilter === "all" ? "#e2e8f0" : undefined }}
+              >
+                All ({allAlignmentItems.length})
+              </button>
+              <button
+                type="button"
+                className="v4-button v4-button-secondary"
+                onClick={() => setTeacherReviewFilter("missing")}
+                style={{ backgroundColor: teacherReviewFilter === "missing" ? "#fee2e2" : undefined }}
+              >
+                Missing in Prep ({allAlignmentItems.filter((item) => item.alignment === "missing_in_prep").length})
+              </button>
+              <button
+                type="button"
+                className="v4-button v4-button-secondary"
+                onClick={() => setTeacherReviewFilter("overridden")}
+                style={{ backgroundColor: teacherReviewFilter === "overridden" ? "#dbeafe" : undefined }}
+              >
+                Overridden ({allAlignmentItems.filter((item) => hasDraftOverride(teacherCorrectionDrafts[item.assessmentItemNumber])).length})
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => {
+                const resetDrafts: Record<number, TeacherCorrectionDraft> = {};
+                for (const item of allAlignmentItems) {
+                  resetDrafts[item.assessmentItemNumber] = {
+                    assessmentItemNumber: item.assessmentItemNumber,
+                    overrideAlignment: "",
+                    overrideConcepts: "",
+                    overrideDifficulty: "",
+                    overrideSuggestionType: "",
+                  };
+                }
+                setTeacherCorrectionDrafts(resetDrafts);
+                setTeacherReviewFilter("all");
+              }}
+            >
+              Reset All Overrides
+            </button>
+          </div>
+
+          <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+              <thead>
+                <tr style={{ backgroundColor: "#f8fafc" }}>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Q#</th>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Model Alignment</th>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Alignment</th>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Concepts</th>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Difficulty</th>
+                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Suggestion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTeacherItems.map((item) => {
+                  const draft = teacherCorrectionDrafts[item.assessmentItemNumber];
+                  return (
+                    <tr key={item.assessmentItemNumber} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <td style={{ padding: "10px", fontWeight: 600 }}>{item.assessmentItemNumber}</td>
+                      <td style={{ padding: "10px" }}>{item.alignment}</td>
+                      <td style={{ padding: "10px" }}>
+                        <select
+                          value={draft?.overrideAlignment ?? ""}
+                          onChange={(event) =>
+                            setTeacherCorrectionDrafts((prev) => ({
+                              ...prev,
+                              [item.assessmentItemNumber]: {
+                                ...(prev[item.assessmentItemNumber] ?? {
+                                  assessmentItemNumber: item.assessmentItemNumber,
+                                  overrideConcepts: "",
+                                  overrideDifficulty: "",
+                                  overrideSuggestionType: "",
+                                  overrideAlignment: "",
+                                }),
+                                overrideAlignment: event.target.value as TeacherOverrideAlignment,
+                              },
+                            }))
+                          }
+                          style={{ width: "100%" }}
+                        >
+                          <option value="">No change</option>
+                          <option value="aligned">aligned</option>
+                          <option value="slightly_above">slightly_above</option>
+                          <option value="misaligned_above">misaligned_above</option>
+                          <option value="missing_in_prep">missing_in_prep</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: "10px" }}>
+                        <input
+                          type="text"
+                          value={draft?.overrideConcepts ?? ""}
+                          placeholder="comma,separated,labels"
+                          onChange={(event) =>
+                            setTeacherCorrectionDrafts((prev) => ({
+                              ...prev,
+                              [item.assessmentItemNumber]: {
+                                ...(prev[item.assessmentItemNumber] ?? {
+                                  assessmentItemNumber: item.assessmentItemNumber,
+                                  overrideAlignment: "",
+                                  overrideDifficulty: "",
+                                  overrideSuggestionType: "",
+                                  overrideConcepts: "",
+                                }),
+                                overrideConcepts: event.target.value,
+                              },
+                            }))
+                          }
+                          style={{ width: "100%" }}
+                        />
+                      </td>
+                      <td style={{ padding: "10px" }}>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={draft?.overrideDifficulty ?? ""}
+                          onChange={(event) =>
+                            setTeacherCorrectionDrafts((prev) => ({
+                              ...prev,
+                              [item.assessmentItemNumber]: {
+                                ...(prev[item.assessmentItemNumber] ?? {
+                                  assessmentItemNumber: item.assessmentItemNumber,
+                                  overrideAlignment: "",
+                                  overrideConcepts: "",
+                                  overrideSuggestionType: "",
+                                  overrideDifficulty: "",
+                                }),
+                                overrideDifficulty: event.target.value,
+                              },
+                            }))
+                          }
+                          style={{ width: "100%" }}
+                        />
+                      </td>
+                      <td style={{ padding: "10px" }}>
+                        <select
+                          value={draft?.overrideSuggestionType ?? ""}
+                          onChange={(event) =>
+                            setTeacherCorrectionDrafts((prev) => ({
+                              ...prev,
+                              [item.assessmentItemNumber]: {
+                                ...(prev[item.assessmentItemNumber] ?? {
+                                  assessmentItemNumber: item.assessmentItemNumber,
+                                  overrideAlignment: "",
+                                  overrideConcepts: "",
+                                  overrideDifficulty: "",
+                                  overrideSuggestionType: "",
+                                }),
+                                overrideSuggestionType: event.target.value as TeacherOverrideSuggestion,
+                              },
+                            }))
+                          }
+                          style={{ width: "100%" }}
+                        >
+                          <option value="">No change</option>
+                          <option value="none">none</option>
+                          <option value="add_prep_support">add_prep_support</option>
+                          <option value="remove_question">remove_question</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => setPhase("rewrite")}
+            >
+              Back to Rewrite
+            </button>
+            <button
+              type="button"
+              className="v4-button v4-button-primary"
+              onClick={handleGenerateReport}
+              disabled={loading.report}
+            >
+              {loading.report ? "Generating..." : "Apply Corrections & Generate Report"}
+            </button>
+          </div>
+
+          {errors.report && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                backgroundColor: "#ffebee",
+                borderRadius: "8px",
+                color: "#c62828",
+              }}
+            >
+              ✗ {errors.report}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* REPORT PHASE */}
       {phase === "report" && state.report && (
         <div>
           <PreparednessReportPage report={state.report} onBack={() => setPhase("rewrite")} />
+
+          {state.report.adminReport && (
+            <details style={{ marginTop: "1.5rem", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "0.75rem 1rem", backgroundColor: "#f8fafc" }}>
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>Admin Audit Report</summary>
+              <pre style={{ marginTop: "0.75rem", whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                {JSON.stringify(state.report.adminReport, null, 2)}
+              </pre>
+            </details>
+          )}
+
           <div
             style={{
               marginTop: "2rem",

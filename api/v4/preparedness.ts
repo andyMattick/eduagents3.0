@@ -6,6 +6,8 @@ import {
   applySuggestions,
   getReverseAlignment,
   getPreparednessReport,
+  applyTeacherInput,
+  generateAdminReport,
 } from "../../src/prism-v4/intelligence/preparedness";
 import type {
   AssessmentDocument,
@@ -14,6 +16,7 @@ import type {
   ReverseAlignmentResult,
   SuggestionsResult,
   RewriteResult,
+  TeacherCorrection,
 } from "../../src/prism-v4/schema/domain/Preparedness";
 
 export const runtime = "nodejs";
@@ -59,6 +62,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       suggestions,
       rewrite,
       finalSuggestions,
+      teacherCorrections,
+      llmErrors,
+      modelOutput,
     } = payload;
 
     if (!phase) {
@@ -145,6 +151,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         rewrite as RewriteResult,
         callLLM
       );
+    } else if (phase === "teacher_input") {
+      if (!alignment || !suggestions || !rewrite) {
+        return res.status(400).json({
+          error: "Phase 'teacher_input' requires alignment, suggestions, and rewrite",
+        });
+      }
+
+      result = await applyTeacherInput(
+        alignment,
+        suggestions,
+        rewrite,
+        (teacherCorrections ?? []) as TeacherCorrection[],
+        callLLM
+      );
+    } else if (phase === "admin_report") {
+      if (!modelOutput || !modelOutput.alignment || !modelOutput.suggestions || !modelOutput.rewrite || !modelOutput.reverseAlignment) {
+        return res.status(400).json({
+          error: "Phase 'admin_report' requires modelOutput with alignment, suggestions, rewrite, and reverseAlignment",
+        });
+      }
+
+      result = await generateAdminReport(
+        modelOutput,
+        (teacherCorrections ?? []) as TeacherCorrection[],
+        (llmErrors ?? []) as Array<{ phase: string; errorType: string }>,
+        callLLM
+      );
     } else if (phase === "pipeline") {
       if (!prep || !assessment) {
         return res.status(400).json({
@@ -172,17 +205,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         callLLM
       );
 
+      const teacherCorrectionsList = (teacherCorrections ?? []) as TeacherCorrection[];
+      const correctedResult = await applyTeacherInput(
+        alignmentResult,
+        suggestionsToApply as SuggestionsResult,
+        rewriteResult,
+        teacherCorrectionsList,
+        callLLM
+      );
+
+      const adminReport = await generateAdminReport(
+        {
+          alignment: correctedResult.correctedAlignment,
+          suggestions: correctedResult.correctedSuggestions,
+          rewrite: correctedResult.correctedRewrite,
+          reverseAlignment: reverseAlignmentResult,
+        },
+        teacherCorrectionsList,
+        (llmErrors ?? []) as Array<{ phase: string; errorType: string }>,
+        callLLM
+      );
+
       result = {
-        alignment: alignmentResult,
-        suggestions: suggestionsResult,
-        rewrite: rewriteResult,
+        alignment: correctedResult.correctedAlignment,
+        suggestions: correctedResult.correctedSuggestions,
+        rewrite: correctedResult.correctedRewrite,
         reverseAlignment: reverseAlignmentResult,
-        report: reportResult,
+        report: {
+          ...reportResult,
+          adminReport,
+        },
       };
     } else {
       return res.status(400).json({
         error:
-          "Invalid phase. Must be 'alignment', 'suggestions', 'reverse_alignment', 'rewrite', 'report', or 'pipeline'",
+          "Invalid phase. Must be 'alignment', 'suggestions', 'reverse_alignment', 'rewrite', 'teacher_input', 'report', 'admin_report', or 'pipeline'",
       });
     }
 

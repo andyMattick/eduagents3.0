@@ -1,20 +1,55 @@
 import React from "react";
-import type { PreparednessReportResult } from "../../prism-v4/schema/domain/Preparedness";
+import type {
+  PreparednessReportResult,
+  CoveredReportItem,
+  UncoveredReportItem,
+  ReverseAlignmentRecord,
+} from "../../prism-v4/schema/domain/Preparedness";
 
 interface PreparednessReportPageProps {
   report: PreparednessReportResult;
   onBack?: () => void;
 }
 
-function renderSection(items: unknown[]): React.ReactNode {
-  if (!items || items.length === 0) {
+function renderCovered(items: CoveredReportItem[]): React.ReactNode {
+  if (items.length === 0) {
     return <p style={{ color: "#999", margin: 0 }}>No data generated.</p>;
   }
   return (
     <ul style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.8 }}>
-      {items.map((item, i) => (
-        <li key={i} style={{ marginBottom: "6px" }}>
-          {typeof item === "string" ? item : <pre style={{ margin: 0, fontFamily: "inherit", whiteSpace: "pre-wrap" }}>{JSON.stringify(item, null, 2)}</pre>}
+      {items.map((item) => (
+        <li key={item.assessmentItemNumber} style={{ marginBottom: "8px" }}>
+          Q{item.assessmentItemNumber} | diff {item.difficulty} | prep {item.prepDifficulty} | {item.alignment} | {item.teacherAction}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function renderUncovered(items: UncoveredReportItem[]): React.ReactNode {
+  if (items.length === 0) {
+    return <p style={{ color: "#999", margin: 0 }}>No data generated.</p>;
+  }
+  return (
+    <ul style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.8 }}>
+      {items.map((item) => (
+        <li key={item.assessmentItemNumber} style={{ marginBottom: "6px" }}>
+          Q{item.assessmentItemNumber} | diff {item.difficulty} | {item.alignment}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function renderReverseCoverage(items: ReverseAlignmentRecord[]): React.ReactNode {
+  if (items.length === 0) {
+    return <p style={{ color: "#999", margin: 0 }}>No data generated.</p>;
+  }
+  return (
+    <ul style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.8 }}>
+      {items.map((item) => (
+        <li key={item.prepItemNumber} style={{ marginBottom: "6px" }}>
+          Prep {item.prepItemNumber} | diff {item.prepDifficulty} | matches {item.testEvidence.length}
         </li>
       ))}
     </ul>
@@ -60,38 +95,38 @@ export default function PreparednessReportPage({ report, onBack }: PreparednessR
 
       <section style={{ marginBottom: "2.5rem" }}>
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.9rem" }}>
-          1. Assessment Summary
+          1. Covered Assessment Items
         </h2>
-        {renderSection(report.section1)}
+        {renderCovered(report.covered)}
       </section>
 
       <section style={{ marginBottom: "2.5rem" }}>
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.9rem" }}>
-          2. Review Summary
+          2. Uncovered Assessment Items
         </h2>
-        {renderSection(report.section2)}
+        {renderUncovered(report.uncovered)}
       </section>
 
       <section style={{ marginBottom: "2.5rem" }}>
         <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.9rem" }}>
-          3. Missing-in-Prep Decisions
+          3. Prep Addendum
         </h2>
-        {renderSection(report.section3)}
-      </section>
-
-      <section>
-        <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.9rem" }}>
-          4. Prep Addendum
-        </h2>
-        {report.section4.length > 0 ? (
+        {report.prepAddendum.length > 0 ? (
           <ul style={{ margin: 0, paddingLeft: "20px", lineHeight: 1.8 }}>
-            {report.section4.map((label, i) => (
+            {report.prepAddendum.map((label, i) => (
               <li key={i}>{label}</li>
             ))}
           </ul>
         ) : (
           <p style={{ color: "#999", margin: 0 }}>No addendum items.</p>
         )}
+      </section>
+
+      <section>
+        <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginBottom: "0.9rem" }}>
+          4. Reverse Coverage
+        </h2>
+        {renderReverseCoverage(report.reverseCoverage)}
       </section>
     </div>
   );

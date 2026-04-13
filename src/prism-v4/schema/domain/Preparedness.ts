@@ -31,5 +31,13 @@ export type {
   ReverseAlignmentEvidence,
   ReverseAlignmentRecord,
   ReverseAlignmentResult,
+  CoveredReportItem,
+  UncoveredReportItem,
+  TeacherCorrection,
+  TeacherOverrideEvent,
+  AdminIssue,
+  LlmPhaseError,
+  AdminReportPayload,
+  CorrectedPreparednessResult,
   PreparednessReportResult,
 } from "./PreparednessReport";

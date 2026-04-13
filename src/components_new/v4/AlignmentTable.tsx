@@ -16,6 +16,8 @@ interface AlignmentTableProps {
 }
 
 export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => {
+  const rows = [...alignment.coveredItems, ...alignment.uncoveredItems];
+
   const getAlignmentIcon = (status: string): string => {
     switch (status) {
       case "aligned": return "✓";
@@ -75,7 +77,7 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
             </tr>
           </thead>
           <tbody>
-            {alignment.map((record) => (
+            {rows.map((record) => (
               <tr
                 key={record.assessmentItemNumber}
                 style={{
@@ -112,6 +114,10 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "#555" }}>
+        Covered: <strong>{alignment.coveredItems.length}</strong> | Uncovered: <strong>{alignment.uncoveredItems.length}</strong>
       </div>
 
       <p style={{ marginTop: "1rem", fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>
