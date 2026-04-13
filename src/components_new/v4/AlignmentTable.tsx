@@ -108,17 +108,19 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
   };
 
   const renderSection = (title: string, rows: AlignmentResult["coveredItems"] | AlignmentResult["uncoveredItems"]) => (
-    <div style={{ marginTop: "1rem" }}>
-      <h3 style={{ margin: "0 0 0.75rem 0", fontSize: "1rem", fontWeight: 700 }}>{title}</h3>
-      <div style={{ overflowX: "auto", border: "1px solid #e0e0e0", borderRadius: "8px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95rem" }}>
+    <div className="prep-section-block">
+      <div className="prep-section-heading">
+        <h3 className="prep-section-title">{title}</h3>
+      </div>
+      <div className="prep-surface prep-table-wrap">
+        <table className="prep-table">
           <thead>
-            <tr style={{ backgroundColor: "#f5f5f5", borderBottom: "2px solid #ddd" }}>
-              <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", borderRight: "1px solid #e0e0e0" }}>Q</th>
-              <th style={{ padding: "12px", textAlign: "left", fontWeight: "600", borderRight: "1px solid #e0e0e0" }}>Concepts</th>
-              <th style={{ padding: "12px", textAlign: "center", fontWeight: "600", borderRight: "1px solid #e0e0e0" }}>Prep Diff.</th>
-              <th style={{ padding: "12px", textAlign: "center", fontWeight: "600", borderRight: "1px solid #e0e0e0" }}>Test Diff.</th>
-              <th style={{ padding: "12px", textAlign: "center", fontWeight: "600" }}>Alignment</th>
+            <tr>
+              <th>Q</th>
+              <th>Concepts</th>
+              <th style={{ textAlign: "center" }}>Prep Diff.</th>
+              <th style={{ textAlign: "center" }}>Test Diff.</th>
+              <th style={{ textAlign: "center" }}>Alignment</th>
             </tr>
           </thead>
           <tbody>{renderRows(rows)}</tbody>
@@ -128,12 +130,13 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
   );
 
   return (
-    <div style={{ marginTop: "1.5rem" }}>
+    <div className="prep-section-block">
       {renderSection("Covered Items", alignment.coveredItems)}
       {renderSection("Uncovered Items", alignment.uncoveredItems)}
 
-      <div style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "#555" }}>
-        Covered: <strong>{alignment.coveredItems.length}</strong> | Uncovered: <strong>{alignment.uncoveredItems.length}</strong>
+      <div className="prep-summary-row">
+        <span className="prep-stat-pill">Covered {alignment.coveredItems.length}</span>
+        <span className="prep-stat-pill prep-chip-neutral">Uncovered {alignment.uncoveredItems.length}</span>
       </div>
 
       <p style={{ marginTop: "1rem", fontSize: "0.85rem", color: "#666", fontStyle: "italic" }}>

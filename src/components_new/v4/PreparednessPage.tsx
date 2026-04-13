@@ -10,7 +10,6 @@ import type {
   AssessmentDocument,
   PrepDocument,
   AlignmentResult,
-  ReverseAlignmentResult,
   SuggestionsResult,
   RewriteResult,
   PreparednessReportResult,
@@ -21,7 +20,6 @@ import type {
 import {
   getAlignment,
   getSuggestions,
-  getReverseAlignment,
   applyRewrite,
   generatePreparednessReport,
   applyTeacherCorrections,
@@ -44,7 +42,6 @@ interface PreparednessState {
   prep: PrepDocument | null;
   assessment: AssessmentDocument | null;
   alignment: AlignmentResult | null;
-  reverseAlignment: ReverseAlignmentResult | null;
   suggestions: SuggestionsResult | null;
   finalSuggestions: SuggestionsResult | null;
   rewrite: RewriteResult | null;
@@ -54,7 +51,6 @@ interface PreparednessState {
 
 interface LoadingState {
   alignment: boolean;
-  reverseAlignment: boolean;
   suggestions: boolean;
   rewrite: boolean;
   report: boolean;
@@ -62,7 +58,6 @@ interface LoadingState {
 
 interface ErrorState {
   alignment: string | null;
-  reverseAlignment: string | null;
   suggestions: string | null;
   rewrite: string | null;
   report: string | null;
@@ -93,7 +88,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     prep: initialPrep ?? null,
     assessment: initialAssessment ?? null,
     alignment: null,
-    reverseAlignment: null,
     suggestions: null,
     finalSuggestions: null,
     rewrite: null,
@@ -103,7 +97,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
   const [loading, setLoading] = useState<LoadingState>({
     alignment: false,
-    reverseAlignment: false,
     suggestions: false,
     rewrite: false,
     report: false,
@@ -111,7 +104,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
   const [errors, setErrors] = useState<ErrorState>({
     alignment: null,
-    reverseAlignment: null,
     suggestions: null,
     rewrite: null,
     report: null,
@@ -165,7 +157,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
     try {
       const alignment = await getAlignment(state.prep, state.assessment);
-      setState((prev) => ({ ...prev, alignment, reverseAlignment: null, report: null }));
+      setState((prev) => ({ ...prev, alignment, report: null }));
       setPhase("alignment");
       setSelectedSuggestions(new Set());
       setSelectedFixes({});
@@ -216,18 +208,28 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
       return;
     }
 
-    if (!state.suggestions || selectedSuggestions.size === 0) {
+    if (!state.suggestions) {
+      setErrors((prev) => ({
+        ...prev,
+        rewrite: "Suggestions are required",
+      }));
+      return;
+    }
+
+    const sourceSuggestions = state.finalSuggestions ?? state.suggestions;
+    const finalSuggestions: SuggestionsList = state.suggestions.length === 0
+      ? []
+      : Array.from(selectedSuggestions)
+          .map((idx) => sourceSuggestions?.[idx])
+          .filter((suggestion): suggestion is Suggestion => Boolean(suggestion));
+
+    if (state.suggestions.length > 0 && finalSuggestions.length === 0) {
       setErrors((prev) => ({
         ...prev,
         rewrite: "No suggestions selected",
       }));
       return;
     }
-
-    const sourceSuggestions = state.finalSuggestions ?? state.suggestions;
-    const finalSuggestions: SuggestionsList = Array.from(selectedSuggestions)
-      .map((idx) => sourceSuggestions?.[idx])
-      .filter((suggestion): suggestion is Suggestion => Boolean(suggestion));
 
     setLoading((prev) => ({ ...prev, rewrite: true }));
     setErrors((prev) => ({ ...prev, rewrite: null }));
@@ -266,14 +268,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setErrors((prev) => ({ ...prev, report: null }));
 
     try {
-      let reverseAlignment = state.reverseAlignment;
-      if (!reverseAlignment) {
-        setLoading((prev) => ({ ...prev, reverseAlignment: true }));
-        reverseAlignment = await getReverseAlignment(state.prep, state.assessment);
-        setState((prev) => ({ ...prev, reverseAlignment }));
-        setLoading((prev) => ({ ...prev, reverseAlignment: false }));
-      }
-
       const parsedCorrections: TeacherCorrection[] = Object.values(teacherCorrectionDrafts)
         .map((draft) => {
           const concepts = draft.overrideConcepts
@@ -320,7 +314,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
       const report = await generatePreparednessReport(
         corrected.correctedAlignment,
-        reverseAlignment,
         corrected.correctedSuggestions,
         corrected.correctedRewrite
       );
@@ -330,7 +323,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
           alignment: corrected.correctedAlignment,
           suggestions: corrected.correctedSuggestions,
           rewrite: corrected.correctedRewrite,
-          reverseAlignment,
         },
         teacherCorrections: parsedCorrections,
       });
@@ -348,7 +340,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
       setErrors((prev) => ({ ...prev, report: message }));
     } finally {
       setLoading((prev) => ({ ...prev, report: false }));
-      setLoading((prev) => ({ ...prev, reverseAlignment: false }));
     }
   }, [
     state.alignment,
@@ -356,7 +347,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     state.assessment,
     state.finalSuggestions,
     state.prep,
-    state.reverseAlignment,
     state.rewrite,
     state.suggestions,
     teacherCorrectionDrafts,
@@ -392,12 +382,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     }
   }, [state.prep, state.assessment, state.alignment, loading.alignment, handleStartAlignment]);
 
-  useEffect(() => {
-    if (state.alignment && !state.suggestions && !loading.suggestions) {
-      void handleGetSuggestions();
-    }
-  }, [state.alignment, state.suggestions, loading.suggestions, handleGetSuggestions]);
-
   const handleFinalSuggestionsChange = (finalSuggestions: SuggestionsResult) => {
     setState((prev) => ({ ...prev, finalSuggestions }));
   };
@@ -432,7 +416,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
       prep: null,
       assessment: null,
       alignment: null,
-      reverseAlignment: null,
       suggestions: null,
       rewrite: null,
       finalSuggestions: null,
@@ -446,7 +429,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setTeacherReviewFilter("all");
     setErrors({
       alignment: null,
-      reverseAlignment: null,
       suggestions: null,
       rewrite: null,
       report: null,
@@ -458,53 +440,35 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ maxWidth: "1400px", margin: "0 auto", padding: "2rem" }}>
+    <div className="prep-pipeline-shell">
       {/* Header */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h1 style={{ margin: "0 0 0.5rem 0", fontSize: "2rem", fontWeight: "700" }}>
+      <div className="prep-stage-header">
+        <h1 className="prep-stage-title">
           Preparedness Analysis
         </h1>
-        <p style={{ margin: 0, color: "#666", fontSize: "1rem" }}>
+        <p className="prep-stage-subtitle">
           Ensure your assessment aligns with your preparation materials.
         </p>
       </div>
 
       {/* Phase Indicator */}
       {phase !== "upload" && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            marginBottom: "1.5rem",
-            fontSize: "0.95rem",
-            fontWeight: 600,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ color: phase === "alignment" ? "#2563eb" : "#9ca3af" }}>1. Alignment</div>
-          <div style={{ color: "#9ca3af" }}>›</div>
-          <div style={{ color: phase === "suggestions" ? "#2563eb" : "#9ca3af" }}>2. Suggestions</div>
-          <div style={{ color: "#9ca3af" }}>›</div>
-          <div style={{ color: phase === "rewrite" ? "#2563eb" : "#9ca3af" }}>3. Rewrite</div>
-          <div style={{ color: "#9ca3af" }}>›</div>
-          <div style={{ color: phase === "teacher" ? "#2563eb" : "#9ca3af" }}>4. Teacher Review</div>
-          <div style={{ color: "#9ca3af" }}>›</div>
-          <div style={{ color: phase === "report" ? "#2563eb" : "#9ca3af" }}>5. Report</div>
+        <div className="prep-phase-indicator">
+          <div className={`prep-phase-step ${phase === "alignment" ? "prep-phase-step-active" : ""}`}>1. Alignment</div>
+          <div className="prep-phase-separator">›</div>
+          <div className={`prep-phase-step ${phase === "suggestions" ? "prep-phase-step-active" : ""}`}>2. Suggestions</div>
+          <div className="prep-phase-separator">›</div>
+          <div className={`prep-phase-step ${phase === "rewrite" ? "prep-phase-step-active" : ""}`}>3. Rewrite</div>
+          <div className="prep-phase-separator">›</div>
+          <div className={`prep-phase-step ${phase === "teacher" ? "prep-phase-step-active" : ""}`}>4. Teacher Review</div>
+          <div className="prep-phase-separator">›</div>
+          <div className={`prep-phase-step ${phase === "report" ? "prep-phase-step-active" : ""}`}>5. Report</div>
         </div>
       )}
 
       {/* UPLOAD PHASE */}
       {phase === "upload" && (
-        <div
-          style={{
-            border: "2px dashed #0066cc",
-            borderRadius: "8px",
-            padding: "3rem 2rem",
-            textAlign: "center",
-            backgroundColor: "#f0f6ff",
-          }}
-        >
+        <div className="prep-stage-card" style={{ borderStyle: "dashed", borderWidth: 2, borderColor: "#93c5fd", textAlign: "center", backgroundColor: "#f0f6ff", padding: "3rem 2rem" }}>
           <h2 style={{ marginTop: 0, marginBottom: "1rem", color: "#0066cc" }}>
             Ready to analyze?
           </h2>
@@ -535,7 +499,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                     prep: { rawText: prepText },
                     assessment: { items },
                     alignment: null,
-                    reverseAlignment: null,
                     suggestions: null,
                     finalSuggestions: null,
                     rewrite: null,
@@ -556,33 +519,19 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
       {/* ALIGNMENT PHASE */}
       {phase === "alignment" && (
-        <div>
+        <div className="prep-stage-card">
           <h2 style={{ marginBottom: "1.5rem", fontSize: "1.5rem", fontWeight: "600" }}>
             Assessment-Prep Alignment
           </h2>
 
           {errors.alignment && (
-            <div
-              style={{
-                padding: "1rem",
-                backgroundColor: "#ffebee",
-                borderRadius: "8px",
-                marginBottom: "1.5rem",
-                color: "#c62828",
-              }}
-            >
+            <div className="prep-error-banner">
               ✗ {errors.alignment}
             </div>
           )}
 
           {loading.alignment ? (
-            <div
-              style={{
-                padding: "2rem",
-                textAlign: "center",
-                color: "#666",
-              }}
-            >
+            <div className="prep-loading">
               <p style={{ marginTop: 0 }}>Analyzing alignment...</p>
               <div style={{ fontSize: "2rem" }}>⏳</div>
             </div>
@@ -590,54 +539,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             <>
               <AlignmentTable alignment={state.alignment} />
 
-              <div style={{ marginTop: "1.5rem" }}>
-                <h3 style={{ marginBottom: "0.5rem", fontSize: "1.1rem" }}>
-                  Reverse Alignment (Review -&gt; Test)
-                </h3>
-                {errors.reverseAlignment && (
-                  <div
-                    style={{
-                      padding: "0.75rem 1rem",
-                      backgroundColor: "#ffebee",
-                      color: "#c62828",
-                      borderRadius: "6px",
-                      marginBottom: "0.75rem",
-                    }}
-                  >
-                    ✗ {errors.reverseAlignment}
-                  </div>
-                )}
-                {loading.reverseAlignment ? (
-                  <p style={{ margin: 0, color: "#666" }}>Analyzing review-to-test alignment...</p>
-                ) : state.reverseAlignment ? (
-                  <pre
-                    style={{
-                      margin: 0,
-                      padding: "1rem",
-                      backgroundColor: "#f7f9fc",
-                      border: "1px solid #dde5f0",
-                      borderRadius: "8px",
-                      maxHeight: "260px",
-                      overflow: "auto",
-                      whiteSpace: "pre-wrap",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    {JSON.stringify(state.reverseAlignment, null, 2)}
-                  </pre>
-                ) : (
-                  <p style={{ margin: 0, color: "#999" }}>No reverse alignment data yet.</p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: "2rem",
-                  display: "flex",
-                  gap: "1rem",
-                  justifyContent: "flex-end",
-                }}
-              >
+              <div className="prep-actions">
                 <button
                   type="button"
                   onClick={handleReset}
@@ -656,42 +558,26 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
               </div>
             </>
           ) : (
-            <div style={{ textAlign: "center", color: "#999" }}>
-              <p>No alignment data available. Please start the analysis.</p>
-            </div>
+            <div className="prep-empty-state">No alignment data available. Please start the analysis.</div>
           )}
         </div>
       )}
 
       {/* SUGGESTIONS PHASE */}
       {phase === "suggestions" && (
-        <div>
+        <div className="prep-stage-card">
           <h2 style={{ marginBottom: "1.5rem", fontSize: "1.5rem", fontWeight: "600" }}>
             Fix Suggestions
           </h2>
 
           {errors.suggestions && (
-            <div
-              style={{
-                padding: "1rem",
-                backgroundColor: "#ffebee",
-                borderRadius: "8px",
-                marginBottom: "1.5rem",
-                color: "#c62828",
-              }}
-            >
+            <div className="prep-error-banner">
               ✗ {errors.suggestions}
             </div>
           )}
 
           {loading.suggestions ? (
-            <div
-              style={{
-                padding: "2rem",
-                textAlign: "center",
-                color: "#666",
-              }}
-            >
+            <div className="prep-loading">
               <p style={{ marginTop: 0 }}>Generating suggestions...</p>
               <div style={{ fontSize: "2rem" }}>⏳</div>
             </div>
@@ -707,14 +593,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                 isLoading={loading.rewrite}
               />
 
-              <div
-                style={{
-                  marginTop: "2rem",
-                  display: "flex",
-                  gap: "1rem",
-                  justifyContent: "flex-end",
-                }}
-              >
+              <div className="prep-actions">
                 <button
                   type="button"
                   onClick={() => setPhase("alignment")}
@@ -725,98 +604,58 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                 <button
                   type="button"
                   onClick={handleApplyRewrite}
-                  disabled={loading.rewrite || selectedSuggestions.size === 0}
+                  disabled={loading.rewrite || (state.suggestions.length > 0 && selectedSuggestions.size === 0)}
                   className="v4-button v4-button-primary"
                 >
                   {loading.rewrite
                     ? "Rewriting..."
+                    : state.suggestions.length === 0
+                    ? "Continue Without Changes"
                     : `Apply ${selectedSuggestions.size} Suggestion${selectedSuggestions.size === 1 ? "" : "s"}`}
                 </button>
               </div>
             </>
           ) : (
-            <div style={{ textAlign: "center", color: "#999" }}>
-              <p>No suggestions available. Please generate them first.</p>
-            </div>
+            <div className="prep-empty-state">No suggestions available. Please generate them first.</div>
           )}
         </div>
       )}
 
       {/* REWRITE PHASE */}
       {phase === "rewrite" && (
-        <div>
+        <div className="prep-stage-card">
           <h2 style={{ marginBottom: "1.5rem", fontSize: "1.5rem", fontWeight: "600" }}>
             Rewritten Assessment
           </h2>
 
           {errors.rewrite && (
-            <div
-              style={{
-                padding: "1rem",
-                backgroundColor: "#ffebee",
-                borderRadius: "8px",
-                marginBottom: "1.5rem",
-                color: "#c62828",
-              }}
-            >
+            <div className="prep-error-banner">
               ✗ {errors.rewrite}
             </div>
           )}
 
           {loading.rewrite ? (
-            <div
-              style={{
-                padding: "2rem",
-                textAlign: "center",
-                color: "#666",
-              }}
-            >
+            <div className="prep-loading">
               <p style={{ marginTop: 0 }}>Rewriting assessment...</p>
               <div style={{ fontSize: "2rem" }}>⏳</div>
             </div>
           ) : state.rewrite && state.assessment ? (
             <>
-              <div
-                style={{
-                  marginTop: "1.5rem",
-                  padding: "1rem",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  backgroundColor: "#fff",
-                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.06)",
-                }}
-              >
-                <RewriteOutput
-                  rewrite={state.rewrite}
-                  originalAssessment={state.assessment}
-                  originalPrepTitle={state.prep?.title}
-                  onGenerateReport={() => setPhase("teacher")}
-                  isGeneratingReport={loading.report}
-                />
-              </div>
+              <RewriteOutput
+                rewrite={state.rewrite}
+                originalAssessment={state.assessment}
+                originalPrepTitle={state.prep?.title}
+                onGenerateReport={() => setPhase("teacher")}
+                isGeneratingReport={loading.report}
+              />
 
               {errors.report && (
-                <div
-                  style={{
-                    marginTop: "1rem",
-                    padding: "1rem",
-                    backgroundColor: "#ffebee",
-                    borderRadius: "8px",
-                    color: "#c62828",
-                  }}
-                >
+                <div className="prep-error-banner" style={{ marginTop: "1rem" }}>
                   ✗ {errors.report}
                 </div>
               )}
 
-              <div
-                style={{
-                  marginTop: "2rem",
-                  display: "flex",
-                  gap: "1rem",
-                  justifyContent: "flex-end",
-                }}
-              >
+              <div className="prep-actions">
                 <button
                   type="button"
                   onClick={handleReset}
@@ -827,16 +666,14 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
               </div>
             </>
           ) : (
-            <div style={{ textAlign: "center", color: "#999" }}>
-              <p>No rewrite data available. Please generate it first.</p>
-            </div>
+            <div className="prep-empty-state">No rewrite data available. Please generate it first.</div>
           )}
         </div>
       )}
 
       {/* TEACHER INPUT PHASE */}
       {phase === "teacher" && (
-        <div>
+        <div className="prep-stage-card">
           <h2 style={{ marginBottom: "1.5rem", fontSize: "1.5rem", fontWeight: "600" }}>
             Teacher Corrections
           </h2>
@@ -845,7 +682,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             Optional: override model decisions per question. Only filled fields are applied.
           </p>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+          <div className="prep-section-heading" style={{ marginBottom: "0.75rem" }}>
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -895,16 +732,16 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             </button>
           </div>
 
-          <div style={{ overflowX: "auto", border: "1px solid #e5e7eb", borderRadius: "8px" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+          <div className="prep-surface prep-table-wrap">
+            <table className="prep-table" style={{ fontSize: "0.9rem" }}>
               <thead>
-                <tr style={{ backgroundColor: "#f8fafc" }}>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Q#</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Model Alignment</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Alignment</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Concepts</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Difficulty</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: "1px solid #e5e7eb" }}>Override Suggestion</th>
+                <tr>
+                  <th>Q#</th>
+                  <th>Model Alignment</th>
+                  <th>Override Alignment</th>
+                  <th>Override Concepts</th>
+                  <th>Override Difficulty</th>
+                  <th>Override Suggestion</th>
                 </tr>
               </thead>
               <tbody>
@@ -979,7 +816,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                               },
                             }))
                           }
-                          style={{ width: "100%" }}
+                          className="prep-form-control"
                         >
                           <option value="">No change</option>
                           <option value="aligned">aligned</option>
@@ -1008,7 +845,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                               },
                             }))
                           }
-                          style={{ width: "100%" }}
+                          className="prep-form-control"
                         />
                       </td>
                       <td style={{ padding: "10px" }}>
@@ -1032,7 +869,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                               },
                             }))
                           }
-                          style={{ width: "100%" }}
+                          className="prep-form-control"
                         />
                       </td>
                       <td style={{ padding: "10px" }}>
@@ -1053,7 +890,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                               },
                             }))
                           }
-                          style={{ width: "100%" }}
+                          className="prep-form-control"
                         >
                           <option value="">No change</option>
                           <option value="none">none</option>
@@ -1068,7 +905,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             </table>
           </div>
 
-          <div style={{ marginTop: "1rem", display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+          <div className="prep-actions" style={{ marginTop: "1rem" }}>
             <button
               type="button"
               className="v4-button v4-button-secondary"
@@ -1087,15 +924,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
           </div>
 
           {errors.report && (
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                backgroundColor: "#ffebee",
-                borderRadius: "8px",
-                color: "#c62828",
-              }}
-            >
+            <div className="prep-error-banner" style={{ marginTop: "1rem" }}>
               ✗ {errors.report}
             </div>
           )}
@@ -1108,31 +937,24 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
           <PreparednessReportPage report={state.report} onBack={() => setPhase("rewrite")} />
 
           {state.report.adminReport && (
-            <details style={{ marginTop: "1.5rem", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "0.75rem 1rem", backgroundColor: "#f8fafc" }}>
+            <details className="prep-detail-box">
               <summary style={{ cursor: "pointer", fontWeight: 600 }}>Admin Audit Report</summary>
               <div style={{ marginTop: "0.75rem" }}>
                 <h4 style={{ margin: "0 0 0.5rem 0" }}>Preparedness</h4>
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                <pre className="prep-code-block">
                   {JSON.stringify(state.report.adminReport.preparedness, null, 2)}
                 </pre>
               </div>
               <div style={{ marginTop: "0.75rem" }}>
                 <h4 style={{ margin: "0 0 0.5rem 0" }}>Other System Areas</h4>
-                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                <pre className="prep-code-block">
                   {JSON.stringify(state.report.adminReport.otherSystemAreas ?? {}, null, 2)}
                 </pre>
               </div>
             </details>
           )}
 
-          <div
-            style={{
-              marginTop: "2rem",
-              display: "flex",
-              gap: "1rem",
-              justifyContent: "flex-end",
-            }}
-          >
+          <div className="prep-actions">
             <button
               type="button"
               onClick={handleReset}

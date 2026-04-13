@@ -24,6 +24,7 @@ export type {
 
 export type {
   RewriteResult,
+  AddendumMergeResult,
 } from "./PreparednessRewrite";
 
 export type {

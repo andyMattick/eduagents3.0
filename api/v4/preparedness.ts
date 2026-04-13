@@ -8,6 +8,7 @@ import {
   getPreparednessReport,
   applyTeacherInput,
   generateAdminReport,
+  mergeAddendumIntoReview,
 } from "../../src/prism-v4/intelligence/preparedness";
 import type {
   AssessmentDocument,
@@ -65,6 +66,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       teacherCorrections,
       llmErrors,
       modelOutput,
+      reviewText,
+      addendumConcepts,
     } = payload;
 
     if (!phase) {
@@ -138,17 +141,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         callLLM
       );
     } else if (phase === "report") {
-      if (!alignment || !reverseAlignment || !suggestions || !rewrite) {
+      if (!alignment || !suggestions || !rewrite) {
         return res.status(400).json({
-          error: "Phase 'report' requires alignment, reverseAlignment, suggestions, and rewrite",
+          error: "Phase 'report' requires alignment, suggestions, and rewrite",
         });
       }
 
       result = await getPreparednessReport(
         alignment,
-        reverseAlignment as ReverseAlignmentResult,
+        (reverseAlignment as ReverseAlignmentResult | undefined) ?? { reverseCoverage: [] },
         suggestions as SuggestionsResult,
         rewrite as RewriteResult,
+        callLLM
+      );
+    } else if (phase === "addendum_merge") {
+      if (typeof reviewText !== "string" || !Array.isArray(addendumConcepts)) {
+        return res.status(400).json({
+          error: "Phase 'addendum_merge' requires reviewText and addendumConcepts",
+        });
+      }
+
+      result = await mergeAddendumIntoReview(
+        reviewText,
+        addendumConcepts.map((value: unknown) => String(value)),
         callLLM
       );
     } else if (phase === "teacher_input") {
@@ -166,9 +181,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         callLLM
       );
     } else if (phase === "admin_report") {
-      if (!modelOutput || !modelOutput.alignment || !modelOutput.suggestions || !modelOutput.rewrite || !modelOutput.reverseAlignment) {
+      if (!modelOutput || !modelOutput.alignment || !modelOutput.suggestions || !modelOutput.rewrite) {
         return res.status(400).json({
-          error: "Phase 'admin_report' requires modelOutput with alignment, suggestions, rewrite, and reverseAlignment",
+          error: "Phase 'admin_report' requires modelOutput with alignment, suggestions, and rewrite",
         });
       }
 
@@ -194,8 +209,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const suggestionsToApply = (Array.isArray(finalSuggestions) ? finalSuggestions : suggestionsResult) as Suggestion[];
       // 3. rewrite
       const rewriteResult = await applySuggestions(assessmentDoc, suggestionsToApply, callLLM);
-      // 4. reverse alignment
-      const reverseAlignmentResult = await getReverseAlignment(prepDoc, assessmentDoc, callLLM);
+      const reverseAlignmentResult: ReverseAlignmentResult = { reverseCoverage: [] };
       // 5. report
       const reportResult = await getPreparednessReport(
         alignmentResult,
@@ -230,7 +244,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         alignment: correctedResult.correctedAlignment,
         suggestions: correctedResult.correctedSuggestions,
         rewrite: correctedResult.correctedRewrite,
-        reverseAlignment: reverseAlignmentResult,
         report: {
           ...reportResult,
           adminReport: adminReport.adminReport,
@@ -239,7 +252,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } else {
       return res.status(400).json({
         error:
-          "Invalid phase. Must be 'alignment', 'suggestions', 'reverse_alignment', 'rewrite', 'teacher_input', 'report', 'admin_report', or 'pipeline'",
+          "Invalid phase. Must be 'alignment', 'suggestions', 'reverse_alignment', 'rewrite', 'addendum_merge', 'teacher_input', 'report', 'admin_report', or 'pipeline'",
       });
     }
 

@@ -45,22 +45,13 @@ export const RewriteOutput: React.FC<RewriteOutputProps> = ({
   const addendumText = rewrite.prepAddendum.join("\n");
 
   return (
-    <div
-      style={{
-        marginTop: "1.5rem",
-        padding: "1rem",
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-        backgroundColor: "#fff",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-      }}
-    >
+    <div className="prep-stage-card" style={{ marginTop: 0 }}>
       <h3 style={{ marginBottom: "1.5rem", fontSize: "1.25rem", fontWeight: "600", color: "#2e7d32" }}>
         ✓ Rewrite Complete
       </h3>
 
       {/* Summary */}
-      <div style={{ padding: "1rem", backgroundColor: "#e8f5e9", borderRadius: "8px", marginBottom: "2rem" }}>
+      <div className="prep-empty-state prep-empty-state-success" style={{ padding: "1rem", marginBottom: "2rem" }}>
         <p style={{ margin: "0 0 0.5rem 0", fontSize: "0.95rem", fontWeight: "600" }}>Assessment Updated</p>
         <ul style={{ margin: "0.5rem 0 0 20px", padding: 0, fontSize: "0.9rem", color: "#555" }}>
           <li>Original questions: <strong>{originalAssessment.items.length}</strong></li>
@@ -71,7 +62,7 @@ export const RewriteOutput: React.FC<RewriteOutputProps> = ({
       </div>
 
       {/* Rewritten Assessment */}
-      <div style={{ marginBottom: "2rem", border: "1px solid #ddd", borderRadius: "8px", overflow: "hidden" }}>
+      <div className="prep-surface" style={{ marginBottom: "2rem", overflow: "hidden" }}>
         <div
           style={{
             backgroundColor: "#f5f5f5",
@@ -123,15 +114,7 @@ export const RewriteOutput: React.FC<RewriteOutputProps> = ({
       {rewrite.prepAddendum.length > 0 && (
         <div style={{ marginBottom: "2rem" }}>
           <h3 style={{ margin: "0 0 0.75rem 0", fontSize: "1.1rem", fontWeight: 700 }}>Review Addendum</h3>
-          <div
-            style={{
-              marginBottom: "1rem",
-              padding: "12px 16px",
-              border: "1px solid #f0d86a",
-              borderRadius: "8px",
-              backgroundColor: "#fff9db",
-            }}
-          >
+          <div className="prep-surface" style={{ marginBottom: "1rem", padding: "12px 16px", backgroundColor: "#fff9db", borderColor: "#f0d86a" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <h4 style={{ margin: 0, fontSize: "1rem", fontWeight: 700 }}>Concepts to Add to Review</h4>
               <button

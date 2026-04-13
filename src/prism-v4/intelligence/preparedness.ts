@@ -1,12 +1,11 @@
 /**
  * Preparedness LLM Orchestration
  *
- * Hybrid pipeline order:
+ * Simplified pipeline order:
  * 1) alignment (covered/uncovered)
- * 2) suggestions
- * 3) rewrite
- * 4) reverse alignment
- * 5) report
+ * 2) suggestions (deterministic from uncovered items)
+ * 3) rewrite (teacher delete/add decisions)
+ * 4) optional addendum merge into review
  */
 
 import {
@@ -37,117 +36,112 @@ export type LLMCaller = (
   }
 ) => Promise<string>;
 
-const ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine.
+const ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine. Compare ASSESSMENT_ITEMS to PREP_TEXT and determine which test questions are covered by the review and which are not.
 
-Your task is to align every ASSESSMENT item to the REVIEW content.
+Your output must contain TWO arrays only:
+{
+  "coveredItems": [...],
+  "uncoveredItems": [...]
+}
 
-You must output two arrays:
-1. coveredItems: assessment items with at least one matching concept in the review
-2. uncoveredItems: assessment items with no matching concepts in the review
+DEFINITIONS:
+- A concept is “covered” if the prep text meaningfully teaches, explains, or practices it.
+- A concept is “uncovered” if the prep text does not teach it at all.
+- Difficulty is a 1–5 scale:
+  1 = very basic recall
+  2 = basic computation or direct application
+  3 = moderate multi-step reasoning
+  4 = advanced reasoning or abstraction
+  5 = very advanced multi-concept integration
 
-For each assessment item:
-- Extract concepts as objects:
-    { "label": "...", "count": <number>, "difficulties": [1-5] }
-- Assign difficulty from 1 to 5 (based on the assessment item itself)
+ALIGNMENT RULES:
+- If the prep text covers the concept -> item goes in coveredItems.
+- If the prep text does NOT cover the concept -> item goes in uncoveredItems.
+- For covered items, include:
+  - assessmentItemNumber
+  - concepts with counts (e.g., "ci_mean_t_interval": 2)
+  - prepDifficulty (1–5)
+  - testDifficulty (1–5)
+  - alignment:
+      "aligned" (testDifficulty <= prepDifficulty)
+      "slightly_above" (testDifficulty = prepDifficulty + 1)
+      "misaligned_above" (testDifficulty >= prepDifficulty + 2)
 
-If concepts appear in the review:
-- Assign prepDifficulty from 1 to 5
-- Assign alignment as one of:
-    "aligned"
-    "slightly_above"
-    "misaligned_above"
+FOR UNCOVERED ITEMS:
+- concepts = []
+- prepDifficulty = 0
+- alignment = "missing_in_prep"
 
-If no concepts match the review:
-- Place the item in uncoveredItems
-- Use:
-    "concepts": [],
-    "prepDifficulty": 0,
-    "alignment": "missing_in_prep"
-
-Do NOT include:
-- sentences
-- long text
-- explanations
-- examples
-- quotes
-- markdown
-- commentary
-
-Use specific concept labels where possible (examples: ci_proportion_z_interval, ci_mean_t_interval, t_star_selection, interpret_ci_threshold, margin_of_error_proportion, margin_of_error_mean, conditions_for_t_interval, conditions_for_z_interval).
-
-Return ONLY valid JSON.
-
-FORMAT:
+RESPONSE FORMAT:
+Return ONLY valid JSON with this exact structure:
 {
   "coveredItems": [
     {
       "assessmentItemNumber": 1,
-      "concepts": [
-        { "label": "ci_proportion_z_interval", "count": 2, "difficulties": [2,3] }
-      ],
-      "difficulty": 3,
+      "concepts": { "concept_label": count },
       "prepDifficulty": 2,
+      "testDifficulty": 3,
       "alignment": "aligned"
     }
   ],
   "uncoveredItems": [
     {
-      "assessmentItemNumber": 2,
-      "concepts": [],
-      "difficulty": 4,
+      "assessmentItemNumber": 5,
+      "concepts": {},
       "prepDifficulty": 0,
+      "testDifficulty": 3,
       "alignment": "missing_in_prep"
     }
   ]
-}`;
+}
 
-const SUGGESTIONS_PROMPT_TEMPLATE = `You are an instructional suggestion engine.
+Return ONLY valid JSON. No explanations, no markdown, no commentary.`;
 
-Your task is to analyze ALIGNMENT_DATA and produce structured suggestions.
+const REWRITE_PROMPT_TEMPLATE = `You are an assessment rewriting engine. Rewrite the test according to TEACHER_DECISIONS.
 
-Rules:
-- If alignment = "aligned" -> no suggestion
-- If alignment = "slightly_above" -> suggestionType = "add_prep_support"
-- If alignment = "misaligned_above" -> suggestionType = "add_prep_support"
-- If alignment = "missing_in_prep" -> suggestionType = "add_prep_support" or "remove_question"
+INPUTS:
+- ORIGINAL_ASSESSMENT: the full test text
+- TEACHER_DECISIONS: an array of objects:
+    {
+      "assessmentItemNumber": 8,
+      "action": "delete_question" OR "add_prep_support"
+    }
 
-Use ONLY short labels. No sentences.
+RULES:
+- If action = "delete_question": remove the question entirely.
+- If action = "add_prep_support": keep the question AND generate a short concept label for the prep addendum.
+- All other questions remain unchanged.
 
-Return ONLY valid JSON.
-
-FORMAT:
-[
-  {
-    "assessmentItemNumber": 1,
-    "issue": "missing_in_prep",
-    "suggestionType": "add_prep_support"
-  }
-]`;
-
-const REWRITE_PROMPT_TEMPLATE = `You are an instructional rewrite engine.
-
-Your task is to apply FINAL_SUGGESTIONS to the ORIGINAL_ASSESSMENT.
-
-Rules:
-- If suggestionType = "remove_question" -> remove the question
-- If suggestionType = "add_prep_support" -> keep the question and generate a short prepAddendum label (not a sentence)
-- If no suggestion -> leave unchanged
-
-Do NOT include:
-- long text
-- sentences
-- explanations
-- examples
-- markdown
-- commentary
-
-Return ONLY valid JSON.
-
-FORMAT:
+OUTPUT:
+Return ONLY valid JSON with this structure:
 {
-  "rewrittenAssessment": "...full rewritten test text...",
-  "prepAddendum": ["ci_mean_t_interval", "interpret_ci_threshold"]
-}`;
+  "rewrittenAssessment": "full rewritten test text",
+  "prepAddendum": ["concept_label_1", "concept_label_2"]
+}
+
+NOTES:
+- prepAddendum must contain only short concept labels (e.g., "ci_mean_t_interval").
+- Do NOT include explanations, markdown, or commentary.
+- rewrittenAssessment must be clean, continuous test text with deleted items removed.`;
+
+const ADDENDUM_MERGE_PROMPT_TEMPLATE = `You are a review-updating engine. Merge ADDENDUM_CONCEPTS into REVIEW_TEXT.
+
+GOAL:
+Insert short, clear instructional explanations for each concept in ADDENDUM_CONCEPTS into the appropriate place in REVIEW_TEXT. If no natural place exists, add a short section at the end titled "Additional Concepts".
+
+RULES:
+- Keep the teacher's writing style.
+- Keep the review structure intact.
+- Add only concise, teacher-friendly explanations (2-4 sentences per concept).
+- Do NOT rewrite unrelated parts of the review.
+
+OUTPUT FORMAT:
+Return ONLY valid JSON:
+{
+  "updatedReview": "full updated review text"
+}
+
+No commentary, no markdown, no extra fields.`;
 
 const REVERSE_ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine.
 
@@ -353,11 +347,29 @@ function normalizeConceptItem(raw: unknown): ConceptItem {
   };
 }
 
+function normalizeConceptItems(raw: unknown, fallbackDifficulty: number): ConceptItem[] {
+  if (Array.isArray(raw)) {
+    return raw.map(normalizeConceptItem);
+  }
+
+  if (raw && typeof raw === "object") {
+    const entries = Object.entries(raw as Record<string, unknown>);
+    return entries.map(([label, count]) => ({
+      label,
+      count: Math.max(0, Number(count ?? 1)),
+      difficulties: Number.isFinite(fallbackDifficulty) ? [fallbackDifficulty] : [],
+    }));
+  }
+
+  return [];
+}
+
 function normalizeAlignmentRecord(raw: Record<string, unknown>): AlignmentRecord {
+  const difficulty = Number(raw.testDifficulty ?? raw.difficulty ?? 1);
   return {
     assessmentItemNumber: Number(raw.assessmentItemNumber ?? 0),
-    concepts: Array.isArray(raw.concepts) ? raw.concepts.map(normalizeConceptItem) : [],
-    difficulty: Number(raw.difficulty ?? 1),
+    concepts: normalizeConceptItems(raw.concepts, difficulty),
+    difficulty,
     prepDifficulty: Number(raw.prepDifficulty ?? 0),
     alignment: String(raw.alignment ?? "missing_in_prep") as AlignmentRecord["alignment"],
   };
@@ -508,15 +520,13 @@ export async function getAlignment(
 }
 
 export async function getSuggestions(
-  alignment: AlignmentResult,
-  callLLM: LLMCaller
+  alignment: AlignmentResult
 ): Promise<SuggestionsResult> {
-  const alignmentJson = JSON.stringify(alignment, null, 2);
-  const prompt = `${SUGGESTIONS_PROMPT_TEMPLATE}\n\nALIGNMENT_DATA:\n${alignmentJson}`;
-
-  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 2048 }));
-  const parsed = parseJsonWithRepair<SuggestionsResult>(raw);
-  return parsed;
+  return alignment.uncoveredItems.map((item) => ({
+    assessmentItemNumber: item.assessmentItemNumber,
+    issue: "missing_in_prep" as const,
+    suggestionType: "add_prep_support" as const,
+  }));
 }
 
 export async function applySuggestions(
@@ -530,8 +540,12 @@ export async function applySuggestions(
   }
 
   const assessmentText = assessment.items.map((item) => `${item.itemNumber}. ${item.text}`).join("\n");
-  const suggestionsJson = JSON.stringify(suggestions, null, 2);
-  const prompt = `${REWRITE_PROMPT_TEMPLATE}\n\nORIGINAL_ASSESSMENT:\n${assessmentText}\n\nFINAL_SUGGESTIONS:\n${suggestionsJson}`;
+  const teacherDecisions = suggestions.map((suggestion) => ({
+    assessmentItemNumber: suggestion.assessmentItemNumber,
+    action: suggestion.suggestionType === "remove_question" ? "delete_question" : "add_prep_support",
+  }));
+  const decisionsJson = JSON.stringify(teacherDecisions, null, 2);
+  const prompt = `${REWRITE_PROMPT_TEMPLATE}\n\nORIGINAL_ASSESSMENT:\n${assessmentText}\n\nTEACHER_DECISIONS:\n${decisionsJson}`;
 
   const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 2048 }));
   const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
@@ -569,7 +583,33 @@ export async function generatePreparednessReport(
     callLLM(prompt, { maxOutputTokens: 2048, temperature: 0.2 })
   );
   const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
-  return normalizeReportResult(parsed);
+  const normalized = normalizeReportResult(parsed);
+  return {
+    ...normalized,
+    reverseCoverage: reverseAlignment.reverseCoverage ?? [],
+    fullText: JSON.stringify({
+      covered: normalized.covered,
+      uncovered: normalized.uncovered,
+      prepAddendum: normalized.prepAddendum,
+    }),
+  };
+}
+
+export async function mergeAddendumIntoReview(
+  reviewText: string,
+  addendumConcepts: string[],
+  callLLM: LLMCaller
+): Promise<{ updatedReview: string }> {
+  if (addendumConcepts.length === 0) {
+    return { updatedReview: reviewText };
+  }
+
+  const prompt = `${ADDENDUM_MERGE_PROMPT_TEMPLATE}\n\nREVIEW_TEXT:\n${reviewText}\n\nADDENDUM_CONCEPTS:\n${JSON.stringify(addendumConcepts, null, 2)}`;
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 2048 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+  return {
+    updatedReview: String(parsed.updatedReview ?? reviewText),
+  };
 }
 
 export async function applyTeacherInput(
@@ -615,7 +655,7 @@ export async function generateAdminReport(
     alignment: AlignmentResult;
     suggestions: SuggestionsResult;
     rewrite: RewriteResult;
-    reverseAlignment: ReverseAlignmentResult;
+    reverseAlignment?: ReverseAlignmentResult;
   },
   teacherCorrections: TeacherCorrection[],
   llmErrors: Array<{ phase: string; errorType: string }>,
@@ -633,7 +673,7 @@ export async function generateAdminReport(
     modelOutput.alignment.uncoveredItems.map((item) => item.assessmentItemNumber),
     null,
     2
-  )}\n\nreverseCoverage:\n${JSON.stringify(modelOutput.reverseAlignment.reverseCoverage, null, 2)}`;
+  )}\n\nreverseCoverage:\n${JSON.stringify(modelOutput.reverseAlignment?.reverseCoverage ?? [], null, 2)}`;
 
   const raw = await withRetry429(() =>
     callLLM(prompt, { maxOutputTokens: 2048, temperature: 0.2 })
@@ -675,10 +715,10 @@ export async function orchestratePreparedness(
   callLLM: LLMCaller
 ) {
   const alignment = await getAlignment(prep, assessment, callLLM);
-  const allSuggestions = await getSuggestions(alignment, callLLM);
+  const allSuggestions = await getSuggestions(alignment);
   const suggestionsToApply = selectedSuggestions ?? allSuggestions;
   const rewrite = await applySuggestions(assessment, suggestionsToApply, callLLM);
-  const reverseAlignment = await getReverseAlignment(prep, assessment, callLLM);
+  const reverseAlignment: ReverseAlignmentResult = { reverseCoverage: [] };
   const report = await getPreparednessReport(
     alignment,
     reverseAlignment,

@@ -66,14 +66,7 @@ describe("Preparedness Hybrid Wiring", () => {
     expect(alignment.coveredItems.length).toBe(1);
     expect(alignment.uncoveredItems.length).toBe(2);
 
-    const callSuggestions = vi.fn(async () =>
-      JSON.stringify([
-        { assessmentItemNumber: 2, issue: "missing_in_prep", suggestionType: "add_prep_support" },
-        { assessmentItemNumber: 3, issue: "missing_in_prep", suggestionType: "add_prep_support" },
-      ])
-    );
-
-    const suggestions = await getSuggestions(alignment, callSuggestions);
+    const suggestions = await getSuggestions(alignment);
     expect(suggestions).toHaveLength(2);
     expect(suggestions.every((s) => s.suggestionType === "add_prep_support")).toBe(true);
 

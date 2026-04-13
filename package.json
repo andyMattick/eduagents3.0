@@ -59,6 +59,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "test:preparedness:wiring": "vitest run src/__tests__/preparednessHybridWiring.test.ts",
     "test:regression": "vitest run src/__tests__/pipelineRegression.test.ts",
     "phase1:check": "node scripts/check-prism-phase1.mjs",
     "phase3:check": "npm test -- --run src/prism-v4/semantic/tests src/prism-v4/semantic/cognitive/tests && node scripts/check-prism-phase3.mjs",

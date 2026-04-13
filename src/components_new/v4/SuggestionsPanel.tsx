@@ -76,46 +76,28 @@ export const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
 
   if (suggestions.length === 0) {
     return (
-      <div
-        style={{
-          marginTop: "2rem",
-          padding: "2rem",
-          backgroundColor: "#e8f5e9",
-          borderRadius: "8px",
-          textAlign: "center",
-        }}
-      >
+      <div className="prep-empty-state prep-empty-state-success" style={{ marginTop: "1rem" }}>
         <h3 style={{ margin: "0 0 0.5rem 0", color: "#2e7d32" }}>✓ All Aligned</h3>
         <p style={{ margin: 0, color: "#558b2f" }}>
-          Your assessment and prep document are well-aligned. No changes suggested.
+          Your assessment and prep document are well-aligned. No changes suggested. Continue to generate the draft rewrite and final report.
         </p>
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: "2rem" }}>
-      <h3 style={{ marginBottom: "1.5rem", fontSize: "1.25rem", fontWeight: "600" }}>
-        Suggested Fixes ({suggestions.length})
-      </h3>
+    <div className="prep-section-block">
+      <div className="prep-section-heading">
+        <h3 className="prep-section-title">Suggested Fixes</h3>
+        <span className="prep-stat-pill">{suggestions.length} item{suggestions.length === 1 ? "" : "s"}</span>
+      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(450px, 1fr))",
-          gap: "1.5rem",
-        }}
-      >
+      <div className="prep-card-grid">
         {suggestions.map((suggestion, idx) => (
           <div
             key={idx}
+            className={`prep-card ${selectedSuggestions.has(idx) ? "prep-card-selected" : ""}`}
             style={{
-              border: selectedSuggestions.has(idx)
-                ? "2px solid #0066cc"
-                : "1px solid #ddd",
-              borderRadius: "8px",
-              padding: "1rem",
-              backgroundColor: selectedSuggestions.has(idx) ? "#f0f6ff" : "#f9fafb",
               cursor: "pointer",
               transition: "all 0.2s",
               opacity: isLoading ? 0.6 : 1,
@@ -123,28 +105,13 @@ export const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             }}
             onClick={() => onToggleSuggestion(idx)}
           >
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: "6px",
-                padding: "1rem",
-                backgroundColor: "#fff",
-              }}
-            >
+            <div>
               <h3 style={{ margin: "0 0 8px 0", fontWeight: 600, fontSize: "1.1rem" }}>
                 Question {suggestion.assessmentItemNumber}
                 {suggestion.issue === "missing_in_prep" && (
                   <span
-                    style={{
-                      marginLeft: "8px",
-                      fontSize: "0.72rem",
-                      backgroundColor: "#fee2e2",
-                      color: "#b91c1c",
-                      padding: "3px 8px",
-                      borderRadius: "9999px",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.2px",
-                    }}
+                    className="prep-chip"
+                    style={{ marginLeft: "8px", backgroundColor: "#fee2e2", color: "#b91c1c" }}
                   >
                     Action required
                   </span>
@@ -204,7 +171,7 @@ export const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
             </div>
 
             {/* Issue Label */}
-            <div style={{ marginBottom: "12px" }}>
+              <div style={{ marginBottom: "12px" }}>
               <p
                 style={{
                   margin: "0 0 8px 0",
@@ -217,14 +184,7 @@ export const SuggestionsPanel: React.FC<SuggestionsPanelProps> = ({
               >
                 {suggestion.issue === "missing_in_prep" ? "Missing in Prep" : "Above Prep Level"}
               </p>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: "0.95rem",
-                  color: "#555",
-                  lineHeight: "1.4",
-                }}
-              >
+                <p style={{ margin: 0, fontSize: "0.95rem", color: "#555", lineHeight: "1.4" }}>
                 {getSuggestionTypeLabel(suggestion.suggestionType)}
               </p>
             </div>

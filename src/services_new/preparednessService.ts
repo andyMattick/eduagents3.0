@@ -148,9 +148,9 @@ export async function getReverseAlignment(
  */
 export async function generatePreparednessReport(
   alignment: AlignmentResult,
-  reverseAlignment: ReverseAlignmentResult,
   suggestions: SuggestionsResult,
-  rewrite: RewriteResult
+  rewrite: RewriteResult,
+  reverseAlignment?: ReverseAlignmentResult
 ): Promise<PreparednessReportResult> {
   const response = await fetch("/api/v4/preparedness", {
     method: "POST",
@@ -158,7 +158,7 @@ export async function generatePreparednessReport(
     body: JSON.stringify({
       phase: "report",
       alignment,
-      reverseAlignment,
+      reverseAlignment: reverseAlignment ?? { reverseCoverage: [] },
       suggestions,
       rewrite,
     }),
@@ -177,6 +177,32 @@ export async function generatePreparednessReport(
 }
 
 export const getPreparednessReport = generatePreparednessReport;
+
+export async function mergeAddendumIntoReview(
+  reviewText: string,
+  addendumConcepts: string[]
+): Promise<{ updatedReview: string }> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "addendum_merge",
+      reviewText,
+      addendumConcepts,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to merge prep addendum into review",
+      phase: "addendum_merge",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
 
 export async function applyTeacherCorrections(
   alignment: AlignmentResult,
@@ -213,7 +239,7 @@ export async function getAdminReport(params: {
     alignment: AlignmentResult;
     suggestions: SuggestionsResult;
     rewrite: RewriteResult;
-    reverseAlignment: ReverseAlignmentResult;
+    reverseAlignment?: ReverseAlignmentResult;
   };
   teacherCorrections: TeacherCorrection[];
   llmErrors?: Array<{ phase: string; errorType: string }>;
@@ -255,12 +281,9 @@ export async function runPreparednessPipeline(params: {
   const suggestionsToApply = finalSuggestions.length > 0 ? finalSuggestions : suggestionsResult;
   // 3. rewrite (using finalSuggestions from UI)
   const rewriteResult = await applyRewrite(assessment, suggestionsToApply);
-  // 4. reverse alignment
-  const reverseAlignment = await getReverseAlignment(prep, assessment);
-  // 5. report
+  // 4. report
   const report = await getPreparednessReport(
     alignment,
-    reverseAlignment,
     suggestionsToApply as SuggestionsResult,
     rewriteResult
   );
@@ -269,7 +292,6 @@ export async function runPreparednessPipeline(params: {
     alignment,
     suggestions: suggestionsResult,
     rewriteResult,
-    reverseAlignment,
     report,
   };
 }

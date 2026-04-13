@@ -11,3 +11,7 @@ export interface RewriteResult {
   rewrittenAssessment: string;
   prepAddendum: string[]; // short labels, one per add_prep_support suggestion
 }
+
+export interface AddendumMergeResult {
+  updatedReview: string;
+}
