@@ -240,4 +240,24 @@ describe("Preparedness Hybrid Wiring", () => {
     expect(result.uncoveredItems).toHaveLength(0);
     expect(attempts).toBe(2);
   });
+
+  it("D: derives non-aligned status when test is one level above prep", async () => {
+    const callAlignment = vi.fn(async () =>
+      JSON.stringify({
+        coveredItems: [
+          {
+            assessmentItemNumber: 1,
+            concepts: [{ label: "ci_interpretation", count: 1, difficulties: [3] }],
+            difficulty: 3,
+            prepDifficulty: 2,
+            alignment: "aligned",
+          },
+        ],
+        uncoveredItems: [],
+      })
+    );
+
+    const alignment = await getAlignment(prep, assessment, callAlignment);
+    expect(alignment.coveredItems[0].alignment).toBe("slightly_above");
+  });
 });

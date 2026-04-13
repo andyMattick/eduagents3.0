@@ -364,14 +364,30 @@ function normalizeConceptItems(raw: unknown, fallbackDifficulty: number): Concep
   return [];
 }
 
+function deriveAlignmentStatus(testDifficulty: number, prepDifficulty: number): AlignmentRecord["alignment"] {
+  if (!Number.isFinite(prepDifficulty) || prepDifficulty <= 0) {
+    return "missing_in_prep";
+  }
+
+  const gap = testDifficulty - prepDifficulty;
+  if (gap <= 0) {
+    return "aligned";
+  }
+  if (gap === 1) {
+    return "slightly_above";
+  }
+  return "misaligned_above";
+}
+
 function normalizeAlignmentRecord(raw: Record<string, unknown>): AlignmentRecord {
   const difficulty = Number(raw.testDifficulty ?? raw.difficulty ?? 1);
+  const prepDifficulty = Number(raw.prepDifficulty ?? 0);
   return {
     assessmentItemNumber: Number(raw.assessmentItemNumber ?? 0),
     concepts: normalizeConceptItems(raw.concepts, difficulty),
     difficulty,
-    prepDifficulty: Number(raw.prepDifficulty ?? 0),
-    alignment: String(raw.alignment ?? "missing_in_prep") as AlignmentRecord["alignment"],
+    prepDifficulty,
+    alignment: deriveAlignmentStatus(difficulty, prepDifficulty),
   };
 }
 
@@ -433,16 +449,18 @@ function normalizeReportResult(raw: Record<string, unknown>): PreparednessReport
   const covered = Array.isArray(raw.covered)
     ? raw.covered.map((item) => {
         const c = item as Record<string, unknown>;
-        const alignment = String(c.alignment ?? "aligned");
+        const difficulty = Number(c.difficulty ?? 1);
+        const prepDifficulty = Number(c.prepDifficulty ?? 1);
+        const derivedAlignment = deriveAlignmentStatus(difficulty, prepDifficulty);
         return {
           assessmentItemNumber: Number(c.assessmentItemNumber ?? 0),
           concepts: Array.isArray(c.concepts) ? c.concepts.map(normalizeConceptItem) : [],
-          difficulty: Number(c.difficulty ?? 1),
-          prepDifficulty: Number(c.prepDifficulty ?? 1),
+          difficulty,
+          prepDifficulty,
           alignment:
-            alignment === "slightly_above" || alignment === "misaligned_above"
-              ? alignment
-              : "aligned",
+            derivedAlignment === "missing_in_prep"
+              ? "aligned"
+              : derivedAlignment,
           teacherAction:
             String(c.teacherAction ?? "no_action") === "remove_question"
               ? "remove_question"
