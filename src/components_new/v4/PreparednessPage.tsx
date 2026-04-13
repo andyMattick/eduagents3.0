@@ -340,7 +340,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         alignment: corrected.correctedAlignment,
         suggestions: corrected.correctedSuggestions,
         rewrite: corrected.correctedRewrite,
-        report: { ...report, adminReport },
+        report: { ...report, adminReport: adminReport.adminReport },
       }));
       setPhase("report");
     } catch (err) {
@@ -910,10 +910,57 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
               <tbody>
                 {filteredTeacherItems.map((item) => {
                   const draft = teacherCorrectionDrafts[item.assessmentItemNumber];
+                  const rowState = hasDraftOverride(draft)
+                    ? "overridden"
+                    : item.alignment === "missing_in_prep"
+                    ? "missing"
+                    : "unchanged";
                   return (
-                    <tr key={item.assessmentItemNumber} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <tr
+                      key={item.assessmentItemNumber}
+                      style={{
+                        borderBottom: "1px solid #f1f5f9",
+                        backgroundColor:
+                          rowState === "overridden"
+                            ? "#eff6ff"
+                            : rowState === "missing"
+                            ? "#fff7ed"
+                            : "white",
+                      }}
+                    >
                       <td style={{ padding: "10px", fontWeight: 600 }}>{item.assessmentItemNumber}</td>
-                      <td style={{ padding: "10px" }}>{item.alignment}</td>
+                      <td style={{ padding: "10px" }}>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "3px 8px",
+                            borderRadius: "999px",
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            backgroundColor:
+                              rowState === "overridden"
+                                ? "#dbeafe"
+                                : rowState === "missing"
+                                ? "#ffedd5"
+                                : "#e5e7eb",
+                            color:
+                              rowState === "overridden"
+                                ? "#1d4ed8"
+                                : rowState === "missing"
+                                ? "#c2410c"
+                                : "#334155",
+                          }}
+                        >
+                          {rowState === "overridden"
+                            ? "Overridden"
+                            : rowState === "missing"
+                            ? "Missing in Prep"
+                            : "Unchanged"}
+                        </span>
+                        <div style={{ marginTop: "4px" }}>{item.alignment}</div>
+                      </td>
                       <td style={{ padding: "10px" }}>
                         <select
                           value={draft?.overrideAlignment ?? ""}
@@ -1063,9 +1110,18 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
           {state.report.adminReport && (
             <details style={{ marginTop: "1.5rem", border: "1px solid #e5e7eb", borderRadius: "8px", padding: "0.75rem 1rem", backgroundColor: "#f8fafc" }}>
               <summary style={{ cursor: "pointer", fontWeight: 600 }}>Admin Audit Report</summary>
-              <pre style={{ marginTop: "0.75rem", whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
-                {JSON.stringify(state.report.adminReport, null, 2)}
-              </pre>
+              <div style={{ marginTop: "0.75rem" }}>
+                <h4 style={{ margin: "0 0 0.5rem 0" }}>Preparedness</h4>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                  {JSON.stringify(state.report.adminReport.preparedness, null, 2)}
+                </pre>
+              </div>
+              <div style={{ marginTop: "0.75rem" }}>
+                <h4 style={{ margin: "0 0 0.5rem 0" }}>Other System Areas</h4>
+                <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.85rem" }}>
+                  {JSON.stringify(state.report.adminReport.otherSystemAreas ?? {}, null, 2)}
+                </pre>
+              </div>
             </details>
           )}
 

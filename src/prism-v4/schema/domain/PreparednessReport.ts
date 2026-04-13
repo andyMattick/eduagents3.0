@@ -81,6 +81,13 @@ export interface AdminReportPayload {
   reverseAlignmentIssues: AdminIssue[];
 }
 
+export interface AdminReportEnvelope {
+  adminReport: {
+    preparedness: AdminReportPayload;
+    otherSystemAreas?: Record<string, unknown>;
+  };
+}
+
 export interface CorrectedPreparednessResult {
   correctedAlignment: {
     coveredItems: CoveredReportItem[];
@@ -103,5 +110,5 @@ export interface PreparednessReportResult {
   prepAddendum: string[];
   reverseCoverage: ReverseAlignmentRecord[];
   fullText: string;
-  adminReport?: AdminReportPayload;
+  adminReport?: AdminReportEnvelope["adminReport"];
 }

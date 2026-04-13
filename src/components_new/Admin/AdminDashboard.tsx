@@ -102,6 +102,18 @@ function fmtDate(value: string): string {
   });
 }
 
+function isPreparednessSignal(input: string | null | undefined): boolean {
+  const text = (input ?? "").toLowerCase();
+  return (
+    text.includes("preparedness") ||
+    text.includes("missing_in_prep") ||
+    text.includes("reverse_alignment") ||
+    text.includes("add_prep_support") ||
+    text.includes("teacher override") ||
+    text.includes("prepaddendum")
+  );
+}
+
 export const AdminDashboard = () => {
   const { logout } = useAuth();
 
@@ -196,6 +208,81 @@ function isoDaysAgo(days: number): string {
       return emailOk && userOk && dateOk;
     });
   }, [badReports, emailByUserId, badReportFilters]);
+
+  const preparednessErrors = useMemo(
+    () => pipelineErrors.filter((row) => isPreparednessSignal(row.endpoint) || isPreparednessSignal(row.error_message)),
+    [pipelineErrors]
+  );
+
+  const preparednessAlignmentErrors = useMemo(
+    () => preparednessErrors.filter((row) => {
+      const text = `${row.endpoint} ${row.error_message}`.toLowerCase();
+      return text.includes("alignment") || text.includes("missing_in_prep") || text.includes("difficulty") || text.includes("concept");
+    }),
+    [preparednessErrors]
+  );
+
+  const preparednessSuggestionErrors = useMemo(
+    () => preparednessErrors.filter((row) => {
+      const text = `${row.endpoint} ${row.error_message}`.toLowerCase();
+      return text.includes("suggestion") || text.includes("suggestiontype") || text.includes("add_prep_support") || text.includes("remove_question");
+    }),
+    [preparednessErrors]
+  );
+
+  const preparednessRewriteErrors = useMemo(
+    () => preparednessErrors.filter((row) => {
+      const text = `${row.endpoint} ${row.error_message}`.toLowerCase();
+      return text.includes("rewrite") || text.includes("prepaddendum") || text.includes("addendum");
+    }),
+    [preparednessErrors]
+  );
+
+  const preparednessReverseErrors = useMemo(
+    () => preparednessErrors.filter((row) => {
+      const text = `${row.endpoint} ${row.error_message}`.toLowerCase();
+      return text.includes("reverse") || text.includes("review_below_test") || text.includes("review_above_test");
+    }),
+    [preparednessErrors]
+  );
+
+  const preparednessLlmErrors = useMemo(
+    () => preparednessErrors.filter((row) => {
+      const text = row.error_message.toLowerCase();
+      return text.includes("429") || text.includes("json") || text.includes("retry") || text.includes("rate limit");
+    }),
+    [preparednessErrors]
+  );
+
+  const preparednessRewriteIssues = useMemo(
+    () => badReports.filter((row) => isPreparednessSignal(row.reason) || isPreparednessSignal(row.what_was_wrong) || isPreparednessSignal(row.additional_context)),
+    [badReports]
+  );
+
+  const preparednessUncoveredItems = useMemo(() => {
+    return Array.from(
+      new Set(
+        [
+          ...preparednessErrors
+            .map((row) => row.error_message.match(/item\s*#?\s*(\d+)/i)?.[1])
+            .filter(Boolean),
+          ...preparednessRewriteIssues
+            .map((row) => (row.what_was_wrong ?? row.reason ?? "").match(/item\s*#?\s*(\d+)/i)?.[1])
+            .filter(Boolean),
+        ].map((value) => Number(value))
+      )
+    ).filter((value) => Number.isFinite(value));
+  }, [preparednessErrors, preparednessRewriteIssues]);
+
+  const preparednessTeacherOverrides = useMemo(
+    () => preparednessErrors.filter((row) => row.error_message.toLowerCase().includes("override") || row.error_message.toLowerCase().includes("teacher")),
+    [preparednessErrors]
+  );
+
+  const preparednessModelAnomalies = useMemo(
+    () => preparednessErrors.filter((row) => row.error_message.toLowerCase().includes("anomal") || row.error_message.toLowerCase().includes("hallucin") || row.error_message.toLowerCase().includes("concept_not_found")),
+    [preparednessErrors]
+  );
 
   async function loadDashboardData() {
     setLoading(true);
@@ -414,6 +501,96 @@ function isoDaysAgo(days: number): string {
               {!loading && tokenRowsFiltered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="admin-muted">No token rows yet.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="admin-section">
+        <h2>Preparedness Observability</h2>
+        <p className="admin-muted">
+          Dedicated Preparedness audit section: alignment, suggestions, rewrite, reverse alignment, teacher overrides, and LLM chain failures.
+        </p>
+
+        <h3>Preparedness Errors</h3>
+        <div className="admin-table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Count</th>
+                <th>Latest Signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Alignment Errors</td>
+                <td>{preparednessAlignmentErrors.length}</td>
+                <td>{preparednessAlignmentErrors[0] ? clip(preparednessAlignmentErrors[0].error_message, 140) : "-"}</td>
+              </tr>
+              <tr>
+                <td>Suggestion Errors</td>
+                <td>{preparednessSuggestionErrors.length}</td>
+                <td>{preparednessSuggestionErrors[0] ? clip(preparednessSuggestionErrors[0].error_message, 140) : "-"}</td>
+              </tr>
+              <tr>
+                <td>Rewrite Errors</td>
+                <td>{preparednessRewriteErrors.length}</td>
+                <td>{preparednessRewriteErrors[0] ? clip(preparednessRewriteErrors[0].error_message, 140) : "-"}</td>
+              </tr>
+              <tr>
+                <td>Reverse Alignment Errors</td>
+                <td>{preparednessReverseErrors.length}</td>
+                <td>{preparednessReverseErrors[0] ? clip(preparednessReverseErrors[0].error_message, 140) : "-"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Teacher Overrides</h3>
+        <p className="admin-muted">Detected from Preparedness pipeline logs containing teacher override signals.</p>
+        <p>{preparednessTeacherOverrides.length} events in recent telemetry.</p>
+
+        <h3>Model Anomalies</h3>
+        <p className="admin-muted">Concept hallucinations, concept-not-found markers, and anomaly signals.</p>
+        <p>{preparednessModelAnomalies.length} events in recent telemetry.</p>
+
+        <h3>Uncovered Test Items</h3>
+        <p>
+          {preparednessUncoveredItems.length > 0
+            ? preparednessUncoveredItems.join(", ")
+            : "No explicit uncovered item IDs found in current logs."}
+        </p>
+
+        <h3>Rewrite Issues</h3>
+        <p>{preparednessRewriteIssues.length} Preparedness-related bad rewrite reports in recent window.</p>
+
+        <h3>Reverse Alignment Issues</h3>
+        <p>{preparednessReverseErrors.length} reverse alignment signals in recent window.</p>
+
+        <h3>LLM Error Log (429 / JSON / Retry)</h3>
+        <div className="admin-table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Endpoint</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preparednessLlmErrors.slice(0, 100).map((row) => (
+                <tr key={`prep-llm-${row.id}`}>
+                  <td>{fmtDate(row.created_at)}</td>
+                  <td>{row.endpoint}</td>
+                  <td>{clip(row.error_message, 240)}</td>
+                </tr>
+              ))}
+              {!loading && preparednessLlmErrors.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="admin-muted">No Preparedness LLM errors in current telemetry window.</td>
                 </tr>
               )}
             </tbody>

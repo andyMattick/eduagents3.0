@@ -38,6 +38,7 @@ export type {
   AdminIssue,
   LlmPhaseError,
   AdminReportPayload,
+  AdminReportEnvelope,
   CorrectedPreparednessResult,
   PreparednessReportResult,
 } from "./PreparednessReport";

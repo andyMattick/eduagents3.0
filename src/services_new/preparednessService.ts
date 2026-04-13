@@ -16,7 +16,7 @@ import type {
   Suggestion,
   TeacherCorrection,
   CorrectedPreparednessResult,
-  AdminReportPayload,
+  AdminReportEnvelope,
 } from "../prism-v4/schema/domain/Preparedness";
 
 export interface PreparedenessServiceError {
@@ -217,7 +217,7 @@ export async function getAdminReport(params: {
   };
   teacherCorrections: TeacherCorrection[];
   llmErrors?: Array<{ phase: string; errorType: string }>;
-}): Promise<AdminReportPayload> {
+}): Promise<AdminReportEnvelope> {
   const response = await fetch("/api/v4/preparedness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

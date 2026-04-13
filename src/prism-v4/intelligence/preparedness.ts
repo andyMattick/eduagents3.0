@@ -22,6 +22,7 @@ import {
   type TeacherCorrection,
   type CorrectedPreparednessResult,
   type AdminReportPayload,
+  type AdminReportEnvelope,
   type PreparednessReportResult,
   type AssessmentDocument,
   type PrepDocument,
@@ -290,12 +291,15 @@ Return ONLY valid JSON.
 FORMAT:
 {
   "adminReport": {
-    "llmErrors": [...],
-    "teacherOverrides": [...],
-    "modelAnomalies": [...],
-    "uncoveredItems": [...],
-    "rewriteIssues": [...],
-    "reverseAlignmentIssues": [...]
+    "preparedness": {
+      "llmErrors": [...],
+      "teacherOverrides": [...],
+      "modelAnomalies": [...],
+      "uncoveredItems": [...],
+      "rewriteIssues": [...],
+      "reverseAlignmentIssues": [...]
+    },
+    "otherSystemAreas": {}
   }
 }`;
 
@@ -616,7 +620,7 @@ export async function generateAdminReport(
   teacherCorrections: TeacherCorrection[],
   llmErrors: Array<{ phase: string; errorType: string }>,
   callLLM: LLMCaller
-): Promise<AdminReportPayload> {
+): Promise<AdminReportEnvelope> {
   const prompt = `${ADMIN_REPORT_PROMPT_TEMPLATE}\n\nmodelOutput:\n${JSON.stringify(
     modelOutput,
     null,
@@ -635,16 +639,30 @@ export async function generateAdminReport(
     callLLM(prompt, { maxOutputTokens: 2048, temperature: 0.2 })
   );
 
-  const parsed = parseJsonWithRepair<{ adminReport?: AdminReportPayload }>(raw);
+  const parsed = parseJsonWithRepair<{ adminReport?: { preparedness?: AdminReportPayload; otherSystemAreas?: Record<string, unknown> } }>(raw);
+  const fallbackPreparedness: AdminReportPayload = {
+    llmErrors,
+    teacherOverrides: [],
+    modelAnomalies: [],
+    uncoveredItems: modelOutput.alignment.uncoveredItems.map((item) => item.assessmentItemNumber),
+    rewriteIssues: [],
+    reverseAlignmentIssues: [],
+  };
+
   return (
-    parsed.adminReport ?? {
-      llmErrors,
-      teacherOverrides: [],
-      modelAnomalies: [],
-      uncoveredItems: modelOutput.alignment.uncoveredItems.map((item) => item.assessmentItemNumber),
-      rewriteIssues: [],
-      reverseAlignmentIssues: [],
-    }
+    parsed.adminReport
+      ? {
+          adminReport: {
+            preparedness: parsed.adminReport.preparedness ?? fallbackPreparedness,
+            otherSystemAreas: parsed.adminReport.otherSystemAreas,
+          },
+        }
+      : {
+          adminReport: {
+            preparedness: fallbackPreparedness,
+            otherSystemAreas: {},
+          },
+        }
   );
 }
 

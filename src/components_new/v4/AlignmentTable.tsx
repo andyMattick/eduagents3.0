@@ -16,8 +16,6 @@ interface AlignmentTableProps {
 }
 
 export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => {
-  const rows = [...alignment.coveredItems, ...alignment.uncoveredItems];
-
   const getAlignmentIcon = (status: string): string => {
     switch (status) {
       case "aligned": return "✓";
@@ -63,8 +61,55 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
     );
   };
 
-  return (
-    <div style={{ marginTop: "1.5rem" }}>
+  const renderRows = (rows: AlignmentResult["coveredItems"] | AlignmentResult["uncoveredItems"]) => {
+    if (rows.length === 0) {
+      return (
+        <tr>
+          <td colSpan={5} style={{ padding: "12px", color: "#999" }}>No items in this section.</td>
+        </tr>
+      );
+    }
+
+    return rows.map((record) => (
+      <tr
+        key={record.assessmentItemNumber}
+        style={{
+          borderBottom: "1px solid #e0e0e0",
+          backgroundColor: record.alignment !== "aligned" ? "#fff5f5" : "white",
+        }}
+      >
+        <td style={{ padding: "12px", fontWeight: "600", textAlign: "left", borderRight: "1px solid #e0e0e0" }}>
+          {record.assessmentItemNumber}
+        </td>
+        <td style={{ padding: "12px", borderRight: "1px solid #e0e0e0" }}>
+          {renderConcepts(record.concepts)}
+        </td>
+        <td style={{ padding: "12px", textAlign: "center", borderRight: "1px solid #e0e0e0" }}>
+          <span style={{ backgroundColor: "#e6f0ff", padding: "4px 8px", borderRadius: "4px", fontSize: "0.9rem" }}>
+            {record.prepDifficulty}
+          </span>
+        </td>
+        <td style={{ padding: "12px", textAlign: "center", borderRight: "1px solid #e0e0e0" }}>
+          <span style={{ backgroundColor: "#fff0e6", padding: "4px 8px", borderRadius: "4px", fontSize: "0.9rem" }}>
+            {record.difficulty}
+          </span>
+        </td>
+        <td style={{ padding: "12px", textAlign: "center" }}>
+          <span
+            className={`badge ${getAlignmentBadgeClass(record.alignment)}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 12px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "500" }}
+          >
+            <span aria-hidden="true">{getAlignmentIcon(record.alignment)}</span>
+            {getAlignmentStatusLabel(record.alignment)}
+          </span>
+        </td>
+      </tr>
+    ));
+  };
+
+  const renderSection = (title: string, rows: AlignmentResult["coveredItems"] | AlignmentResult["uncoveredItems"]) => (
+    <div style={{ marginTop: "1rem" }}>
+      <h3 style={{ margin: "0 0 0.75rem 0", fontSize: "1rem", fontWeight: 700 }}>{title}</h3>
       <div style={{ overflowX: "auto", border: "1px solid #e0e0e0", borderRadius: "8px" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.95rem" }}>
           <thead>
@@ -76,45 +121,16 @@ export const AlignmentTable: React.FC<AlignmentTableProps> = ({ alignment }) => 
               <th style={{ padding: "12px", textAlign: "center", fontWeight: "600" }}>Alignment</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((record) => (
-              <tr
-                key={record.assessmentItemNumber}
-                style={{
-                  borderBottom: "1px solid #e0e0e0",
-                  backgroundColor: record.alignment !== "aligned" ? "#fff5f5" : "white",
-                }}
-              >
-                <td style={{ padding: "12px", fontWeight: "600", textAlign: "left", borderRight: "1px solid #e0e0e0" }}>
-                  {record.assessmentItemNumber}
-                </td>
-                <td style={{ padding: "12px", borderRight: "1px solid #e0e0e0" }}>
-                  {renderConcepts(record.concepts)}
-                </td>
-                <td style={{ padding: "12px", textAlign: "center", borderRight: "1px solid #e0e0e0" }}>
-                  <span style={{ backgroundColor: "#e6f0ff", padding: "4px 8px", borderRadius: "4px", fontSize: "0.9rem" }}>
-                    {record.prepDifficulty}
-                  </span>
-                </td>
-                <td style={{ padding: "12px", textAlign: "center", borderRight: "1px solid #e0e0e0" }}>
-                  <span style={{ backgroundColor: "#fff0e6", padding: "4px 8px", borderRadius: "4px", fontSize: "0.9rem" }}>
-                    {record.difficulty}
-                  </span>
-                </td>
-                <td style={{ padding: "12px", textAlign: "center" }}>
-                  <span
-                    className={`badge ${getAlignmentBadgeClass(record.alignment)}`}
-                    style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 12px", borderRadius: "12px", fontSize: "0.85rem", fontWeight: "500" }}
-                  >
-                    <span aria-hidden="true">{getAlignmentIcon(record.alignment)}</span>
-                    {getAlignmentStatusLabel(record.alignment)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+          <tbody>{renderRows(rows)}</tbody>
         </table>
       </div>
+    </div>
+  );
+
+  return (
+    <div style={{ marginTop: "1.5rem" }}>
+      {renderSection("Covered Items", alignment.coveredItems)}
+      {renderSection("Uncovered Items", alignment.uncoveredItems)}
 
       <div style={{ marginTop: "0.75rem", fontSize: "0.9rem", color: "#555" }}>
         Covered: <strong>{alignment.coveredItems.length}</strong> | Uncovered: <strong>{alignment.uncoveredItems.length}</strong>

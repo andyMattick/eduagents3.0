@@ -233,7 +233,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         reverseAlignment: reverseAlignmentResult,
         report: {
           ...reportResult,
-          adminReport,
+          adminReport: adminReport.adminReport,
         },
       };
     } else {
