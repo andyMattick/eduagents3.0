@@ -228,7 +228,7 @@ function disablePersistedSnapshots(error: unknown) {
 		throw error;
 	}
 	if (prismSessionSnapshotsSupported) {
-		console.warn(`[registryStore] ${SESSION_SNAPSHOTS_TABLE} missing in Supabase schema cache; falling back to in-memory snapshots.`);
+		console.warn(`[registryStore] ${SESSION_SNAPSHOTS_TABLE} missing in Supabase schema cache; falling back to in-memory snapshots. Run supabase/prism_v4_session_snapshots_migration.sql and reload PostgREST schema cache.`);
 	}
 	prismSessionSnapshotsSupported = false;
 }

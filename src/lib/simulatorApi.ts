@@ -6,8 +6,6 @@ import type {
 	GenerateTestRequest,
 	GenerateTestResponse,
 	MultiProfileSimulatorResponse,
-	PreparednessSimulatorRequest,
-	PreparednessSimulatorResponse,
 	SingleSimulatorRequest,
 	SingleSimulatorResponse,
 } from "../types/simulator";
@@ -23,14 +21,6 @@ function buildJsonHeaders(userId?: string): Record<string, string> {
 
 export function runSingleSimulatorApi(params: SingleSimulatorRequest, userId?: string) {
 	return fetchJson<SingleSimulatorResponse>("/api/v4/simulator/single", {
-		method: "POST",
-		headers: buildJsonHeaders(userId),
-		body: JSON.stringify(params),
-	});
-}
-
-export function runPreparednessSimulatorApi(params: PreparednessSimulatorRequest, userId?: string) {
-	return fetchJson<PreparednessSimulatorResponse>("/api/v4/simulator/preparedness", {
 		method: "POST",
 		headers: buildJsonHeaders(userId),
 		body: JSON.stringify(params),

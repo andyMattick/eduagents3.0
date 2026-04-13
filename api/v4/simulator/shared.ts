@@ -12,6 +12,45 @@ import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/su
 import type { StudentProfile } from "../../../src/types/simulator";
 
 let warnedMissingServiceRoleForV4Writes = false;
+let v4ItemsTableSupported = true;
+let v4SectionsTableSupported = true;
+let v4AnalysisTableSupported = true;
+
+function isMissingTableSchemaCacheError(error: unknown, table: string): boolean {
+	const message = String(error instanceof Error ? error.message : error).toLowerCase();
+	return message.includes("pgrst205")
+		|| (message.includes("schema cache") && message.includes(table.toLowerCase()))
+		|| message.includes(`could not find the table 'public.${table.toLowerCase()}'`);
+}
+
+function disableV4Table(table: "v4_items" | "v4_sections" | "v4_analysis", error: unknown): boolean {
+	if (!isMissingTableSchemaCacheError(error, table)) {
+		return false;
+	}
+
+	if (table === "v4_items") {
+		if (v4ItemsTableSupported) {
+			console.warn(`[v4-ingestion] ${table} missing in Supabase schema cache; skipping item persistence. Run supabase/v4_schema_repair_migration.sql and reload PostgREST schema cache.`);
+		}
+		v4ItemsTableSupported = false;
+	}
+
+	if (table === "v4_sections") {
+		if (v4SectionsTableSupported) {
+			console.warn(`[v4-ingestion] ${table} missing in Supabase schema cache; skipping section persistence. Run supabase/v4_schema_repair_migration.sql and reload PostgREST schema cache.`);
+		}
+		v4SectionsTableSupported = false;
+	}
+
+	if (table === "v4_analysis") {
+		if (v4AnalysisTableSupported) {
+			console.warn(`[v4-ingestion] ${table} missing in Supabase schema cache; skipping analysis persistence. Run supabase/v4_schema_repair_migration.sql and reload PostgREST schema cache.`);
+		}
+		v4AnalysisTableSupported = false;
+	}
+
+	return true;
+}
 
 function canPersistV4IngestionWrites(): boolean {
 	return typeof window === "undefined" && hasSupabaseServiceRoleCredentials();
@@ -374,6 +413,7 @@ export async function saveItems(documentId: string, items: V4Item[]): Promise<vo
 		warnMissingServiceRoleForV4Writes();
 		return;
 	}
+	if (!v4ItemsTableSupported) return;
 
 	const rows = items.map((item) => ({
 		document_id: documentId,
@@ -386,11 +426,16 @@ export async function saveItems(documentId: string, items: V4Item[]): Promise<vo
 		source_page_numbers: item.sourcePageNumbers ?? [],
 	}));
 
-	await supabaseRest("v4_items", {
-		method: "POST",
-		body: rows,
-		prefer: "resolution=merge-duplicates",
-	});
+	try {
+		await supabaseRest("v4_items", {
+			method: "POST",
+			body: rows,
+			prefer: "resolution=merge-duplicates",
+		});
+	} catch (error) {
+		if (disableV4Table("v4_items", error)) return;
+		throw error;
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +460,7 @@ export async function saveSections(documentId: string, sections: V4Section[]): P
 		warnMissingServiceRoleForV4Writes();
 		return;
 	}
+	if (!v4SectionsTableSupported) return;
 
 	// Delete existing sections for this document (idempotent)
 	try {
@@ -422,7 +468,8 @@ export async function saveSections(documentId: string, sections: V4Section[]): P
 			method: "DELETE",
 			filters: { document_id: `eq.${documentId}` },
 		});
-	} catch {
+	} catch (error) {
+		if (disableV4Table("v4_sections", error)) return;
 		// Non-fatal — best effort delete before re-insert
 	}
 
@@ -435,11 +482,16 @@ export async function saveSections(documentId: string, sections: V4Section[]): P
 		metadata:    s.metadata ?? {},
 	}));
 
-	await supabaseRest("v4_sections", {
-		method: "POST",
-		body: rows,
-		prefer: "resolution=merge-duplicates",
-	});
+	try {
+		await supabaseRest("v4_sections", {
+			method: "POST",
+			body: rows,
+			prefer: "resolution=merge-duplicates",
+		});
+	} catch (error) {
+		if (disableV4Table("v4_sections", error)) return;
+		throw error;
+	}
 }
 
 /**
@@ -498,6 +550,7 @@ export async function saveAnalysis(
 		warnMissingServiceRoleForV4Writes();
 		return;
 	}
+	if (!v4AnalysisTableSupported) return;
 
 	try {
 		await supabaseRest("v4_analysis", {
@@ -515,6 +568,7 @@ export async function saveAnalysis(
 			prefer: "resolution=merge-duplicates",
 		});
 	} catch (err) {
+		if (disableV4Table("v4_analysis", err)) return;
 		console.warn("[saveAnalysis] non-fatal:", err instanceof Error ? err.message : err);
 	}
 }

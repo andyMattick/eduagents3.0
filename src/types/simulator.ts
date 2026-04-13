@@ -104,7 +104,7 @@ export interface SimulatorItemData {
 	confusionRisk: number;         // 0–1
 	timeToProcessSeconds: number;
 	misconceptionRisk: number;     // 0–1
-	alignmentScore?: number;       // preparedness only, 0–1
+	alignmentScore?: never;       // removed — preparedness moved to new pipeline
 	redFlags: string[];
 }
 
@@ -123,9 +123,6 @@ export interface SimulatorOverallData {
 	estimatedCompletionTimeSeconds: number;
 	fatigueRisk: number;           // 0–1
 	pacingRisk: number;            // 0–1
-	alignmentScore?: number;       // preparedness only, 0–1
-	documentType?: string;         // preparedness only: "notes" | "review" | "mixed" | "other"
-	documentTypeConfidence?: number; // preparedness only, 0–1
 	majorRedFlags: string[];
 }
 
@@ -151,17 +148,6 @@ export interface SingleSimulatorRequest {
 }
 
 export interface SingleSimulatorResponse {
-	narrative: string;
-	data: SimulatorData | null;
-}
-
-export interface PreparednessSimulatorRequest {
-	sessionId: string;
-	prepText: string;
-	studentProfile?: StudentProfile;
-}
-
-export interface PreparednessSimulatorResponse {
 	narrative: string;
 	data: SimulatorData | null;
 }

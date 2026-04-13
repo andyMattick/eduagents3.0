@@ -24,10 +24,13 @@ import {
 	reportBadRewriteApi,
 	runGenerateTestApi,
 	runMultiSimulatorApi,
-	runPreparednessSimulatorApi,
 	runRewriteApi,
 	runSingleSimulatorApi,
 } from "../../lib/simulatorApi";
+import type {
+	AssessmentDocument,
+	PrepDocument,
+} from "../../prism-v4/schema/domain/Preparedness";
 import type {
 	GeneratedTestData,
 	GeneratedTestItem,
@@ -40,9 +43,9 @@ import type {
 import type { RewriteRequest, RewriteResponse, RewriteSuggestion } from "../../types/rewrite";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import PreparednessPage from "./PreparednessPage";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
-import { SimulationCharts } from "./SimulationCharts";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -51,13 +54,15 @@ import "./v4.css";
 
 type Goal = "simulate" | "preparedness" | "compare" | "create";
 type Phase = "goal" | "upload" | "results";
-type ResultTab = "narrative" | "charts" | "suggestions" | "json" | "rewrite";
+type ResultTab = "narrative" | "suggestions" | "json" | "rewrite";
 
 interface StudioState {
 	goal: Goal | null;
 	phase: Phase;
 	primaryFiles: File[];
 	secondaryFiles: File[];   // prep material (preparedness)
+	preparednessPrep: PrepDocument | null;
+	preparednessAssessment: AssessmentDocument | null;
 	sessionId: string | null;
 	documentId: string | null;
 	documentDocType: DocumentStatus["docType"];
@@ -128,6 +133,8 @@ const INITIAL: StudioState = {
 	phase: "goal",
 	primaryFiles: [],
 	secondaryFiles: [],
+	preparednessPrep: null,
+	preparednessAssessment: null,
 	sessionId: null,
 	documentId: null,
 	documentDocType: null,
@@ -201,6 +208,46 @@ async function buildRewriteOriginalText(
 	}
 
 	return (fallback ?? "").trim();
+}
+
+function buildAssessmentItems(rawText: string) {
+	const lines = rawText
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+
+	const grouped = new Map<number, string[]>();
+	let currentItem: number | null = null;
+
+	for (const line of lines) {
+		const numbered = line.match(/^(\d+)\.\s*(.*)$/);
+		if (numbered) {
+			currentItem = Number(numbered[1]);
+			const text = numbered[2]?.trim() ?? "";
+			if (!grouped.has(currentItem)) grouped.set(currentItem, []);
+			if (text) grouped.get(currentItem)?.push(text);
+			continue;
+		}
+
+		if (currentItem !== null) {
+			grouped.get(currentItem)?.push(line);
+		}
+	}
+
+	if (grouped.size > 0) {
+		return Array.from(grouped.entries())
+			.sort(([a], [b]) => a - b)
+			.map(([itemNumber, chunks]) => ({
+				itemNumber,
+				text: chunks.join(" ").trim(),
+			}))
+			.filter((item) => item.text.length > 0);
+	}
+
+	return lines.map((line, index) => ({
+		itemNumber: index + 1,
+		text: line.replace(/^\d+\.\s*/, "").trim(),
+	})).filter((item) => item.text.length > 0);
 }
 
 const ACCEPTED_DOCS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -284,16 +331,13 @@ function StatBar({ value, label, warn }: { value: number; label: string; warn?: 
 	);
 }
 
-function OverallStats({ data, goal }: { data: SimulatorData; goal: Goal }) {
+function OverallStats({ data }: { data: SimulatorData }) {
 	const { overall } = data;
 	const mins = Math.round(overall.estimatedCompletionTimeSeconds / 60);
 	const stats: Array<{ value: string | number; label: string }> = [
 		{ value: overall.totalItems, label: "Items" },
 		{ value: `${mins}m`, label: "Est. time" },
 	];
-	if (overall.alignmentScore !== undefined && goal === "preparedness") {
-		stats.push({ value: `${Math.round(overall.alignmentScore * 100)}%`, label: "Alignment" });
-	}
 	return (
 		<div style={{ marginTop: "1.5rem" }}>
 			<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>Overall Assessment</p>
@@ -358,17 +402,15 @@ function OverallStats({ data, goal }: { data: SimulatorData; goal: Goal }) {
 	);
 }
 
-function ItemTable({ data, goal }: { data: SimulatorData; goal: Goal }) {
+function ItemTable({ data }: { data: SimulatorData }) {
 	if (data.items.length === 0) return null;
-	const showAlignment = goal === "preparedness";
 	return (
 		<div style={{ marginTop: "1.5rem", overflowX: "auto" }}>
 			<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>Item-by-Item Analysis</p>
 			<table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
 				<thead>
 					<tr style={{ borderBottom: "2px solid rgba(86,57,32,0.16)" }}>
-						{["#", "Words", "Cog. Load", "Confusion", "Time (s)", ...(showAlignment ? ["Alignment"] : [])].map(
-							(h) => (
+						{["#", "Words", "Cog. Load", "Confusion", "Time (s)"].map((h) => (
 								<th
 									key={h}
 									style={{
@@ -405,13 +447,6 @@ function ItemTable({ data, goal }: { data: SimulatorData; goal: Goal }) {
 									{Math.round(item.confusionRisk * 100)}%
 								</td>
 								<td style={{ padding: "0.35rem 0.5rem" }}>{item.timeToProcessSeconds}s</td>
-								{showAlignment && (
-									<td style={{ padding: "0.35rem 0.5rem" }}>
-										{item.alignmentScore !== undefined
-											? `${Math.round(item.alignmentScore * 100)}%`
-											: "—"}
-									</td>
-								)}
 							</tr>
 						);
 					})}
@@ -1021,6 +1056,8 @@ export function TeacherStudio() {
 			simData: null,
 			parallelData: null,
 			testData: null,
+			preparednessPrep: null,
+			preparednessAssessment: null,
 			rewriteResults: null,
 			rewriteLoading: false,
 			activeTab: "narrative",
@@ -1048,14 +1085,29 @@ export function TeacherStudio() {
 				}));
 			} else if (state.goal === "preparedness") {
 				const prepText = (await Promise.all(state.secondaryFiles.map(readFileAsText))).join("\n\n");
-				const res = await runPreparednessSimulatorApi({ sessionId, prepText, studentProfile: state.profile }, user?.id);
+				const items = buildAssessmentItems(originalText);
+				if (items.length === 0) {
+					throw new Error("Could not parse assessment items from the uploaded assessment document.");
+				}
+
+				const preparednessPrep: PrepDocument = {
+					title: state.secondaryFiles.map((file) => file.name).join(", ") || "Prep Document",
+					rawText: prepText,
+				};
+
+				const preparednessAssessment: AssessmentDocument = {
+					title: state.primaryFiles.map((file) => file.name).join(", ") || "Assessment",
+					items,
+				};
+
 				setState((prev) => ({
 					...prev,
 					sessionId,
 					documentId,
 					originalText,
-					narrative: res.narrative,
-					simData: res.data,
+					narrative: "",
+					preparednessPrep,
+					preparednessAssessment,
 					isLoading: false,
 				}));
 			} else if (state.goal === "compare") {
@@ -1640,7 +1692,10 @@ export function TeacherStudio() {
 							)}
 
 							{/* Results content */}
-							{!state.isLoading && state.narrative !== null && (
+							{!state.isLoading && (
+								(state.goal === "preparedness" && state.preparednessPrep && state.preparednessAssessment) ||
+								state.narrative !== null
+							) && (
 								<>
 									{/* Header row */}
 									<div
@@ -1669,13 +1724,15 @@ export function TeacherStudio() {
 											{state.documentId ? <DocumentStatusBadge documentId={state.documentId} /> : null}
 										</div>
 										<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-											<button
-												type="button"
-												className="v4-button v4-button-secondary v4-button-sm"
-												onClick={handleDownload}
-											>
-												Download
-											</button>
+											{state.goal !== "preparedness" && (
+												<button
+													type="button"
+													className="v4-button v4-button-secondary v4-button-sm"
+													onClick={handleDownload}
+												>
+													Download
+												</button>
+											)}
 											<button
 												type="button"
 												className="v4-button v4-button-secondary v4-button-sm"
@@ -1686,11 +1743,15 @@ export function TeacherStudio() {
 										</div>
 									</div>
 
+									{state.goal === "preparedness" && state.preparednessPrep && state.preparednessAssessment ? (
+										<PreparednessPage
+											prep={state.preparednessPrep}
+											assessment={state.preparednessAssessment}
+										/>
+									) : (
+										<>
 									{/* Tab bar */}
 									{(() => {
-										const hasCharts =
-											(state.goal === "compare" && state.parallelData !== null) ||
-											(state.goal !== "compare" && state.goal !== "create" && state.simData !== null && state.simData.items.length > 0);
 										const suggestions: RewriteSuggestions | undefined =
 											state.goal === "compare"
 												? state.parallelData?.rewriteSuggestions
@@ -1708,7 +1769,6 @@ export function TeacherStudio() {
 										const hasRewrite = state.rewriteResults !== null;
 										const tabs: Array<{ id: ResultTab; label: string }> = [
 											{ id: "narrative", label: "Narrative" },
-											...(hasCharts ? [{ id: "charts" as ResultTab, label: "Charts" }] : []),
 											...(hasSuggestions ? [{ id: "suggestions" as ResultTab, label: "Suggestions" }] : []),
 											...(hasRewrite ? [{ id: "rewrite" as ResultTab, label: "Rewrite" }] : []),
 											...(hasJson ? [{ id: "json" as ResultTab, label: "JSON" }] : []),
@@ -1753,45 +1813,31 @@ export function TeacherStudio() {
 
 									{/* Tab: Narrative */}
 									{state.activeTab === "narrative" && (
-										<pre
-											style={{
-												marginTop: "1.25rem",
-												whiteSpace: "pre-wrap",
-												wordBreak: "break-word",
-												background: "rgba(255,251,245,0.7)",
-												border: "1px solid rgba(86,57,32,0.14)",
-												borderRadius: "12px",
-												padding: "1rem 1.15rem",
-												fontFamily: "inherit",
-												fontSize: "0.875rem",
-												lineHeight: 1.7,
-												color: "#1f1a17",
-											}}
-										>
-											{state.narrative}
-										</pre>
-									)}
-
-									{/* Tab: Charts */}
-									{state.activeTab === "charts" && (
-										<div style={{ width: "100%", minWidth: 0, display: "block" }}>
-											{/* Structured analytics table — simulate + preparedness */}
+										<>
+											<pre
+												style={{
+													marginTop: "1.25rem",
+													whiteSpace: "pre-wrap",
+													wordBreak: "break-word",
+													background: "rgba(255,251,245,0.7)",
+													border: "1px solid rgba(86,57,32,0.14)",
+													borderRadius: "12px",
+													padding: "1rem 1.15rem",
+													fontFamily: "inherit",
+													fontSize: "0.875rem",
+													lineHeight: 1.7,
+													color: "#1f1a17",
+												}}
+											>
+												{state.narrative}
+											</pre>
 											{state.simData && state.simData.items.length > 0 && (
 												<>
-													<OverallStats data={state.simData} goal={state.goal!} />
-													<ItemTable data={state.simData} goal={state.goal!} />
+													<OverallStats data={state.simData} />
+													<ItemTable data={state.simData} />
 												</>
 											)}
-
-											{/* Unified Recharts suite — works for all modes */}
-											<SimulationCharts
-												data={
-													state.goal === "compare" && state.parallelData
-														? state.parallelData
-														: state.simData!
-												}
-											/>
-										</div>
+										</>
 									)}
 									{/* Tab: Suggestions */}
 									{state.activeTab === "suggestions" && (
@@ -1988,6 +2034,8 @@ export function TeacherStudio() {
 									{/* Generated test — create (always in narrative tab) */}
 									{state.activeTab === "narrative" && state.goal === "create" && state.testData && state.testData.test.length > 0 && (
 										<GeneratedTestView data={state.testData} />
+									)}
+										</>
 									)}
 
 									{/* Rewrite Diff Viewer Modal */}

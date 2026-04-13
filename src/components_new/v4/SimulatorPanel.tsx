@@ -5,12 +5,11 @@
  * Three modes, each triggering a single LLM call:
  *
  *  1. Simulate Student Experience  — single doc, narrative + per-item analytics
- *  2. Simulate Test Preparedness   — upload a prep doc, compare against session
  * No ingestion. No pipeline. No concept extraction.
  */
 
-import { useRef, useState } from "react";
-import { runPreparednessSimulatorApi, runSingleSimulatorApi } from "../../lib/simulatorApi";
+import { useState } from "react";
+import { runSingleSimulatorApi } from "../../lib/simulatorApi";
 import type {
 	SimulatorData,
 	StudentProfile,
@@ -21,23 +20,10 @@ import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/si
 // Types
 // ---------------------------------------------------------------------------
 
-type SimMode = "single" | "preparedness" | null;
+type SimMode = "single" | null;
 
 interface SimulatorPanelProps {
 	sessionId: string;
-}
-
-// ---------------------------------------------------------------------------
-// Text extraction helper (client-side, non-PDF)
-// ---------------------------------------------------------------------------
-
-function readFileAsText(file: File): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onload = () => resolve(reader.result as string);
-		reader.onerror = () => reject(new Error("Could not read file"));
-		reader.readAsText(file, "utf-8");
-	});
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +48,7 @@ function StatBar({ value, label, warn }: { value: number; label: string; warn?: 
 // Overall stats card
 // ---------------------------------------------------------------------------
 
-function OverallStats({ data, mode }: { data: SimulatorData; mode: SimMode }) {
+function OverallStats({ data }: { data: SimulatorData }) {
 	const { overall } = data;
 	const mins = Math.round(overall.estimatedCompletionTimeSeconds / 60);
 	return (
@@ -77,12 +63,6 @@ function OverallStats({ data, mode }: { data: SimulatorData; mode: SimMode }) {
 					<div style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1 }}>{mins} min</div>
 					<div className="v4-stat-label">Est. time</div>
 				</div>
-				{overall.alignmentScore !== undefined && mode === "preparedness" && (
-					<div className="v4-panel" style={{ padding: "0.75rem", background: "var(--v4-surface)" }}>
-						<div style={{ fontSize: "1.5rem", fontWeight: 700, lineHeight: 1 }}>{Math.round(overall.alignmentScore * 100)}%</div>
-						<div className="v4-stat-label">Alignment</div>
-					</div>
-				)}
 			</div>
 			<div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
 				<StatBar value={overall.fatigueRisk} label="Fatigue risk" warn />
@@ -104,7 +84,7 @@ function OverallStats({ data, mode }: { data: SimulatorData; mode: SimMode }) {
 // Item analytics table
 // ---------------------------------------------------------------------------
 
-function ItemTable({ data, mode }: { data: SimulatorData; mode: SimMode }) {
+function ItemTable({ data }: { data: SimulatorData }) {
 	if (data.items.length === 0) return null;
 	return (
 		<div style={{ marginTop: "1.25rem", overflowX: "auto" }}>
@@ -117,7 +97,6 @@ function ItemTable({ data, mode }: { data: SimulatorData; mode: SimMode }) {
 						<th style={{ textAlign: "left", padding: "0.35rem 0.5rem", color: "var(--v4-muted)" }}>Cog. Load</th>
 						<th style={{ textAlign: "left", padding: "0.35rem 0.5rem", color: "var(--v4-muted)" }}>Confusion</th>
 						<th style={{ textAlign: "left", padding: "0.35rem 0.5rem", color: "var(--v4-muted)" }}>Time (s)</th>
-						{mode === "preparedness" && <th style={{ textAlign: "left", padding: "0.35rem 0.5rem", color: "var(--v4-muted)" }}>Alignment</th>}
 						<th style={{ textAlign: "left", padding: "0.35rem 0.5rem", color: "var(--v4-muted)" }}>Flags</th>
 					</tr>
 				</thead>
@@ -132,11 +111,6 @@ function ItemTable({ data, mode }: { data: SimulatorData; mode: SimMode }) {
 								<td style={{ padding: "0.35rem 0.5rem", color: highCog ? "var(--v4-error, #dc2626)" : undefined }}>{Math.round(item.cognitiveLoad * 100)}%</td>
 								<td style={{ padding: "0.35rem 0.5rem", color: highConf ? "var(--v4-error, #dc2626)" : undefined }}>{Math.round(item.confusionRisk * 100)}%</td>
 								<td style={{ padding: "0.35rem 0.5rem" }}>{item.timeToProcessSeconds}</td>
-								{mode === "preparedness" && (
-									<td style={{ padding: "0.35rem 0.5rem" }}>
-										{item.alignmentScore !== undefined ? `${Math.round(item.alignmentScore * 100)}%` : "—"}
-									</td>
-								)}
 								<td style={{ padding: "0.35rem 0.5rem", color: "var(--v4-error, #dc2626)", maxWidth: "200px" }}>
 									{item.redFlags.join(", ") || "—"}
 								</td>
@@ -158,11 +132,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 	const [profile, setProfile] = useState<StudentProfile>(DEFAULT_STUDENT_PROFILE);
 	const [selectedPreset, setSelectedPreset] = useState<string>("Average Student");
 
-	// Second-document state (preparedness)
-	const [secondFile, setSecondFile] = useState<File | null>(null);
-	const [secondFileError, setSecondFileError] = useState<string | null>(null);
-	const secondFileRef = useRef<HTMLInputElement>(null);
-
 	// Result state
 	const [loading, setLoading] = useState(false);
 	const [narrative, setNarrative] = useState<string | null>(null);
@@ -182,18 +151,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		setNarrative(null);
 		setSimData(null);
 		setError(null);
-		setSecondFile(null);
-		setSecondFileError(null);
-	}
-
-	function handleSecondFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-		const file = e.target.files?.[0] ?? null;
-		setSecondFile(file);
-		setSecondFileError(null);
-		if (file && file.type === "application/pdf") {
-			setSecondFileError("PDF text extraction for a second document is not supported yet. Please use a .txt, .doc, or .docx file.");
-			setSecondFile(null);
-		}
 	}
 
 	async function handleRun() {
@@ -204,15 +161,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		try {
 			if (mode === "single") {
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: profile });
-				setNarrative(res.narrative);
-				setSimData(res.data);
-			} else if (mode === "preparedness") {
-				if (!secondFile) {
-					setError("Please upload the prep/study material before running.");
-					return;
-				}
-				const prepText = await readFileAsText(secondFile);
-				const res = await runPreparednessSimulatorApi({ sessionId, prepText, studentProfile: profile });
 				setNarrative(res.narrative);
 				setSimData(res.data);
 			}
@@ -237,8 +185,7 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 
 	// ── Render ────────────────────────────────────────────────────────────────
 
-	const needsSecondDoc = mode === "preparedness";
-	const canRun = mode !== null && !loading && (mode === "preparedness" ? !!secondFile : true);
+	const canRun = mode !== null && !loading;
 	const hasResult = narrative !== null;
 
 	return (
@@ -257,14 +204,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 				>
 					Simulate Student Experience
 				</button>
-				<button
-					type="button"
-					className={`v4-button${mode === "preparedness" ? " v4-button-active" : " v4-button-secondary"}`}
-					onClick={() => handleModeSelect("preparedness")}
-				>
-					Simulate Test Preparedness
-				</button>
-
 			</div>
 
 			{/* ── Student Profile dropdown ── */}
@@ -289,41 +228,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 				</div>
 			)}
 
-			{/* ── Second document slot ── */}
-			{needsSecondDoc && (
-				<div style={{ marginTop: "1rem" }}>
-					<p className="v4-kicker" style={{ marginBottom: "0.35rem" }}>
-					"Upload prep / study material (required)"
-					</p>
-					<div className="v4-upload-actions">
-						<button
-							type="button"
-							className="v4-button v4-button-secondary v4-button-sm"
-							onClick={() => secondFileRef.current?.click()}
-						>
-							{secondFile ? `✓ ${secondFile.name}` : "Choose file (.txt, .doc, .docx)"}
-						</button>
-						<input
-							ref={secondFileRef}
-							type="file"
-							accept=".txt,.doc,.docx,.rtf"
-							style={{ display: "none" }}
-							onChange={handleSecondFileChange}
-						/>
-						{secondFile && (
-							<button
-								type="button"
-								className="v4-button v4-button-secondary v4-button-sm"
-								onClick={() => { setSecondFile(null); if (secondFileRef.current) secondFileRef.current.value = ""; }}
-							>
-								Remove
-							</button>
-						)}
-					</div>
-					{secondFileError && <p className="v4-error" style={{ marginTop: "0.5rem" }}>{secondFileError}</p>}
-				</div>
-			)}
-
 			{/* ── Run button ── */}
 			{mode !== null && (
 				<div className="v4-upload-actions" style={{ marginTop: "1rem" }}>
@@ -344,9 +248,8 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 			{/* ── Result ── */}
 			{hasResult && (
 				<div style={{ marginTop: "1.5rem" }}>
-					{/* Header row with actions */}
 					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
-					<p className="v4-kicker" style={{ margin: 0 }}>Simulation Narrative</p>
+						<p className="v4-kicker" style={{ margin: 0 }}>Simulation Narrative</p>
 						<div style={{ display: "flex", gap: "0.5rem" }}>
 							<button
 								type="button"
@@ -358,7 +261,6 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 						</div>
 					</div>
 
-					{/* Narrative */}
 					{narrative && (
 						<pre
 							style={{
@@ -379,14 +281,12 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 						</pre>
 					)}
 
-					{/* Simulation data — analytics dashboard */}
 					{simData && simData.items.length > 0 && (
 						<>
-							<OverallStats data={simData} mode={mode} />
-							<ItemTable data={simData} mode={mode} />
+							<OverallStats data={simData} />
+							<ItemTable data={simData} />
 						</>
 					)}
-
 				</div>
 			)}
 		</section>
