@@ -97,32 +97,65 @@ Return ONLY valid JSON with this exact structure:
 
 Return ONLY valid JSON. No explanations, no markdown, no commentary.`;
 
-const REWRITE_PROMPT_TEMPLATE = `You are an assessment rewriting engine. Rewrite the test according to TEACHER_DECISIONS.
+const REWRITE_PROMPT_TEMPLATE = `You are an assessment rewriting engine. Rewrite the test according to TEACHER_DECISIONS, TEACHER_SUGGESTIONS, and ALIGNMENT_OVERRIDES.
 
 INPUTS:
-- ORIGINAL_ASSESSMENT: the full test text
+- ORIGINAL_ASSESSMENT: the full test text.
 - TEACHER_DECISIONS: an array of objects:
     {
-      "assessmentItemNumber": 8,
+      "assessmentItemNumber": number,
       "action": "delete_question" OR "add_prep_support"
     }
+
+- TEACHER_SUGGESTIONS: an array of objects:
+    {
+      "assessmentItemNumber": number | null,
+      "suggestionText": string
+    }
+  Notes:
+  - If assessmentItemNumber is null, the suggestion applies to the entire assessment.
+  - If a suggestion targets a specific question, apply it only to that question.
+
+- ALIGNMENT_OVERRIDES: an array of objects:
+    {
+      "assessmentItemNumber": number,
+      "correctedAlignment": "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep"
+    }
+  Notes:
+  - Overrides do NOT change delete/add decisions.
+  - Overrides may influence how you interpret teacher suggestions (e.g., if a teacher marks an item as aligned, do not treat it as uncovered).
 
 RULES:
 - If action = "delete_question": remove the question entirely.
 - If action = "add_prep_support": keep the question AND generate a short concept label for the prep addendum.
-- All other questions remain unchanged.
+- Apply TEACHER_SUGGESTIONS:
+  - If suggestion targets a specific question, rewrite only that question.
+  - If suggestion is global (assessmentItemNumber = null), apply it to the entire assessment.
+  - Suggestions may request: wording changes, difficulty adjustments, context changes, clarity improvements, or structural edits.
+- Maintain numbering and formatting consistency.
+- Do NOT rewrite unrelated questions.
+- Do NOT include explanations, markdown, or commentary.
 
-OUTPUT:
-Return ONLY valid JSON with this structure:
+OUTPUT FORMAT:
+Return ONLY valid JSON with this exact structure:
 {
   "rewrittenAssessment": "full rewritten test text",
   "prepAddendum": ["concept_label_1", "concept_label_2"]
 }
 
 NOTES:
-- prepAddendum must contain only short concept labels (e.g., "ci_mean_t_interval").
-- Do NOT include explanations, markdown, or commentary.
-- rewrittenAssessment must be clean, continuous test text with deleted items removed.`;
+- prepAddendum must contain only short concept labels for items where action = "add_prep_support".
+- rewrittenAssessment must be clean, continuous test text with deleted items removed and teacher suggestions applied.`;
+
+type RewriteTeacherSuggestion = {
+  assessmentItemNumber: number | null;
+  suggestionText: string;
+};
+
+type AlignmentOverride = {
+  assessmentItemNumber: number;
+  correctedAlignment: "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
+};
 
 const ADDENDUM_MERGE_PROMPT_TEMPLATE = `You are a review-updating engine. Merge ADDENDUM_CONCEPTS into REVIEW_TEXT.
 
@@ -550,7 +583,11 @@ export async function getSuggestions(
 export async function applySuggestions(
   assessment: AssessmentDocument,
   suggestions: Suggestion[],
-  callLLM: LLMCaller
+  callLLM: LLMCaller,
+  options?: {
+    teacherSuggestions?: RewriteTeacherSuggestion[];
+    alignmentOverrides?: AlignmentOverride[];
+  }
 ): Promise<RewriteResult> {
   if (suggestions.length === 0) {
     const fallbackText = assessment.items.map((item) => `${item.itemNumber}. ${item.text}`).join("\n\n");
@@ -562,8 +599,12 @@ export async function applySuggestions(
     assessmentItemNumber: suggestion.assessmentItemNumber,
     action: suggestion.suggestionType === "remove_question" ? "delete_question" : "add_prep_support",
   }));
+  const teacherSuggestions = options?.teacherSuggestions ?? [];
+  const alignmentOverrides = options?.alignmentOverrides ?? [];
   const decisionsJson = JSON.stringify(teacherDecisions, null, 2);
-  const prompt = `${REWRITE_PROMPT_TEMPLATE}\n\nORIGINAL_ASSESSMENT:\n${assessmentText}\n\nTEACHER_DECISIONS:\n${decisionsJson}`;
+  const teacherSuggestionsJson = JSON.stringify(teacherSuggestions, null, 2);
+  const alignmentOverridesJson = JSON.stringify(alignmentOverrides, null, 2);
+  const prompt = `${REWRITE_PROMPT_TEMPLATE}\n\nORIGINAL_ASSESSMENT:\n${assessmentText}\n\nTEACHER_DECISIONS:\n${decisionsJson}\n\nTEACHER_SUGGESTIONS:\n${teacherSuggestionsJson}\n\nALIGNMENT_OVERRIDES:\n${alignmentOverridesJson}`;
 
   const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 2048 }));
   const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);

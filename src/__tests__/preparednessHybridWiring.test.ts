@@ -80,6 +80,9 @@ describe("Preparedness Hybrid Wiring", () => {
     const rewrite = await applySuggestions(assessment, suggestions, callRewrite);
     expect(rewrite.prepAddendum).toContain("ci_mean_t_interval");
     expect(rewrite.prepAddendum).toContain("interpret_ci_threshold");
+    const rewritePrompt = String(callRewrite.mock.calls[0]?.[0] ?? "");
+    expect(rewritePrompt).toContain("TEACHER_SUGGESTIONS:");
+    expect(rewritePrompt).toContain("ALIGNMENT_OVERRIDES:");
 
     const callReverse = vi.fn(async () =>
       JSON.stringify({
@@ -259,5 +262,33 @@ describe("Preparedness Hybrid Wiring", () => {
 
     const alignment = await getAlignment(prep, assessment, callAlignment);
     expect(alignment.coveredItems[0].alignment).toBe("slightly_above");
+  });
+
+  it("E: applySuggestions forwards teacher suggestions and alignment overrides", async () => {
+    const capturedPrompts: string[] = [];
+    const callRewrite = vi.fn(async (prompt: string) => {
+      capturedPrompts.push(prompt);
+      return JSON.stringify({
+        rewrittenAssessment: "1. Compute a CI for a proportion.",
+        prepAddendum: ["ci_interpretation"],
+      });
+    });
+
+    const suggestions = [{ assessmentItemNumber: 1, issue: "missing_in_prep" as const, suggestionType: "add_prep_support" as const }];
+    await applySuggestions(assessment, suggestions, callRewrite, {
+      teacherSuggestions: [
+        { assessmentItemNumber: 1, suggestionText: "Clarify interpretation wording." },
+        { assessmentItemNumber: null, suggestionText: "Use consistent variable notation across all items." },
+      ],
+      alignmentOverrides: [
+        { assessmentItemNumber: 1, correctedAlignment: "aligned" },
+      ],
+    });
+
+    const prompt = capturedPrompts[0] ?? "";
+    expect(prompt).toContain("TEACHER_SUGGESTIONS:");
+    expect(prompt).toContain("Clarify interpretation wording.");
+    expect(prompt).toContain("ALIGNMENT_OVERRIDES:");
+    expect(prompt).toContain('"correctedAlignment": "aligned"');
   });
 });
