@@ -51,9 +51,12 @@ import {
 	normalizeParagraphs,
 } from "../../utils/ingestionTextGuards";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
-import PreparednessPageV2 from "./preparedness_v2/PreparednessPageV2";
+import { GeneratedViewer } from "./GeneratedViewer";
+import { ModeSelectModal } from "./ModeSelectModal";
+import { PreparednessBlueprint } from "./PreparednessBlueprint";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
+import { UploadPanelV4 } from "./UploadPanelV4";
 import "./v4.css";
 
 GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
@@ -65,6 +68,22 @@ GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 type Goal = "simulate" | "preparedness" | "compare" | "create";
 type Phase = "goal" | "upload" | "results";
 type ResultTab = "narrative" | "suggestions" | "json" | "rewrite";
+type GenerationMode = "aligned_test" | "aligned_review" | "alternate_test";
+type DifficultyTuning = "easier" | "same" | "harder";
+type ReadingLoadTuning = "less" | "same" | "more";
+type LengthTuning = "fewer" | "standard" | "more";
+type ItemAction =
+	| "rewrite"
+	| "easier"
+	| "harder"
+	| "context"
+	| "type"
+	| "subparts";
+
+interface UploadedSource {
+	name: string;
+	tag: "PREP" | "TEST";
+}
 
 interface StudioState {
 	goal: Goal | null;
@@ -93,6 +112,11 @@ interface StudioState {
 	selectedSuggestions: Record<string, boolean>;  // key="test:idx" or "item:N:idx"
 	teacherNotes: string;
 	differentiationProfile: string;
+	teacherProfileLabel: string;
+	generationMode: GenerationMode | null;
+	difficultyTuning: DifficultyTuning;
+	readingLoadTuning: ReadingLoadTuning;
+	lengthTuning: LengthTuning;
 	// rewrite diff viewer modal
 	rewritePreview: RewritePreview | null;
 	// daily usage
@@ -162,6 +186,11 @@ const INITIAL: StudioState = {
 	selectedSuggestions: {},
 	teacherNotes: "",
 	differentiationProfile: "",
+	teacherProfileLabel: "On-Level",
+	generationMode: null,
+	difficultyTuning: "same",
+	readingLoadTuning: "same",
+	lengthTuning: "standard",
 	rewritePreview: null,
 	usageCount: 0,
 	usageLimit: 25_000,
@@ -385,6 +414,56 @@ const ACCEPTED_TEXT = ".txt,.doc,.docx,.rtf";
 const DROP_DOCS_RE = /\.(pdf|doc|docx|ppt|pptx)$/i;
 const DROP_TEXT_RE = /\.(txt|doc|docx|rtf)$/i;
 
+const TEACHER_PROFILE_OPTIONS = ["On-Level", "ELL", "Low Reading", "Gifted"] as const;
+
+function modeLabel(mode: GenerationMode | null): string {
+	if (mode === "aligned_test") return "Aligned Test";
+	if (mode === "aligned_review") return "Aligned Review";
+	if (mode === "alternate_test") return "Alternate Test Version";
+	return "Generated Document";
+}
+
+function buildPreparednessSupplementText(params: {
+	mode: GenerationMode;
+	profile: string;
+	difficulty: DifficultyTuning;
+	readingLoad: ReadingLoadTuning;
+	length: LengthTuning;
+}): string {
+	const modeInstruction =
+		params.mode === "aligned_test"
+			? "Build an aligned classroom test from the current preparedness blueprint."
+			: params.mode === "aligned_review"
+			? "Build an aligned review packet from the uploaded assessment context."
+			: "Build an alternate or differentiated version of the assessment while preserving covered concepts.";
+
+	return [
+		modeInstruction,
+		`Teacher profile: ${params.profile}`,
+		`Difficulty target: ${params.difficulty}`,
+		`Reading load target: ${params.readingLoad}`,
+		`Length target: ${params.length}`,
+	].join("\n");
+}
+
+function collectUploadedSources(prepFiles: File[], testFiles: File[]): UploadedSource[] {
+	return [
+		...prepFiles.map((file) => ({ name: file.name, tag: "PREP" as const })),
+		...testFiles.map((file) => ({ name: file.name, tag: "TEST" as const })),
+	];
+}
+
+function itemActionLabel(action: ItemAction): string {
+	if (action === "rewrite") return "Rewrite";
+	if (action === "easier") return "Make Easier";
+	if (action === "harder") return "Make Harder";
+	if (action === "context") return "Change Context";
+	if (action === "type") return "Change Item Type";
+	if (action === "subparts") return "Add/Remove Subparts";
+	const neverAction: never = action;
+	return neverAction;
+}
+
 // ---------------------------------------------------------------------------
 // Goal card data
 // ---------------------------------------------------------------------------
@@ -590,7 +669,13 @@ function ItemTable({ data }: { data: SimulatorData }) {
 // GeneratedTestView
 // ---------------------------------------------------------------------------
 
-function GeneratedTestView({ data }: { data: GeneratedTestData }) {
+function GeneratedTestView({
+	data,
+	onItemAction,
+}: {
+	data: GeneratedTestData;
+	onItemAction?: (item: GeneratedTestItem, index: number, action: ItemAction) => void;
+}) {
 	return (
 		<div style={{ marginTop: "1.5rem" }}>
 			<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>
@@ -617,6 +702,20 @@ function GeneratedTestView({ data }: { data: GeneratedTestData }) {
 							<p style={{ marginTop: "0.35rem", color: "#6b5040", fontSize: "0.8rem" }}>
 								<strong>Answer:</strong> {item.answer}
 							</p>
+						)}
+						{onItemAction && (
+							<div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.55rem" }}>
+								{(["rewrite", "easier", "harder", "context", "type", "subparts", "practice"] as ItemAction[]).map((action) => (
+									<button
+										key={`${i}-${action}`}
+										type="button"
+										className="v4-button v4-button-secondary v4-button-sm"
+										onClick={() => onItemAction(item, i, action)}
+									>
+										{itemActionLabel(action)}
+									</button>
+								))}
+							</div>
 						)}
 					</li>
 				))}
@@ -881,92 +980,6 @@ function RewriteSuggestionsPanel({
 }
 
 // ---------------------------------------------------------------------------
-// DropZone sub-component
-// ---------------------------------------------------------------------------
-
-interface DropZoneProps {
-	label: string;
-	hint?: string;
-	files: File[];
-	isDragging: boolean;
-	accept: string;
-	multiple?: boolean;
-	inputRef: React.RefObject<HTMLInputElement | null>;
-	onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
-	onDragLeave: () => void;
-	onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-	onChange: (files: File[]) => void;
-	onRemove: () => void;
-}
-
-function DropZone({
-	label,
-	hint,
-	files,
-	isDragging,
-	accept,
-	multiple,
-	inputRef,
-	onDragOver,
-	onDragLeave,
-	onDrop,
-	onChange,
-	onRemove,
-}: DropZoneProps) {
-	const hasFiles = files.length > 0;
-	return (
-		<div>
-			<p className="v4-kicker" style={{ marginBottom: "0.35rem" }}>{label}</p>
-			{hint && (
-				<p style={{ fontSize: "0.8rem", color: "#6b5040", margin: "0 0 0.6rem" }}>{hint}</p>
-			)}
-			<div
-				className={`v4-drop-zone${isDragging ? " v4-drop-zone--active" : ""}${hasFiles ? " v4-drop-zone--filled" : ""}`}
-				style={{ cursor: "pointer" }}
-				onDragOver={onDragOver}
-				onDragLeave={onDragLeave}
-				onDrop={onDrop}
-				onClick={() => inputRef.current?.click()}
-			>
-				{hasFiles ? (
-					<div className="v4-drop-zone-files">
-						{files.map((f) => (
-							<span key={f.name} className="v4-pill">{f.name}</span>
-						))}
-					</div>
-				) : (
-					<p className="v4-drop-zone-hint">
-						{isDragging ? "Drop to upload" : "Drag & drop, or click to browse"}
-					</p>
-				)}
-			</div>
-			<input
-				ref={inputRef}
-				type="file"
-				accept={accept}
-				multiple={multiple}
-				style={{ display: "none" }}
-				onChange={(e) => onChange(Array.from(e.target.files ?? []))}
-			/>
-			{hasFiles && (
-				<button
-					type="button"
-					className="v4-button v4-button-secondary v4-button-sm"
-					style={{ marginTop: "0.5rem" }}
-					onClick={(e) => {
-						e.stopPropagation();
-						onRemove();
-						if (inputRef.current) inputRef.current.value = "";
-					}}
-				>
-					Clear
-				</button>
-			)}
-		</div>
-	);
-}
-
-// ---------------------------------------------------------------------------
 // GoalCard
 // ---------------------------------------------------------------------------
 
@@ -1060,6 +1073,8 @@ function GoalCard({
 export function TeacherStudio() {
 	const { user } = useAuth();
 	const [state, setState] = useState<StudioState>(INITIAL);
+	const [modeSelectOpen, setModeSelectOpen] = useState(false);
+	const [pendingMode, setPendingMode] = useState<GenerationMode>("aligned_test");
 	const rewriteInFlightRef = useRef(false);
 	const primaryRef = useRef<HTMLInputElement>(null);
 	const secondaryRef = useRef<HTMLInputElement>(null);
@@ -1128,6 +1143,7 @@ export function TeacherStudio() {
 			usageCount: prev.usageCount,
 			usageLimit: prev.usageLimit,
 		}));
+		setModeSelectOpen(false);
 	}
 
 	// ── Drag & drop ────────────────────────────────────────────────────────
@@ -1294,6 +1310,180 @@ export function TeacherStudio() {
 		URL.revokeObjectURL(url);
 	}
 
+	async function handleGeneratePreparednessMode(mode: GenerationMode) {
+		if (!state.sessionId) {
+			setState((prev) => ({ ...prev, error: "Session not ready. Please run preparedness analysis first." }));
+			return;
+		}
+
+		setState((prev) => ({
+			...prev,
+			isLoading: true,
+			error: null,
+			generationMode: mode,
+		}));
+
+		try {
+			const supplementText = buildPreparednessSupplementText({
+				mode,
+				profile: state.teacherProfileLabel,
+				difficulty: state.difficultyTuning,
+				readingLoad: state.readingLoadTuning,
+				length: state.lengthTuning,
+			});
+			const response = await runGenerateTestApi(
+				{
+					sessionId: state.sessionId,
+					supplementText,
+					testPreferences: state.testPrefs,
+				},
+				user?.id,
+			);
+
+			setState((prev) => ({
+				...prev,
+				testData: response.data,
+				narrative: response.narrative,
+				documentId: response.documentId ?? prev.documentId,
+				activeTab: "narrative",
+				isLoading: false,
+			}));
+			void refreshUsage();
+		} catch (err) {
+			setState((prev) => ({
+				...prev,
+				isLoading: false,
+				error: err instanceof Error ? err.message : "Failed to generate document",
+			}));
+		}
+	}
+
+	async function handlePreparednessItemAction(item: GeneratedTestItem, index: number, action: ItemAction) {
+		if (!state.sessionId || !state.generationMode) {
+			setState((prev) => ({ ...prev, error: "Generate a document first before applying item-level actions." }));
+			return;
+		}
+
+		const baseSupplement = buildPreparednessSupplementText({
+			mode: state.generationMode,
+			profile: state.teacherProfileLabel,
+			difficulty: state.difficultyTuning,
+			readingLoad: state.readingLoadTuning,
+			length: state.lengthTuning,
+		});
+		const actionInstruction = `Item action: ${itemActionLabel(action)} on item ${index + 1}. Focus text: ${item.stem}`;
+
+		setState((prev) => ({ ...prev, isLoading: true, error: null }));
+		try {
+			const response = await runGenerateTestApi(
+				{
+					sessionId: state.sessionId,
+					supplementText: `${baseSupplement}\n${actionInstruction}`,
+					testPreferences: state.testPrefs,
+				},
+				user?.id,
+			);
+			setState((prev) => ({
+				...prev,
+				testData: response.data,
+				narrative: response.narrative,
+				documentId: response.documentId ?? prev.documentId,
+				isLoading: false,
+			}));
+			void refreshUsage();
+		} catch (err) {
+			setState((prev) => ({
+				...prev,
+				isLoading: false,
+				error: err instanceof Error ? err.message : "Failed to apply item action",
+			}));
+		}
+	}
+
+	async function handlePreparednessBulkItemAction(indexes: number[], action: ItemAction) {
+		if (!state.sessionId || !state.generationMode) {
+			setState((prev) => ({ ...prev, error: "Generate a document first before applying item-level actions." }));
+			return;
+		}
+
+		if (!state.testData?.test?.length || indexes.length === 0) {
+			setState((prev) => ({ ...prev, error: "Select at least one item before applying a bulk rewrite." }));
+			return;
+		}
+
+		const baseSupplement = buildPreparednessSupplementText({
+			mode: state.generationMode,
+			profile: state.teacherProfileLabel,
+			difficulty: state.difficultyTuning,
+			readingLoad: state.readingLoadTuning,
+			length: state.lengthTuning,
+		});
+		const selectedItems = indexes
+			.map((index) => ({ number: index + 1, stem: state.testData?.test?.[index]?.stem }))
+			.filter((entry): entry is { number: number; stem: string } => Boolean(entry.stem));
+		const actionInstruction = `Bulk item action: ${itemActionLabel(action)} on selected items.\n${selectedItems
+			.map((entry) => `- Item ${entry.number}: ${entry.stem}`)
+			.join("\n")}`;
+
+		setState((prev) => ({ ...prev, isLoading: true, error: null }));
+		try {
+			const response = await runGenerateTestApi(
+				{
+					sessionId: state.sessionId,
+					supplementText: `${baseSupplement}\n${actionInstruction}`,
+					testPreferences: state.testPrefs,
+				},
+				user?.id,
+			);
+			setState((prev) => ({
+				...prev,
+				testData: response.data,
+				narrative: response.narrative,
+				documentId: response.documentId ?? prev.documentId,
+				isLoading: false,
+			}));
+			void refreshUsage();
+		} catch (err) {
+			setState((prev) => ({
+				...prev,
+				isLoading: false,
+				error: err instanceof Error ? err.message : "Failed to apply bulk item action",
+			}));
+		}
+	}
+
+	function handleExportGeneratedDocument(kind: "student" | "answer") {
+		if (!state.testData?.test?.length) {
+			setState((prev) => ({ ...prev, error: "No generated document to export yet." }));
+			return;
+		}
+
+		const lines: string[] = [];
+		lines.push(`${modeLabel(state.generationMode)} — ${kind === "student" ? "Student Version" : "Answer Key"}`);
+		lines.push("");
+		for (const [index, item] of state.testData.test.entries()) {
+			lines.push(`${index + 1}. ${item.stem}`);
+			if (item.options?.length) {
+				for (const [optIndex, option] of item.options.entries()) {
+					lines.push(`   ${String.fromCharCode(65 + optIndex)}. ${option}`);
+				}
+			}
+			if (kind === "answer" && item.answer) {
+				lines.push(`   Answer: ${item.answer}`);
+			}
+			lines.push("");
+		}
+
+		const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		const fileKind = kind === "student" ? "student" : "answer-key";
+		link.download = `${(state.generationMode ?? "generated").replace(/_/g, "-")}-${fileKind}.txt`;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
 	// ── Rewrite Diff Viewer handlers ────────────────────────────────────────
 
 	function handleReplace() {
@@ -1442,10 +1632,12 @@ export function TeacherStudio() {
 		state.goal === "simulate"
 			? "Simulate Experience"
 			: state.goal === "preparedness"
-			? "Analyze Preparedness"
+			? "Build Instructional Blueprint"
 			: state.goal === "create"
 			? "Generate Assessment"
 			: "Compare Profiles";
+
+	const uploadedSources = collectUploadedSources(state.secondaryFiles, state.primaryFiles);
 
 	return (
 		<div className="v4-viewer">
@@ -1536,186 +1728,49 @@ export function TeacherStudio() {
 
 					{/* ═══ PHASE: UPLOAD ════════════════════════════════════════ */}
 					{state.phase === "upload" && state.goal && (
-						<>
-							<section className="v4-panel v4-vector-span v4-hero">
-								<div>
-									<p className="v4-kicker">{goalData?.title}</p>
-									<h1>
-										{state.goal === "simulate" && "Upload the document"}
-										{state.goal === "preparedness" && "Upload your documents"}
-										{state.goal === "compare" && "Upload the document"}
-										{state.goal === "create" && "Upload your source documents"}
-									</h1>
-									<p className="v4-subtitle">
-										{state.goal === "simulate" &&
-											"This is the document the student will experience. PDF, Word, or PowerPoint."}
-										{state.goal === "preparedness" &&
-											"We'll compare the prep material against the assessment item by item."}
-										{state.goal === "create" &&
-											"One or more documents to generate a test from. Specify how many questions of each type you'd like."}
-									</p>
-								</div>
-							</section>
-
-							<section className="v4-panel v4-vector-span">
-								<div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
-
-									{/* Prep material zone — preparedness only */}
-									{state.goal === "preparedness" && (
-										<DropZone
-											label="Prep / Study Material"
-											hint="Notes, review sheets, or anything students used to prepare. (.txt, .doc, .docx, .rtf)"
-											files={state.secondaryFiles}
-											isDragging={state.secondaryDragging}
-											accept={ACCEPTED_TEXT}
-											multiple
-											inputRef={secondaryRef}
-											onDragOver={handleSecondaryDragOver}
-											onDragLeave={handleSecondaryDragLeave}
-											onDrop={handleSecondaryDrop}
-											onChange={(files) =>
-												setState((prev) => ({ ...prev, secondaryFiles: files }))
-											}
-											onRemove={() =>
-												setState((prev) => ({ ...prev, secondaryFiles: [] }))
-											}
-										/>
-									)}
-
-									{/* Primary documents */}
-									<DropZone
-										label={
-											state.goal === "preparedness"
-												? "The Assessment"
-												: state.goal === "create"
-												? "Source Documents"
-												: "Your Document"
-										}
-										hint={
-											state.goal === "preparedness"
-												? "The test or assessment students will take."
-												: state.goal === "create"
-												? "PDF, Word, or PowerPoint. All selected documents will be combined."
-												: undefined
-										}
-										files={state.primaryFiles}
-										isDragging={state.primaryDragging}
-										accept={ACCEPTED_DOCS}
-										multiple={state.goal === "create"}
-										inputRef={primaryRef}
-										onDragOver={handlePrimaryDragOver}
-										onDragLeave={handlePrimaryDragLeave}
-										onDrop={handlePrimaryDrop}
-										onChange={(files) =>
-											setState((prev) => ({ ...prev, primaryFiles: files }))
-										}
-										onRemove={() =>
-											setState((prev) => ({ ...prev, primaryFiles: [] }))
-										}
-									/>
-
-									{/* AI disclosure */}
-									<p style={{ fontSize: "0.75rem", color: "#9c4d2b", opacity: 0.75, margin: 0 }}>
-										Uploaded documents are processed by Google Gemini to generate analysis and suggestions.
-										Avoid uploading files that contain student names, ID numbers, or other personal information.
-									</p>
-
-									{/* Question type preferences — create only */}
-									{state.goal === "create" && (
-										<div>
-											<p className="v4-kicker" style={{ marginBottom: "0.6rem" }}>
-												Question Types
-											</p>
-											<div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-												{(
-													[
-														{ key: "mcCount", label: "Multiple Choice" },
-														{ key: "saCount", label: "Short Answer" },
-														{ key: "frqCount", label: "Free Response" },
-													] as const
-												).map(({ key, label }) => (
-													<label
-														key={key}
-														style={{
-															display: "flex",
-															flexDirection: "column",
-															gap: "0.25rem",
-															fontSize: "0.8rem",
-															color: "#6b5040",
-														}}
-													>
-														{label}
-														<input
-															type="number"
-															min={0}
-															max={30}
-															className="v4-item-count-input"
-															style={{ width: "72px" }}
-															value={state.testPrefs[key] ?? 0}
-															onChange={(e) => {
-																const val = Math.max(0, Math.min(30, Number(e.target.value)));
-																setState((prev) => ({
-																	...prev,
-																	testPrefs: { ...prev.testPrefs, [key]: val },
-																}));
-															}}
-														/>
-													</label>
-												))}
-											</div>
-										</div>
-									)}
-
-									{state.error && (
-										<p className="v4-error">{state.error}</p>
-									)}
-
-									{/* Daily usage badge */}
-									<div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-										<div
-											style={{
-												flex: 1,
-												height: "4px",
-												borderRadius: "2px",
-												background: "rgba(86,57,32,0.12)",
-											}}
-										>
-											<div
-												style={{
-													width: `${Math.min(100, (state.usageCount / state.usageLimit) * 100)}%`,
-													height: "4px",
-													borderRadius: "2px",
-													background: state.usageCount >= state.usageLimit ? "#dc2626" : "#bb5b35",
-													transition: "width 0.3s ease",
-												}}
-											/>
-										</div>
-										<span style={{ fontSize: "0.72rem", color: "#9c4d2b", whiteSpace: "nowrap", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif", letterSpacing: "0.06em" }}>
-											{state.usageCount} / {state.usageLimit} tokens today
-										</span>
-									</div>
-
-									{/* Actions */}
-									<div className="v4-upload-actions">
-										<button
-											type="button"
-											className="v4-button"
-											disabled={!canRun}
-											onClick={() => void handleRun()}
-										>
-											{ctaLabel}
-										</button>
-										<button
-											type="button"
-											className="v4-button v4-button-secondary"
-											onClick={goBackToGoals}
-										>
-											Back
-										</button>
-									</div>
-								</div>
-							</section>
-						</>
+						<UploadPanelV4
+							goal={state.goal}
+							title={goalData?.title ?? "Teacher Studio"}
+							subtitle={
+								state.goal === "simulate"
+									? "This is the document the student will experience. PDF, Word, or PowerPoint."
+									: state.goal === "preparedness"
+									? "Upload prep and assessment files. We use the same ingestion and merge the sources into one blueprint."
+									: state.goal === "create"
+									? "One or more documents to generate a test from. Specify how many questions of each type you'd like."
+									: "Upload one document and compare student profile responses side-by-side."
+							}
+							primaryFiles={state.primaryFiles}
+							secondaryFiles={state.secondaryFiles}
+							primaryDragging={state.primaryDragging}
+							secondaryDragging={state.secondaryDragging}
+							primaryAccept={ACCEPTED_DOCS}
+							secondaryAccept={ACCEPTED_TEXT}
+							primaryRef={primaryRef}
+							secondaryRef={secondaryRef}
+							uploadedSources={uploadedSources}
+							canRun={canRun}
+							ctaLabel={ctaLabel}
+							usageCount={state.usageCount}
+							usageLimit={state.usageLimit}
+							error={state.error}
+							testPrefs={state.testPrefs}
+							onPrimaryDragOver={handlePrimaryDragOver}
+							onPrimaryDragLeave={handlePrimaryDragLeave}
+							onPrimaryDrop={handlePrimaryDrop}
+							onSecondaryDragOver={handleSecondaryDragOver}
+							onSecondaryDragLeave={handleSecondaryDragLeave}
+							onSecondaryDrop={handleSecondaryDrop}
+							onPrimaryChange={(files) => setState((prev) => ({ ...prev, primaryFiles: files }))}
+							onSecondaryChange={(files) => setState((prev) => ({ ...prev, secondaryFiles: files }))}
+							onClearPrimary={() => setState((prev) => ({ ...prev, primaryFiles: [] }))}
+							onClearSecondary={() => setState((prev) => ({ ...prev, secondaryFiles: [] }))}
+							onRun={() => void handleRun()}
+							onBack={goBackToGoals}
+							onTestPrefChange={(key, value) =>
+								setState((prev) => ({ ...prev, testPrefs: { ...prev.testPrefs, [key]: value } }))
+							}
+						/>
 					)}
 
 					{/* ═══ PHASE: RESULTS ═══════════════════════════════════════ */}
@@ -1756,7 +1811,7 @@ export function TeacherStudio() {
 										<div>
 											<p className="v4-kicker">
 												{state.goal === "simulate" && "Student Experience Simulation"}
-												{state.goal === "preparedness" && "Preparedness Analysis"}
+												{state.goal === "preparedness" && "Instructional Blueprint"}
 												{state.goal === "compare" && "Profile Comparison"}
 												{state.goal === "create" && "Generated Assessment"}
 											</p>
@@ -1789,10 +1844,54 @@ export function TeacherStudio() {
 									</div>
 
 									{state.goal === "preparedness" && state.preparednessPrep && state.preparednessAssessment ? (
-										<PreparednessPageV2
-											prep={state.preparednessPrep}
-											assessment={state.preparednessAssessment}
-										/>
+										<>
+											<PreparednessBlueprint
+												prep={state.preparednessPrep}
+												assessment={state.preparednessAssessment}
+												onGenerate={(mode) => {
+													setPendingMode(mode);
+													setModeSelectOpen(true);
+												}}
+											>
+
+											{state.testData && state.testData.test.length > 0 && (
+												<GeneratedViewer
+													modeLabel={modeLabel(state.generationMode)}
+													data={state.testData}
+													profileOptions={TEACHER_PROFILE_OPTIONS}
+													teacherProfileLabel={state.teacherProfileLabel}
+													lengthTuning={state.lengthTuning}
+													onProfileChange={(profileLabel) => {
+														setState((prev) => ({ ...prev, teacherProfileLabel: profileLabel }));
+													}}
+													onLengthChange={(value) => setState((prev) => ({ ...prev, lengthTuning: value }))}
+													onRegenerateAll={() => {
+														if (state.generationMode) {
+															void handleGeneratePreparednessMode(state.generationMode);
+														}
+													}}
+													onItemAction={(item, index, action) => {
+														void handlePreparednessItemAction(item, index, action);
+													}}
+													onBulkItemAction={(indexes, action) => {
+														void handlePreparednessBulkItemAction(indexes, action);
+													}}
+													onExportStudent={() => handleExportGeneratedDocument("student")}
+													onExportAnswer={() => handleExportGeneratedDocument("answer")}
+												/>
+											)}
+											</PreparednessBlueprint>
+											<ModeSelectModal
+												open={modeSelectOpen}
+												selectedMode={pendingMode}
+												onSelectMode={setPendingMode}
+												onGenerate={() => {
+													setModeSelectOpen(false);
+													void handleGeneratePreparednessMode(pendingMode);
+												}}
+												onClose={() => setModeSelectOpen(false)}
+											/>
+										</>
 									) : (
 										<>
 									{/* Tab bar */}

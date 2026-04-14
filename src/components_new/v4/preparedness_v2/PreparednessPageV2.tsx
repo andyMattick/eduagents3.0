@@ -228,10 +228,6 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
 
   return (
     <div className="prep-pipeline-shell">
-      <div className="prep-stage-header">
-        <h1 className="prep-stage-title">Preparedness v2</h1>
-        <p className="prep-stage-subtitle">Single-pass alignment with teacher-triggered actions.</p>
-      </div>
 
       {error ? <div className="prep-error-banner">✗ {error}</div> : null}
       {isLoading ? <div className="prep-loading">Running alignment…</div> : null}

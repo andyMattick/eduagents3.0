@@ -39,13 +39,7 @@ export function DocumentStatusBadge({ documentId }: Props) {
 		return <p className="v4-body-copy" style={{ marginTop: "0.5rem" }}>Loading ingestion status...</p>;
 	}
 
-	return (
-		<div className="v4-status-badge">
-			<span>Document Type: {formatDocKind(status.docType)}</span>
-			<span>Analysis: {status.analysisAvailable ? "Ready" : "Unavailable"}</span>
-			<span>Rewrite: {status.rewriteEligible ? "Enabled" : "Unavailable"}</span>
-		</div>
-	);
+
 }
 
 function formatDocKind(docType: DocumentStatus["docType"]): string {

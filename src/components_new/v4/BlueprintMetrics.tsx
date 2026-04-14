@@ -1,0 +1,27 @@
+import React, { useState } from "react";
+import type { AssessmentDocument, PrepDocument } from "../../prism-v4/schema/domain/Preparedness";
+import PreparednessPageV2 from "./preparedness_v2/PreparednessPageV2";
+
+interface BlueprintMetricsProps {
+  prep: PrepDocument;
+  assessment: AssessmentDocument;
+}
+
+export function BlueprintMetrics({ prep, assessment }: BlueprintMetricsProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="alignment-analysis-section">
+      <button
+        type="button"
+        className="alignment-collapse-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span>Concept &amp; Difficulty Analysis</span>
+        <span className="alignment-collapse-chevron">{expanded ? "▲" : "▼"}</span>
+      </button>
+      {expanded && <PreparednessPageV2 prep={prep} assessment={assessment} />}
+    </div>
+  );
+}
