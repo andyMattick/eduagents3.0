@@ -36,66 +36,69 @@ export type LLMCaller = (
   }
 ) => Promise<string>;
 
-const ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine. Compare ASSESSMENT_ITEMS to PREP_TEXT and determine which test questions are covered by the review and which are not.
+const REVIEW_CONCEPT_EXTRACTION_PROMPT_TEMPLATE = `You are a concept extraction engine. Extract all instructional concepts taught in REVIEW_TEXT.
 
-Your output must contain TWO arrays only:
+For each concept, return:
+- conceptLabel: short snake_case identifier
+- conceptBlurb: 1-2 sentence explanation
+- difficulty: 1-5 scale
+- count: number of occurrences in the review
+
+OUTPUT (JSON only):
 {
-  "coveredItems": [...],
-  "uncoveredItems": [...]
-}
+  "reviewConcepts": [
+    {
+      "conceptLabel": "ci_mean_t_interval",
+      "conceptBlurb": "Short explanation...",
+      "difficulty": 3,
+      "count": 2
+    }
+  ]
+}`;
 
-DEFINITIONS:
-- A concept is “covered” if the prep text meaningfully teaches, explains, or practices it.
-- A concept is “uncovered” if the prep text does not teach it at all.
-- Difficulty is a 1–5 scale:
-  1 = very basic recall
-  2 = basic computation or direct application
-  3 = moderate multi-step reasoning
-  4 = advanced reasoning or abstraction
-  5 = very advanced multi-concept integration
+const TEST_CONCEPT_EXTRACTION_PROMPT_TEMPLATE = `You are a concept extraction engine. Extract instructional concepts assessed in ASSESSMENT_ITEMS.
 
-ALIGNMENT RULES:
-- If the prep text covers the concept -> item goes in coveredItems.
-- If the prep text does NOT cover the concept -> item goes in uncoveredItems.
-- For covered items, include:
-  - assessmentItemNumber
-  - concepts with counts (e.g., "ci_mean_t_interval": 2)
-  - prepDifficulty (1–5)
-  - testDifficulty (1–5)
-  - alignment:
-      "aligned" (testDifficulty <= prepDifficulty)
-      "slightly_above" (testDifficulty = prepDifficulty + 1)
-      "misaligned_above" (testDifficulty >= prepDifficulty + 2)
+For each question, return:
+- assessmentItemNumber
+- conceptLabels: array of short snake_case identifiers
+- testDifficulty: 1-5 scale
 
-FOR UNCOVERED ITEMS:
-- concepts = []
+OUTPUT (JSON only):
+{
+  "testConcepts": [
+    {
+      "assessmentItemNumber": 1,
+      "conceptLabels": ["ci_mean_t_interval"],
+      "testDifficulty": 3
+    }
+  ]
+}`;
+
+const LIGHTWEIGHT_ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine. Compare TEST_CONCEPTS to REVIEW_CONCEPTS.
+
+For each test item:
+- If all conceptLabels appear in REVIEW_CONCEPTS -> covered
+- If any conceptLabel is missing -> uncovered
+
+For covered items:
+- concepts: { conceptLabel: reviewConcept.count }
+- prepDifficulty: average difficulty of matching review concepts
+- testDifficulty: from TEST_CONCEPTS
+- alignment:
+    "aligned" (testDifficulty <= prepDifficulty)
+    "slightly_above" (testDifficulty = prepDifficulty + 1)
+    "misaligned_above" (testDifficulty >= prepDifficulty + 2)
+
+For uncovered items:
+- concepts = {}
 - prepDifficulty = 0
 - alignment = "missing_in_prep"
 
-RESPONSE FORMAT:
-Return ONLY valid JSON with this exact structure:
+OUTPUT (JSON only):
 {
-  "coveredItems": [
-    {
-      "assessmentItemNumber": 1,
-      "concepts": { "concept_label": count },
-      "prepDifficulty": 2,
-      "testDifficulty": 3,
-      "alignment": "aligned"
-    }
-  ],
-  "uncoveredItems": [
-    {
-      "assessmentItemNumber": 5,
-      "concepts": {},
-      "prepDifficulty": 0,
-      "testDifficulty": 3,
-      "alignment": "missing_in_prep"
-    }
-  ]
-}
-
-Return ONLY valid JSON. No explanations, no markdown, no commentary.`;
+  "coveredItems": [...],
+  "uncoveredItems": [...]
+}`;
 
 const REWRITE_PROMPT_TEMPLATE = `You are an assessment rewriting engine. Rewrite the test according to TEACHER_DECISIONS, TEACHER_SUGGESTIONS, and ALIGNMENT_OVERRIDES.
 
@@ -156,6 +159,103 @@ type AlignmentOverride = {
   assessmentItemNumber: number;
   correctedAlignment: "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
 };
+
+type ReviewConcept = {
+  conceptLabel: string;
+  conceptBlurb: string;
+  difficulty: number;
+  count: number;
+};
+
+type TestConcept = {
+  assessmentItemNumber: number;
+  conceptLabels: string[];
+  testDifficulty: number;
+};
+
+type AlignmentDebugInfo = {
+  reviewConcepts: ReviewConcept[];
+  testConcepts: TestConcept[];
+  usedReviewFallback: boolean;
+  usedTestFallback: boolean;
+  usedDeterministicFallback: boolean;
+  alignmentSource: "llm" | "deterministic";
+  sanitizedItemNumbers: number[];
+};
+
+type ConceptRule = {
+  label: string;
+  difficulty: number;
+  patterns: RegExp[];
+};
+
+const CONCEPT_RULES: ConceptRule[] = [
+  {
+    label: "ci_factors_affecting_width",
+    difficulty: 2,
+    patterns: [/larger confidence interval|smaller confidence interval|wider|narrower|interval width|width/i],
+  },
+  {
+    label: "ci_interpretation",
+    difficulty: 3,
+    patterns: [/interpret.*confidence interval|does the data suggest|state an appropriate conclusion|evidence/i],
+  },
+  {
+    label: "standard_error",
+    difficulty: 2,
+    patterns: [/standard error|\bse\b/i],
+  },
+  {
+    label: "margin_of_error",
+    difficulty: 2,
+    patterns: [/margin of error|\bme\b/i],
+  },
+  {
+    label: "point_estimate",
+    difficulty: 2,
+    patterns: [/point estimate|point estimator/i],
+  },
+  {
+    label: "confidence_level",
+    difficulty: 2,
+    patterns: [/confidence level|\b90%\b|\b95%\b|\b97%\b|\b99%\b/i],
+  },
+  {
+    label: "degrees_of_freedom",
+    difficulty: 3,
+    patterns: [/degrees of freedom|\bdf\b/i],
+  },
+  {
+    label: "ci_proportion",
+    difficulty: 3,
+    patterns: [/one[-\s]?proportion|proportion.*confidence interval|z\* value.*proportion|z[-\s]?interval.*proportion/i],
+  },
+  {
+    label: "ci_mean_t_interval",
+    difficulty: 4,
+    patterns: [/t[-\s]?interval|\bt\*\b|student'?s t|mean .* confidence interval/i],
+  },
+  {
+    label: "ci_mean_z_interval",
+    difficulty: 3,
+    patterns: [/z[-\s]?interval.*mean|known.*standard deviation|population standard deviation.*known|\bz\*\b/i],
+  },
+  {
+    label: "conditions_checking",
+    difficulty: 3,
+    patterns: [/conditions|random sample|independence|normal|large counts/i],
+  },
+  {
+    label: "sample_size_effect",
+    difficulty: 2,
+    patterns: [/sample size|survey \d+|\bn\b/i],
+  },
+  {
+    label: "confidence_interval_general",
+    difficulty: 2,
+    patterns: [/confidence interval|interval estimate/i],
+  },
+];
 
 const ADDENDUM_MERGE_PROMPT_TEMPLATE = `You are a review-updating engine. Merge ADDENDUM_CONCEPTS into REVIEW_TEXT.
 
@@ -424,6 +524,154 @@ function normalizeAlignmentRecord(raw: Record<string, unknown>): AlignmentRecord
   };
 }
 
+function normalizeReviewConcept(raw: unknown): ReviewConcept {
+  const c = raw as Record<string, unknown>;
+  return {
+    conceptLabel: String(c.conceptLabel ?? "").trim(),
+    conceptBlurb: String(c.conceptBlurb ?? "").trim(),
+    difficulty: Number(c.difficulty ?? 1),
+    count: Math.max(0, Number(c.count ?? 1)),
+  };
+}
+
+function normalizeTestConcept(raw: unknown): TestConcept {
+  const c = raw as Record<string, unknown>;
+  return {
+    assessmentItemNumber: Number(c.assessmentItemNumber ?? 0),
+    conceptLabels: Array.isArray(c.conceptLabels)
+      ? c.conceptLabels.map((label) => String(label).trim()).filter((label) => label.length > 0)
+      : [],
+    testDifficulty: Number(c.testDifficulty ?? 1),
+  };
+}
+
+function normalizeReviewConcepts(raw: unknown): ReviewConcept[] {
+  const obj = raw as Record<string, unknown>;
+  return Array.isArray(obj.reviewConcepts)
+    ? obj.reviewConcepts.map(normalizeReviewConcept).filter((c) => c.conceptLabel.length > 0)
+    : [];
+}
+
+function normalizeTestConcepts(raw: unknown): TestConcept[] {
+  const obj = raw as Record<string, unknown>;
+  return Array.isArray(obj.testConcepts)
+    ? obj.testConcepts.map(normalizeTestConcept).filter((c) => c.assessmentItemNumber > 0)
+    : [];
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+  const matches = text.match(new RegExp(pattern.source, `${pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`}`));
+  return matches?.length ?? 0;
+}
+
+function extractReviewConceptsHeuristic(rawText: string): ReviewConcept[] {
+  const source = rawText || "";
+  const concepts: ReviewConcept[] = [];
+  for (const rule of CONCEPT_RULES) {
+    const count = rule.patterns.reduce((sum, pattern) => sum + countMatches(source, pattern), 0);
+    if (count > 0) {
+      concepts.push({
+        conceptLabel: rule.label,
+        conceptBlurb: rule.label.replace(/_/g, " "),
+        difficulty: rule.difficulty,
+        count,
+      });
+    }
+  }
+  return concepts;
+}
+
+function inferDifficulty(text: string, labels: string[]): number {
+  const byConcept = labels
+    .map((label) => CONCEPT_RULES.find((rule) => rule.label === label)?.difficulty ?? 2)
+    .reduce((max, value) => Math.max(max, value), 1);
+
+  if (/interpret|explain|conclusion|suggest/i.test(text)) {
+    return Math.max(byConcept, 3);
+  }
+  if (/construct|calculate|compute|find/i.test(text)) {
+    return Math.max(byConcept, 2);
+  }
+
+  return byConcept;
+}
+
+function extractTestConceptsHeuristic(assessment: AssessmentDocument): TestConcept[] {
+  return assessment.items.map((item, idx) => {
+    const labels = CONCEPT_RULES
+      .filter((rule) => rule.patterns.some((pattern) => pattern.test(item.text)))
+      .map((rule) => rule.label);
+
+    const conceptLabels = labels.length > 0
+      ? labels
+      : /confidence interval|interval/i.test(item.text)
+      ? ["confidence_interval_general"]
+      : [];
+
+    return {
+      assessmentItemNumber: idx + 1,
+      conceptLabels,
+      testDifficulty: Math.min(5, Math.max(1, inferDifficulty(item.text, conceptLabels))),
+    };
+  });
+}
+
+function sanitizeTestConcepts(testConcepts: TestConcept[], assessment: AssessmentDocument): TestConcept[] {
+  const validNumbers = new Set(assessment.items.map((item) => item.itemNumber));
+  const filtered = testConcepts.filter((concept) => validNumbers.has(concept.assessmentItemNumber));
+  if (filtered.length > 0) {
+    return filtered;
+  }
+  return extractTestConceptsHeuristic(assessment);
+}
+
+function computeAlignmentLocally(reviewConcepts: ReviewConcept[], testConcepts: TestConcept[]): AlignmentResult {
+  const reviewMap = new Map(reviewConcepts.map((concept) => [concept.conceptLabel, concept]));
+  const coveredItems: AlignmentRecord[] = [];
+  const uncoveredItems: AlignmentRecord[] = [];
+
+  for (const item of testConcepts) {
+    const labels = item.conceptLabels;
+    const missing = labels.filter((label) => !reviewMap.has(label));
+
+    if (labels.length === 0 || missing.length > 0) {
+      uncoveredItems.push({
+        assessmentItemNumber: item.assessmentItemNumber,
+        concepts: [],
+        difficulty: item.testDifficulty,
+        prepDifficulty: 0,
+        alignment: "missing_in_prep",
+      });
+      continue;
+    }
+
+    const matched = labels
+      .map((label) => reviewMap.get(label))
+      .filter((concept): concept is ReviewConcept => Boolean(concept));
+
+    const prepDifficulty = matched.length > 0
+      ? matched.reduce((sum, concept) => sum + concept.difficulty, 0) / matched.length
+      : 0;
+
+    coveredItems.push({
+      assessmentItemNumber: item.assessmentItemNumber,
+      concepts: matched.map((concept) => ({
+        label: concept.conceptLabel,
+        count: concept.count,
+        difficulties: [concept.difficulty],
+      })),
+      difficulty: item.testDifficulty,
+      prepDifficulty,
+      alignment: deriveAlignmentStatus(item.testDifficulty, prepDifficulty),
+    });
+  }
+
+  return {
+    coveredItems,
+    uncoveredItems,
+  };
+}
+
 function normalizeAlignmentResult(raw: unknown): AlignmentResult {
   const obj = raw as Record<string, unknown>;
   const coveredItems = Array.isArray(obj.coveredItems)
@@ -562,12 +810,60 @@ export async function getAlignment(
   assessment: AssessmentDocument,
   callLLM: LLMCaller
 ): Promise<AlignmentResult> {
-  const assessmentText = assessment.items.map((item) => `${item.itemNumber}. ${item.text}`).join("\n");
-  const prompt = `${ALIGNMENT_PROMPT_TEMPLATE}\n\nREVIEW_CONTENT:\n${prep.rawText}\n\nASSESSMENT:\n${assessmentText}`;
+  const assessmentItems = assessment.items.map((item, idx) => ({
+    assessmentItemNumber: idx + 1,
+    text: item.text,
+  }));
 
-  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 2048 }));
-  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
-  return normalizeAlignmentResult(parsed);
+  const reviewConceptPrompt = `${REVIEW_CONCEPT_EXTRACTION_PROMPT_TEMPLATE}\n\nREVIEW_TEXT:\n${prep.rawText}`;
+  const reviewRaw = await withRetry429(() => callLLM(reviewConceptPrompt, { maxOutputTokens: 2048 }));
+  const reviewParsed = parseJsonWithRepair<Record<string, unknown>>(reviewRaw);
+  const modelReviewConcepts = normalizeReviewConcepts(reviewParsed);
+  const reviewConcepts = modelReviewConcepts.length > 0 ? modelReviewConcepts : extractReviewConceptsHeuristic(prep.rawText);
+  const usedReviewFallback = modelReviewConcepts.length === 0;
+
+  const testConceptPrompt = `${TEST_CONCEPT_EXTRACTION_PROMPT_TEMPLATE}\n\nASSESSMENT_ITEMS:\n${JSON.stringify(assessmentItems, null, 2)}`;
+  const testRaw = await withRetry429(() => callLLM(testConceptPrompt, { maxOutputTokens: 2048 }));
+  const testParsed = parseJsonWithRepair<Record<string, unknown>>(testRaw);
+  const modelTestConcepts = normalizeTestConcepts(testParsed);
+  const testConcepts = sanitizeTestConcepts(modelTestConcepts, assessment);
+  const usedTestFallback = modelTestConcepts.length === 0 || modelTestConcepts.length !== testConcepts.length;
+  const sanitizedItemNumbers = testConcepts.map((item) => item.assessmentItemNumber).sort((a, b) => a - b);
+
+  const alignmentPrompt = `${LIGHTWEIGHT_ALIGNMENT_PROMPT_TEMPLATE}\n\nREVIEW_CONCEPTS:\n${JSON.stringify(reviewConcepts, null, 2)}\n\nTEST_CONCEPTS:\n${JSON.stringify(testConcepts, null, 2)}`;
+  const alignmentRaw = await withRetry429(() => callLLM(alignmentPrompt, { maxOutputTokens: 2048 }));
+  const alignmentParsed = parseJsonWithRepair<Record<string, unknown>>(alignmentRaw);
+  const normalized = normalizeAlignmentResult(alignmentParsed);
+  const modelTotal = normalized.coveredItems.length + normalized.uncoveredItems.length;
+  const expectedTotal = testConcepts.length;
+
+  const baseDebug: AlignmentDebugInfo = {
+    reviewConcepts,
+    testConcepts,
+    usedReviewFallback,
+    usedTestFallback,
+    usedDeterministicFallback: false,
+    alignmentSource: "llm",
+    sanitizedItemNumbers,
+  };
+
+  if (modelTotal === expectedTotal && expectedTotal > 0) {
+    return {
+      ...normalized,
+      debug: baseDebug,
+    } as AlignmentResult;
+  }
+
+  // Deterministic fallback when LLM alignment output is empty or malformed.
+  const deterministic = computeAlignmentLocally(reviewConcepts, testConcepts);
+  return {
+    ...deterministic,
+    debug: {
+      ...baseDebug,
+      usedDeterministicFallback: true,
+      alignmentSource: "deterministic",
+    },
+  } as AlignmentResult;
 }
 
 export async function getSuggestions(

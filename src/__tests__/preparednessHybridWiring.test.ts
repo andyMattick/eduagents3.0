@@ -30,10 +30,39 @@ const assessment: AssessmentDocument = {
   ],
 };
 
+function makeLightweightAlignmentCaller(alignmentPayload: unknown, testConcepts?: unknown[]) {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(
+      JSON.stringify({
+        reviewConcepts: [
+          {
+            conceptLabel: "ci_proportion_z_interval",
+            conceptBlurb: "Compute and interpret a z-based proportion interval.",
+            difficulty: 2,
+            count: 2,
+          },
+        ],
+      })
+    )
+    .mockResolvedValueOnce(
+      JSON.stringify({
+        testConcepts: testConcepts ?? [
+          {
+            assessmentItemNumber: 1,
+            conceptLabels: ["ci_proportion_z_interval"],
+            testDifficulty: 2,
+          },
+        ],
+      })
+    )
+    .mockResolvedValueOnce(JSON.stringify(alignmentPayload));
+}
+
 describe("Preparedness Hybrid Wiring", () => {
   it("A: alignment/suggestions/rewrite/reverse/report all use hybrid structures", async () => {
-    const callAlignment = vi.fn(async () =>
-      JSON.stringify({
+    const callAlignment = makeLightweightAlignmentCaller(
+      {
         coveredItems: [
           {
             assessmentItemNumber: 1,
@@ -59,7 +88,12 @@ describe("Preparedness Hybrid Wiring", () => {
             alignment: "missing_in_prep",
           },
         ],
-      })
+      },
+      [
+        { assessmentItemNumber: 1, conceptLabels: ["ci_proportion_z_interval"], testDifficulty: 2 },
+        { assessmentItemNumber: 2, conceptLabels: ["ci_mean_t_interval"], testDifficulty: 4 },
+        { assessmentItemNumber: 3, conceptLabels: ["ci_interpretation"], testDifficulty: 3 },
+      ]
     );
 
     const alignment = await getAlignment(prep, assessment, callAlignment);
@@ -235,30 +269,33 @@ describe("Preparedness Hybrid Wiring", () => {
       if (attempts === 1) {
         throw new Error("429 rate limit");
       }
+      if (attempts === 2) {
+        return JSON.stringify({ reviewConcepts: [] });
+      }
+      if (attempts === 3) {
+        return JSON.stringify({ testConcepts: [] });
+      }
       return JSON.stringify({ coveredItems: [], uncoveredItems: [] });
     });
 
     const result = await getAlignment(prep, assessment, callLLM);
-    expect(result.coveredItems).toHaveLength(0);
-    expect(result.uncoveredItems).toHaveLength(0);
-    expect(attempts).toBe(2);
+    expect(result.coveredItems.length + result.uncoveredItems.length).toBeGreaterThan(0);
+    expect(attempts).toBe(4);
   });
 
   it("D: derives non-aligned status when test is one level above prep", async () => {
-    const callAlignment = vi.fn(async () =>
-      JSON.stringify({
-        coveredItems: [
-          {
-            assessmentItemNumber: 1,
-            concepts: [{ label: "ci_interpretation", count: 1, difficulties: [3] }],
-            difficulty: 3,
-            prepDifficulty: 2,
-            alignment: "aligned",
-          },
-        ],
-        uncoveredItems: [],
-      })
-    );
+    const callAlignment = makeLightweightAlignmentCaller({
+      coveredItems: [
+        {
+          assessmentItemNumber: 1,
+          concepts: [{ label: "ci_interpretation", count: 1, difficulties: [3] }],
+          difficulty: 3,
+          prepDifficulty: 2,
+          alignment: "aligned",
+        },
+      ],
+      uncoveredItems: [],
+    });
 
     const alignment = await getAlignment(prep, assessment, callAlignment);
     expect(alignment.coveredItems[0].alignment).toBe("slightly_above");
@@ -290,5 +327,56 @@ describe("Preparedness Hybrid Wiring", () => {
     expect(prompt).toContain("Clarify interpretation wording.");
     expect(prompt).toContain("ALIGNMENT_OVERRIDES:");
     expect(prompt).toContain('"correctedAlignment": "aligned"');
+  });
+
+  it("F: lightweight alignment pipeline runs review extract, test extract, and compare", async () => {
+    const callLLM = makeLightweightAlignmentCaller({
+      coveredItems: [
+        {
+          assessmentItemNumber: 1,
+          concepts: { ci_proportion_z_interval: 2 },
+          prepDifficulty: 2,
+          testDifficulty: 2,
+          alignment: "aligned",
+        },
+      ],
+      uncoveredItems: [],
+    });
+
+    const alignment = await getAlignment(prep, assessment, callLLM);
+    expect(callLLM).toHaveBeenCalledTimes(3);
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain("Extract all instructional concepts taught in REVIEW_TEXT");
+    expect(String(callLLM.mock.calls[1]?.[0] ?? "")).toContain("Extract instructional concepts assessed in ASSESSMENT_ITEMS");
+    expect(String(callLLM.mock.calls[2]?.[0] ?? "")).toContain("Compare TEST_CONCEPTS to REVIEW_CONCEPTS");
+    expect(alignment.coveredItems[0].concepts[0].label).toBe("ci_proportion_z_interval");
+    expect(alignment.coveredItems[0].alignment).toBe("aligned");
+  });
+
+  it("G: falls back to deterministic alignment when model concept/alignment output is empty or mis-indexed", async () => {
+    const callLLM = vi
+      .fn()
+      .mockResolvedValueOnce(JSON.stringify({ reviewConcepts: [] }))
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          testConcepts: [
+            {
+              assessmentItemNumber: 67,
+              conceptLabels: ["ci_interpretation"],
+              testDifficulty: 3,
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(JSON.stringify({ coveredItems: [], uncoveredItems: [] }));
+
+    const alignment = await getAlignment(prep, assessment, callLLM);
+    const allItemNumbers = [
+      ...alignment.coveredItems.map((item) => item.assessmentItemNumber),
+      ...alignment.uncoveredItems.map((item) => item.assessmentItemNumber),
+    ];
+
+    expect(allItemNumbers.length).toBeGreaterThan(0);
+    expect(allItemNumbers).not.toContain(67);
+    expect(allItemNumbers.every((value) => value >= 1 && value <= assessment.items.length)).toBe(true);
   });
 });

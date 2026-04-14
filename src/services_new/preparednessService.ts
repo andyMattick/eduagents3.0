@@ -25,13 +25,36 @@ export interface PreparedenessServiceError {
   raw?: unknown;
 }
 
+export interface AlignmentDebugInfo {
+  reviewConcepts: Array<{
+    conceptLabel: string;
+    conceptBlurb: string;
+    difficulty: number;
+    count: number;
+  }>;
+  testConcepts: Array<{
+    assessmentItemNumber: number;
+    conceptLabels: string[];
+    testDifficulty: number;
+  }>;
+  usedReviewFallback: boolean;
+  usedTestFallback: boolean;
+  usedDeterministicFallback: boolean;
+  alignmentSource: "llm" | "deterministic";
+  sanitizedItemNumbers: number[];
+}
+
+export type AlignmentResponse = AlignmentResult & {
+  debug?: AlignmentDebugInfo;
+};
+
 /**
  * Call Phase 1: Get alignment analysis.
  */
 export async function getAlignment(
   prep: PrepDocument,
   assessment: AssessmentDocument
-): Promise<AlignmentResult> {
+): Promise<AlignmentResponse> {
   const response = await fetch("/api/v4/preparedness", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

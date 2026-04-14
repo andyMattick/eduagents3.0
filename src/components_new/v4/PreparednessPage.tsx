@@ -6,6 +6,8 @@
  */
 
 import React, { useState, useCallback, useEffect } from "react";
+import JSZip from "jszip";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import type {
   AssessmentDocument,
   PrepDocument,
@@ -16,9 +18,11 @@ import type {
   Suggestion,
   SuggestionsResult as SuggestionsList,
   TeacherCorrection,
+  AdminReportEnvelope,
 } from "../../prism-v4/schema/domain/Preparedness";
 import {
   getAlignment,
+  type AlignmentDebugInfo,
   getSuggestions,
   applyRewrite,
   generatePreparednessReport,
@@ -30,6 +34,8 @@ import { SuggestionsPanel } from "./SuggestionsPanel";
 import { RewriteOutput } from "./RewriteOutput";
 import PreparednessReportPage from "./PreparednessReportPage";
 import "./v4.css";
+
+GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 interface PreparednessPageProps {
   prep?: PrepDocument;
@@ -54,6 +60,7 @@ interface LoadingState {
   suggestions: boolean;
   rewrite: boolean;
   report: boolean;
+  adminReport: boolean;
 }
 
 interface ErrorState {
@@ -61,6 +68,7 @@ interface ErrorState {
   suggestions: string | null;
   rewrite: string | null;
   report: string | null;
+  adminReport: string | null;
 }
 
 type TeacherOverrideAlignment = "" | "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
@@ -74,7 +82,424 @@ interface TeacherCorrectionDraft {
   overrideSuggestionType: TeacherOverrideSuggestion;
 }
 
+interface ExtractionResult {
+  text: string;
+  paragraphs: string[];
+  source?: "mammoth" | "docx_xml" | "pdf" | "text" | "fallback";
+}
+
+const INGESTION_LIMITS = {
+  reviewMaxChars: 50000,
+  reviewMaxParagraphs: 300,
+  testMaxChars: 20000,
+  testMaxParagraphs: 150,
+  combinedMaxChars: 70000,
+  maxInputTokens: 4000,
+  minParagraphs: 5,
+  minAssessmentQuestions: 5,
+  maxAssessmentQuestions: 50,
+  maxRepeatedParagraphs: 10,
+  maxDuplicateRatio: 0.2,
+  minAssessmentChars: 300,
+  minPrepChars: 500,
+  maxParagraphChars: 5000,
+};
+
 type TeacherReviewFilter = "all" | "missing" | "overridden";
+
+function collapseWhitespace(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function collapseRepeatedHalf(text: string): string {
+  const compact = collapseWhitespace(text);
+  const minChunk = 40;
+  if (compact.length < minChunk * 2) {
+    return compact;
+  }
+
+  for (let split = Math.floor(compact.length / 2); split >= minChunk; split -= 1) {
+    const left = compact.slice(0, split).trim();
+    const right = compact.slice(split).trim();
+    if (!left || !right) {
+      continue;
+    }
+    if (left === right || right.startsWith(left)) {
+      return left;
+    }
+  }
+
+  return compact;
+}
+
+function dedupeAdjacentSentences(text: string): string {
+  const parts = collapseWhitespace(text)
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 1) {
+    return collapseWhitespace(text);
+  }
+
+  const deduped: string[] = [];
+  for (const part of parts) {
+    const prev = deduped[deduped.length - 1];
+    if (prev && prev.toLowerCase() === part.toLowerCase()) {
+      continue;
+    }
+    deduped.push(part);
+  }
+
+  return deduped.join(" ");
+}
+
+function normalizeAssessmentDisplayText(text: string): string {
+  const halfCollapsed = collapseRepeatedHalf(text);
+  return dedupeAdjacentSentences(halfCollapsed);
+}
+
+function looksLikeBinaryPayload(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+
+  const hasZipMarkers =
+    text.includes("PK\u0003\u0004") ||
+    (text.includes("[Content_Types].xml") && text.includes("word/document.xml"));
+  const hasControlChars = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text);
+
+  return hasZipMarkers || (hasControlChars && text.includes("PK"));
+}
+
+function containsExtractionArtifacts(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+
+  return ["PK", "��", "<w:document", "<Relationships", "<w:p>", "<w:t>"]
+    .some((marker) => text.includes(marker));
+}
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+function countRepeatedParagraphs(paragraphs: string[]): { repeatedCount: number; duplicateRatio: number } {
+  if (paragraphs.length === 0) {
+    return { repeatedCount: 0, duplicateRatio: 0 };
+  }
+
+  const counts = new Map<string, number>();
+  for (const paragraph of paragraphs) {
+    const key = paragraph.toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  let repeatedCount = 0;
+  for (const value of counts.values()) {
+    if (value > 1) {
+      repeatedCount += value - 1;
+    }
+  }
+
+  return {
+    repeatedCount,
+    duplicateRatio: repeatedCount / paragraphs.length,
+  };
+}
+
+function hasQuestionNumberSignals(paragraphs: string[]): boolean {
+  return paragraphs.some((paragraph) => /^\s*\d{1,2}[.)]\s+/.test(paragraph));
+}
+
+function decodeXmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#xA;/g, "\n");
+}
+
+function normalizeExtractedParagraphs(paragraphs: string[]): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const paragraph of paragraphs) {
+    const cleaned = paragraph
+      .replace(/<[^>]+>/g, " ")
+      .replace(/w:numPr|w:ilvl|w:fldSimple|w:instrText/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleaned || containsExtractionArtifacts(cleaned)) {
+      continue;
+    }
+
+    const deduped = normalizeAssessmentDisplayText(cleaned);
+    const key = deduped.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push(deduped);
+  }
+
+  return normalized;
+}
+
+function buildExtractionResult(paragraphs: string[]): ExtractionResult {
+  const normalizedParagraphs = normalizeExtractedParagraphs(paragraphs);
+  const text = normalizedParagraphs.join("\n\n").trim();
+  return {
+    text,
+    paragraphs: normalizedParagraphs,
+  };
+}
+
+async function extractDocxText(file: File): Promise<ExtractionResult> {
+  const buffer = await file.arrayBuffer();
+
+  // Primary path: mammoth extracts ordered, readable DOCX text from document.xml.
+  try {
+    const mammoth = await import("mammoth");
+    const result = await (mammoth.extractRawText as unknown as (
+      input: { arrayBuffer: ArrayBuffer },
+      options?: { includeDefaultStyleMap?: boolean; preserveLineBreaks?: boolean }
+    ) => Promise<{ value?: string }>)(
+      { arrayBuffer: buffer },
+      { includeDefaultStyleMap: false, preserveLineBreaks: true }
+    );
+    const rawText = (result.value ?? "").replace(/\r\n/g, "\n");
+    const mammothResult = buildExtractionResult(rawText.split(/\n+/));
+    if (
+      mammothResult.text.length >= 20 &&
+      mammothResult.paragraphs.length >= 5 &&
+      !looksLikeBinaryPayload(mammothResult.text) &&
+      !containsExtractionArtifacts(mammothResult.text)
+    ) {
+      return {
+        ...mammothResult,
+        source: "mammoth",
+      };
+    }
+  } catch {
+    // Fall through to manual XML extraction.
+  }
+
+  // Fallback path: manually read word/document.xml and preserve paragraph boundaries.
+  const zip = await JSZip.loadAsync(buffer);
+  const documentXml = await zip.file("word/document.xml")?.async("string");
+  if (!documentXml) {
+    throw new Error("Could not read word/document.xml from DOCX file");
+  }
+
+  const paragraphMatches = documentXml.matchAll(/<w:p[\s\S]*?<\/w:p>/g);
+  const paragraphs: string[] = [];
+
+  for (const match of paragraphMatches) {
+    const paragraphXml = match[0] ?? "";
+    const textRuns = [...paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
+      .map((m) => decodeXmlEntities(m[1] ?? ""))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (textRuns) {
+      paragraphs.push(textRuns);
+    }
+  }
+
+  const result = buildExtractionResult(paragraphs);
+  if (!result.text || looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
+    throw new Error("DOCX extraction failed: content appears to be binary or empty");
+  }
+
+  return {
+    ...result,
+    source: "docx_xml",
+  };
+}
+
+async function extractPdfText(file: File): Promise<ExtractionResult> {
+  const buffer = await file.arrayBuffer();
+  const typed = new Uint8Array(buffer);
+  const pdf = await getDocument({ data: typed }).promise;
+  const pages: string[] = [];
+
+  for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items
+      .map((item) => {
+        const token = item as { str?: string };
+        return token.str ?? "";
+      })
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (pageText) {
+      pages.push(pageText);
+    }
+  }
+
+  return {
+    ...buildExtractionResult(pages),
+    source: "pdf",
+  };
+}
+
+async function extractTextFromFile(file: File): Promise<ExtractionResult> {
+  const lower = file.name.toLowerCase();
+  const isDocx =
+    lower.endsWith(".docx") ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const isPdf = lower.endsWith(".pdf") || file.type === "application/pdf";
+
+  if (isDocx) {
+    return extractDocxText(file);
+  }
+
+  if (isPdf) {
+    return extractPdfText(file);
+  }
+
+  if (file.type.startsWith("text/") || lower.endsWith(".txt") || lower.endsWith(".md")) {
+    return {
+      ...buildExtractionResult((await file.text()).split(/\n+/)),
+      source: "text",
+    };
+  }
+
+  // Fallback: attempt UTF-8 text decode for unknown types.
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(await file.arrayBuffer()).trim();
+  if (looksLikeBinaryPayload(decoded) || containsExtractionArtifacts(decoded)) {
+    throw new Error("Unsupported file format for direct text extraction. Please upload PDF, DOCX, or plain text.");
+  }
+  return {
+    ...buildExtractionResult(decoded.split(/\n+/)),
+    source: "fallback",
+  };
+}
+
+function parseAssessmentItemsFromParagraphs(paragraphs: string[]): AssessmentDocument["items"] {
+  if (paragraphs.length === 0) {
+    return [];
+  }
+
+  const items: Array<{ itemNumber: number; text: string }> = [];
+  let current: string[] = [];
+
+  const pushCurrent = () => {
+    const text = current.join(" ").replace(/\s+/g, " ").trim();
+    if (text) {
+      items.push({ itemNumber: items.length + 1, text });
+    }
+    current = [];
+  };
+
+  for (const paragraph of paragraphs) {
+    const value = paragraph.trim();
+    if (!value) {
+      continue;
+    }
+
+    const isQuestionStart = /^\d{1,2}[.)]\s+/.test(value);
+    const isSubpart = /^\d{1,2}[a-zA-Z][.)]?\s+/.test(value);
+    const isChoice = /^[(]?[a-eA-E][.)]\s+/.test(value);
+    const isDataRow = /^\d+\s+(\d+(?:\.\d+)?\s+){2,}/.test(value);
+
+    if (isQuestionStart && !isDataRow) {
+      pushCurrent();
+      current.push(value.replace(/^\d{1,2}[.)]\s+/, ""));
+      continue;
+    }
+
+    if (isSubpart || isChoice || isDataRow) {
+      current.push(value);
+      continue;
+    }
+
+    if (current.length === 0) {
+      current.push(value);
+    } else {
+      current.push(value);
+    }
+  }
+
+  pushCurrent();
+
+  return items
+    .map((item, idx) => ({ itemNumber: idx + 1, text: normalizeAssessmentDisplayText(item.text) }))
+    .filter((item) => item.text.length > 0);
+}
+
+function validateAssessmentExtraction(result: ExtractionResult, items: AssessmentDocument["items"]): string | null {
+  const { repeatedCount, duplicateRatio } = countRepeatedParagraphs(result.paragraphs);
+  if (!result.text || result.text.length < 300) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (result.paragraphs.length < INGESTION_LIMITS.minParagraphs) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (!hasQuestionNumberSignals(result.paragraphs)) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (result.text.length > INGESTION_LIMITS.testMaxChars || result.paragraphs.length > INGESTION_LIMITS.testMaxParagraphs) {
+    return "This document is too large to process. Please upload a smaller section.";
+  }
+  if (estimateTokens(result.text) > INGESTION_LIMITS.maxInputTokens) {
+    return "This document is too long to analyze. Please upload a shorter section.";
+  }
+  if (result.paragraphs.some((paragraph) => paragraph.length > INGESTION_LIMITS.maxParagraphChars)) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (repeatedCount > INGESTION_LIMITS.maxRepeatedParagraphs || duplicateRatio > INGESTION_LIMITS.maxDuplicateRatio) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (items.length < 5) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  if (items.length > INGESTION_LIMITS.maxAssessmentQuestions) {
+    return "This document is too large to process. Please upload a smaller section.";
+  }
+  const sequential = items.every((item, idx) => item.itemNumber === idx + 1);
+  if (!sequential) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
+  return null;
+}
+
+function validatePrepExtraction(result: ExtractionResult): string | null {
+  const { repeatedCount, duplicateRatio } = countRepeatedParagraphs(result.paragraphs);
+  if (!result.text || result.text.length < 500) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  if (result.paragraphs.length < 5) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  if (result.text.length > INGESTION_LIMITS.reviewMaxChars || result.paragraphs.length > INGESTION_LIMITS.reviewMaxParagraphs) {
+    return "This document is too large to process. Please upload a smaller section.";
+  }
+  if (estimateTokens(result.text) > INGESTION_LIMITS.maxInputTokens) {
+    return "This document is too long to analyze. Please upload a shorter section.";
+  }
+  if (result.paragraphs.some((paragraph) => paragraph.length > INGESTION_LIMITS.maxParagraphChars)) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  if (repeatedCount > INGESTION_LIMITS.maxRepeatedParagraphs || duplicateRatio > INGESTION_LIMITS.maxDuplicateRatio) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  return null;
+}
 
 export const PreparednessPage: React.FC<PreparednessPageProps> = ({
   prep: initialPrep,
@@ -100,6 +525,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     suggestions: false,
     rewrite: false,
     report: false,
+    adminReport: false,
   });
 
   const [errors, setErrors] = useState<ErrorState>({
@@ -107,12 +533,21 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     suggestions: null,
     rewrite: null,
     report: null,
+    adminReport: null,
   });
 
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const [selectedFixes, setSelectedFixes] = useState<Record<number, "remove_question" | "add_prep_support" | undefined>>({});
   const [teacherCorrectionDrafts, setTeacherCorrectionDrafts] = useState<Record<number, TeacherCorrectionDraft>>({});
   const [teacherReviewFilter, setTeacherReviewFilter] = useState<TeacherReviewFilter>("all");
+  const [adminAuditReport, setAdminAuditReport] = useState<AdminReportEnvelope["adminReport"] | null>(null);
+  const [alignmentDebug, setAlignmentDebug] = useState<AlignmentDebugInfo | null>(null);
+  const [prepInputText, setPrepInputText] = useState<string>(initialPrep?.rawText ?? "");
+  const [assessmentInputText, setAssessmentInputText] = useState<string>(
+    initialAssessment?.items.map((item) => `${item.itemNumber}. ${item.text}`).join("\n") ?? ""
+  );
+  const [prepParagraphs, setPrepParagraphs] = useState<string[]>(initialPrep?.rawText ? initialPrep.rawText.split(/\n+/).filter(Boolean) : []);
+  const [assessmentParagraphs, setAssessmentParagraphs] = useState<string[]>(initialAssessment?.items.map((item) => item.text) ?? []);
 
   const allAlignmentItems = state.alignment
     ? [...state.alignment.coveredItems, ...state.alignment.uncoveredItems]
@@ -138,6 +573,47 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     return hasDraftOverride(teacherCorrectionDrafts[item.assessmentItemNumber]);
   });
 
+  const prepLooksBinary = Boolean(state.prep?.rawText && looksLikeBinaryPayload(state.prep.rawText));
+
+  const getParsedTeacherCorrections = useCallback((): TeacherCorrection[] => {
+    return Object.values(teacherCorrectionDrafts)
+      .map((draft) => {
+        const concepts = draft.overrideConcepts
+          .split(",")
+          .map((c) => c.trim())
+          .filter(Boolean);
+
+        const difficultyNum = Number(draft.overrideDifficulty);
+
+        const correction: TeacherCorrection = {
+          assessmentItemNumber: draft.assessmentItemNumber,
+        };
+
+        if (draft.overrideAlignment) {
+          correction.overrideAlignment = draft.overrideAlignment;
+        }
+        if (concepts.length > 0) {
+          correction.overrideConcepts = concepts;
+        }
+        if (Number.isFinite(difficultyNum) && draft.overrideDifficulty.trim() !== "") {
+          correction.overrideDifficulty = difficultyNum;
+        }
+        if (draft.overrideSuggestionType) {
+          correction.overrideSuggestionType = draft.overrideSuggestionType;
+        }
+
+        return correction;
+      })
+      .filter((correction) =>
+        Boolean(
+          correction.overrideAlignment ||
+            correction.overrideConcepts?.length ||
+            correction.overrideDifficulty !== undefined ||
+            correction.overrideSuggestionType
+        )
+      );
+  }, [teacherCorrectionDrafts]);
+
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
@@ -158,6 +634,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     try {
       const alignment = await getAlignment(state.prep, state.assessment);
       setState((prev) => ({ ...prev, alignment, report: null }));
+      setAlignmentDebug(alignment.debug ?? null);
       setPhase("alignment");
       setSelectedSuggestions(new Set());
       setSelectedFixes({});
@@ -268,42 +745,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setErrors((prev) => ({ ...prev, report: null }));
 
     try {
-      const parsedCorrections: TeacherCorrection[] = Object.values(teacherCorrectionDrafts)
-        .map((draft) => {
-          const concepts = draft.overrideConcepts
-            .split(",")
-            .map((c) => c.trim())
-            .filter(Boolean);
-
-          const difficultyNum = Number(draft.overrideDifficulty);
-
-          const correction: TeacherCorrection = {
-            assessmentItemNumber: draft.assessmentItemNumber,
-          };
-
-          if (draft.overrideAlignment) {
-            correction.overrideAlignment = draft.overrideAlignment;
-          }
-          if (concepts.length > 0) {
-            correction.overrideConcepts = concepts;
-          }
-          if (Number.isFinite(difficultyNum) && draft.overrideDifficulty.trim() !== "") {
-            correction.overrideDifficulty = difficultyNum;
-          }
-          if (draft.overrideSuggestionType) {
-            correction.overrideSuggestionType = draft.overrideSuggestionType;
-          }
-
-          return correction;
-        })
-        .filter((correction) =>
-          Boolean(
-            correction.overrideAlignment ||
-              correction.overrideConcepts?.length ||
-              correction.overrideDifficulty !== undefined ||
-              correction.overrideSuggestionType
-          )
-        );
+      const parsedCorrections = getParsedTeacherCorrections();
 
       const corrected = await applyTeacherCorrections(
         state.alignment,
@@ -334,6 +776,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         rewrite: corrected.correctedRewrite,
         report: { ...report, adminReport: adminReport.adminReport },
       }));
+      setAdminAuditReport(adminReport.adminReport);
       setPhase("report");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -349,7 +792,53 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     state.prep,
     state.rewrite,
     state.suggestions,
-    teacherCorrectionDrafts,
+    getParsedTeacherCorrections,
+  ]);
+
+  const handleReportToAdmin = useCallback(async () => {
+    if (!state.alignment || !state.rewrite) {
+      setErrors((prev) => ({
+        ...prev,
+        adminReport: "Alignment and rewrite data are required to report to admin",
+      }));
+      return;
+    }
+
+    const suggestionsForAdmin = state.appliedSuggestions ?? state.finalSuggestions ?? state.suggestions;
+    if (!suggestionsForAdmin) {
+      setErrors((prev) => ({
+        ...prev,
+        adminReport: "Suggestions are required to report to admin",
+      }));
+      return;
+    }
+
+    setLoading((prev) => ({ ...prev, adminReport: true }));
+    setErrors((prev) => ({ ...prev, adminReport: null }));
+
+    try {
+      const admin = await getAdminReport({
+        modelOutput: {
+          alignment: state.alignment,
+          suggestions: suggestionsForAdmin,
+          rewrite: state.rewrite,
+        },
+        teacherCorrections: getParsedTeacherCorrections(),
+      });
+      setAdminAuditReport(admin.adminReport);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setErrors((prev) => ({ ...prev, adminReport: message }));
+    } finally {
+      setLoading((prev) => ({ ...prev, adminReport: false }));
+    }
+  }, [
+    getParsedTeacherCorrections,
+    state.alignment,
+    state.appliedSuggestions,
+    state.finalSuggestions,
+    state.rewrite,
+    state.suggestions,
   ]);
 
   useEffect(() => {
@@ -427,13 +916,83 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setSelectedFixes({});
     setTeacherCorrectionDrafts({});
     setTeacherReviewFilter("all");
+    setAdminAuditReport(null);
+    setAlignmentDebug(null);
+    setPrepInputText("");
+    setAssessmentInputText("");
+    setPrepParagraphs([]);
+    setAssessmentParagraphs([]);
     setErrors({
       alignment: null,
       suggestions: null,
       rewrite: null,
       report: null,
+      adminReport: null,
     });
   };
+
+  const handlePrepFileUpload = useCallback(async (file: File) => {
+    const extracted = await extractTextFromFile(file);
+    setPrepInputText(extracted.text);
+    setPrepParagraphs(extracted.paragraphs);
+  }, []);
+
+  const handleAssessmentFileUpload = useCallback(async (file: File) => {
+    const extracted = await extractTextFromFile(file);
+    setAssessmentInputText(extracted.text);
+    setAssessmentParagraphs(extracted.paragraphs);
+  }, []);
+
+  const handleLoadDocuments = useCallback(() => {
+    const prepResult = buildExtractionResult(
+      (prepParagraphs.length > 0 ? prepParagraphs : prepInputText.split(/\n+/)).filter(Boolean)
+    );
+    const assessmentResult = buildExtractionResult(
+      (assessmentParagraphs.length > 0 ? assessmentParagraphs : assessmentInputText.split(/\n+/)).filter(Boolean)
+    );
+    const assessmentItems = parseAssessmentItemsFromParagraphs(assessmentResult.paragraphs);
+    const prepError = validatePrepExtraction(prepResult);
+    const assessmentError = validateAssessmentExtraction(assessmentResult, assessmentItems);
+    const combinedChars = prepResult.text.length + assessmentResult.text.length;
+
+    if (combinedChars > INGESTION_LIMITS.combinedMaxChars) {
+      setErrors((prev) => ({
+        ...prev,
+        alignment: "This document is too large to process. Please upload a smaller section.",
+      }));
+      return;
+    }
+
+    if (prepResult.source === "fallback" || assessmentResult.source === "fallback") {
+      setErrors((prev) => ({
+        ...prev,
+        alignment: "We couldn't read your document cleanly. Please upload a clean DOCX or PDF.",
+      }));
+      return;
+    }
+
+    if (prepError || assessmentError) {
+      setErrors((prev) => ({
+        ...prev,
+        alignment: prepError ?? assessmentError,
+      }));
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      prep: { rawText: prepResult.text },
+      assessment: { items: assessmentItems },
+      alignment: null,
+      suggestions: null,
+      finalSuggestions: null,
+      rewrite: null,
+      report: null,
+      appliedSuggestions: null,
+    }));
+    setErrors((prev) => ({ ...prev, alignment: null }));
+    setPhase("alignment");
+  }, [assessmentInputText, assessmentParagraphs, prepInputText, prepParagraphs]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -466,6 +1025,91 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         </div>
       )}
 
+      {phase !== "upload" && (state.assessment || state.prep) && (
+        <div
+          className="prep-documents-grid"
+          style={{
+            marginBottom: "1rem",
+            display: "grid",
+            gap: "1rem",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          }}
+        >
+          <section className="prep-detail-box" style={{ margin: 0 }}>
+            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>Test Document</h3>
+            <p style={{ marginTop: 0, color: "#475569", fontSize: "0.9rem" }}>
+              Full assessment text used for rewrite.
+            </p>
+            {state.assessment ? (
+              <ol style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                {state.assessment.items.map((item) => (
+                  <li key={item.itemNumber} style={{ marginBottom: "0.5rem", lineHeight: 1.45 }}>
+                    {normalizeAssessmentDisplayText(item.text)}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p style={{ margin: 0, color: "#64748b" }}>No assessment loaded.</p>
+            )}
+          </section>
+
+          <section className="prep-detail-box" style={{ margin: 0 }}>
+            <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>Prep Document</h3>
+            <p style={{ marginTop: 0, color: "#475569", fontSize: "0.9rem" }}>
+              Full prep content used for concept extraction.
+            </p>
+            {state.prep?.rawText ? (
+              prepLooksBinary ? (
+                <div className="prep-empty-state" style={{ margin: 0 }}>
+                  <p style={{ margin: 0 }}>
+                    This prep document appears to be binary file content (for example, raw .docx bytes) rather than extracted text.
+                    Please re-upload using text extraction so the prep view and concept extraction are readable.
+                  </p>
+                </div>
+              ) : (
+                <pre className="prep-code-block" style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                  {state.prep.rawText}
+                </pre>
+              )
+            ) : (
+              <p style={{ margin: 0, color: "#64748b" }}>No prep document loaded.</p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {phase !== "upload" && import.meta.env.DEV && alignmentDebug && (
+        <details className="prep-detail-box" style={{ marginBottom: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Debug: Alignment Pipeline</summary>
+          <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.75rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <span className="prep-chip">Source: {alignmentDebug.alignmentSource}</span>
+              <span className="prep-chip">Review fallback: {alignmentDebug.usedReviewFallback ? "yes" : "no"}</span>
+              <span className="prep-chip">Test fallback: {alignmentDebug.usedTestFallback ? "yes" : "no"}</span>
+              <span className="prep-chip">Deterministic fallback: {alignmentDebug.usedDeterministicFallback ? "yes" : "no"}</span>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Sanitized item numbers</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(alignmentDebug.sanitizedItemNumbers, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted review concepts</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(alignmentDebug.reviewConcepts, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted test concepts</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(alignmentDebug.testConcepts, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </details>
+      )}
+
       {/* UPLOAD PHASE */}
       {phase === "upload" && (
         <div className="prep-stage-card" style={{ borderStyle: "dashed", borderWidth: 2, borderColor: "#93c5fd", textAlign: "center", backgroundColor: "#f0f6ff", padding: "3rem 2rem" }}>
@@ -476,43 +1120,99 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             Upload or select your prep document and assessment to begin.
           </p>
 
-          {/* Document Upload Form (simplified for now) */}
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => {
-                // Placeholder: in real app, open file picker or document selector
-                // For now, we'll prompt for manual document entry
-                const prepText = prompt("Enter prep document text:");
-                const assessmentText = prompt("Enter assessment items (one per line, numbered):");
-                
-                if (prepText && assessmentText) {
-                  const items = assessmentText
-                    .split("\n")
-                    .filter(line => line.trim())
-                    .map((text, idx) => ({
-                      itemNumber: idx + 1,
-                      text: text.replace(/^\d+\.\s*/, "").trim(),
-                    }));
+          <div style={{ display: "grid", gap: "1rem", textAlign: "left", maxWidth: "980px", margin: "0 auto" }}>
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              <label style={{ fontWeight: 600 }}>Prep Document (text, .docx, or .pdf)</label>
+              <input
+                type="file"
+                accept=".txt,.md,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    await handlePrepFileUpload(file);
+                  } catch (err) {
+                    const message = err instanceof Error ? err.message : "Failed to read prep file";
+                    setErrors((prev) => ({ ...prev, alignment: message }));
+                  }
+                }}
+              />
+              <textarea
+                className="prep-form-control"
+                value={prepInputText}
+                onChange={(event) => {
+                  setPrepInputText(event.target.value);
+                  setPrepParagraphs(event.target.value.split(/\n+/).map((entry) => entry.trim()).filter(Boolean));
+                }}
+                rows={8}
+                placeholder="Paste prep content here if not uploading a file"
+              />
+            </div>
 
-                  setState({
-                    prep: { rawText: prepText },
-                    assessment: { items },
-                    alignment: null,
-                    suggestions: null,
-                    finalSuggestions: null,
-                    rewrite: null,
-                    report: null,
-                    appliedSuggestions: null,
-                  });
+            <div style={{ display: "grid", gap: "0.5rem" }}>
+              <label style={{ fontWeight: 600 }}>Assessment Document (text, .docx, or .pdf)</label>
+              <input
+                type="file"
+                accept=".txt,.md,.docx,.pdf,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    await handleAssessmentFileUpload(file);
+                  } catch (err) {
+                    const message = err instanceof Error ? err.message : "Failed to read assessment file";
+                    setErrors((prev) => ({ ...prev, alignment: message }));
+                  }
+                }}
+              />
+              <textarea
+                className="prep-form-control"
+                value={assessmentInputText}
+                onChange={(event) => {
+                  setAssessmentInputText(event.target.value);
+                  setAssessmentParagraphs(event.target.value.split(/\n+/).map((entry) => entry.trim()).filter(Boolean));
+                }}
+                rows={8}
+                placeholder="Paste assessment questions here (numbered if possible)"
+              />
+            </div>
 
-                  setPhase("alignment");
-                }
-              }}
-              className="v4-button v4-button-primary"
-            >
-              Input Documents
-            </button>
+            {(prepParagraphs.length > 0 || assessmentParagraphs.length > 0) && (
+              <section className="prep-detail-box" style={{ margin: 0 }}>
+                <h3 style={{ margin: "0 0 0.5rem 0", fontSize: "1rem" }}>Extracted Paragraph Preview</h3>
+                <p style={{ marginTop: 0, color: "#475569", fontSize: "0.9rem" }}>
+                  Paragraphs captured before question splitting. If these are wrong, extraction failed.
+                </p>
+                <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.75rem" }}>
+                  <div>
+                    <h4 style={{ margin: "0 0 0.4rem 0" }}>Prep paragraphs</h4>
+                    <pre className="prep-code-block" style={{ margin: 0 }}>
+                      {JSON.stringify(prepParagraphs, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <h4 style={{ margin: "0 0 0.4rem 0" }}>Assessment paragraphs</h4>
+                    <pre className="prep-code-block" style={{ margin: 0 }}>
+                      {JSON.stringify(assessmentParagraphs, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {errors.alignment && (
+              <div className="prep-error-banner">✗ {errors.alignment}</div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <button
+                type="button"
+                onClick={handleLoadDocuments}
+                className="v4-button v4-button-primary"
+              >
+                Load Documents
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -915,6 +1615,14 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             </button>
             <button
               type="button"
+              className="v4-button v4-button-secondary"
+              onClick={handleReportToAdmin}
+              disabled={loading.adminReport}
+            >
+              {loading.adminReport ? "Reporting..." : "Report to Admin"}
+            </button>
+            <button
+              type="button"
               className="v4-button v4-button-primary"
               onClick={handleGenerateReport}
               disabled={loading.report}
@@ -927,6 +1635,30 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
             <div className="prep-error-banner" style={{ marginTop: "1rem" }}>
               ✗ {errors.report}
             </div>
+          )}
+
+          {errors.adminReport && (
+            <div className="prep-error-banner" style={{ marginTop: "1rem" }}>
+              ✗ {errors.adminReport}
+            </div>
+          )}
+
+          {adminAuditReport && (
+            <details className="prep-detail-box" style={{ marginTop: "1rem" }} open>
+              <summary style={{ cursor: "pointer", fontWeight: 600 }}>Latest Admin Audit Report</summary>
+              <div style={{ marginTop: "0.75rem" }}>
+                <h4 style={{ margin: "0 0 0.5rem 0" }}>Preparedness</h4>
+                <pre className="prep-code-block">
+                  {JSON.stringify(adminAuditReport.preparedness, null, 2)}
+                </pre>
+              </div>
+              <div style={{ marginTop: "0.75rem" }}>
+                <h4 style={{ margin: "0 0 0.5rem 0" }}>Other System Areas</h4>
+                <pre className="prep-code-block">
+                  {JSON.stringify(adminAuditReport.otherSystemAreas ?? {}, null, 2)}
+                </pre>
+              </div>
+            </details>
           )}
         </div>
       )}
