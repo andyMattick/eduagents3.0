@@ -6,7 +6,6 @@
  */
 
 import React, { useState, useCallback, useEffect } from "react";
-import JSZip from "jszip";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import type {
   AssessmentDocument,
@@ -29,6 +28,12 @@ import {
   applyTeacherCorrections,
   getAdminReport,
 } from "../../services_new/preparednessService";
+import { extractDocxParagraphs } from "../../utils/docxExtraction";
+import {
+  containsExtractionArtifacts,
+  isMostlyPrintable,
+  looksLikeBinaryPayload,
+} from "../../utils/ingestionTextGuards";
 import { AlignmentTable } from "./AlignmentTable";
 import { SuggestionsPanel } from "./SuggestionsPanel";
 import { RewriteOutput } from "./RewriteOutput";
@@ -85,8 +90,10 @@ interface TeacherCorrectionDraft {
 interface ExtractionResult {
   text: string;
   paragraphs: string[];
-  source?: "mammoth" | "docx_xml" | "pdf" | "text" | "fallback";
+  source?: "mammoth" | "docx_xml" | "pdf" | "text" | "fallback" | "manual";
 }
+
+type ExtractionSource = NonNullable<ExtractionResult["source"]> | "manual";
 
 const INGESTION_LIMITS = {
   reviewMaxChars: 50000,
@@ -159,28 +166,6 @@ function normalizeAssessmentDisplayText(text: string): string {
   return dedupeAdjacentSentences(halfCollapsed);
 }
 
-function looksLikeBinaryPayload(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-
-  const hasZipMarkers =
-    text.includes("PK\u0003\u0004") ||
-    (text.includes("[Content_Types].xml") && text.includes("word/document.xml"));
-  const hasControlChars = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(text);
-
-  return hasZipMarkers || (hasControlChars && text.includes("PK"));
-}
-
-function containsExtractionArtifacts(text: string): boolean {
-  if (!text) {
-    return false;
-  }
-
-  return ["PK", "��", "<w:document", "<Relationships", "<w:p>", "<w:t>"]
-    .some((marker) => text.includes(marker));
-}
-
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4);
 }
@@ -211,16 +196,6 @@ function countRepeatedParagraphs(paragraphs: string[]): { repeatedCount: number;
 
 function hasQuestionNumberSignals(paragraphs: string[]): boolean {
   return paragraphs.some((paragraph) => /^\s*\d{1,2}[.)]\s+/.test(paragraph));
-}
-
-function decodeXmlEntities(input: string): string {
-  return input
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#xA;/g, "\n");
 }
 
 function normalizeExtractedParagraphs(paragraphs: string[]): string[] {
@@ -259,8 +234,32 @@ function buildExtractionResult(paragraphs: string[]): ExtractionResult {
   };
 }
 
+function isValidExtractionResult(result: ExtractionResult): boolean {
+  if (!result.text) {
+    return false;
+  }
+  if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
+    return false;
+  }
+  if (!isMostlyPrintable(result.text)) {
+    return false;
+  }
+  if (result.paragraphs.length < INGESTION_LIMITS.minParagraphs) {
+    return false;
+  }
+  if (result.paragraphs.some((paragraph) => paragraph.length > INGESTION_LIMITS.maxParagraphChars)) {
+    return false;
+  }
+  return true;
+}
+
+async function extractDocxParagraphsFromXml(buffer: ArrayBuffer): Promise<string[]> {
+  return extractDocxParagraphs(buffer);
+}
+
 async function extractDocxText(file: File): Promise<ExtractionResult> {
   const buffer = await file.arrayBuffer();
+  let mammothResult: ExtractionResult | null = null;
 
   // Primary path: mammoth extracts ordered, readable DOCX text from document.xml.
   try {
@@ -273,54 +272,33 @@ async function extractDocxText(file: File): Promise<ExtractionResult> {
       { includeDefaultStyleMap: false, preserveLineBreaks: true }
     );
     const rawText = (result.value ?? "").replace(/\r\n/g, "\n");
-    const mammothResult = buildExtractionResult(rawText.split(/\n+/));
-    if (
-      mammothResult.text.length >= 20 &&
-      mammothResult.paragraphs.length >= 5 &&
-      !looksLikeBinaryPayload(mammothResult.text) &&
-      !containsExtractionArtifacts(mammothResult.text)
-    ) {
-      return {
-        ...mammothResult,
-        source: "mammoth",
-      };
+    mammothResult = {
+      ...buildExtractionResult(rawText.split(/\n+/)),
+      source: "mammoth",
+    };
+    if (isValidExtractionResult(mammothResult)) {
+      return mammothResult;
     }
   } catch {
     // Fall through to manual XML extraction.
   }
 
   // Fallback path: manually read word/document.xml and preserve paragraph boundaries.
-  const zip = await JSZip.loadAsync(buffer);
-  const documentXml = await zip.file("word/document.xml")?.async("string");
-  if (!documentXml) {
-    throw new Error("Could not read word/document.xml from DOCX file");
-  }
-
-  const paragraphMatches = documentXml.matchAll(/<w:p[\s\S]*?<\/w:p>/g);
-  const paragraphs: string[] = [];
-
-  for (const match of paragraphMatches) {
-    const paragraphXml = match[0] ?? "";
-    const textRuns = [...paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
-      .map((m) => decodeXmlEntities(m[1] ?? ""))
-      .join("")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (textRuns) {
-      paragraphs.push(textRuns);
+  try {
+    const paragraphs = await extractDocxParagraphsFromXml(buffer);
+    const xmlResult = { ...buildExtractionResult(paragraphs), source: "docx_xml" as const };
+    if (isValidExtractionResult(xmlResult)) {
+      return xmlResult;
     }
+  } catch {
+    // handled below
   }
 
-  const result = buildExtractionResult(paragraphs);
-  if (!result.text || looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
-    throw new Error("DOCX extraction failed: content appears to be binary or empty");
+  if (mammothResult && !isValidExtractionResult(mammothResult)) {
+    throw new Error("DOCX extraction failed: extracted text contained XML or binary artifacts");
   }
 
-  return {
-    ...result,
-    source: "docx_xml",
-  };
+  throw new Error("DOCX extraction failed: content appears to be binary or empty");
 }
 
 async function extractPdfText(file: File): Promise<ExtractionResult> {
@@ -444,6 +422,9 @@ function validateAssessmentExtraction(result: ExtractionResult, items: Assessmen
   if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
     return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
   }
+  if (!isMostlyPrintable(result.text)) {
+    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+  }
   if (result.paragraphs.length < INGESTION_LIMITS.minParagraphs) {
     return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
   }
@@ -472,6 +453,25 @@ function validateAssessmentExtraction(result: ExtractionResult, items: Assessmen
   if (!sequential) {
     return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
   }
+
+  const explicitNumbers = result.paragraphs
+    .map((paragraph) => {
+      const match = paragraph.match(/^\s*(\d{1,2})[.)]\s+/);
+      return match ? Number(match[1]) : null;
+    })
+    .filter((value): value is number => value !== null);
+
+  if (explicitNumbers.length >= 3) {
+    const sorted = [...explicitNumbers].sort((a, b) => a - b);
+    if (sorted[0] > 2) {
+      return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    }
+    const hasLargeGap = sorted.some((value, index) => index > 0 && value - sorted[index - 1] > 3);
+    if (hasLargeGap) {
+      return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    }
+  }
+
   return null;
 }
 
@@ -481,6 +481,9 @@ function validatePrepExtraction(result: ExtractionResult): string | null {
     return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
   }
   if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
+    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+  }
+  if (!isMostlyPrintable(result.text)) {
     return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
   }
   if (result.paragraphs.length < 5) {
@@ -548,6 +551,8 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
   );
   const [prepParagraphs, setPrepParagraphs] = useState<string[]>(initialPrep?.rawText ? initialPrep.rawText.split(/\n+/).filter(Boolean) : []);
   const [assessmentParagraphs, setAssessmentParagraphs] = useState<string[]>(initialAssessment?.items.map((item) => item.text) ?? []);
+  const [prepSource, setPrepSource] = useState<ExtractionSource>(initialPrep ? "manual" : "manual");
+  const [assessmentSource, setAssessmentSource] = useState<ExtractionSource>(initialAssessment ? "manual" : "manual");
 
   const allAlignmentItems = state.alignment
     ? [...state.alignment.coveredItems, ...state.alignment.uncoveredItems]
@@ -922,6 +927,8 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     setAssessmentInputText("");
     setPrepParagraphs([]);
     setAssessmentParagraphs([]);
+    setPrepSource("manual");
+    setAssessmentSource("manual");
     setErrors({
       alignment: null,
       suggestions: null,
@@ -935,21 +942,25 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
     const extracted = await extractTextFromFile(file);
     setPrepInputText(extracted.text);
     setPrepParagraphs(extracted.paragraphs);
+    setPrepSource(extracted.source ?? "fallback");
   }, []);
 
   const handleAssessmentFileUpload = useCallback(async (file: File) => {
     const extracted = await extractTextFromFile(file);
     setAssessmentInputText(extracted.text);
     setAssessmentParagraphs(extracted.paragraphs);
+    setAssessmentSource(extracted.source ?? "fallback");
   }, []);
 
   const handleLoadDocuments = useCallback(() => {
     const prepResult = buildExtractionResult(
       (prepParagraphs.length > 0 ? prepParagraphs : prepInputText.split(/\n+/)).filter(Boolean)
     );
+    prepResult.source = prepSource;
     const assessmentResult = buildExtractionResult(
       (assessmentParagraphs.length > 0 ? assessmentParagraphs : assessmentInputText.split(/\n+/)).filter(Boolean)
     );
+    assessmentResult.source = assessmentSource;
     const assessmentItems = parseAssessmentItemsFromParagraphs(assessmentResult.paragraphs);
     const prepError = validatePrepExtraction(prepResult);
     const assessmentError = validateAssessmentExtraction(assessmentResult, assessmentItems);
@@ -1078,14 +1089,32 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
         </div>
       )}
 
+      {phase !== "upload" && import.meta.env.DEV && (prepParagraphs.length > 0 || assessmentParagraphs.length > 0) && (
+        <details className="prep-detail-box" style={{ marginBottom: "1rem" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>Debug: Extracted Paragraphs</summary>
+          <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.75rem" }}>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted prep paragraphs BEFORE splitting</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(prepParagraphs, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted test paragraphs BEFORE splitting</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(assessmentParagraphs, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </details>
+      )}
+
       {phase !== "upload" && import.meta.env.DEV && alignmentDebug && (
         <details className="prep-detail-box" style={{ marginBottom: "1rem" }}>
           <summary style={{ cursor: "pointer", fontWeight: 600 }}>Debug: Alignment Pipeline</summary>
           <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.75rem" }}>
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <span className="prep-chip">Source: {alignmentDebug.alignmentSource}</span>
-              <span className="prep-chip">Review fallback: {alignmentDebug.usedReviewFallback ? "yes" : "no"}</span>
-              <span className="prep-chip">Test fallback: {alignmentDebug.usedTestFallback ? "yes" : "no"}</span>
               <span className="prep-chip">Deterministic fallback: {alignmentDebug.usedDeterministicFallback ? "yes" : "no"}</span>
             </div>
             <div>
@@ -1095,15 +1124,27 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
               </pre>
             </div>
             <div>
-              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted review concepts</h4>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Prep concepts</h4>
               <pre className="prep-code-block" style={{ margin: 0 }}>
-                {JSON.stringify(alignmentDebug.reviewConcepts, null, 2)}
+                {JSON.stringify(alignmentDebug.prepConcepts, null, 2)}
               </pre>
             </div>
             <div>
-              <h4 style={{ margin: "0 0 0.4rem 0" }}>Extracted test concepts</h4>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Test items</h4>
               <pre className="prep-code-block" style={{ margin: 0 }}>
-                {JSON.stringify(alignmentDebug.testConcepts, null, 2)}
+                {JSON.stringify(alignmentDebug.testItems, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Coverage summary</h4>
+              <pre className="prep-code-block" style={{ margin: 0 }}>
+                {JSON.stringify(alignmentDebug.coverageSummary, null, 2)}
+              </pre>
+            </div>
+            <div>
+              <h4 style={{ margin: "0 0 0.4rem 0" }}>Teacher summary</h4>
+              <pre className="prep-code-block" style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+                {alignmentDebug.teacherSummary}
               </pre>
             </div>
           </div>
@@ -1143,6 +1184,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                 onChange={(event) => {
                   setPrepInputText(event.target.value);
                   setPrepParagraphs(event.target.value.split(/\n+/).map((entry) => entry.trim()).filter(Boolean));
+                  setPrepSource("manual");
                 }}
                 rows={8}
                 placeholder="Paste prep content here if not uploading a file"
@@ -1171,6 +1213,7 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
                 onChange={(event) => {
                   setAssessmentInputText(event.target.value);
                   setAssessmentParagraphs(event.target.value.split(/\n+/).map((entry) => entry.trim()).filter(Boolean));
+                  setAssessmentSource("manual");
                 }}
                 rows={8}
                 placeholder="Paste assessment questions here (numbered if possible)"

@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { useAuth } from "../Auth/useAuth";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import type { DocumentStatus } from "../../lib/documentStatusApi";
@@ -42,11 +43,20 @@ import type {
 } from "../../types/simulator";
 import type { RewriteRequest, RewriteResponse, RewriteSuggestion } from "../../types/rewrite";
 import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
+import { extractDocxParagraphs } from "../../utils/docxExtraction";
+import {
+	containsExtractionArtifacts,
+	isMostlyPrintable,
+	looksLikeBinaryPayload,
+	normalizeParagraphs,
+} from "../../utils/ingestionTextGuards";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
-import PreparednessPage from "./PreparednessPage";
+import PreparednessPageV2 from "./preparedness_v2/PreparednessPageV2";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
 import "./v4.css";
+
+GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,6 +192,113 @@ function readFileAsText(file: File): Promise<string> {
 	});
 }
 
+function isValidExtractedText(text: string): boolean {
+	if (!text) {
+		return false;
+	}
+	if (looksLikeBinaryPayload(text) || containsExtractionArtifacts(text)) {
+		return false;
+	}
+	if (!isMostlyPrintable(text)) {
+		return false;
+	}
+	return true;
+}
+
+async function extractDocxParagraphsFromXml(buffer: ArrayBuffer): Promise<string[]> {
+	const paragraphs = await extractDocxParagraphs(buffer);
+	return normalizeParagraphs(paragraphs);
+}
+
+async function extractTextFromPreparednessFile(file: File): Promise<string> {
+	const lower = file.name.toLowerCase();
+	const isDocx =
+		lower.endsWith(".docx") ||
+		file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+	const isPdf = lower.endsWith(".pdf") || file.type === "application/pdf";
+
+	if (isDocx) {
+		const buffer = await file.arrayBuffer();
+
+		let mammothText = "";
+
+		try {
+			const mammoth = await import("mammoth");
+			const result = await (mammoth.extractRawText as unknown as (
+				input: { arrayBuffer: ArrayBuffer },
+				options?: { includeDefaultStyleMap?: boolean; preserveLineBreaks?: boolean }
+			) => Promise<{ value?: string }>)({
+				arrayBuffer: buffer,
+			}, {
+				includeDefaultStyleMap: false,
+				preserveLineBreaks: true,
+			});
+
+			mammothText = normalizeParagraphs((result.value ?? "").replace(/\r\n/g, "\n").split(/\n+/)).join("\n\n").trim();
+		} catch {
+			// Fall through to XML extraction.
+		}
+
+		if (isValidExtractedText(mammothText)) {
+			return mammothText;
+		}
+
+		try {
+			const xmlText = (await extractDocxParagraphsFromXml(buffer)).join("\n\n").trim();
+			if (isValidExtractedText(xmlText)) {
+				return xmlText;
+			}
+		} catch {
+			// handled below
+		}
+
+		throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
+	}
+
+	if (isPdf) {
+		const buffer = await file.arrayBuffer();
+		const typed = new Uint8Array(buffer);
+		const pdf = await getDocument({ data: typed }).promise;
+		const pageTexts: string[] = [];
+
+		for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
+			const page = await pdf.getPage(pageNo);
+			const textContent = await page.getTextContent();
+			const pageText = textContent.items
+				.map((item) => {
+					const token = item as { str?: string };
+					return token.str ?? "";
+				})
+				.join(" ")
+				.replace(/\s+/g, " ")
+				.trim();
+
+			if (pageText) {
+				pageTexts.push(pageText);
+			}
+		}
+
+		return normalizeParagraphs(pageTexts).join("\n\n");
+	}
+
+	if (file.type.startsWith("text/") || /\.(txt|md|rtf)$/i.test(lower)) {
+		const text = await file.text();
+		return normalizeParagraphs(text.split(/\n+/)).join("\n\n");
+	}
+
+	const decoded = new TextDecoder("utf-8", { fatal: false }).decode(await file.arrayBuffer()).trim();
+	if (looksLikeBinaryPayload(decoded) || containsExtractionArtifacts(decoded)) {
+		throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
+	}
+
+	const cleaned = normalizeParagraphs(decoded.split(/\n+/)).join("\n\n");
+	if (!isValidExtractedText(cleaned)) {
+		throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
+	}
+
+	return cleaned;
+}
+
 async function buildRewriteOriginalText(
 	files: File[],
 	originalText: string | null,
@@ -211,6 +328,19 @@ async function buildRewriteOriginalText(
 }
 
 function buildAssessmentItems(rawText: string) {
+	const blockMatches = [...rawText.matchAll(/(?:^|\n)\s*(\d{1,2})[.)]\s*([\s\S]*?)(?=(?:\n\s*\d{1,2}[.)]\s)|$)/g)];
+	if (blockMatches.length > 0) {
+		return blockMatches
+			.map((match, index) => {
+				const text = (match[2] ?? "").replace(/\s+/g, " ").trim();
+				return {
+					itemNumber: index + 1,
+					text,
+				};
+			})
+			.filter((item) => item.text.length > 0);
+	}
+
 	const lines = rawText
 		.split(/\r?\n/)
 		.map((line) => line.trim())
@@ -220,7 +350,7 @@ function buildAssessmentItems(rawText: string) {
 	let currentItem: number | null = null;
 
 	for (const line of lines) {
-		const numbered = line.match(/^(\d+)\.\s*(.*)$/);
+		const numbered = line.match(/^(\d+)[.)]\s*(.*)$/);
 		if (numbered) {
 			currentItem = Number(numbered[1]);
 			const text = numbered[2]?.trim() ?? "";
@@ -940,10 +1070,11 @@ export function TeacherStudio() {
 				headers: user?.id ? { "x-user-id": user.id } : undefined,
 			});
 			const payload = (await response.json()) as { count?: number; limit?: number };
-			if (typeof payload.count === "number") {
+			const usageCount = payload.count;
+			if (typeof usageCount === "number") {
 				setState((prev) => ({
 					...prev,
-					usageCount: payload.count,
+					usageCount,
 					usageLimit: payload.limit ?? 25_000,
 				}));
 			}
@@ -1084,8 +1215,12 @@ export function TeacherStudio() {
 					isLoading: false,
 				}));
 			} else if (state.goal === "preparedness") {
-				const prepText = (await Promise.all(state.secondaryFiles.map(readFileAsText))).join("\n\n");
-				const items = buildAssessmentItems(originalText);
+				const prepText = (await Promise.all(state.secondaryFiles.map(extractTextFromPreparednessFile))).join("\n\n").trim();
+				const assessmentText = (await Promise.all(state.primaryFiles.map(extractTextFromPreparednessFile))).join("\n\n").trim() || originalText;
+				const items = buildAssessmentItems(assessmentText);
+				if (!prepText) {
+					throw new Error("Could not extract prep text from the uploaded prep documents.");
+				}
 				if (items.length === 0) {
 					throw new Error("Could not parse assessment items from the uploaded assessment document.");
 				}
@@ -1485,96 +1620,6 @@ export function TeacherStudio() {
 										Avoid uploading files that contain student names, ID numbers, or other personal information.
 									</p>
 
-									{/* Profile multi-select chips — compare only */}
-									{state.goal === "compare" && (
-										<div>
-											<p className="v4-kicker" style={{ marginBottom: "0.6rem" }}>
-												Select 2–4 Student Profiles
-											</p>
-											<div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
-												{STUDENT_PROFILE_PRESETS.map((p) => {
-													const selected = state.selectedProfileLabels.includes(p.label);
-													return (
-														<button
-															key={p.label}
-															type="button"
-															className={`v4-button v4-button-sm${
-																selected ? "" : " v4-button-secondary"
-															}`}
-															onClick={() =>
-																setState((prev) => ({
-																	...prev,
-																	selectedProfileLabels: selected
-																		? prev.selectedProfileLabels.filter(
-																			(k) => k !== p.label,
-																		)
-																		: prev.selectedProfileLabels.length < 4
-																		? [
-																			...prev.selectedProfileLabels,
-																			p.label,
-																		]
-																		: prev.selectedProfileLabels,
-																}))
-															}
-														>
-															{selected ? "✓ " : ""}
-															{p.label}
-														</button>
-													);
-												})}
-											</div>
-											<p
-												style={{
-													fontSize: "0.8rem",
-													color: "#6b5040",
-													marginTop: "0.35rem",
-												}}
-											>
-												{state.selectedProfileLabels.length} selected
-												{state.selectedProfileLabels.length < 2 && " (need at least 2)"}
-												{state.selectedProfileLabels.length === 4 && " (maximum reached)"}
-											</p>
-										</div>
-									)}
-
-									{/* Student profile — simulate + preparedness */}
-									{state.goal !== "compare" && state.goal !== "create" && (
-										<div>
-											<label className="v4-kicker" htmlFor="ts-profile">
-												Student Profile
-											</label>
-											<select
-												id="ts-profile"
-												className="v4-item-count-input"
-												style={{
-													marginTop: "0.5rem",
-													display: "block",
-													width: "auto",
-													minWidth: "220px",
-												}}
-												value={state.selectedPreset}
-												onChange={(e) => {
-													const preset = STUDENT_PROFILE_PRESETS.find(
-														(p) => p.label === e.target.value,
-													);
-													if (preset) {
-														setState((prev) => ({
-															...prev,
-															selectedPreset: e.target.value,
-															profile: preset.profile,
-														}));
-													}
-												}}
-											>
-												{STUDENT_PROFILE_PRESETS.map((p) => (
-													<option key={p.label} value={p.label}>
-														{p.label}
-													</option>
-												))}
-											</select>
-										</div>
-									)}
-
 									{/* Question type preferences — create only */}
 									{state.goal === "create" && (
 										<div>
@@ -1744,7 +1789,7 @@ export function TeacherStudio() {
 									</div>
 
 									{state.goal === "preparedness" && state.preparednessPrep && state.preparednessAssessment ? (
-										<PreparednessPage
+										<PreparednessPageV2
 											prep={state.preparednessPrep}
 											assessment={state.preparednessAssessment}
 										/>

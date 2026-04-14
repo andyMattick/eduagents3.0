@@ -26,22 +26,59 @@ export interface PreparedenessServiceError {
 }
 
 export interface AlignmentDebugInfo {
-  reviewConcepts: Array<{
-    conceptLabel: string;
-    conceptBlurb: string;
+  prepConcepts: string[];
+  prepDifficulty: number;
+  testItems: Array<{
+    questionNumber: number;
+    questionText: string;
+    concepts: string[];
+    alignment: "covered" | "uncovered" | "misaligned";
     difficulty: number;
-    count: number;
+    explanation: string;
   }>;
-  testConcepts: Array<{
-    assessmentItemNumber: number;
-    conceptLabels: string[];
-    testDifficulty: number;
-  }>;
-  usedReviewFallback: boolean;
-  usedTestFallback: boolean;
+  coverageSummary: {
+    coveredItems: number[];
+    misalignedItems: number[];
+    uncoveredItems: number[];
+    overallAlignment: string;
+  };
+  teacherSummary: string;
   usedDeterministicFallback: boolean;
   alignmentSource: "llm" | "deterministic";
   sanitizedItemNumbers: number[];
+}
+
+export interface PreparednessReviewSnippetResult {
+  review_snippet: string;
+}
+
+export interface PreparednessRewriteQuestionResult {
+  rewritten_question: string;
+}
+
+export interface PreparednessPracticeItemResult {
+  practice_question: string;
+  answer: string;
+  explanation: string;
+}
+
+export interface PreparednessReviewPacketResult {
+  review_sections: Array<{
+    title: string;
+    explanation: string;
+    example?: string;
+  }>;
+  summary: string;
+}
+
+export interface PreparednessGeneratedTestResult {
+  test_items: Array<{
+    question_number: number;
+    question_text: string;
+    answer: string;
+    explanation: string;
+  }>;
+  test_summary: string;
 }
 
 export type AlignmentResponse = AlignmentResult & {
@@ -99,6 +136,165 @@ export async function getSuggestions(
     throw {
       message: error.error || "Failed to get suggestions",
       phase: "suggestions",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function generatePreparednessReviewSnippet(
+  questionText: string,
+  conceptList: string[]
+): Promise<PreparednessReviewSnippetResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_review_snippet",
+      questionText,
+      conceptList,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to generate review snippet",
+      phase: "v2_review_snippet",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function rewritePreparednessQuestion(
+  questionText: string,
+  teacherNotes: string
+): Promise<PreparednessRewriteQuestionResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_rewrite_question",
+      questionText,
+      teacherNotes,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to rewrite question",
+      phase: "v2_rewrite_question",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function rewritePreparednessQuestionToDifficulty(
+  questionText: string,
+  targetDifficulty: number
+): Promise<PreparednessRewriteQuestionResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_rewrite_to_difficulty",
+      questionText,
+      targetDifficulty,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to rewrite question to target difficulty",
+      phase: "v2_rewrite_to_difficulty",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function generatePreparednessPracticeItem(
+  questionText: string,
+  conceptList: string[]
+): Promise<PreparednessPracticeItemResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_practice_item",
+      questionText,
+      conceptList,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to generate practice item",
+      phase: "v2_practice_item",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function generatePreparednessReviewPacket(
+  testItems: Array<{
+    question_number: number;
+    question_text: string;
+    concepts?: string[];
+    alignment?: "covered" | "uncovered" | "misaligned";
+    difficulty?: number;
+    explanation?: string;
+  }>
+): Promise<PreparednessReviewPacketResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_generate_review",
+      testItems,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to generate review packet",
+      phase: "v2_generate_review",
+      raw: error,
+    } as PreparedenessServiceError;
+  }
+
+  return response.json();
+}
+
+export async function generatePreparednessTestFromReview(
+  reviewConcepts: Array<{ title: string; explanation?: string; example?: string } | string>
+): Promise<PreparednessGeneratedTestResult> {
+  const response = await fetch("/api/v4/preparedness", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      phase: "v2_generate_test",
+      reviewConcepts,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw {
+      message: error.error || "Failed to generate test",
+      phase: "v2_generate_test",
       raw: error,
     } as PreparedenessServiceError;
   }

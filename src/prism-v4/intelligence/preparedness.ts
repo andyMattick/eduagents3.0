@@ -27,6 +27,15 @@ import {
   type PrepDocument,
   type Suggestion,
 } from "../schema/domain/Preparedness";
+import {
+  renderPreparednessGenerateReviewPrompt,
+  renderPreparednessGenerateTestPrompt,
+  renderPreparednessPracticePrompt,
+  renderPreparednessReviewSnippetPrompt,
+  renderPreparednessRewriteToDifficultyPrompt,
+  renderPreparednessRewritePrompt,
+  renderPreparednessV2AlignmentPrompt,
+} from "./preparednessPrompts";
 
 export type LLMCaller = (
   prompt: string,
@@ -35,70 +44,6 @@ export type LLMCaller = (
     maxOutputTokens?: number;
   }
 ) => Promise<string>;
-
-const REVIEW_CONCEPT_EXTRACTION_PROMPT_TEMPLATE = `You are a concept extraction engine. Extract all instructional concepts taught in REVIEW_TEXT.
-
-For each concept, return:
-- conceptLabel: short snake_case identifier
-- conceptBlurb: 1-2 sentence explanation
-- difficulty: 1-5 scale
-- count: number of occurrences in the review
-
-OUTPUT (JSON only):
-{
-  "reviewConcepts": [
-    {
-      "conceptLabel": "ci_mean_t_interval",
-      "conceptBlurb": "Short explanation...",
-      "difficulty": 3,
-      "count": 2
-    }
-  ]
-}`;
-
-const TEST_CONCEPT_EXTRACTION_PROMPT_TEMPLATE = `You are a concept extraction engine. Extract instructional concepts assessed in ASSESSMENT_ITEMS.
-
-For each question, return:
-- assessmentItemNumber
-- conceptLabels: array of short snake_case identifiers
-- testDifficulty: 1-5 scale
-
-OUTPUT (JSON only):
-{
-  "testConcepts": [
-    {
-      "assessmentItemNumber": 1,
-      "conceptLabels": ["ci_mean_t_interval"],
-      "testDifficulty": 3
-    }
-  ]
-}`;
-
-const LIGHTWEIGHT_ALIGNMENT_PROMPT_TEMPLATE = `You are an instructional alignment engine. Compare TEST_CONCEPTS to REVIEW_CONCEPTS.
-
-For each test item:
-- If all conceptLabels appear in REVIEW_CONCEPTS -> covered
-- If any conceptLabel is missing -> uncovered
-
-For covered items:
-- concepts: { conceptLabel: reviewConcept.count }
-- prepDifficulty: average difficulty of matching review concepts
-- testDifficulty: from TEST_CONCEPTS
-- alignment:
-    "aligned" (testDifficulty <= prepDifficulty)
-    "slightly_above" (testDifficulty = prepDifficulty + 1)
-    "misaligned_above" (testDifficulty >= prepDifficulty + 2)
-
-For uncovered items:
-- concepts = {}
-- prepDifficulty = 0
-- alignment = "missing_in_prep"
-
-OUTPUT (JSON only):
-{
-  "coveredItems": [...],
-  "uncoveredItems": [...]
-}`;
 
 const REWRITE_PROMPT_TEMPLATE = `You are an assessment rewriting engine. Rewrite the test according to TEACHER_DECISIONS, TEACHER_SUGGESTIONS, and ALIGNMENT_OVERRIDES.
 
@@ -174,13 +119,48 @@ type TestConcept = {
 };
 
 type AlignmentDebugInfo = {
-  reviewConcepts: ReviewConcept[];
-  testConcepts: TestConcept[];
-  usedReviewFallback: boolean;
-  usedTestFallback: boolean;
+  prepConcepts: string[];
+  prepDifficulty: number;
+  testItems: Array<{
+    questionNumber: number;
+    questionText: string;
+    concepts: string[];
+    alignment: "covered" | "uncovered" | "misaligned";
+    difficulty: number;
+    explanation: string;
+  }>;
+  coverageSummary: {
+    coveredItems: number[];
+    misalignedItems: number[];
+    uncoveredItems: number[];
+    overallAlignment: string;
+  };
+  teacherSummary: string;
   usedDeterministicFallback: boolean;
   alignmentSource: "llm" | "deterministic";
   sanitizedItemNumbers: number[];
+};
+
+type SingleCallAlignmentItem = {
+  questionNumber: number;
+  questionText: string;
+  concepts: string[];
+  alignment: "covered" | "uncovered" | "misaligned";
+  difficulty: number;
+  explanation: string;
+};
+
+type SingleCallAlignmentResponse = {
+  prepConcepts: string[];
+  prepDifficulty: number;
+  testItems: SingleCallAlignmentItem[];
+  coverageSummary: {
+    coveredItems: number[];
+    misalignedItems: number[];
+    uncoveredItems: number[];
+    overallAlignment: string;
+  };
+  teacherSummary: string;
 };
 
 type ConceptRule = {
@@ -559,6 +539,128 @@ function normalizeTestConcepts(raw: unknown): TestConcept[] {
     : [];
 }
 
+function normalizeSingleCallAlignmentResponse(raw: unknown, assessment: AssessmentDocument): SingleCallAlignmentResponse {
+  const obj = raw as Record<string, unknown>;
+  const prepConcepts = Array.isArray(obj.prep_concepts)
+    ? obj.prep_concepts.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  const prepDifficultyRaw = Number(obj.prep_difficulty ?? 1);
+  const prepDifficulty = Math.min(5, Math.max(1, Number.isFinite(prepDifficultyRaw) ? prepDifficultyRaw : 1));
+
+  const testItems = Array.isArray(obj.test_items)
+    ? obj.test_items.map((entry, index) => {
+        const item = entry as Record<string, unknown>;
+        const questionNumberRaw = Number(item.question_number ?? assessment.items[index]?.itemNumber ?? index + 1);
+        const alignmentRaw = String(item.alignment ?? "uncovered").trim().toLowerCase();
+        const alignment = alignmentRaw === "covered" || alignmentRaw === "misaligned" || alignmentRaw === "uncovered"
+          ? alignmentRaw
+          : "uncovered";
+        return {
+          questionNumber: Number.isFinite(questionNumberRaw) && questionNumberRaw > 0 ? questionNumberRaw : index + 1,
+          questionText: String(item.question_text ?? assessment.items[index]?.text ?? "").trim(),
+          concepts: Array.isArray(item.concepts)
+            ? item.concepts.map((value) => String(value).trim()).filter(Boolean)
+            : [],
+          alignment,
+          difficulty: Math.min(5, Math.max(1, Number(item.difficulty ?? 1))),
+          explanation: String(item.explanation ?? "").trim(),
+        } satisfies SingleCallAlignmentItem;
+      })
+    : [];
+
+  const coverageSummaryRaw = (obj.coverage_summary ?? {}) as Record<string, unknown>;
+  const coverageSummary = {
+    coveredItems: Array.isArray(coverageSummaryRaw.covered_items)
+      ? coverageSummaryRaw.covered_items.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+      : [],
+    misalignedItems: Array.isArray(coverageSummaryRaw.misaligned_items)
+      ? coverageSummaryRaw.misaligned_items.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+      : [],
+    uncoveredItems: Array.isArray(coverageSummaryRaw.uncovered_items)
+      ? coverageSummaryRaw.uncovered_items.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+      : [],
+    overallAlignment: String(coverageSummaryRaw.overall_alignment ?? "").trim(),
+  };
+
+  return {
+    prepConcepts,
+    prepDifficulty,
+    testItems,
+    coverageSummary,
+    teacherSummary: String(obj.teacher_summary ?? "").trim(),
+  };
+}
+
+function fallbackSingleCallAlignment(assessment: AssessmentDocument): SingleCallAlignmentResponse {
+  return {
+    prepConcepts: [],
+    prepDifficulty: 1,
+    testItems: assessment.items.map((item) => ({
+      questionNumber: item.itemNumber,
+      questionText: item.text,
+      concepts: [],
+      alignment: "uncovered",
+      difficulty: 1,
+      explanation: "Preparedness analysis could not classify this item.",
+    })),
+    coverageSummary: {
+      coveredItems: [],
+      misalignedItems: [],
+      uncoveredItems: assessment.items.map((item) => item.itemNumber),
+      overallAlignment: "Preparedness analysis could not be completed from the model response.",
+    },
+    teacherSummary: "Preparedness analysis could not be completed from the model response.",
+  };
+}
+
+function mapSingleCallToAlignmentResult(payload: SingleCallAlignmentResponse, assessment: AssessmentDocument): AlignmentResult {
+  const itemMap = new Map(payload.testItems.map((item) => [item.questionNumber, item]));
+  const coveredFromSummary = new Set(payload.coverageSummary.coveredItems);
+  const misalignedFromSummary = new Set(payload.coverageSummary.misalignedItems);
+  const uncoveredFromSummary = new Set(payload.coverageSummary.uncoveredItems);
+  const coveredItems: AlignmentRecord[] = [];
+  const uncoveredItems: AlignmentRecord[] = [];
+
+  for (const assessmentItem of assessment.items) {
+    const payloadItem = itemMap.get(assessmentItem.itemNumber);
+    const concepts = (payloadItem?.concepts ?? []).map((concept) => ({
+      label: concept,
+      count: 1,
+      difficulties: payloadItem ? [payloadItem.difficulty] : [],
+    }));
+    const difficulty = payloadItem?.difficulty ?? 1;
+    const alignment = payloadItem?.alignment
+      ?? (misalignedFromSummary.has(assessmentItem.itemNumber)
+        ? "misaligned"
+        : coveredFromSummary.has(assessmentItem.itemNumber)
+        ? "covered"
+        : uncoveredFromSummary.has(assessmentItem.itemNumber)
+        ? "uncovered"
+        : "uncovered");
+
+    if (alignment === "covered" || alignment === "misaligned") {
+      coveredItems.push({
+        assessmentItemNumber: assessmentItem.itemNumber,
+        concepts,
+        difficulty,
+        prepDifficulty: payload.prepDifficulty,
+        alignment: alignment === "misaligned" ? "misaligned_above" : "aligned",
+      });
+      continue;
+    }
+
+    uncoveredItems.push({
+      assessmentItemNumber: assessmentItem.itemNumber,
+      concepts,
+      difficulty,
+      prepDifficulty: 0,
+      alignment: "missing_in_prep",
+    });
+  }
+
+  return { coveredItems, uncoveredItems };
+}
+
 function countMatches(text: string, pattern: RegExp): number {
   const matches = text.match(new RegExp(pattern.source, `${pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`}`));
   return matches?.length ?? 0;
@@ -810,58 +912,39 @@ export async function getAlignment(
   assessment: AssessmentDocument,
   callLLM: LLMCaller
 ): Promise<AlignmentResult> {
-  const assessmentItems = assessment.items.map((item, idx) => ({
-    assessmentItemNumber: idx + 1,
-    text: item.text,
-  }));
+  const assessmentText = assessment.items
+    .map((item) => `${item.itemNumber}. ${item.text}`)
+    .join("\n\n");
+  const prompt = renderPreparednessV2AlignmentPrompt(prep.rawText, assessmentText);
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 4096, temperature: 0.2 }));
 
-  const reviewConceptPrompt = `${REVIEW_CONCEPT_EXTRACTION_PROMPT_TEMPLATE}\n\nREVIEW_TEXT:\n${prep.rawText}`;
-  const reviewRaw = await withRetry429(() => callLLM(reviewConceptPrompt, { maxOutputTokens: 2048 }));
-  const reviewParsed = parseJsonWithRepair<Record<string, unknown>>(reviewRaw);
-  const modelReviewConcepts = normalizeReviewConcepts(reviewParsed);
-  const reviewConcepts = modelReviewConcepts.length > 0 ? modelReviewConcepts : extractReviewConceptsHeuristic(prep.rawText);
-  const usedReviewFallback = modelReviewConcepts.length === 0;
-
-  const testConceptPrompt = `${TEST_CONCEPT_EXTRACTION_PROMPT_TEMPLATE}\n\nASSESSMENT_ITEMS:\n${JSON.stringify(assessmentItems, null, 2)}`;
-  const testRaw = await withRetry429(() => callLLM(testConceptPrompt, { maxOutputTokens: 2048 }));
-  const testParsed = parseJsonWithRepair<Record<string, unknown>>(testRaw);
-  const modelTestConcepts = normalizeTestConcepts(testParsed);
-  const testConcepts = sanitizeTestConcepts(modelTestConcepts, assessment);
-  const usedTestFallback = modelTestConcepts.length === 0 || modelTestConcepts.length !== testConcepts.length;
-  const sanitizedItemNumbers = testConcepts.map((item) => item.assessmentItemNumber).sort((a, b) => a - b);
-
-  const alignmentPrompt = `${LIGHTWEIGHT_ALIGNMENT_PROMPT_TEMPLATE}\n\nREVIEW_CONCEPTS:\n${JSON.stringify(reviewConcepts, null, 2)}\n\nTEST_CONCEPTS:\n${JSON.stringify(testConcepts, null, 2)}`;
-  const alignmentRaw = await withRetry429(() => callLLM(alignmentPrompt, { maxOutputTokens: 2048 }));
-  const alignmentParsed = parseJsonWithRepair<Record<string, unknown>>(alignmentRaw);
-  const normalized = normalizeAlignmentResult(alignmentParsed);
-  const modelTotal = normalized.coveredItems.length + normalized.uncoveredItems.length;
-  const expectedTotal = testConcepts.length;
-
-  const baseDebug: AlignmentDebugInfo = {
-    reviewConcepts,
-    testConcepts,
-    usedReviewFallback,
-    usedTestFallback,
-    usedDeterministicFallback: false,
-    alignmentSource: "llm",
-    sanitizedItemNumbers,
-  };
-
-  if (modelTotal === expectedTotal && expectedTotal > 0) {
-    return {
-      ...normalized,
-      debug: baseDebug,
-    } as AlignmentResult;
+  let parsed = fallbackSingleCallAlignment(assessment);
+  let usedDeterministicFallback = false;
+  try {
+    parsed = normalizeSingleCallAlignmentResponse(parseJsonWithRepair<Record<string, unknown>>(raw), assessment);
+    if (parsed.testItems.length === 0) {
+      parsed = fallbackSingleCallAlignment(assessment);
+      usedDeterministicFallback = true;
+    }
+  } catch {
+    parsed = fallbackSingleCallAlignment(assessment);
+    usedDeterministicFallback = true;
   }
 
-  // Deterministic fallback when LLM alignment output is empty or malformed.
-  const deterministic = computeAlignmentLocally(reviewConcepts, testConcepts);
+  const normalized = mapSingleCallToAlignmentResult(parsed, assessment);
+  const sanitizedItemNumbers = parsed.testItems.map((item) => item.questionNumber).sort((a, b) => a - b);
+
   return {
-    ...deterministic,
+    ...normalized,
     debug: {
-      ...baseDebug,
-      usedDeterministicFallback: true,
-      alignmentSource: "deterministic",
+      prepConcepts: parsed.prepConcepts,
+      prepDifficulty: parsed.prepDifficulty,
+      testItems: parsed.testItems,
+      coverageSummary: parsed.coverageSummary,
+      teacherSummary: parsed.teacherSummary,
+      usedDeterministicFallback,
+      alignmentSource: usedDeterministicFallback ? "deterministic" : "llm",
+      sanitizedItemNumbers,
     },
   } as AlignmentResult;
 }
@@ -874,6 +957,108 @@ export async function getSuggestions(
     issue: "missing_in_prep" as const,
     suggestionType: "add_prep_support" as const,
   }));
+}
+
+export async function generatePreparednessReviewSnippet(
+  questionText: string,
+  concepts: string[],
+  callLLM: LLMCaller
+): Promise<{ review_snippet: string }> {
+  const prompt = renderPreparednessReviewSnippetPrompt(questionText, concepts.join(", "));
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 1024, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+  return {
+    review_snippet: String(parsed.review_snippet ?? "").trim(),
+  };
+}
+
+export async function rewritePreparednessQuestion(
+  questionText: string,
+  teacherNotes: string,
+  callLLM: LLMCaller
+): Promise<{ rewritten_question: string }> {
+  const prompt = renderPreparednessRewritePrompt(questionText, teacherNotes);
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 1024, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+  return {
+    rewritten_question: String(parsed.rewritten_question ?? "").trim(),
+  };
+}
+
+export async function rewritePreparednessQuestionToDifficulty(
+  questionText: string,
+  targetDifficulty: number,
+  callLLM: LLMCaller
+): Promise<{ rewritten_question: string }> {
+  const prompt = renderPreparednessRewriteToDifficultyPrompt(questionText, targetDifficulty);
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 1024, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+  return {
+    rewritten_question: String(parsed.rewritten_question ?? "").trim(),
+  };
+}
+
+export async function generatePreparednessPracticeItem(
+  questionText: string,
+  concepts: string[],
+  callLLM: LLMCaller
+): Promise<{ practice_question: string; answer: string; explanation: string }> {
+  const prompt = renderPreparednessPracticePrompt(questionText, concepts.join(", "));
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 1536, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+  return {
+    practice_question: String(parsed.practice_question ?? "").trim(),
+    answer: String(parsed.answer ?? "").trim(),
+    explanation: String(parsed.explanation ?? "").trim(),
+  };
+}
+
+export async function generatePreparednessReviewPacket(
+  testItems: Array<{ question_number: number; question_text: string; concepts?: string[]; covered?: boolean; difficulty?: number; explanation?: string }>,
+  callLLM: LLMCaller
+): Promise<{ review_sections: Array<{ title: string; explanation: string; example?: string }>; summary: string }> {
+  const prompt = renderPreparednessGenerateReviewPrompt(JSON.stringify(testItems, null, 2));
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 3072, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+
+  return {
+    review_sections: Array.isArray(parsed.review_sections)
+      ? parsed.review_sections.map((entry) => {
+          const section = entry as Record<string, unknown>;
+          return {
+            title: String(section.title ?? "").trim(),
+            explanation: String(section.explanation ?? "").trim(),
+            example: String(section.example ?? "").trim() || undefined,
+          };
+        }).filter((section) => section.title && section.explanation)
+      : [],
+    summary: String(parsed.summary ?? "").trim(),
+  };
+}
+
+export async function generatePreparednessTestFromReview(
+  reviewConcepts: Array<{ title: string; explanation?: string; example?: string } | string>,
+  callLLM: LLMCaller
+): Promise<{ test_items: Array<{ question_number: number; question_text: string; answer: string; explanation: string }>; test_summary: string }> {
+  const prompt = renderPreparednessGenerateTestPrompt(JSON.stringify(reviewConcepts, null, 2));
+  const raw = await withRetry429(() => callLLM(prompt, { maxOutputTokens: 3072, temperature: 0.2 }));
+  const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+
+  return {
+    test_items: Array.isArray(parsed.test_items)
+      ? parsed.test_items.map((entry, index) => {
+          const item = entry as Record<string, unknown>;
+          const number = Number(item.question_number ?? index + 1);
+          return {
+            question_number: Number.isFinite(number) && number > 0 ? number : index + 1,
+            question_text: String(item.question_text ?? "").trim(),
+            answer: String(item.answer ?? "").trim(),
+            explanation: String(item.explanation ?? "").trim(),
+          };
+        }).filter((item) => item.question_text)
+      : [],
+    test_summary: String(parsed.test_summary ?? "").trim(),
+  };
 }
 
 export async function applySuggestions(

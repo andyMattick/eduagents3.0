@@ -11,7 +11,6 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { CreateDocumentFlow } from './components_new/v4/CreateDocumentFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudio } from './components_new/v4/TeacherStudio';
-import PreparednessPage from './components_new/v4/PreparednessPage';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
@@ -86,7 +85,7 @@ function TeacherAppContent() {
           : pathname === '/sim'
           ? <CreateDocumentFlow />
           : pathname === '/preparedness'
-          ? <PreparednessPage />
+          ? <TeacherStudio />
           : <TeacherStudio />}
       </main>
     </div>

@@ -43,3 +43,17 @@ export type {
   CorrectedPreparednessResult,
   PreparednessReportResult,
 } from "./PreparednessReport";
+
+export type {
+  PreparednessAlignmentV2,
+  PreparednessTestItemV2,
+  PreparednessCoverageSummaryV2,
+  PreparednessReviewSnippetV2,
+  PreparednessRewriteQuestionV2,
+  PreparednessRewriteToDifficultyV2,
+  PreparednessPracticeItemV2,
+  PreparednessGeneratedReviewV2,
+  PreparednessReviewSectionV2,
+  PreparednessGeneratedTestV2,
+  PreparednessGeneratedTestItemV2,
+} from "./PreparednessV2";

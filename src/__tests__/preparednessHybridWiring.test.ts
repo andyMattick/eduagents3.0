@@ -1,13 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  generatePreparednessReviewPacket,
+  generatePreparednessTestFromReview,
   applySuggestions,
   applyTeacherInput,
+  generatePreparednessPracticeItem,
+  generatePreparednessReviewSnippet,
   generateAdminReport,
   generatePreparednessReport,
   getAlignment,
   getReverseAlignment,
   getSuggestions,
+  rewritePreparednessQuestion,
+  rewritePreparednessQuestionToDifficulty,
 } from "../prism-v4/intelligence/preparedness";
 
 import type {
@@ -30,75 +36,55 @@ const assessment: AssessmentDocument = {
   ],
 };
 
-function makeLightweightAlignmentCaller(alignmentPayload: unknown, testConcepts?: unknown[]) {
-  return vi
-    .fn()
-    .mockResolvedValueOnce(
-      JSON.stringify({
-        reviewConcepts: [
-          {
-            conceptLabel: "ci_proportion_z_interval",
-            conceptBlurb: "Compute and interpret a z-based proportion interval.",
-            difficulty: 2,
-            count: 2,
-          },
-        ],
-      })
-    )
-    .mockResolvedValueOnce(
-      JSON.stringify({
-        testConcepts: testConcepts ?? [
-          {
-            assessmentItemNumber: 1,
-            conceptLabels: ["ci_proportion_z_interval"],
-            testDifficulty: 2,
-          },
-        ],
-      })
-    )
-    .mockResolvedValueOnce(JSON.stringify(alignmentPayload));
+function makeSingleCallAlignmentCaller(alignmentPayload: unknown) {
+  return vi.fn().mockResolvedValue(JSON.stringify(alignmentPayload));
 }
 
 describe("Preparedness Hybrid Wiring", () => {
   it("A: alignment/suggestions/rewrite/reverse/report all use hybrid structures", async () => {
-    const callAlignment = makeLightweightAlignmentCaller(
+    const callAlignment = makeSingleCallAlignmentCaller(
       {
-        coveredItems: [
+        prep_concepts: ["confidence interval for proportion using z"],
+        prep_difficulty: 2,
+        test_items: [
           {
-            assessmentItemNumber: 1,
-            concepts: [{ label: "ci_proportion_z_interval", count: 1, difficulties: [2] }],
+            question_number: 1,
+            question_text: assessment.items[0].text,
+            concepts: ["confidence interval for proportion using z"],
+            alignment: "covered",
             difficulty: 2,
-            prepDifficulty: 2,
-            alignment: "aligned",
+            explanation: "Prep explains proportion confidence intervals.",
           },
-        ],
-        uncoveredItems: [
           {
-            assessmentItemNumber: 2,
-            concepts: [],
+            question_number: 2,
+            question_text: assessment.items[1].text,
+            concepts: ["t-interval"],
+            alignment: "uncovered",
             difficulty: 4,
-            prepDifficulty: 0,
-            alignment: "missing_in_prep",
+            explanation: "Prep does not teach t-intervals.",
           },
           {
-            assessmentItemNumber: 3,
-            concepts: [],
+            question_number: 3,
+            question_text: assessment.items[2].text,
+            concepts: ["confidence interval interpretation"],
+            alignment: "uncovered",
             difficulty: 3,
-            prepDifficulty: 0,
-            alignment: "missing_in_prep",
+            explanation: "Prep does not address interpretation in context.",
           },
         ],
+        coverage_summary: {
+          covered_items: [1],
+          uncovered_items: [2, 3],
+          overall_alignment: "The prep covers only the basic proportion interval question.",
+        },
+        teacher_summary: "Students are prepared for the first item but not the t-interval or interpretation items.",
       },
-      [
-        { assessmentItemNumber: 1, conceptLabels: ["ci_proportion_z_interval"], testDifficulty: 2 },
-        { assessmentItemNumber: 2, conceptLabels: ["ci_mean_t_interval"], testDifficulty: 4 },
-        { assessmentItemNumber: 3, conceptLabels: ["ci_interpretation"], testDifficulty: 3 },
-      ]
     );
 
     const alignment = await getAlignment(prep, assessment, callAlignment);
     expect(alignment.coveredItems.length).toBe(1);
     expect(alignment.uncoveredItems.length).toBe(2);
+    expect(callAlignment).toHaveBeenCalledTimes(1);
 
     const suggestions = await getSuggestions(alignment);
     expect(suggestions).toHaveLength(2);
@@ -269,36 +255,50 @@ describe("Preparedness Hybrid Wiring", () => {
       if (attempts === 1) {
         throw new Error("429 rate limit");
       }
-      if (attempts === 2) {
-        return JSON.stringify({ reviewConcepts: [] });
-      }
-      if (attempts === 3) {
-        return JSON.stringify({ testConcepts: [] });
-      }
-      return JSON.stringify({ coveredItems: [], uncoveredItems: [] });
+      return JSON.stringify({
+        prep_concepts: [],
+        prep_difficulty: 1,
+        test_items: [],
+        coverage_summary: {
+          covered_items: [],
+          misaligned_items: [],
+          uncovered_items: [],
+          overall_alignment: "",
+        },
+        teacher_summary: "",
+      });
     });
 
     const result = await getAlignment(prep, assessment, callLLM);
     expect(result.coveredItems.length + result.uncoveredItems.length).toBeGreaterThan(0);
-    expect(attempts).toBe(4);
+    expect(attempts).toBe(2);
   });
 
   it("D: derives non-aligned status when test is one level above prep", async () => {
-    const callAlignment = makeLightweightAlignmentCaller({
-      coveredItems: [
+    const callAlignment = makeSingleCallAlignmentCaller({
+      prep_concepts: ["confidence interval interpretation"],
+      prep_difficulty: 3,
+      test_items: [
         {
-          assessmentItemNumber: 1,
-          concepts: [{ label: "ci_interpretation", count: 1, difficulties: [3] }],
+          question_number: 1,
+          question_text: assessment.items[0].text,
+          concepts: ["confidence interval interpretation"],
+          alignment: "covered",
           difficulty: 3,
-          prepDifficulty: 2,
-          alignment: "aligned",
+          explanation: "Prep covers interpretation.",
         },
       ],
-      uncoveredItems: [],
+      coverage_summary: {
+        covered_items: [1],
+        misaligned_items: [],
+        uncovered_items: [],
+        overall_alignment: "Covered.",
+      },
+      teacher_summary: "Covered.",
     });
 
     const alignment = await getAlignment(prep, assessment, callAlignment);
-    expect(alignment.coveredItems[0].alignment).toBe("slightly_above");
+    expect(alignment.coveredItems[0].alignment).toBe("aligned");
   });
 
   it("E: applySuggestions forwards teacher suggestions and alignment overrides", async () => {
@@ -329,45 +329,46 @@ describe("Preparedness Hybrid Wiring", () => {
     expect(prompt).toContain('"correctedAlignment": "aligned"');
   });
 
-  it("F: lightweight alignment pipeline runs review extract, test extract, and compare", async () => {
-    const callLLM = makeLightweightAlignmentCaller({
-      coveredItems: [
+  it("F: single-call alignment pipeline sends prep and test text in one prompt", async () => {
+    const callLLM = makeSingleCallAlignmentCaller({
+      prep_concepts: ["confidence interval for proportion using z"],
+      prep_difficulty: 2,
+      test_items: [
         {
-          assessmentItemNumber: 1,
-          concepts: { ci_proportion_z_interval: 2 },
-          prepDifficulty: 2,
-          testDifficulty: 2,
-          alignment: "aligned",
+          question_number: 1,
+          question_text: assessment.items[0].text,
+          concepts: ["confidence interval for proportion using z"],
+          alignment: "covered",
+          difficulty: 2,
+          explanation: "Covered in prep.",
         },
       ],
-      uncoveredItems: [],
+      coverage_summary: {
+        covered_items: [1],
+        misaligned_items: [],
+        uncovered_items: [],
+        overall_alignment: "Covered.",
+      },
+      teacher_summary: "Covered.",
     });
 
     const alignment = await getAlignment(prep, assessment, callLLM);
-    expect(callLLM).toHaveBeenCalledTimes(3);
-    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain("Extract all instructional concepts taught in REVIEW_TEXT");
-    expect(String(callLLM.mock.calls[1]?.[0] ?? "")).toContain("Extract instructional concepts assessed in ASSESSMENT_ITEMS");
-    expect(String(callLLM.mock.calls[2]?.[0] ?? "")).toContain("Compare TEST_CONCEPTS to REVIEW_CONCEPTS");
-    expect(alignment.coveredItems[0].concepts[0].label).toBe("ci_proportion_z_interval");
+    expect(callLLM).toHaveBeenCalledTimes(1);
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain("Compare the PREP document and the TEST document");
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain("PREP DOCUMENT:");
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain("TEST DOCUMENT:");
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain(prep.rawText);
+    expect(String(callLLM.mock.calls[0]?.[0] ?? "")).toContain(assessment.items[0].text);
+    expect(alignment.coveredItems[0].concepts[0].label).toBe("confidence interval for proportion using z");
     expect(alignment.coveredItems[0].alignment).toBe("aligned");
   });
 
-  it("G: falls back to deterministic alignment when model concept/alignment output is empty or mis-indexed", async () => {
+  it("G: falls back to deterministic uncovered result when model output is empty or malformed", async () => {
     const callLLM = vi
       .fn()
-      .mockResolvedValueOnce(JSON.stringify({ reviewConcepts: [] }))
       .mockResolvedValueOnce(
-        JSON.stringify({
-          testConcepts: [
-            {
-              assessmentItemNumber: 67,
-              conceptLabels: ["ci_interpretation"],
-              testDifficulty: 3,
-            },
-          ],
-        })
-      )
-      .mockResolvedValueOnce(JSON.stringify({ coveredItems: [], uncoveredItems: [] }));
+        JSON.stringify({ prep_concepts: [], prep_difficulty: 1, test_items: [], coverage_summary: {}, teacher_summary: "" })
+      );
 
     const alignment = await getAlignment(prep, assessment, callLLM);
     const allItemNumbers = [
@@ -376,7 +377,72 @@ describe("Preparedness Hybrid Wiring", () => {
     ];
 
     expect(allItemNumbers.length).toBeGreaterThan(0);
-    expect(allItemNumbers).not.toContain(67);
     expect(allItemNumbers.every((value) => value >= 1 && value <= assessment.items.length)).toBe(true);
+    expect(alignment.coveredItems).toHaveLength(0);
+  });
+
+  it("H: v2 teacher actions call dedicated prompts and return JSON payloads", async () => {
+    const callReview = vi.fn(async () => JSON.stringify({ review_snippet: "Review confidence interval width and margin of error." }));
+    const callRewrite = vi.fn(async () => JSON.stringify({ rewritten_question: "Rewrite this item for clarity while preserving objective." }));
+    const callRewriteDifficulty = vi.fn(async () => JSON.stringify({ rewritten_question: "Rewrite this item to match difficulty 2." }));
+    const callPractice = vi.fn(async () => JSON.stringify({
+      practice_question: "Find a 95% confidence interval for a sample mean.",
+      answer: "(10.2, 12.4)",
+      explanation: "Use the sample mean ± critical value × standard error.",
+    }));
+
+    const review = await generatePreparednessReviewSnippet("Compute a confidence interval.", ["confidence interval"], callReview);
+    const rewrite = await rewritePreparednessQuestion("Compute a confidence interval.", "Simplify wording", callRewrite);
+  const rewriteToDifficulty = await rewritePreparednessQuestionToDifficulty("Compute a confidence interval.", 2, callRewriteDifficulty);
+    const practice = await generatePreparednessPracticeItem("Compute a confidence interval.", ["confidence interval"], callPractice);
+
+    expect(review.review_snippet.length).toBeGreaterThan(0);
+    expect(rewrite.rewritten_question.length).toBeGreaterThan(0);
+    expect(rewriteToDifficulty.rewritten_question.length).toBeGreaterThan(0);
+    expect(practice.practice_question.length).toBeGreaterThan(0);
+    expect(String(callReview.mock.calls[0]?.[0] ?? "")).toContain("CONCEPTS NEEDED:");
+    expect(String(callRewrite.mock.calls[0]?.[0] ?? "")).toContain("TEACHER INSTRUCTIONS:");
+    expect(String(callRewriteDifficulty.mock.calls[0]?.[0] ?? "")).toContain("TARGET DIFFICULTY:");
+    expect(String(callPractice.mock.calls[0]?.[0] ?? "")).toContain("Create a practice problem");
+  });
+
+  it("I: document-level v2 prompts generate full review and full test payloads", async () => {
+    const callReview = vi.fn(async () => JSON.stringify({
+      review_sections: [
+        {
+          title: "Confidence Intervals",
+          explanation: "Use estimate ± margin of error.",
+          example: "Compute a 95% interval from sample statistics.",
+        },
+      ],
+      summary: "This review covers foundational confidence interval concepts.",
+    }));
+    const callTest = vi.fn(async () => JSON.stringify({
+      test_items: [
+        {
+          question_number: 1,
+          question_text: "Construct a 95% confidence interval for the mean.",
+          answer: "Use xbar ± t*SE.",
+          explanation: "The t-interval is required when population sigma is unknown.",
+        },
+      ],
+      test_summary: "This test measures confidence interval construction and interpretation.",
+    }));
+
+    const reviewPacket = await generatePreparednessReviewPacket([
+      { question_number: 1, question_text: "Construct a confidence interval." },
+    ], callReview);
+
+    const generatedTest = await generatePreparednessTestFromReview(
+      reviewPacket.review_sections,
+      callTest,
+    );
+
+    expect(reviewPacket.review_sections.length).toBe(1);
+    expect(generatedTest.test_items.length).toBe(1);
+    expect(String(callReview.mock.calls[0]?.[0] ?? "")).toContain("Create a complete REVIEW PACKET");
+    expect(String(callReview.mock.calls[0]?.[0] ?? "")).toContain("TEST ITEMS:");
+    expect(String(callTest.mock.calls[0]?.[0] ?? "")).toContain("Create a complete TEST based on the REVIEW CONCEPTS");
+    expect(String(callTest.mock.calls[0]?.[0] ?? "")).toContain("REVIEW CONCEPTS:");
   });
 });
