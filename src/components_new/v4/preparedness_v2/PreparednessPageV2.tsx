@@ -28,6 +28,65 @@ interface PreparednessPageV2Props {
   assessment: AssessmentDocument;
 }
 
+type AlignmentCandidate = Partial<AlignmentResponse> & {
+  alignment?: Partial<AlignmentResponse> | null;
+  alignmentResults?: Partial<AlignmentResponse> | null;
+  preparedness?: (Partial<AlignmentResponse> & {
+    alignment?: Partial<AlignmentResponse> | null;
+    alignmentResults?: Partial<AlignmentResponse> | null;
+  }) | null;
+};
+
+function normalizeAlignmentResponse(payload: unknown): AlignmentResponse | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const candidate = payload as AlignmentCandidate;
+  const nestedPreparedness = candidate.preparedness ?? null;
+  const base = candidate.alignment
+    ?? candidate.alignmentResults
+    ?? nestedPreparedness?.alignment
+    ?? nestedPreparedness?.alignmentResults
+    ?? nestedPreparedness
+    ?? candidate;
+
+  if (!base || typeof base !== "object") {
+    return null;
+  }
+
+  const normalizedBase = base as Partial<AlignmentResponse>;
+  const coveredItems = Array.isArray(normalizedBase.coveredItems) ? normalizedBase.coveredItems : [];
+  const uncoveredItems = Array.isArray(normalizedBase.uncoveredItems) ? normalizedBase.uncoveredItems : [];
+  const debug = normalizedBase.debug ?? candidate.debug ?? nestedPreparedness?.debug;
+
+  if (!coveredItems.length && !uncoveredItems.length && !debug?.testItems?.length) {
+    return null;
+  }
+
+  return {
+    ...normalizedBase,
+    coveredItems,
+    uncoveredItems,
+    ...(debug ? { debug } : {}),
+  } as AlignmentResponse;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    const message = String((error as { message?: unknown }).message ?? "").trim();
+    if (message) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
 function mapAlignmentItems(alignment: AlignmentResponse, assessment: AssessmentDocument): AlignmentItemV2[] {
   if (alignment.debug?.testItems?.length) {
     return alignment.debug.testItems.map((item) => ({
@@ -40,8 +99,8 @@ function mapAlignmentItems(alignment: AlignmentResponse, assessment: AssessmentD
     }));
   }
 
-  const covered = new Map(alignment.coveredItems.map((item) => [item.assessmentItemNumber, item]));
-  const uncovered = new Set(alignment.uncoveredItems.map((item) => item.assessmentItemNumber));
+  const covered = new Map((alignment.coveredItems ?? []).map((item) => [item.assessmentItemNumber, item]));
+  const uncovered = new Set((alignment.uncoveredItems ?? []).map((item) => item.assessmentItemNumber));
   return assessment.items.map((item) => {
     const record = covered.get(item.itemNumber);
     const inferredAlignment = record
@@ -82,12 +141,19 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       setIsLoading(true);
       setError(null);
       try {
-        const result = await getAlignment(prep, assessment);
+        const result = normalizeAlignmentResponse(await getAlignment(prep, assessment));
         if (!active) return;
+
+        if (!result) {
+          setAlignment(null);
+          setError("Preparedness alignment is still loading or returned an unexpected shape.");
+          return;
+        }
+
         setAlignment(result);
       } catch (err) {
         if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed to load preparedness alignment");
+        setError(getErrorMessage(err, "Failed to load preparedness alignment"));
       } finally {
         if (active) {
           setIsLoading(false);
@@ -102,6 +168,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   }, [prep, assessment]);
 
   const items = useMemo(() => (alignment ? mapAlignmentItems(alignment, assessment) : []), [alignment, assessment]);
+  const hasAlignment = items.length > 0;
 
   const handleAction = useCallback(async (item: AlignmentItemV2, action: TeacherAction) => {
     if (action === "keep") {
@@ -172,7 +239,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
         ]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Preparedness teacher action failed");
+      setError(getErrorMessage(err, "Preparedness teacher action failed"));
     } finally {
       setLoadingByQuestion((prev) => ({ ...prev, [item.questionNumber]: false }));
     }
@@ -198,7 +265,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       );
       setGeneratedReview(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate review packet");
+      setError(getErrorMessage(err, "Failed to generate review packet"));
     } finally {
       setIsGeneratingReview(false);
     }
@@ -220,7 +287,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       const result = await generatePreparednessTestFromReview(reviewConcepts);
       setGeneratedTest(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate test");
+      setError(getErrorMessage(err, "Failed to generate test"));
     } finally {
       setIsGeneratingTest(false);
     }
@@ -230,9 +297,10 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
     <div className="prep-pipeline-shell">
 
       {error ? <div className="prep-error-banner">✗ {error}</div> : null}
-      {isLoading ? <div className="prep-loading">Running alignment…</div> : null}
+      {!hasAlignment && isLoading ? <div className="prep-loading">Running alignment…</div> : null}
+      {!isLoading && !error && !hasAlignment ? <div className="prep-loading">Loading alignment…</div> : null}
 
-      {alignment ? (
+      {hasAlignment && alignment ? (
         <>
           <TeacherSummaryCard
             summary={alignment.debug?.teacherSummary ?? alignment.debug?.coverageSummary?.overallAlignment ?? ""}

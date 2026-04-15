@@ -8,7 +8,6 @@ import { APICallNotifier } from './components_new/APICallNotifier';
 import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
-import { CreateDocumentFlow } from './components_new/v4/CreateDocumentFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudio } from './components_new/v4/TeacherStudio';
 import './App.css';
@@ -83,7 +82,7 @@ function TeacherAppContent() {
         {pathname === '/legacy'
           ? <LegacyDocumentCreation />
           : pathname === '/sim'
-          ? <CreateDocumentFlow />
+          ? <TeacherStudio />
           : pathname === '/preparedness'
           ? <TeacherStudio />
           : <TeacherStudio />}

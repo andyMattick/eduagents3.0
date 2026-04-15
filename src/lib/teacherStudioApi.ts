@@ -156,7 +156,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 
 	for (const file of selectedFiles) {
 		const buffer = await file.arrayBuffer();
-		const uploadPayload = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
+		const uploadPayload: UploadDocumentResponse = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
 			method: "POST",
 			headers: {
 				"Content-Type": file.type || "application/octet-stream",
@@ -181,6 +181,30 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 	}
 
 	return { sessionId, registered, nextFileMap, originalTextMap };
+}
+
+export async function createStudioSessionFromFileApi(file: File, userId?: string) {
+	const buffer = await file.arrayBuffer();
+	const uploadPayload: UploadDocumentResponse = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
+		method: "POST",
+		headers: {
+			"Content-Type": file.type || "application/octet-stream",
+			"x-file-name": file.name,
+			...(userId ? { "x-user-id": userId } : {}),
+		},
+		body: buffer,
+	});
+
+	const uploaded = uploadPayload.registered[0];
+	if (!uploaded) {
+		throw new Error(`Upload completed without a registered document for ${file.name}.`);
+	}
+
+	return {
+		sessionId: uploadPayload.sessionId,
+		documentId: uploaded.documentId,
+		originalText: extractOriginalText(uploadPayload.analyzedDocument),
+	};
 }
 
 export function bindDocumentsToSessionApi(args: {

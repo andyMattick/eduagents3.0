@@ -2,20 +2,19 @@ import React from "react";
 import type { UploadedSource } from "./MergedSourcesList";
 import { MergedSourcesList } from "./MergedSourcesList";
 
-type Goal = "simulate" | "preparedness" | "compare" | "create";
+type Goal = "simulate" | "preparedness";
 
 type DropZoneProps = {
   label: string;
   hint?: string;
-  files: File[];
+  file: File | null;
   isDragging: boolean;
   accept: string;
-  multiple?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
   onDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-  onChange: (files: File[]) => void;
+  onChange: (file: File | null) => void;
   onRemove: () => void;
 };
 
@@ -23,10 +22,9 @@ function DropZone(props: DropZoneProps) {
   const {
     label,
     hint,
-    files,
+    file,
     isDragging,
     accept,
-    multiple,
     inputRef,
     onDragOver,
     onDragLeave,
@@ -34,22 +32,22 @@ function DropZone(props: DropZoneProps) {
     onChange,
     onRemove,
   } = props;
-  const hasFiles = files.length > 0;
+  const hasFile = Boolean(file);
   return (
     <div>
       <p className="v4-kicker" style={{ marginBottom: "0.35rem" }}>{label}</p>
       {hint && <p style={{ fontSize: "0.8rem", color: "#6b5040", margin: "0 0 0.6rem" }}>{hint}</p>}
       <div
-        className={`v4-drop-zone${isDragging ? " v4-drop-zone--active" : ""}${hasFiles ? " v4-drop-zone--filled" : ""}`}
+        className={`v4-drop-zone${isDragging ? " v4-drop-zone--active" : ""}${hasFile ? " v4-drop-zone--filled" : ""}`}
         style={{ cursor: "pointer" }}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
       >
-        {hasFiles ? (
+        {hasFile && file ? (
           <div className="v4-drop-zone-files">
-            {files.map((f) => <span key={f.name} className="v4-pill">{f.name}</span>)}
+            <span key={file.name} className="v4-pill">{file.name}</span>
           </div>
         ) : (
           <p className="v4-drop-zone-hint">{isDragging ? "Drop to upload" : "Drag & drop, or click to browse"}</p>
@@ -59,11 +57,10 @@ function DropZone(props: DropZoneProps) {
         ref={inputRef}
         type="file"
         accept={accept}
-        multiple={multiple}
         style={{ display: "none" }}
-        onChange={(e) => onChange(Array.from(e.target.files ?? []))}
+        onChange={(e) => onChange(e.target.files?.[0] ?? null)}
       />
-      {hasFiles && (
+      {hasFile && (
         <button
           type="button"
           className="v4-button v4-button-secondary v4-button-sm"
@@ -85,8 +82,8 @@ interface UploadPanelV4Props {
   goal: Goal;
   title: string;
   subtitle: string;
-  primaryFiles: File[];
-  secondaryFiles: File[];
+  primaryFile: File | null;
+  secondaryFile: File | null;
   primaryDragging: boolean;
   secondaryDragging: boolean;
   primaryAccept: string;
@@ -99,20 +96,18 @@ interface UploadPanelV4Props {
   usageCount: number;
   usageLimit: number;
   error: string | null;
-  testPrefs: { mcCount?: number; saCount?: number; frqCount?: number };
   onPrimaryDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   onPrimaryDragLeave: () => void;
   onPrimaryDrop: (e: React.DragEvent<HTMLDivElement>) => void;
   onSecondaryDragOver: (e: React.DragEvent<HTMLDivElement>) => void;
   onSecondaryDragLeave: () => void;
   onSecondaryDrop: (e: React.DragEvent<HTMLDivElement>) => void;
-  onPrimaryChange: (files: File[]) => void;
-  onSecondaryChange: (files: File[]) => void;
+  onPrimaryChange: (file: File | null) => void;
+  onSecondaryChange: (file: File | null) => void;
   onClearPrimary: () => void;
   onClearSecondary: () => void;
   onRun: () => void;
   onBack: () => void;
-  onTestPrefChange: (key: "mcCount" | "saCount" | "frqCount", value: number) => void;
 }
 
 export function UploadPanelV4(props: UploadPanelV4Props) {
@@ -120,8 +115,8 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
     goal,
     title,
     subtitle,
-    primaryFiles,
-    secondaryFiles,
+    primaryFile,
+    secondaryFile,
     primaryDragging,
     secondaryDragging,
     primaryAccept,
@@ -134,7 +129,6 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
     usageCount,
     usageLimit,
     error,
-    testPrefs,
     onPrimaryDragOver,
     onPrimaryDragLeave,
     onPrimaryDrop,
@@ -147,7 +141,6 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
     onClearSecondary,
     onRun,
     onBack,
-    onTestPrefChange,
   } = props;
 
   return (
@@ -157,9 +150,7 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
           <p className="v4-kicker">{title}</p>
           <h1>
             {goal === "simulate" && "Upload the document"}
-            {goal === "preparedness" && "Upload your documents"}
-            {goal === "compare" && "Upload the document"}
-            {goal === "create" && "Upload your source documents"}
+            {goal === "preparedness" && "Upload the prep and assessment"}
           </h1>
           <p className="v4-subtitle">{subtitle}</p>
         </div>
@@ -170,11 +161,10 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
           {goal === "preparedness" && (
             <DropZone
               label="Prep / Study Material"
-              hint="Notes, review sheets, or anything students used to prepare. (.txt, .doc, .docx, .rtf)"
-              files={secondaryFiles}
+              hint="One prep file only: notes, a review sheet, or the study material students used. (.txt, .doc, .docx, .rtf)"
+              file={secondaryFile}
               isDragging={secondaryDragging}
               accept={secondaryAccept}
-              multiple
               inputRef={secondaryRef}
               onDragOver={onSecondaryDragOver}
               onDragLeave={onSecondaryDragLeave}
@@ -185,18 +175,15 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
           )}
 
           <DropZone
-            label={goal === "preparedness" ? "The Assessment" : goal === "create" ? "Source Documents" : "Your Document"}
+            label={goal === "preparedness" ? "The Assessment" : "Your Document"}
             hint={
               goal === "preparedness"
-                ? "The test or assessment students will take. You can upload multiple files."
-                : goal === "create"
-                ? "PDF, Word, or PowerPoint. All selected documents will be combined."
+                ? "One assessment file only: the test students will take."
                 : undefined
             }
-            files={primaryFiles}
+            file={primaryFile}
             isDragging={primaryDragging}
             accept={primaryAccept}
-            multiple={goal === "create" || goal === "preparedness"}
             inputRef={primaryRef}
             onDragOver={onPrimaryDragOver}
             onDragLeave={onPrimaryDragLeave}
@@ -211,35 +198,6 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
             Uploaded documents are processed by Google Gemini to generate analysis and suggestions. Avoid uploading files
             that contain student names, ID numbers, or other personal information.
           </p>
-
-          {goal === "create" && (
-            <div>
-              <p className="v4-kicker" style={{ marginBottom: "0.6rem" }}>Question Types</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-                {([
-                  { key: "mcCount", label: "Multiple Choice" },
-                  { key: "saCount", label: "Short Answer" },
-                  { key: "frqCount", label: "Free Response" },
-                ] as const).map(({ key, label }) => (
-                  <label
-                    key={key}
-                    style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.8rem", color: "#6b5040" }}
-                  >
-                    {label}
-                    <input
-                      type="number"
-                      min={0}
-                      max={30}
-                      className="v4-item-count-input"
-                      style={{ width: "72px" }}
-                      value={testPrefs[key] ?? 0}
-                      onChange={(e) => onTestPrefChange(key, Math.max(0, Math.min(30, Number(e.target.value))))}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
 
           {error && <p className="v4-error">{error}</p>}
 

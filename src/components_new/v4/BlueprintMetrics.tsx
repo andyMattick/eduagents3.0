@@ -9,19 +9,34 @@ interface BlueprintMetricsProps {
 
 export function BlueprintMetrics({ prep, assessment }: BlueprintMetricsProps) {
   const [expanded, setExpanded] = useState(false);
+  const [hasExpanded, setHasExpanded] = useState(false);
+
+  const handleToggle = () => {
+    setExpanded((current) => {
+      const next = !current;
+      if (next) {
+        setHasExpanded(true);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="alignment-analysis-section">
       <button
         type="button"
         className="alignment-collapse-toggle"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={handleToggle}
         aria-expanded={expanded}
       >
         <span>Concept &amp; Difficulty Analysis</span>
         <span className="alignment-collapse-chevron">{expanded ? "▲" : "▼"}</span>
       </button>
-      {expanded && <PreparednessPageV2 prep={prep} assessment={assessment} />}
+      {hasExpanded ? (
+        <div hidden={!expanded}>
+          <PreparednessPageV2 prep={prep} assessment={assessment} />
+        </div>
+      ) : null}
     </div>
   );
 }

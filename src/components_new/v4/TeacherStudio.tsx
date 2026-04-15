@@ -7,7 +7,6 @@
  *
  *   ◎  Simulate Student Experience  → single doc → narrative + analytics
  *   ⌖  Check Student Preparedness   → prep docs + assessment → alignment analysis
- *   ⊕  Compare Student Profiles     → parallel simulation + equity charts
  *
  * Flow:  goal → upload → results
  */
@@ -15,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { useAuth } from "../Auth/useAuth";
-import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import { createStudioSessionFromFileApi } from "../../lib/teacherStudioApi";
 import type { DocumentStatus } from "../../lib/documentStatusApi";
 import { getDocumentStatus } from "../../lib/documentStatusApi";
 import {
@@ -24,7 +23,6 @@ import {
 import {
 	reportBadRewriteApi,
 	runGenerateTestApi,
-	runMultiSimulatorApi,
 	runRewriteApi,
 	runSingleSimulatorApi,
 } from "../../lib/simulatorApi";
@@ -35,14 +33,13 @@ import type {
 import type {
 	GeneratedTestData,
 	GeneratedTestItem,
-	ParallelSimulatorData,
 	RewriteSuggestions,
 	SimulatorData,
 	SimulatorTestPreferences,
 	StudentProfile,
 } from "../../types/simulator";
 import type { RewriteRequest, RewriteResponse, RewriteSuggestion } from "../../types/rewrite";
-import { DEFAULT_STUDENT_PROFILE, STUDENT_PROFILE_PRESETS } from "../../types/simulator";
+import { DEFAULT_STUDENT_PROFILE } from "../../types/simulator";
 import { extractDocxParagraphs } from "../../utils/docxExtraction";
 import {
 	containsExtractionArtifacts,
@@ -56,7 +53,9 @@ import { ModeSelectModal } from "./ModeSelectModal";
 import { PreparednessBlueprint } from "./PreparednessBlueprint";
 import { RewriteDiffViewer } from "./RewriteDiffViewer";
 import { RewriteViewer } from "./RewriteViewer";
+import { buildPreparednessAssessmentItems } from "./preparednessAssessmentParser.ts";
 import { UploadPanelV4 } from "./UploadPanelV4";
+import { getPreparednessUploadError } from "./preparednessUploadRules.ts";
 import "./v4.css";
 
 GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
@@ -65,7 +64,7 @@ GlobalWorkerOptions.workerSrc = "/pdf.worker.min.js";
 // Types
 // ---------------------------------------------------------------------------
 
-type Goal = "simulate" | "preparedness" | "compare" | "create";
+type Goal = "simulate" | "preparedness";
 type Phase = "goal" | "upload" | "results";
 type ResultTab = "narrative" | "suggestions" | "json" | "rewrite";
 type GenerationMode = "aligned_test" | "aligned_review" | "alternate_test";
@@ -88,8 +87,8 @@ interface UploadedSource {
 interface StudioState {
 	goal: Goal | null;
 	phase: Phase;
-	primaryFiles: File[];
-	secondaryFiles: File[];   // prep material (preparedness)
+	primaryFile: File | null;
+	secondaryFile: File | null;   // prep material (preparedness)
 	preparednessPrep: PrepDocument | null;
 	preparednessAssessment: AssessmentDocument | null;
 	sessionId: string | null;
@@ -98,14 +97,11 @@ interface StudioState {
 	originalText: string | null;
 	profile: StudentProfile;
 	selectedPreset: string;
-	// multi-profile compare
-	selectedProfileLabels: string[];
 	// assessment generation
 	testData: GeneratedTestData | null;
 	testPrefs: SimulatorTestPreferences;
 	narrative: string | null;
 	simData: SimulatorData | null;
-	parallelData: ParallelSimulatorData | null;
 	rewriteResults: RewriteResponse | null;
 	rewriteLoading: boolean;
 	// interactive rewrite panel state
@@ -165,8 +161,8 @@ function pickRewritePreview(
 const INITIAL: StudioState = {
 	goal: null,
 	phase: "goal",
-	primaryFiles: [],
-	secondaryFiles: [],
+	primaryFile: null,
+	secondaryFile: null,
 	preparednessPrep: null,
 	preparednessAssessment: null,
 	sessionId: null,
@@ -175,12 +171,10 @@ const INITIAL: StudioState = {
 	originalText: null,
 	profile: DEFAULT_STUDENT_PROFILE,
 	selectedPreset: "Average Student",
-	selectedProfileLabels: ["Average Student", "ADHD", "ELL"],
 	testData: null,
 	testPrefs: { mcCount: 10, saCount: 3, frqCount: 1 },
 	narrative: null,
 	simData: null,
-	parallelData: null,
 	rewriteResults: null,
 	rewriteLoading: false,
 	selectedSuggestions: {},
@@ -278,7 +272,7 @@ async function extractTextFromPreparednessFile(file: File): Promise<string> {
 				return xmlText;
 			}
 		} catch {
-			// handled below
+			// Handled below.
 		}
 
 		throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
@@ -286,9 +280,8 @@ async function extractTextFromPreparednessFile(file: File): Promise<string> {
 
 	if (isPdf) {
 		const buffer = await file.arrayBuffer();
-		const typed = new Uint8Array(buffer);
-		const pdf = await getDocument({ data: typed }).promise;
-		const pageTexts: string[] = [];
+		const pdf = await getDocument({ data: new Uint8Array(buffer) }).promise;
+		const pages: string[] = [];
 
 		for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
 			const page = await pdf.getPage(pageNo);
@@ -303,16 +296,25 @@ async function extractTextFromPreparednessFile(file: File): Promise<string> {
 				.trim();
 
 			if (pageText) {
-				pageTexts.push(pageText);
+				pages.push(pageText);
 			}
 		}
 
-		return normalizeParagraphs(pageTexts).join("\n\n");
+		const pdfText = normalizeParagraphs(pages).join("\n\n").trim();
+		if (!isValidExtractedText(pdfText)) {
+			throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
+		}
+
+		return pdfText;
 	}
 
-	if (file.type.startsWith("text/") || /\.(txt|md|rtf)$/i.test(lower)) {
-		const text = await file.text();
-		return normalizeParagraphs(text.split(/\n+/)).join("\n\n");
+	if (file.type.startsWith("text/") || lower.endsWith(".txt") || lower.endsWith(".md")) {
+		const plainText = normalizeParagraphs((await file.text()).split(/\n+/)).join("\n\n").trim();
+		if (!isValidExtractedText(plainText)) {
+			throw new Error(`Could not extract readable text from ${file.name}. Please upload a clean DOCX/PDF/TXT file.`);
+		}
+
+		return plainText;
 	}
 
 	const decoded = new TextDecoder("utf-8", { fatal: false }).decode(await file.arrayBuffer()).trim();
@@ -329,7 +331,7 @@ async function extractTextFromPreparednessFile(file: File): Promise<string> {
 }
 
 async function buildRewriteOriginalText(
-	files: File[],
+	file: File | null,
 	originalText: string | null,
 	fallback: string | null,
 ): Promise<string> {
@@ -337,76 +339,48 @@ async function buildRewriteOriginalText(
 		return originalText.trim();
 	}
 
-	const chunks: string[] = [];
-	for (const file of files) {
+	if (file) {
 		try {
 			const text = await readFileAsText(file);
 			if (text.trim().length > 0) {
-				chunks.push(text.trim());
+				return text.trim();
 			}
 		} catch {
 			// Ignore unreadable files and rely on the fallback below.
 		}
 	}
 
-	if (chunks.length > 0) {
-		return chunks.join("\n\n");
-	}
-
 	return (fallback ?? "").trim();
 }
 
-function buildAssessmentItems(rawText: string) {
-	const blockMatches = [...rawText.matchAll(/(?:^|\n)\s*(\d{1,2})[.)]\s*([\s\S]*?)(?=(?:\n\s*\d{1,2}[.)]\s)|$)/g)];
-	if (blockMatches.length > 0) {
-		return blockMatches
-			.map((match, index) => {
-				const text = (match[2] ?? "").replace(/\s+/g, " ").trim();
-				return {
-					itemNumber: index + 1,
-					text,
-				};
-			})
-			.filter((item) => item.text.length > 0);
+async function startSession(prepFile: File, testFile: File, userId?: string) {
+	const { sessionId, documentId, originalText } = await createStudioSessionFromFileApi(testFile, userId);
+
+	const prepText = (await extractTextFromPreparednessFile(prepFile)).trim();
+	const assessmentText = (await extractTextFromPreparednessFile(testFile)).trim() || originalText;
+	const items = buildPreparednessAssessmentItems(assessmentText);
+
+	if (!prepText) {
+		throw new Error("Could not extract prep text from the uploaded prep document.");
 	}
 
-	const lines = rawText
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter(Boolean);
-
-	const grouped = new Map<number, string[]>();
-	let currentItem: number | null = null;
-
-	for (const line of lines) {
-		const numbered = line.match(/^(\d+)[.)]\s*(.*)$/);
-		if (numbered) {
-			currentItem = Number(numbered[1]);
-			const text = numbered[2]?.trim() ?? "";
-			if (!grouped.has(currentItem)) grouped.set(currentItem, []);
-			if (text) grouped.get(currentItem)?.push(text);
-			continue;
-		}
-
-		if (currentItem !== null) {
-			grouped.get(currentItem)?.push(line);
-		}
+	if (items.length === 0 || items.length > 50) {
+		throw new Error("Could not parse a valid numbered assessment from the uploaded assessment document. Use a clean DOCX/PDF with one numbered question list.");
 	}
 
-	if (grouped.size > 0) {
-		return Array.from(grouped.entries())
-			.sort(([a], [b]) => a - b)
-			.map(([itemNumber, chunks]) => ({
-				itemNumber,
-				text: chunks.join(" ").trim(),
-			}))
-			.filter((item) => item.text.length > 0);
-	}
-
-	return lines.map((line, index) => ({
-		itemNumber: index + 1,
-		text: line.replace(/^\d+\.\s*/, "").trim(),
-	})).filter((item) => item.text.length > 0);
+	return {
+		sessionId,
+		documentId,
+		originalText,
+		preparednessPrep: {
+			title: prepFile.name || "Prep Document",
+			rawText: prepText,
+		} satisfies PrepDocument,
+		preparednessAssessment: {
+			title: testFile.name || "Assessment",
+			items,
+		} satisfies AssessmentDocument,
+	};
 }
 
 const ACCEPTED_DOCS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -446,11 +420,15 @@ function buildPreparednessSupplementText(params: {
 	].join("\n");
 }
 
-function collectUploadedSources(prepFiles: File[], testFiles: File[]): UploadedSource[] {
-	return [
-		...prepFiles.map((file) => ({ name: file.name, tag: "PREP" as const })),
-		...testFiles.map((file) => ({ name: file.name, tag: "TEST" as const })),
-	];
+function collectUploadedSources(prepFile: File | null, testFile: File | null): UploadedSource[] {
+	const sources: UploadedSource[] = [];
+	if (prepFile) {
+		sources.push({ name: prepFile.name, tag: "PREP" });
+	}
+	if (testFile) {
+		sources.push({ name: testFile.name, tag: "TEST" });
+	}
+	return sources;
 }
 
 function itemActionLabel(action: ItemAction): string {
@@ -490,22 +468,6 @@ const GOALS: Array<{
 		description:
 			"Find out how well your prep or study material aligns with an assessment. Get item-by-item alignment scores and gap analysis before test day.",
 		uploadsLabel: "Prep material + the assessment",
-	},
-	{
-		id: "compare",
-		symbol: "⊕",
-		title: "Compare Student Profiles",
-		description:
-			"Run the same document through multiple student profiles at once — ADHD, ELL, Dyslexia, Low Confidence — and get side-by-side cognitive load curves, confusion heatmaps, and equity risk scores.",
-		uploadsLabel: "1 document + 2–8 profiles to compare",
-	},
-	{
-		id: "create",
-		symbol: "✦",
-		title: "Create a New Assessment",
-		description:
-			"Generate a teacher-ready test from your existing documents. Specify question types and count — the AI builds it from your source material.",
-		uploadsLabel: "1 or more source documents",
 	},
 ];
 
@@ -661,65 +623,6 @@ function ItemTable({ data }: { data: SimulatorData }) {
 					})}
 				</tbody>
 			</table>
-		</div>
-	);
-}
-
-// ---------------------------------------------------------------------------
-// GeneratedTestView
-// ---------------------------------------------------------------------------
-
-function GeneratedTestView({
-	data,
-	onItemAction,
-}: {
-	data: GeneratedTestData;
-	onItemAction?: (item: GeneratedTestItem, index: number, action: ItemAction) => void;
-}) {
-	return (
-		<div style={{ marginTop: "1.5rem" }}>
-			<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>
-				Generated Test — {data.test.length} items
-			</p>
-			<ol style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-				{data.test.map((item: GeneratedTestItem, i: number) => (
-					<li key={i} style={{ fontSize: "0.875rem", lineHeight: 1.65 }}>
-						<span
-							className="v4-pill"
-							style={{ marginRight: "0.5rem", fontSize: "0.7rem", verticalAlign: "middle" }}
-						>
-							{item.type}
-						</span>
-						<span style={{ fontWeight: 600 }}>{item.stem}</span>
-						{item.options && item.options.length > 0 && (
-							<ol type="A" style={{ marginTop: "0.35rem", paddingLeft: "1.5rem" }}>
-								{item.options.map((opt, j) => (
-									<li key={j}>{opt}</li>
-								))}
-							</ol>
-						)}
-						{item.answer && (
-							<p style={{ marginTop: "0.35rem", color: "#6b5040", fontSize: "0.8rem" }}>
-								<strong>Answer:</strong> {item.answer}
-							</p>
-						)}
-						{onItemAction && (
-							<div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", marginTop: "0.55rem" }}>
-								{(["rewrite", "easier", "harder", "context", "type", "subparts", "practice"] as ItemAction[]).map((action) => (
-									<button
-										key={`${i}-${action}`}
-										type="button"
-										className="v4-button v4-button-secondary v4-button-sm"
-										onClick={() => onItemAction(item, i, action)}
-									>
-										{itemActionLabel(action)}
-									</button>
-								))}
-							</div>
-						)}
-					</li>
-				))}
-			</ol>
 		</div>
 	);
 }
@@ -1158,11 +1061,17 @@ export function TeacherStudio() {
 	function handlePrimaryDrop(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
 		const files = Array.from(e.dataTransfer.files).filter((f) => DROP_DOCS_RE.test(f.name));
+		const nextFile = files[0] ?? null;
 		setState((prev) => ({
 			...prev,
 			primaryDragging: false,
-			primaryFiles: files.length > 0 ? files : prev.primaryFiles,
-			error: files.length === 0 ? "Only PDF, Word, or PowerPoint files accepted." : null,
+			primaryFile: nextFile ?? prev.primaryFile,
+			error:
+				files.length === 0
+					? "Only PDF, Word, or PowerPoint files accepted."
+					: files.length > 1
+					? "This flow accepts exactly one file. Only the first file was kept."
+					: null,
 		}));
 	}
 
@@ -1176,20 +1085,42 @@ export function TeacherStudio() {
 	function handleSecondaryDrop(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
 		const files = Array.from(e.dataTransfer.files).filter((f) => DROP_TEXT_RE.test(f.name));
+		const nextFile = files[0] ?? null;
 		setState((prev) => ({
 			...prev,
 			secondaryDragging: false,
-			secondaryFiles: files.length > 0 ? files : prev.secondaryFiles,
-			error: files.length === 0 ? "Only .txt, .doc, .docx, or .rtf files accepted for prep material." : null,
+			secondaryFile: nextFile ?? prev.secondaryFile,
+			error:
+				files.length === 0
+					? "Only .txt, .doc, .docx, or .rtf files accepted for prep material."
+					: state.goal === "preparedness" && files.length > 1
+					? "Preparedness accepts exactly one prep file. Only the first file was kept."
+					: null,
 		}));
 	}
 
 	// ── Run ────────────────────────────────────────────────────────────────
 
 	const handleRun = useCallback(async () => {
-		if (!state.goal || state.primaryFiles.length === 0) return;
-		if (state.goal === "preparedness" && state.secondaryFiles.length === 0) {
-			setState((prev) => ({ ...prev, error: "Please upload the prep / study material." }));
+		if (!state.goal) return;
+		if (state.goal === "preparedness") {
+			const uploadError = getPreparednessUploadError(state.secondaryFile, state.primaryFile);
+			if (uploadError) {
+				setState((prev) => ({ ...prev, error: uploadError }));
+				return;
+			}
+		}
+
+		const prepFile = state.goal === "preparedness" ? state.secondaryFile : null;
+		const assessmentFile = state.goal === "preparedness" ? state.primaryFile : null;
+		const simulationFile = state.goal === "simulate" ? state.primaryFile : null;
+
+		if (!state.primaryFile) {
+			return;
+		}
+
+		if (state.goal === "preparedness" && (!prepFile || !assessmentFile)) {
+			setState((prev) => ({ ...prev, error: "Preparedness requires exactly one prep file and one assessment file." }));
 			return;
 		}
 
@@ -1201,7 +1132,6 @@ export function TeacherStudio() {
 			documentDocType: null,
 			narrative: null,
 			simData: null,
-			parallelData: null,
 			testData: null,
 			preparednessPrep: null,
 			preparednessAssessment: null,
@@ -1211,15 +1141,9 @@ export function TeacherStudio() {
 		}));
 
 		try {
-			const { sessionId, registered, originalTextMap } = await createStudioSessionFromFilesApi(state.primaryFiles, user?.id);
-			const documentId = registered[0]?.documentId ?? null;
-			const originalText = registered
-				.map((entry) => originalTextMap[entry.documentId] ?? "")
-				.filter((value) => value.trim().length > 0)
-				.join("\n\n");
-			void refreshUsage();
-
 			if (state.goal === "simulate") {
+				const { sessionId, documentId, originalText } = await createStudioSessionFromFileApi(simulationFile!, user?.id);
+				void refreshUsage();
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile }, user?.id);
 				setState((prev) => ({
 					...prev,
@@ -1231,25 +1155,8 @@ export function TeacherStudio() {
 					isLoading: false,
 				}));
 			} else if (state.goal === "preparedness") {
-				const prepText = (await Promise.all(state.secondaryFiles.map(extractTextFromPreparednessFile))).join("\n\n").trim();
-				const assessmentText = (await Promise.all(state.primaryFiles.map(extractTextFromPreparednessFile))).join("\n\n").trim() || originalText;
-				const items = buildAssessmentItems(assessmentText);
-				if (!prepText) {
-					throw new Error("Could not extract prep text from the uploaded prep documents.");
-				}
-				if (items.length === 0) {
-					throw new Error("Could not parse assessment items from the uploaded assessment document.");
-				}
-
-				const preparednessPrep: PrepDocument = {
-					title: state.secondaryFiles.map((file) => file.name).join(", ") || "Prep Document",
-					rawText: prepText,
-				};
-
-				const preparednessAssessment: AssessmentDocument = {
-					title: state.primaryFiles.map((file) => file.name).join(", ") || "Assessment",
-					items,
-				};
+				const { sessionId, documentId, originalText, preparednessPrep, preparednessAssessment } = await startSession(prepFile!, assessmentFile!, user?.id);
+				void refreshUsage();
 
 				setState((prev) => ({
 					...prev,
@@ -1259,32 +1166,6 @@ export function TeacherStudio() {
 					narrative: "",
 					preparednessPrep,
 					preparednessAssessment,
-					isLoading: false,
-				}));
-			} else if (state.goal === "compare") {
-				const profileEntries = STUDENT_PROFILE_PRESETS.filter((p) =>
-					state.selectedProfileLabels.includes(p.label),
-				);
-				const res = await runMultiSimulatorApi(sessionId, profileEntries, user?.id);
-				setState((prev) => ({
-					...prev,
-					sessionId,
-					documentId,
-					originalText,
-					narrative: res.narrative,
-					parallelData: res.data,
-					isLoading: false,
-				}));
-			} else if (state.goal === "create") {
-				const res = await runGenerateTestApi({ sessionId, testPreferences: state.testPrefs }, user?.id);
-				setState((prev) => ({
-					...prev,
-					sessionId,
-					// Use the documentId the generate-test route created (where items were saved)
-					documentId: res.documentId ?? documentId,
-					originalText,
-					narrative: res.narrative,
-					testData: res.data,
 					isLoading: false,
 				}));
 			}
@@ -1297,7 +1178,7 @@ export function TeacherStudio() {
 				error: err instanceof Error ? err.message : "Something went wrong. Please try again.",
 			}));
 		}
-	}, [refreshUsage, state.goal, state.primaryFiles, state.secondaryFiles, state.profile, state.selectedProfileLabels, state.testPrefs, user?.id]);
+	}, [refreshUsage, state.goal, state.primaryFile, state.secondaryFile, state.profile, user?.id]);
 
 	function handleDownload() {
 		const content = state.narrative ?? "";
@@ -1624,20 +1505,15 @@ export function TeacherStudio() {
 	// ── Render ─────────────────────────────────────────────────────────────
 
 	const canRun =
-		state.primaryFiles.length > 0 &&
-		(state.goal !== "preparedness" || state.secondaryFiles.length > 0) &&
-		(state.goal !== "compare" || state.selectedProfileLabels.length >= 2);
+		Boolean(state.primaryFile) &&
+		(state.goal !== "preparedness" || Boolean(state.secondaryFile));
 
 	const ctaLabel =
 		state.goal === "simulate"
 			? "Simulate Experience"
-			: state.goal === "preparedness"
-			? "Build Instructional Blueprint"
-			: state.goal === "create"
-			? "Generate Assessment"
-			: "Compare Profiles";
+			: "Build Instructional Blueprint";
 
-	const uploadedSources = collectUploadedSources(state.secondaryFiles, state.primaryFiles);
+	const uploadedSources = collectUploadedSources(state.secondaryFile, state.primaryFile);
 
 	return (
 		<div className="v4-viewer">
@@ -1734,14 +1610,10 @@ export function TeacherStudio() {
 							subtitle={
 								state.goal === "simulate"
 									? "This is the document the student will experience. PDF, Word, or PowerPoint."
-									: state.goal === "preparedness"
-									? "Upload prep and assessment files. We use the same ingestion and merge the sources into one blueprint."
-									: state.goal === "create"
-									? "One or more documents to generate a test from. Specify how many questions of each type you'd like."
-									: "Upload one document and compare student profile responses side-by-side."
+									: "Upload one prep file and one assessment file."
 							}
-							primaryFiles={state.primaryFiles}
-							secondaryFiles={state.secondaryFiles}
+							primaryFile={state.primaryFile}
+							secondaryFile={state.secondaryFile}
 							primaryDragging={state.primaryDragging}
 							secondaryDragging={state.secondaryDragging}
 							primaryAccept={ACCEPTED_DOCS}
@@ -1754,22 +1626,18 @@ export function TeacherStudio() {
 							usageCount={state.usageCount}
 							usageLimit={state.usageLimit}
 							error={state.error}
-							testPrefs={state.testPrefs}
 							onPrimaryDragOver={handlePrimaryDragOver}
 							onPrimaryDragLeave={handlePrimaryDragLeave}
 							onPrimaryDrop={handlePrimaryDrop}
 							onSecondaryDragOver={handleSecondaryDragOver}
 							onSecondaryDragLeave={handleSecondaryDragLeave}
 							onSecondaryDrop={handleSecondaryDrop}
-							onPrimaryChange={(files) => setState((prev) => ({ ...prev, primaryFiles: files }))}
-							onSecondaryChange={(files) => setState((prev) => ({ ...prev, secondaryFiles: files }))}
-							onClearPrimary={() => setState((prev) => ({ ...prev, primaryFiles: [] }))}
-							onClearSecondary={() => setState((prev) => ({ ...prev, secondaryFiles: [] }))}
+							onPrimaryChange={(file) => setState((prev) => ({ ...prev, primaryFile: file }))}
+							onSecondaryChange={(file) => setState((prev) => ({ ...prev, secondaryFile: file }))}
+							onClearPrimary={() => setState((prev) => ({ ...prev, primaryFile: null }))}
+							onClearSecondary={() => setState((prev) => ({ ...prev, secondaryFile: null }))}
 							onRun={() => void handleRun()}
 							onBack={goBackToGoals}
-							onTestPrefChange={(key, value) =>
-								setState((prev) => ({ ...prev, testPrefs: { ...prev.testPrefs, [key]: value } }))
-							}
 						/>
 					)}
 
@@ -1812,8 +1680,6 @@ export function TeacherStudio() {
 											<p className="v4-kicker">
 												{state.goal === "simulate" && "Student Experience Simulation"}
 												{state.goal === "preparedness" && "Instructional Blueprint"}
-												{state.goal === "compare" && "Profile Comparison"}
-												{state.goal === "create" && "Generated Assessment"}
 											</p>
 											<p
 												className="v4-body-copy"
@@ -1824,7 +1690,7 @@ export function TeacherStudio() {
 											{state.documentId ? <DocumentStatusBadge documentId={state.documentId} /> : null}
 										</div>
 										<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-											{state.goal !== "preparedness" && (
+											{state.goal === "simulate" && (
 												<button
 													type="button"
 													className="v4-button v4-button-secondary v4-button-sm"
@@ -1896,20 +1762,11 @@ export function TeacherStudio() {
 										<>
 									{/* Tab bar */}
 									{(() => {
-										const suggestions: RewriteSuggestions | undefined =
-											state.goal === "compare"
-												? state.parallelData?.rewriteSuggestions
-												: state.simData?.rewriteSuggestions;
+										const suggestions: RewriteSuggestions | undefined = state.simData?.rewriteSuggestions;
 										const hasSuggestions =
-											state.goal !== "create" &&
 											suggestions != null &&
 											(suggestions.testLevel.length > 0 || Object.keys(suggestions.itemLevel).length > 0);
-										const hasJson =
-											state.goal === "compare"
-												? state.parallelData !== null
-												: state.goal === "create"
-												? state.testData !== null
-												: state.simData !== null;
+										const hasJson = state.simData !== null;
 										const hasRewrite = state.rewriteResults !== null;
 										const tabs: Array<{ id: ResultTab; label: string }> = [
 											{ id: "narrative", label: "Narrative" },
@@ -1986,11 +1843,7 @@ export function TeacherStudio() {
 									{/* Tab: Suggestions */}
 									{state.activeTab === "suggestions" && (
 										<RewriteSuggestionsPanel
-											suggestions={
-												state.goal === "compare"
-													? state.parallelData?.rewriteSuggestions
-													: state.simData?.rewriteSuggestions
-											}
+											suggestions={state.simData?.rewriteSuggestions}
 												itemRedFlags={Object.fromEntries(
 													(state.simData?.items ?? []).map((item) => [String(item.itemNumber), item.redFlags ?? []]),
 												)}
@@ -2017,9 +1870,7 @@ export function TeacherStudio() {
 												: null}
 											onRewrite={async () => {
 													if (rewriteInFlightRef.current) return;
-												const suggestions = state.goal === "compare"
-													? state.parallelData?.rewriteSuggestions
-													: state.simData?.rewriteSuggestions;
+												const suggestions = state.simData?.rewriteSuggestions;
 												if (!suggestions) return;
 												if (!canRewriteFromDocType(state.documentDocType)) {
 													setState((prev) => ({
@@ -2087,7 +1938,7 @@ export function TeacherStudio() {
 												}
 
 												const originalText = await buildRewriteOriginalText(
-													state.primaryFiles,
+													state.primaryFile,
 													state.originalText,
 													state.narrative,
 												);
@@ -2164,20 +2015,11 @@ export function TeacherStudio() {
 											}}
 										>
 											{JSON.stringify(
-												state.goal === "compare"
-													? state.parallelData
-													: state.goal === "create"
-													? state.testData
-													: state.simData,
+												state.simData,
 												null,
 												2,
 											)}
 										</pre>
-									)}
-
-									{/* Generated test — create (always in narrative tab) */}
-									{state.activeTab === "narrative" && state.goal === "create" && state.testData && state.testData.test.length > 0 && (
-										<GeneratedTestView data={state.testData} />
 									)}
 										</>
 									)}
