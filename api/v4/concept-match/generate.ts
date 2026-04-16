@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
+import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse } from "../../../lib/tokenGate";
 import type {
   ConceptMatchGenerateRequest,
   ConceptMatchGenerateResponse,
@@ -158,13 +158,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Must request at least one of: review, test" });
     }
 
+    const actor = resolveActor(req);
+
     const callLLM = async (prompt: string) => {
-      return callGemini({
+      const result = await callGeminiMetered(actor, {
         prompt,
-        model: "gemini-2.0-flash",
         temperature: 0.3,
         maxOutputTokens: 4000,
       });
+      return result.text;
     };
 
     const deltas = buildDeltas(body.teacherActions);
@@ -206,6 +208,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json(response);
   } catch (err) {
+    if (isTokenLimitError(err)) {
+      return sendTokenLimitResponse(res, err);
+    }
     console.error("[concept-match/generate] Error:", err);
     return res.status(500).json({
       error: "Generation failed",

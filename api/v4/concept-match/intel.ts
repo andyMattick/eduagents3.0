@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
+import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse } from "../../../lib/tokenGate";
 import type {
   AssessmentItem,
   ConceptMatchIntelRequest,
@@ -30,6 +30,8 @@ function buildTestConceptStatsFromTags(items: AssessmentItem[]): {
   testDifficulty: number;
 } {
   const stats: Record<string, ConceptStat> = {};
+  // Map lowercase → first-seen display label so we preserve original casing
+  const displayKey: Record<string, string> = {};
   let totalDifficulty = 0;
 
   for (const item of items) {
@@ -37,8 +39,11 @@ function buildTestConceptStatsFromTags(items: AssessmentItem[]): {
     totalDifficulty += diff;
     const concepts = item.tags?.concepts ?? [];
     for (const concept of concepts) {
-      const key = concept.toLowerCase().trim();
-      if (!key) continue;
+      const norm = concept.toLowerCase().trim();
+      if (!norm) continue;
+      // Use first-seen casing as the canonical display key
+      if (!displayKey[norm]) displayKey[norm] = concept.trim();
+      const key = displayKey[norm];
       if (!stats[key]) {
         stats[key] = { count: 0, difficulties: [], avgDifficulty: 0, questionNumbers: [] };
       }
@@ -119,14 +124,25 @@ async function buildTestConceptStatsFromLLM(
 
 /* ── Phase 2: Prep concept profile (LLM-assisted extraction) ── */
 
-const PREP_EXTRACTION_PROMPT = `You are a curriculum analyst. Extract concepts from the following teacher preparation material.
+function buildPrepExtractionPrompt(testConceptLabels: string[]): string {
+  const anchorSection = testConceptLabels.length
+    ? `
+IMPORTANT: The test covers these specific concepts:
+${testConceptLabels.map((c) => `  - ${c}`).join("\n")}
+
+When the prep material covers one of these concepts, use the EXACT concept name from the list above.
+Only introduce a new concept name if the prep material covers something truly not on this list.
+`
+    : "";
+
+  return `You are a curriculum analyst. Extract concepts from the following teacher preparation material.
 For each concept, determine:
 - how many times it appears (notes references + question references)
 - estimated difficulty for each occurrence (1 = recall, 2 = understand, 3 = apply, 4 = analyze, 5 = create/evaluate)
   - plain notes/definitions → 1–2
   - worked examples → 2–3
   - practice questions → same estimator as test items
-
+${anchorSection}
 Return JSON ONLY (no markdown fences):
 {
   "concepts": {
@@ -140,15 +156,17 @@ Return JSON ONLY (no markdown fences):
 
 MATERIAL:
 `;
+}
 
 async function buildPrepConceptStats(
   rawText: string,
+  testConceptLabels: string[],
   callLLM: (prompt: string) => Promise<string>
 ): Promise<{
   stats: Record<string, PrepConceptStat>;
   prepDifficulty: number;
 }> {
-  const prompt = PREP_EXTRACTION_PROMPT + rawText.slice(0, 6000);
+  const prompt = buildPrepExtractionPrompt(testConceptLabels) + rawText.slice(0, 6000);
   const raw = await callLLM(prompt);
 
   let parsed: {
@@ -166,7 +184,7 @@ async function buildPrepConceptStats(
   const stats: Record<string, PrepConceptStat> = {};
 
   for (const [concept, data] of Object.entries(parsed.concepts ?? {})) {
-    const key = concept.toLowerCase().trim();
+    const key = concept.trim(); // preserve LLM casing — anchored prompt reuses test concept labels
     if (!key) continue;
     const difficulties = Array.isArray(data.difficulties) ? data.difficulties : [];
     stats[key] = {
@@ -195,8 +213,14 @@ function buildConceptCoverage(
   const missing: string[] = [];
   const tooFewTimes: string[] = [];
 
+  // Build a lowercase → value lookup for prep stats so matching is case-insensitive
+  const prepLookup = new Map<string, PrepConceptStat>();
+  for (const [key, value] of Object.entries(prepStats)) {
+    prepLookup.set(key.toLowerCase(), value);
+  }
+
   for (const concept of Object.keys(testStats)) {
-    const prep = prepStats[concept];
+    const prep = prepLookup.get(concept.toLowerCase());
     if (!prep) {
       missing.push(concept);
       continue;
@@ -219,6 +243,56 @@ function buildConceptCoverage(
   return { covered, tooEasy, missing, tooFewTimes };
 }
 
+/* ── Phase 4: Teacher summary (TEST-centric) ── */
+
+function buildSummaryPrompt(
+  testStats: Record<string, ConceptStat>,
+  prepStats: Record<string, PrepConceptStat>,
+  coverage: ConceptCoverage
+): string {
+  const testProfile = Object.entries(testStats)
+    .map(([c, s]) => `  - ${c}: appears ${s.count}x, avg difficulty ${s.avgDifficulty}`)
+    .join("\n") || "  (none)";
+
+  const prepProfile = Object.entries(prepStats)
+    .map(([c, s]) => `  - ${c}: appears ${s.count}x, avg difficulty ${s.avgDifficulty}`)
+    .join("\n") || "  (none)";
+
+  const coverageSummary = [
+    coverage.covered.length ? `Covered well: ${coverage.covered.join(", ")}` : "",
+    coverage.tooEasy.length ? `Covered but too easy: ${coverage.tooEasy.join(", ")}` : "",
+    coverage.missing.length ? `Not covered: ${coverage.missing.join(", ")}` : "",
+    coverage.tooFewTimes.length ? `Covered too few times: ${coverage.tooFewTimes.join(", ")}` : "",
+  ].filter(Boolean).join("\n  ") || "  (no coverage data)";
+
+  return `You are generating a teacher-facing summary of how well the PREP document prepares students for the TEST.
+
+You MUST base your summary ONLY on the TEST concepts, the PREP coverage of those TEST concepts, and the difficulty alignment between PREP and TEST.
+
+DO NOT describe the PREP document in isolation.
+DO NOT summarize PREP topics unless directly comparing them to TEST concepts.
+DO NOT invent concepts or topics not present in the TEST.
+
+TEST CONCEPT PROFILE
+${testProfile}
+
+PREP COVERAGE PROFILE
+${prepProfile}
+
+COVERAGE SUMMARY
+  ${coverageSummary}
+
+Write a concise, teacher-friendly narrative (3–5 sentences) that answers:
+1. What concepts the TEST actually assesses.
+2. Which of those concepts PREP covers well.
+3. Which concepts PREP covers but at too low a difficulty.
+4. Which concepts PREP does not cover at all.
+5. What PREP needs to add or strengthen to fully prepare students.
+
+Keep the tone factual, actionable, and focused on TEST → PREP alignment.
+Return plain text only — no JSON, no markdown formatting.`;
+}
+
 /* ── Handler ── */
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -235,13 +309,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Missing prep.rawText or assessment.items" });
     }
 
+    const actor = resolveActor(req);
+
     const callLLM = async (prompt: string) => {
-      return callGemini({
+      const result = await callGeminiMetered(actor, {
         prompt,
-        model: "gemini-2.0-flash",
         temperature: 0.3,
         maxOutputTokens: 2000,
       });
+      return result.text;
     };
 
     // Phase 1: Test concept profile
@@ -265,14 +341,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       enrichedItems = result.enrichedItems;
     }
 
-    // Phase 2: Prep concept profile (LLM)
+    // Phase 2: Prep concept profile (LLM, anchored to test concept labels)
     const { stats: prepConceptStats, prepDifficulty } = await buildPrepConceptStats(
       body.prep.rawText,
+      Object.keys(testConceptStats),
       callLLM
     );
 
     // Phase 3: Coverage summary
     const conceptCoverage = buildConceptCoverage(testConceptStats, prepConceptStats);
+
+    // Phase 4: TEST-centric teacher summary
+    let teacherSummary: string | undefined;
+    try {
+      teacherSummary = await callLLM(
+        buildSummaryPrompt(testConceptStats, prepConceptStats, conceptCoverage)
+      );
+    } catch {
+      // Non-fatal: summary is optional, coverage data still returned
+    }
 
     const response: ConceptMatchIntelResponse = {
       prepDifficulty,
@@ -280,11 +367,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       testConceptStats,
       prepConceptStats,
       conceptCoverage,
+      teacherSummary,
     };
 
     // Include enriched items (with LLM-extracted concepts) for evidence modal
     return res.status(200).json({ ...response, enrichedItems });
   } catch (err) {
+    if (isTokenLimitError(err)) {
+      return sendTokenLimitResponse(res, err);
+    }
     console.error("[concept-match/intel] Error:", err);
     return res.status(500).json({
       error: "Concept match analysis failed",

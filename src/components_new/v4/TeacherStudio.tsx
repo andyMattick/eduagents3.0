@@ -448,7 +448,7 @@ const GOALS: Array<{
 	{
 		id: "preparedness",
 		symbol: "⌖",
-		title: "Check Student Preparedness",
+		title: "Compare what was taught, what was tested, and where the gaps are.",
 		description:
 			"Find out how well your prep or study material aligns with an assessment. Get item-by-item alignment scores and gap analysis before test day.",
 		uploadsLabel: "Prep material + the assessment",
@@ -1594,11 +1594,11 @@ export function TeacherStudio() {
 					{state.phase === "upload" && state.goal && (
 						<UploadPanelV4
 							goal={state.goal}
-							title={goalData?.title ?? "Teacher Studio"}
+							title="Teacher Studio"
 							subtitle={
 								state.goal === "simulate"
 									? "This is the document the student will experience. PDF, Word, or PowerPoint."
-									: "Upload one prep file and one assessment file."
+									: "We'll compare them and show you the gaps."
 							}
 							primaryFile={state.primaryFile}
 							secondaryFile={state.secondaryFile}

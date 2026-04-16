@@ -9,30 +9,13 @@ import type {
 } from "../../../prism-v4/schema/domain/ConceptMatch";
 import {
   fetchConceptMatchIntel,
-  fetchTestEvidence,
   fetchConceptMatchGenerate,
 } from "../../../services_new/conceptMatchService";
 import {
-  generatePreparednessReviewPacket,
-  generatePreparednessTestFromReview,
-  generatePreparednessPracticeItem,
-  generatePreparednessReviewSnippet,
   getAlignment,
-  rewritePreparednessQuestion,
-  rewritePreparednessQuestionToDifficulty,
   type AlignmentResponse,
 } from "../../../services_new/preparednessService";
-import AlignmentTableV2, { type AlignmentItemV2 } from "./AlignmentTableV2";
-import PreparednessDebugPanel from "./PreparednessDebugPanel";
-import ReviewBuilderPanel, {
-  type GeneratedReviewPacket,
-  type GeneratedTestPacket,
-  type PracticeItemEntry,
-  type ReviewSnippetEntry,
-  type RewrittenQuestionEntry,
-} from "./ReviewBuilderPanel";
 import TeacherSummaryCard from "./TeacherSummaryCard";
-import { type TeacherAction } from "./TeacherActionMenu";
 import { TestConceptProfilePanel } from "../concept-match/TestConceptProfilePanel";
 import { PrepCoveragePanel } from "../concept-match/PrepCoveragePanel";
 import { TeacherActionPanel } from "../concept-match/TeacherActionPanel";
@@ -41,6 +24,16 @@ import { GenerateActionsBar } from "../concept-match/GenerateActionsBar";
 import { DeltaReportPanel } from "../concept-match/DeltaReportPanel";
 import "../concept-match/conceptMatch.css";
 import "../v4.css";
+
+const TOKEN_LIMIT_CODE = "TOKEN_LIMIT_REACHED";
+
+function isTokenLimitError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = typeof err === "string" ? err : (err as { message?: string }).message ?? "";
+  if (msg.includes("Daily token limit") || msg.includes(TOKEN_LIMIT_CODE)) return true;
+  const raw = (err as { raw?: { code?: string } }).raw;
+  return raw?.code === TOKEN_LIMIT_CODE;
+}
 
 interface PreparednessPageV2Props {
   prep: PrepDocument;
@@ -106,52 +99,13 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function mapAlignmentItems(alignment: AlignmentResponse, assessment: AssessmentDocument): AlignmentItemV2[] {
-  if (alignment.debug?.testItems?.length) {
-    return alignment.debug.testItems.map((item) => ({
-      questionNumber: item.questionNumber,
-      questionText: item.questionText,
-      concepts: item.concepts,
-      alignment: item.alignment,
-      difficulty: item.difficulty,
-      explanation: item.explanation,
-    }));
-  }
-
-  const covered = new Map((alignment.coveredItems ?? []).map((item) => [item.assessmentItemNumber, item]));
-  const uncovered = new Set((alignment.uncoveredItems ?? []).map((item) => item.assessmentItemNumber));
-  return assessment.items.map((item) => {
-    const record = covered.get(item.itemNumber);
-    const inferredAlignment = record
-      ? record.alignment === "misaligned_above"
-        ? "misaligned"
-        : "covered"
-      : uncovered.has(item.itemNumber)
-      ? "uncovered"
-      : "uncovered";
-    return {
-      questionNumber: item.itemNumber,
-      questionText: item.text,
-      concepts: record?.concepts.map((concept) => concept.label) ?? [],
-      alignment: inferredAlignment,
-      difficulty: record?.difficulty ?? 1,
-      explanation: "",
-    };
-  });
-}
-
 export default function PreparednessPageV2({ prep, assessment }: PreparednessPageV2Props) {
   const [alignment, setAlignment] = useState<AlignmentResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingByQuestion, setLoadingByQuestion] = useState<Record<number, boolean>>({});
-  const [reviewSnippets, setReviewSnippets] = useState<ReviewSnippetEntry[]>([]);
-  const [rewrittenQuestions, setRewrittenQuestions] = useState<RewrittenQuestionEntry[]>([]);
-  const [practiceItems, setPracticeItems] = useState<PracticeItemEntry[]>([]);
-  const [generatedReview, setGeneratedReview] = useState<GeneratedReviewPacket | null>(null);
-  const [generatedTest, setGeneratedTest] = useState<GeneratedTestPacket | null>(null);
-  const [isGeneratingReview, setIsGeneratingReview] = useState(false);
-  const [isGeneratingTest, setIsGeneratingTest] = useState(false);
+
+  /* ── Token budget state ── */
+  const [tokenExhausted, setTokenExhausted] = useState(false);
 
   /* ── ConceptMatch state ── */
   const [cmIntel, setCmIntel] = useState<ConceptMatchIntelResponse | null>(null);
@@ -166,6 +120,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
 
     const run = async () => {
       setIsLoading(true);
+      setCmLoading(true);
       setError(null);
       try {
         const result = normalizeAlignmentResponse(await getAlignment(prep, assessment));
@@ -178,179 +133,53 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
         }
 
         setAlignment(result);
+
+        /* ── ConceptMatch intel — reuse alignment's rich concepts ── */
+        const testItems = result.debug?.testItems;
+        if (testItems?.length) {
+          const taggedItems: CMAssessmentItem[] = testItems.map((item) => ({
+            itemNumber: item.questionNumber,
+            rawText: item.questionText,
+            tags: {
+              concepts: item.concepts ?? [],
+              difficulty: item.difficulty ?? 3,
+            },
+          }));
+
+          try {
+            const cmResult = await fetchConceptMatchIntel({
+              prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
+              assessment: { title: assessment.title ?? "Assessment", items: taggedItems },
+            });
+            if (active) setCmIntel(cmResult);
+          } catch (cmErr) {
+            console.warn("[ConceptMatch] Intel call failed:", cmErr);
+          }
+        }
       } catch (err) {
         if (!active) return;
+        if (isTokenLimitError(err)) setTokenExhausted(true);
         setError(getErrorMessage(err, "Failed to load preparedness alignment"));
       } finally {
         if (active) {
           setIsLoading(false);
+          setCmLoading(false);
         }
       }
     };
 
-    /* ── ConceptMatch intel (runs in parallel with alignment) ── */
-    const runCmIntel = async () => {
-      setCmLoading(true);
-      try {
-        const cmItems = assessment.items.map((item) => ({
-          itemNumber: item.itemNumber,
-          rawText: item.text,
-        }));
-
-        const result = await fetchConceptMatchIntel({
-          prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
-          assessment: { title: assessment.title ?? "Assessment", items: cmItems },
-        });
-        if (active) setCmIntel(result);
-      } catch (err) {
-        // Non-fatal: ConceptMatch panels just won't show
-        console.warn("[ConceptMatch] Intel call failed:", err);
-      } finally {
-        if (active) setCmLoading(false);
-      }
-    };
-
     void run();
-    void runCmIntel();
     return () => {
       active = false;
     };
   }, [prep, assessment]);
 
-  const items = useMemo(() => (alignment ? mapAlignmentItems(alignment, assessment) : []), [alignment, assessment]);
-  const hasAlignment = items.length > 0;
-
-  const handleAction = useCallback(async (item: AlignmentItemV2, action: TeacherAction) => {
-    if (action === "keep") {
-      return;
-    }
-
-    setLoadingByQuestion((prev) => ({ ...prev, [item.questionNumber]: true }));
-    setError(null);
-
-    try {
-      if (action === "add_review") {
-        const result = await generatePreparednessReviewSnippet(item.questionText, item.concepts);
-        setReviewSnippets((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          { questionNumber: item.questionNumber, reviewSnippet: result.review_snippet },
-        ]);
-      }
-
-      if (action === "rewrite") {
-        const teacherNotes = window.prompt("Teacher instructions for rewrite:", "Keep objective, improve clarity") ?? "";
-        if (!teacherNotes.trim()) {
-          return;
-        }
-        const result = await rewritePreparednessQuestion(item.questionText, teacherNotes);
-        setRewrittenQuestions((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          { questionNumber: item.questionNumber, rewrittenQuestion: result.rewritten_question },
-        ]);
-      }
-
-      if (action === "rewrite_to_prep") {
-        const prepDifficulty = Math.min(5, Math.max(1, Math.round(alignment?.debug?.prepDifficulty ?? 3)));
-        const result = await rewritePreparednessQuestionToDifficulty(item.questionText, prepDifficulty);
-        setRewrittenQuestions((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          { questionNumber: item.questionNumber, rewrittenQuestion: result.rewritten_question },
-        ]);
-      }
-
-      if (action === "rewrite_easier") {
-        const targetDifficulty = Math.max(1, item.difficulty - 1);
-        const result = await rewritePreparednessQuestionToDifficulty(item.questionText, targetDifficulty);
-        setRewrittenQuestions((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          { questionNumber: item.questionNumber, rewrittenQuestion: result.rewritten_question },
-        ]);
-      }
-
-      if (action === "rewrite_harder") {
-        const targetDifficulty = Math.min(5, item.difficulty + 1);
-        const result = await rewritePreparednessQuestionToDifficulty(item.questionText, targetDifficulty);
-        setRewrittenQuestions((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          { questionNumber: item.questionNumber, rewrittenQuestion: result.rewritten_question },
-        ]);
-      }
-
-      if (action === "practice") {
-        const result = await generatePreparednessPracticeItem(item.questionText, item.concepts);
-        setPracticeItems((prev) => [
-          ...prev.filter((entry) => entry.questionNumber !== item.questionNumber),
-          {
-            questionNumber: item.questionNumber,
-            practiceQuestion: result.practice_question,
-            answer: result.answer,
-            explanation: result.explanation,
-          },
-        ]);
-      }
-    } catch (err) {
-      setError(getErrorMessage(err, "Preparedness teacher action failed"));
-    } finally {
-      setLoadingByQuestion((prev) => ({ ...prev, [item.questionNumber]: false }));
-    }
-  }, []);
-
-  const handleGenerateReview = useCallback(async () => {
-    if (!items.length) {
-      return;
-    }
-
-    setIsGeneratingReview(true);
-    setError(null);
-    try {
-      const result = await generatePreparednessReviewPacket(
-        items.map((item) => ({
-          question_number: item.questionNumber,
-          question_text: item.questionText,
-          concepts: item.concepts,
-          alignment: item.alignment,
-          difficulty: item.difficulty,
-          explanation: item.explanation,
-        }))
-      );
-      setGeneratedReview(result);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to generate review packet"));
-    } finally {
-      setIsGeneratingReview(false);
-    }
-  }, [items]);
-
-  const handleGenerateTest = useCallback(async () => {
-    setIsGeneratingTest(true);
-    setError(null);
-    try {
-      const reviewConcepts = generatedReview?.review_sections?.length
-        ? generatedReview.review_sections
-        : (alignment?.debug?.prepConcepts ?? []);
-
-      if (!reviewConcepts.length) {
-        setError("Generate a review packet first, or run alignment with detectable prep concepts.");
-        return;
-      }
-
-      const result = await generatePreparednessTestFromReview(reviewConcepts);
-      setGeneratedTest(result);
-    } catch (err) {
-      setError(getErrorMessage(err, "Failed to generate test"));
-    } finally {
-      setIsGeneratingTest(false);
-    }
-  }, [alignment?.debug?.prepConcepts, generatedReview?.review_sections]);
+  const hasAlignment = alignment !== null;
 
   /* ── ConceptMatch handlers ── */
 
   const cmAssessmentItems: CMAssessmentItem[] = useMemo(() => {
-    // Use enriched items from intel response (LLM-extracted concepts+difficulty)
-    if (cmIntel?.enrichedItems?.length) {
-      return cmIntel.enrichedItems;
-    }
-    // Fallback to alignment debug data
+    // Primary: alignment debug items (rich QA concepts — single source of truth)
     if (alignment?.debug?.testItems?.length) {
       return alignment.debug.testItems.map((item): CMAssessmentItem => ({
         itemNumber: item.questionNumber,
@@ -361,29 +190,24 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
         },
       }));
     }
-    // Last resort: raw assessment items (no tags)
+    // Fallback: raw assessment items (no tags)
     return assessment.items.map((item): CMAssessmentItem => ({
       itemNumber: item.itemNumber,
       rawText: item.text,
     }));
-  }, [assessment, alignment, cmIntel]);
+  }, [assessment, alignment]);
 
-  const handleCmViewEvidence = useCallback(async (concept: string) => {
-    try {
-      const result = await fetchTestEvidence(concept, cmAssessmentItems);
-      setCmEvidenceData(result);
-    } catch {
-      // Fallback: build evidence from local items
-      const matched = cmAssessmentItems
-        .filter((i) => (i.tags?.concepts ?? []).some((c: string) => c.toLowerCase() === concept.toLowerCase()))
-        .map((i) => ({
-          itemNumber: i.itemNumber,
-          rawText: i.rawText,
-          difficulty: i.tags?.difficulty ?? 3,
-          concepts: i.tags?.concepts ?? [],
-        }));
-      setCmEvidenceData({ concept, items: matched });
-    }
+  const handleCmViewEvidence = useCallback((concept: string) => {
+    // Build evidence client-side from the same tagged items — no server round-trip.
+    const matched = cmAssessmentItems
+      .filter((i) => (i.tags?.concepts ?? []).some((c: string) => c.toLowerCase() === concept.toLowerCase()))
+      .map((i) => ({
+        itemNumber: i.itemNumber,
+        rawText: i.rawText,
+        difficulty: i.tags?.difficulty ?? 3,
+        concepts: i.tags?.concepts ?? [],
+      }));
+    setCmEvidenceData({ concept, items: matched });
   }, [cmAssessmentItems]);
 
   const handleCmAddAction = useCallback((action: CMTeacherAction) => {
@@ -391,6 +215,10 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   }, []);
 
   const handleCmGenerate = useCallback(async (type: "review" | "test" | "both") => {
+    if (tokenExhausted) {
+      setError("Daily token limit reached — AI actions are disabled.");
+      return;
+    }
     setCmGenerating(true);
     setError(null);
     try {
@@ -405,6 +233,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       });
       setCmGenerateResult(result);
     } catch (err) {
+      if (isTokenLimitError(err)) setTokenExhausted(true);
       setError(getErrorMessage(err, "ConceptMatch generation failed"));
     } finally {
       setCmGenerating(false);
@@ -415,13 +244,23 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
     <div className="prep-pipeline-shell">
 
       {error ? <div className="prep-error-banner">✗ {error}</div> : null}
+      {tokenExhausted && (
+        <div className="prep-error-banner" style={{ background: "#fff3cd", color: "#856404", borderColor: "#ffc107" }}>
+          ⚠ You've reached your daily token limit. Actions that use AI are disabled until tomorrow.
+        </div>
+      )}
       {!hasAlignment && isLoading ? <div className="prep-loading">Running alignment…</div> : null}
       {!isLoading && !error && !hasAlignment ? <div className="prep-loading">Loading alignment…</div> : null}
 
       {hasAlignment && alignment ? (
         <>
           <TeacherSummaryCard
-            summary={alignment.debug?.teacherSummary ?? alignment.debug?.coverageSummary?.overallAlignment ?? ""}
+            summary={
+              cmIntel?.teacherSummary ??
+              alignment.debug?.teacherSummary ??
+              alignment.debug?.coverageSummary?.overallAlignment ??
+              ""
+            }
             prepDifficulty={alignment.debug?.prepDifficulty}
           />
 
@@ -447,44 +286,18 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
             </div>
           )}
 
-          {/* ── Main grid: Alignment (left) + Action Panels (right) ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: "1rem" }}>
-            <AlignmentTableV2
-              items={items}
-              loadingByQuestion={loadingByQuestion}
-              onAction={handleAction}
-            />
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {/* ConceptMatch Teacher Action Panel (new) */}
-              {cmIntel && (
-                <TeacherActionPanel
-                  testConceptStats={cmIntel.testConceptStats}
-                  prepConceptStats={cmIntel.prepConceptStats}
-                  conceptCoverage={cmIntel.conceptCoverage}
-                  teacherActions={cmTeacherActions}
-                  onAddAction={handleCmAddAction}
-                />
-              )}
-              {/* Existing Review Builder (kept until new generation is ready) */}
-              <ReviewBuilderPanel
-                reviewSnippets={reviewSnippets}
-                rewrittenQuestions={rewrittenQuestions}
-                practiceItems={practiceItems}
-                generatedReview={generatedReview}
-                generatedTest={generatedTest}
-                isGeneratingReview={isGeneratingReview}
-                isGeneratingTest={isGeneratingTest}
-                onGenerateReview={handleGenerateReview}
-                onGenerateTest={handleGenerateTest}
-                onClearAll={() => {
-                  setReviewSnippets([]);
-                  setRewrittenQuestions([]);
-                  setPracticeItems([]);
-                  setGeneratedReview(null);
-                  setGeneratedTest(null);
-                }}
+          {/* ── Main grid: Action Panel (full-width, no old alignment table) ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            {/* ConceptMatch Teacher Action Panel (new) */}
+            {cmIntel && (
+              <TeacherActionPanel
+                testConceptStats={cmIntel.testConceptStats}
+                prepConceptStats={cmIntel.prepConceptStats}
+                conceptCoverage={cmIntel.conceptCoverage}
+                teacherActions={cmTeacherActions}
+                onAddAction={handleCmAddAction}
               />
-            </div>
+            )}
           </div>
 
           {/* ── ConceptMatch Generate Bar (below main grid) ── */}
@@ -492,6 +305,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
             <GenerateActionsBar
               hasActions={cmTeacherActions.length > 0}
               generating={cmGenerating}
+              disabled={tokenExhausted}
               onGenerate={handleCmGenerate}
             />
           )}
@@ -500,8 +314,6 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
           {cmGenerateResult && (
             <DeltaReportPanel result={cmGenerateResult} />
           )}
-
-          <PreparednessDebugPanel debug={alignment.debug ?? null} />
         </>
       ) : null}
 

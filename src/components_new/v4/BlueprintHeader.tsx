@@ -1,20 +1,13 @@
-import React from "react";
-
-interface BlueprintHeaderProps {
-  title?: string;
-  description?: string;
-}
-
-export function BlueprintHeader({
-  title = "Instructional Alignment",
-  description = "This analysis shows what was taught, what was tested, and where the gaps are.",
-}: BlueprintHeaderProps) {
+export function BlueprintHeader() {
   return (
-    <div style={{ marginTop: "0.75rem", marginBottom: "1.1rem" }}>
-      <p className="v4-kicker" style={{ marginBottom: "0.4rem" }}>{title}</p>
-      <p className="v4-body-copy" style={{ marginTop: 0, fontSize: "0.86rem", color: "#6b5040" }}>
-        {description}
-      </p>
-    </div>
+    <section className="v4-panel v4-vector-span v4-hero">
+      <div>
+        <p className="v4-kicker">Teacher Studio</p>
+        <h1>Preparedness Blueprint</h1>
+        <p className="v4-subtitle">
+          Review the alignment between your prep material and the assessment.
+        </p>
+      </div>
+    </section>
   );
 }

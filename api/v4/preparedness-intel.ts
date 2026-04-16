@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../lib/gemini";
 import { assertBackendStartupEnv } from "../../lib/envGuard";
+import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse } from "../../lib/tokenGate";
 import {
   getAlignment,
   getSuggestions,
@@ -225,6 +225,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    const actor = resolveActor(req);
+
     const callLLM = async (
       prompt: string,
       options?: {
@@ -232,13 +234,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         maxOutputTokens?: number;
       }
     ) => {
-      const response = await callGemini({
+      const result = await callGeminiMetered(actor, {
         prompt,
-        model: "gemini-2.0-flash",
         temperature: options?.temperature ?? 0.3,
         maxOutputTokens: options?.maxOutputTokens ?? 2000,
       });
-      return response;
+      return result.text;
     };
 
     let result: unknown;
@@ -465,6 +466,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json(result);
   } catch (error) {
+    if (isTokenLimitError(error)) {
+      return sendTokenLimitResponse(res, error);
+    }
     console.error("Preparedness Intelligence API error:", error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : "Preparedness analysis failed",

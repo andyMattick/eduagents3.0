@@ -52,6 +52,7 @@ export interface ConceptMatchIntelResponse {
   testConceptStats: Record<string, ConceptStat>;
   prepConceptStats: Record<string, PrepConceptStat>;
   conceptCoverage: ConceptCoverage;
+  teacherSummary?: string;
   enrichedItems?: AssessmentItem[];
 }
 
