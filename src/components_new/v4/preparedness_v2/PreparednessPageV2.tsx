@@ -1,5 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssessmentDocument, PrepDocument } from "../../../prism-v4/schema/domain/Preparedness";
+import type {
+  ConceptMatchIntelResponse,
+  ConceptMatchGenerateResponse,
+  TeacherAction as CMTeacherAction,
+  TestEvidenceResponse,
+  AssessmentItem as CMAssessmentItem,
+} from "../../../prism-v4/schema/domain/ConceptMatch";
+import {
+  fetchConceptMatchIntel,
+  fetchTestEvidence,
+  fetchConceptMatchGenerate,
+} from "../../../services_new/conceptMatchService";
 import {
   generatePreparednessReviewPacket,
   generatePreparednessTestFromReview,
@@ -21,6 +33,13 @@ import ReviewBuilderPanel, {
 } from "./ReviewBuilderPanel";
 import TeacherSummaryCard from "./TeacherSummaryCard";
 import { type TeacherAction } from "./TeacherActionMenu";
+import { TestConceptProfilePanel } from "../concept-match/TestConceptProfilePanel";
+import { PrepCoveragePanel } from "../concept-match/PrepCoveragePanel";
+import { TeacherActionPanel } from "../concept-match/TeacherActionPanel";
+import { TestEvidenceModal } from "../concept-match/TestEvidenceModal";
+import { GenerateActionsBar } from "../concept-match/GenerateActionsBar";
+import { DeltaReportPanel } from "../concept-match/DeltaReportPanel";
+import "../concept-match/conceptMatch.css";
 import "../v4.css";
 
 interface PreparednessPageV2Props {
@@ -134,6 +153,14 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   const [isGeneratingReview, setIsGeneratingReview] = useState(false);
   const [isGeneratingTest, setIsGeneratingTest] = useState(false);
 
+  /* ── ConceptMatch state ── */
+  const [cmIntel, setCmIntel] = useState<ConceptMatchIntelResponse | null>(null);
+  const [cmLoading, setCmLoading] = useState(false);
+  const [cmTeacherActions, setCmTeacherActions] = useState<CMTeacherAction[]>([]);
+  const [cmEvidenceData, setCmEvidenceData] = useState<TestEvidenceResponse | null>(null);
+  const [cmGenerating, setCmGenerating] = useState(false);
+  const [cmGenerateResult, setCmGenerateResult] = useState<ConceptMatchGenerateResponse | null>(null);
+
   useEffect(() => {
     let active = true;
 
@@ -161,7 +188,30 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       }
     };
 
+    /* ── ConceptMatch intel (runs in parallel with alignment) ── */
+    const runCmIntel = async () => {
+      setCmLoading(true);
+      try {
+        const cmItems = assessment.items.map((item) => ({
+          itemNumber: item.itemNumber,
+          rawText: item.text,
+        }));
+
+        const result = await fetchConceptMatchIntel({
+          prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
+          assessment: { title: assessment.title ?? "Assessment", items: cmItems },
+        });
+        if (active) setCmIntel(result);
+      } catch (err) {
+        // Non-fatal: ConceptMatch panels just won't show
+        console.warn("[ConceptMatch] Intel call failed:", err);
+      } finally {
+        if (active) setCmLoading(false);
+      }
+    };
+
     void run();
+    void runCmIntel();
     return () => {
       active = false;
     };
@@ -293,6 +343,74 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
     }
   }, [alignment?.debug?.prepConcepts, generatedReview?.review_sections]);
 
+  /* ── ConceptMatch handlers ── */
+
+  const cmAssessmentItems: CMAssessmentItem[] = useMemo(() => {
+    // Use enriched items from intel response (LLM-extracted concepts+difficulty)
+    if (cmIntel?.enrichedItems?.length) {
+      return cmIntel.enrichedItems;
+    }
+    // Fallback to alignment debug data
+    if (alignment?.debug?.testItems?.length) {
+      return alignment.debug.testItems.map((item): CMAssessmentItem => ({
+        itemNumber: item.questionNumber,
+        rawText: item.questionText,
+        tags: {
+          concepts: item.concepts ?? [],
+          difficulty: item.difficulty ?? 3,
+        },
+      }));
+    }
+    // Last resort: raw assessment items (no tags)
+    return assessment.items.map((item): CMAssessmentItem => ({
+      itemNumber: item.itemNumber,
+      rawText: item.text,
+    }));
+  }, [assessment, alignment, cmIntel]);
+
+  const handleCmViewEvidence = useCallback(async (concept: string) => {
+    try {
+      const result = await fetchTestEvidence(concept, cmAssessmentItems);
+      setCmEvidenceData(result);
+    } catch {
+      // Fallback: build evidence from local items
+      const matched = cmAssessmentItems
+        .filter((i) => (i.tags?.concepts ?? []).some((c: string) => c.toLowerCase() === concept.toLowerCase()))
+        .map((i) => ({
+          itemNumber: i.itemNumber,
+          rawText: i.rawText,
+          difficulty: i.tags?.difficulty ?? 3,
+          concepts: i.tags?.concepts ?? [],
+        }));
+      setCmEvidenceData({ concept, items: matched });
+    }
+  }, [cmAssessmentItems]);
+
+  const handleCmAddAction = useCallback((action: CMTeacherAction) => {
+    setCmTeacherActions((prev) => [...prev, action]);
+  }, []);
+
+  const handleCmGenerate = useCallback(async (type: "review" | "test" | "both") => {
+    setCmGenerating(true);
+    setError(null);
+    try {
+      const result = await fetchConceptMatchGenerate({
+        prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
+        assessment: { title: assessment.title ?? "Assessment", items: cmAssessmentItems },
+        teacherActions: cmTeacherActions,
+        generate: {
+          review: type === "review" || type === "both",
+          test: type === "test" || type === "both",
+        },
+      });
+      setCmGenerateResult(result);
+    } catch (err) {
+      setError(getErrorMessage(err, "ConceptMatch generation failed"));
+    } finally {
+      setCmGenerating(false);
+    }
+  }, [prep, assessment, cmAssessmentItems, cmTeacherActions]);
+
   return (
     <div className="prep-pipeline-shell">
 
@@ -307,35 +425,94 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
             prepDifficulty={alignment.debug?.prepDifficulty}
           />
 
+          {/* ── ConceptMatch panels (ABOVE alignment table) ── */}
+          {cmIntel && (
+            <>
+              <TestConceptProfilePanel
+                testConceptStats={cmIntel.testConceptStats}
+                testDifficulty={cmIntel.testDifficulty}
+                onViewEvidence={handleCmViewEvidence}
+              />
+              <PrepCoveragePanel
+                testConceptStats={cmIntel.testConceptStats}
+                prepConceptStats={cmIntel.prepConceptStats}
+                conceptCoverage={cmIntel.conceptCoverage}
+              />
+            </>
+          )}
+          {cmLoading && (
+            <div className="cm-loading">
+              <div className="cm-spinner" />
+              <p>Analyzing concepts…</p>
+            </div>
+          )}
+
+          {/* ── Main grid: Alignment (left) + Action Panels (right) ── */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: "1rem" }}>
             <AlignmentTableV2
               items={items}
               loadingByQuestion={loadingByQuestion}
               onAction={handleAction}
             />
-            <ReviewBuilderPanel
-              reviewSnippets={reviewSnippets}
-              rewrittenQuestions={rewrittenQuestions}
-              practiceItems={practiceItems}
-              generatedReview={generatedReview}
-              generatedTest={generatedTest}
-              isGeneratingReview={isGeneratingReview}
-              isGeneratingTest={isGeneratingTest}
-              onGenerateReview={handleGenerateReview}
-              onGenerateTest={handleGenerateTest}
-              onClearAll={() => {
-                setReviewSnippets([]);
-                setRewrittenQuestions([]);
-                setPracticeItems([]);
-                setGeneratedReview(null);
-                setGeneratedTest(null);
-              }}
-            />
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {/* ConceptMatch Teacher Action Panel (new) */}
+              {cmIntel && (
+                <TeacherActionPanel
+                  testConceptStats={cmIntel.testConceptStats}
+                  prepConceptStats={cmIntel.prepConceptStats}
+                  conceptCoverage={cmIntel.conceptCoverage}
+                  teacherActions={cmTeacherActions}
+                  onAddAction={handleCmAddAction}
+                />
+              )}
+              {/* Existing Review Builder (kept until new generation is ready) */}
+              <ReviewBuilderPanel
+                reviewSnippets={reviewSnippets}
+                rewrittenQuestions={rewrittenQuestions}
+                practiceItems={practiceItems}
+                generatedReview={generatedReview}
+                generatedTest={generatedTest}
+                isGeneratingReview={isGeneratingReview}
+                isGeneratingTest={isGeneratingTest}
+                onGenerateReview={handleGenerateReview}
+                onGenerateTest={handleGenerateTest}
+                onClearAll={() => {
+                  setReviewSnippets([]);
+                  setRewrittenQuestions([]);
+                  setPracticeItems([]);
+                  setGeneratedReview(null);
+                  setGeneratedTest(null);
+                }}
+              />
+            </div>
           </div>
+
+          {/* ── ConceptMatch Generate Bar (below main grid) ── */}
+          {cmIntel && (
+            <GenerateActionsBar
+              hasActions={cmTeacherActions.length > 0}
+              generating={cmGenerating}
+              onGenerate={handleCmGenerate}
+            />
+          )}
+
+          {/* ── ConceptMatch Delta Report ── */}
+          {cmGenerateResult && (
+            <DeltaReportPanel result={cmGenerateResult} />
+          )}
 
           <PreparednessDebugPanel debug={alignment.debug ?? null} />
         </>
       ) : null}
+
+      {/* ── ConceptMatch Evidence Modal ── */}
+      {cmEvidenceData && (
+        <TestEvidenceModal
+          evidence={cmEvidenceData}
+          onClose={() => setCmEvidenceData(null)}
+          onAddAction={handleCmAddAction}
+        />
+      )}
     </div>
   );
 }

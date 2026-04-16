@@ -1,0 +1,408 @@
+/* ─────────────────────────────────────────────────────
+   ConceptMatch v1 — Styles
+   ───────────────────────────────────────────────────── */
+
+.cm-page {
+  min-height: 100vh;
+  padding: 2rem;
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.16), transparent 28%),
+    linear-gradient(180deg, #f7f1e8 0%, #f1e7d5 48%, #ece2d3 100%);
+  color: #1f1a17;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+}
+
+.cm-page h1 {
+  margin: 0 0 0.5rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.cm-kicker {
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.74rem;
+  color: #9c4d2b;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.cm-panel {
+  border: 1px solid rgba(86, 57, 32, 0.16);
+  border-radius: 24px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  background: rgba(255, 251, 245, 0.88);
+  box-shadow: 0 24px 60px rgba(65, 44, 23, 0.08);
+}
+
+.cm-panel h2 {
+  margin: 0 0 1rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 1.15rem;
+  letter-spacing: 0.01em;
+}
+
+.cm-panel h3 {
+  margin: 0 0 0.5rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 1rem;
+}
+
+/* ── Tables ── */
+
+.cm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.cm-table th,
+.cm-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(86, 57, 32, 0.1);
+}
+
+.cm-table th {
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: #9c4d2b;
+}
+
+.cm-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Difficulty bar ── */
+
+.cm-diff-bar {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.cm-diff-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(86, 57, 32, 0.18);
+}
+
+.cm-diff-dot--filled {
+  background: #c95d37;
+}
+
+/* ── Status badges ── */
+
+.cm-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.cm-badge--covered {
+  background: rgba(76, 143, 76, 0.15);
+  color: #3a7a3a;
+}
+
+.cm-badge--too-easy {
+  background: rgba(201, 160, 55, 0.18);
+  color: #9c7a1a;
+}
+
+.cm-badge--missing {
+  background: rgba(201, 55, 55, 0.15);
+  color: #b53535;
+}
+
+.cm-badge--too-few {
+  background: rgba(201, 120, 55, 0.15);
+  color: #b06020;
+}
+
+/* ── Buttons ── */
+
+.cm-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid rgba(86, 57, 32, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #3f2a1d;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cm-btn:hover {
+  background: rgba(201, 93, 55, 0.08);
+  border-color: rgba(201, 93, 55, 0.36);
+}
+
+.cm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cm-btn--primary {
+  background: #c95d37;
+  color: #fff;
+  border-color: #c95d37;
+}
+
+.cm-btn--primary:hover {
+  background: #b04e2d;
+}
+
+.cm-btn--sm {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  border-radius: 10px;
+}
+
+/* ── Action row ── */
+
+.cm-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+/* ── Generate bar ── */
+
+.cm-generate-bar {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding: 1.5rem;
+  margin-top: 1rem;
+  border-top: 1px solid rgba(86, 57, 32, 0.12);
+}
+
+/* ── Modal overlay ── */
+
+.cm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 26, 23, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.cm-modal {
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 24px;
+  padding: 2rem;
+  background: #fffbf5;
+  box-shadow: 0 32px 80px rgba(65, 44, 23, 0.18);
+}
+
+.cm-modal h2 {
+  margin: 0 0 1rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.cm-modal-close {
+  float: right;
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #9c4d2b;
+  line-height: 1;
+}
+
+/* ── Evidence item ── */
+
+.cm-evidence-item {
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(86, 57, 32, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.cm-evidence-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 0.85rem;
+  color: #9c4d2b;
+}
+
+.cm-evidence-item p {
+  margin: 0.5rem 0;
+  line-height: 1.5;
+}
+
+.cm-evidence-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 0.5rem;
+}
+
+.cm-evidence-tag {
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  background: rgba(201, 93, 55, 0.1);
+  color: #9c4d2b;
+}
+
+/* ── Comment box ── */
+
+.cm-comment-box {
+  margin-top: 0.75rem;
+}
+
+.cm-comment-box textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 0.75rem;
+  border: 1px dashed rgba(86, 57, 32, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  font-family: inherit;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+
+.cm-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Delta report ── */
+
+.cm-delta-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.cm-delta-list li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(86, 57, 32, 0.06);
+  font-size: 0.88rem;
+}
+
+.cm-delta-list li:last-child {
+  border-bottom: none;
+}
+
+.cm-delta-target {
+  display: inline-block;
+  width: 3rem;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #9c4d2b;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+/* ── PDF links ── */
+
+.cm-pdf-row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.cm-pdf-link {
+  padding: 0.5rem 1.2rem;
+  border: 1px solid rgba(86, 57, 32, 0.2);
+  border-radius: 14px;
+  text-decoration: none;
+  color: #3f2a1d;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 0.85rem;
+}
+
+.cm-pdf-link:hover {
+  background: rgba(201, 93, 55, 0.08);
+}
+
+/* ── Overall difficulty ── */
+
+.cm-overall {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+  font-size: 0.9rem;
+}
+
+.cm-overall-label {
+  color: #9c4d2b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+}
+
+.cm-overall-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #c95d37;
+}
+
+/* ── Loading spinner ── */
+
+.cm-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 3rem;
+  color: #9c4d2b;
+}
+
+.cm-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(201, 93, 55, 0.2);
+  border-top-color: #c95d37;
+  border-radius: 50%;
+  animation: cm-spin 0.6s linear infinite;
+}
+
+@keyframes cm-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Concept row highlight ── */
+
+.cm-concept-row--missing {
+  background: rgba(201, 55, 55, 0.04);
+}
+
+.cm-concept-row--too-easy {
+  background: rgba(201, 160, 55, 0.04);
+}
+
+.cm-concept-row--too-few {
+  background: rgba(201, 120, 55, 0.04);
+}
