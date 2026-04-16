@@ -105,7 +105,32 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   const [isLoading, setIsLoading] = useState(false);
 
   /* ── Token budget state ── */
-  const [tokenExhausted, setTokenExhausted] = useState(false);
+  const [tokenUsed, setTokenUsed] = useState(0);
+  const [tokenLimit, setTokenLimit] = useState(25_000);
+  const tokenExhausted = tokenUsed >= tokenLimit;
+
+  // Update token state from any API response that carries tokenUsage
+  const applyTokenUsage = useCallback(
+    (usage: { used: number; remaining: number; limit: number } | undefined) => {
+      if (!usage) return;
+      setTokenUsed(usage.used);
+      setTokenLimit(usage.limit);
+    },
+    []
+  );
+
+  // Fetch current usage on mount
+  useEffect(() => {
+    fetch("/api/v4/usage/today")
+      .then((r) => r.json() as Promise<{ count?: number; limit?: number }>)
+      .then((p) => {
+        if (typeof p.count === "number") {
+          setTokenUsed(p.count);
+          setTokenLimit(p.limit ?? 25_000);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   /* ── ConceptMatch state ── */
   const [cmIntel, setCmIntel] = useState<ConceptMatchIntelResponse | null>(null);
@@ -151,14 +176,17 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
               prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
               assessment: { title: assessment.title ?? "Assessment", items: taggedItems },
             });
-            if (active) setCmIntel(cmResult);
+            if (active) {
+              setCmIntel(cmResult);
+              applyTokenUsage(cmResult.tokenUsage);
+            }
           } catch (cmErr) {
             console.warn("[ConceptMatch] Intel call failed:", cmErr);
           }
         }
       } catch (err) {
         if (!active) return;
-        if (isTokenLimitError(err)) setTokenExhausted(true);
+        if (isTokenLimitError(err)) setTokenUsed(tokenLimit);
         setError(getErrorMessage(err, "Failed to load preparedness alignment"));
       } finally {
         if (active) {
@@ -232,18 +260,36 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
         },
       });
       setCmGenerateResult(result);
+      applyTokenUsage(result.tokenUsage);
     } catch (err) {
-      if (isTokenLimitError(err)) setTokenExhausted(true);
+      if (isTokenLimitError(err)) setTokenUsed(tokenLimit);
       setError(getErrorMessage(err, "ConceptMatch generation failed"));
     } finally {
       setCmGenerating(false);
     }
-  }, [prep, assessment, cmAssessmentItems, cmTeacherActions]);
+  }, [prep, assessment, cmAssessmentItems, cmTeacherActions, applyTokenUsage, tokenLimit]);
 
   return (
     <div className="prep-pipeline-shell">
 
       {error ? <div className="prep-error-banner">✗ {error}</div> : null}
+      {/* Token usage bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <div style={{ flex: 1, height: "4px", borderRadius: "2px", background: "rgba(86,57,32,0.12)" }}>
+          <div
+            style={{
+              width: `${Math.min(100, (tokenUsed / tokenLimit) * 100)}%`,
+              height: "4px",
+              borderRadius: "2px",
+              background: tokenExhausted ? "#dc2626" : "#bb5b35",
+              transition: "width 0.4s ease",
+            }}
+          />
+        </div>
+        <span style={{ fontSize: "0.72rem", color: "#9c4d2b", whiteSpace: "nowrap", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif", letterSpacing: "0.06em" }}>
+          {tokenUsed.toLocaleString()} / {tokenLimit.toLocaleString()} tokens today
+        </span>
+      </div>
       {tokenExhausted && (
         <div className="prep-error-banner" style={{ background: "#fff3cd", color: "#856404", borderColor: "#ffc107" }}>
           ⚠ You've reached your daily token limit. Actions that use AI are disabled until tomorrow.

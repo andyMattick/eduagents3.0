@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
-import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse } from "../../../lib/tokenGate";
+import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse, getDailyUsage, DAILY_TOKEN_LIMIT } from "../../../lib/tokenGate";
 import type {
   ConceptMatchGenerateRequest,
   ConceptMatchGenerateResponse,
@@ -206,7 +206,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    return res.status(200).json(response);
+    const usedAfter = await getDailyUsage(actor.actorKey).catch(() => 0);
+    const tokenUsage = { used: usedAfter, remaining: Math.max(0, DAILY_TOKEN_LIMIT - usedAfter), limit: DAILY_TOKEN_LIMIT };
+    return res.status(200).json({ ...response, tokenUsage });
   } catch (err) {
     if (isTokenLimitError(err)) {
       return sendTokenLimitResponse(res, err);

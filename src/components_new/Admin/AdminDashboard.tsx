@@ -398,10 +398,10 @@ function isoDaysAgo(days: number): string {
     setInspectorLoading(false);
   }
 
-  async function handleResetTokens(userId: string) {
-    setResettingUserId(userId);
-    const { error: rpcError } = await supabase.rpc("admin_reset_tokens", {
-      target_user: userId,
+  async function handleResetTokens(actorKey: string) {
+    setResettingUserId(actorKey);
+    const { error: rpcError } = await supabase.rpc("admin_reset_tokens_by_actor", {
+      p_actor_key: actorKey,
     });
 
     if (rpcError) {
@@ -482,18 +482,14 @@ function isoDaysAgo(days: number): string {
                     <td>{row.tokens_used.toLocaleString()}</td>
                     <td>{remaining.toLocaleString()}</td>
                     <td className="action-cell">
-                      {row.user_id ? (
-                        <button
-                          type="button"
-                          className="admin-button admin-button-danger"
-                          onClick={() => void handleResetTokens(row.user_id!)}
-                          disabled={resettingUserId === row.user_id}
-                        >
-                          {resettingUserId === row.user_id ? "Resetting..." : "Reset Tokens"}
-                        </button>
-                      ) : (
-                        <span className="admin-muted">N/A</span>
-                      )}
+                      <button
+                        type="button"
+                        className="admin-button admin-button-danger"
+                        onClick={() => void handleResetTokens(row.actor_key)}
+                        disabled={resettingUserId === row.actor_key}
+                      >
+                        {resettingUserId === row.actor_key ? "Resetting..." : "Reset Tokens"}
+                      </button>
                     </td>
                   </tr>
                 );

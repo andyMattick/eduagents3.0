@@ -54,6 +54,7 @@ export interface ConceptMatchIntelResponse {
   conceptCoverage: ConceptCoverage;
   teacherSummary?: string;
   enrichedItems?: AssessmentItem[];
+  tokenUsage?: { used: number; remaining: number; limit: number };
 }
 
 // ── Teacher actions ──
@@ -124,4 +125,5 @@ export interface ConceptMatchGenerateResponse {
     prepPdfUrl?: string;
     testPdfUrl?: string;
   };
+  tokenUsage?: { used: number; remaining: number; limit: number };
 }

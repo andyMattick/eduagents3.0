@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
-import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse } from "../../../lib/tokenGate";
+import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse, getDailyUsage, DAILY_TOKEN_LIMIT } from "../../../lib/tokenGate";
 import type {
   AssessmentItem,
   ConceptMatchIntelRequest,
@@ -371,7 +371,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     // Include enriched items (with LLM-extracted concepts) for evidence modal
-    return res.status(200).json({ ...response, enrichedItems });
+    const usedAfter = await getDailyUsage(actor.actorKey).catch(() => 0);
+    const tokenUsage = { used: usedAfter, remaining: Math.max(0, DAILY_TOKEN_LIMIT - usedAfter), limit: DAILY_TOKEN_LIMIT };
+    return res.status(200).json({ ...response, enrichedItems, tokenUsage });
   } catch (err) {
     if (isTokenLimitError(err)) {
       return sendTokenLimitResponse(res, err);
