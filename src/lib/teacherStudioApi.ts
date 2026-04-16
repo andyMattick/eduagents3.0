@@ -190,10 +190,15 @@ export async function createStudioSessionFromFileApi(file: File, userId?: string
 		headers: {
 			"Content-Type": file.type || "application/octet-stream",
 			"x-file-name": file.name,
+			"x-force-new-session": "true",
 			...(userId ? { "x-user-id": userId } : {}),
 		},
 		body: buffer,
 	});
+
+	if (uploadPayload.registered.length !== 1) {
+		throw new Error("Preparedness upload expected exactly one registered document, but received a merged session payload.");
+	}
 
 	const uploaded = uploadPayload.registered[0];
 	if (!uploaded) {

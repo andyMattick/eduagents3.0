@@ -39,7 +39,7 @@
              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Client Service: getAlignment(prep, assessment)              │
-│ └─ Calls: POST /api/v4/preparedness { phase: "alignment" } │
+│ └─ Calls: POST /api/v4/preparedness { phase: "preparedness" } │
 └────────────┬────────────────────────────────────────────────┘
              │
              ▼

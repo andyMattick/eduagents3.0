@@ -48,7 +48,7 @@ export interface ProblemExtractionEntry {
 	text: string;
 	concepts: string[];
 	representations: string[];
-	difficulty: ExtractedProblemDifficulty;
+	complexityBand: ExtractedProblemDifficulty;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	misconceptions: string[];
 	anchorNodeIds: string[];
@@ -163,9 +163,9 @@ export interface TestItem {
 		firstPage: number;
 		lastPage: number;
 	};
-	difficulty: ExtractedProblemDifficulty;
-	/** Raw numeric difficulty score (1 = easiest, 5 = hardest). Complements the string `difficulty` label. */
-	difficultyScore?: number;
+	complexityBand: ExtractedProblemDifficulty;
+	/** Raw numeric content complexity score (1 = easiest, 5 = hardest). Complements the string band label. */
+	complexityScore?: number;
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 	answerGuidance: string;
 	/** Format-specific structured answer (MC choices, ordering array, FRQ parts, etc.) */
@@ -214,8 +214,8 @@ export interface CompareDocumentMetricEntry {
 	documentId: string;
 	sourceFileName: string;
 	problemCount: number;
-	dominantDifficulty: ExtractedProblemDifficulty;
-	averageDifficultyScore: number;
+	dominantComplexityBand: ExtractedProblemDifficulty;
+	averageComplexityScore: number;
 	representations: string[];
 	instructionalDensity: number;
 	uniqueConcepts: string[];
@@ -228,14 +228,14 @@ export interface CompareDocumentsProduct extends IntentProductMetadata {
 	sharedConcepts: string[];
 	conceptOverlap: CompareDocumentConceptEntry[];
 	documents: CompareDocumentMetricEntry[];
-	difficultyComparison: CompareDocumentMetricEntry[];
+	complexityComparison: CompareDocumentMetricEntry[];
 	representationComparison: CompareDocumentMetricEntry[];
 	instructionalDensityComparison: CompareDocumentMetricEntry[];
 	problemDistributionComparison: Array<{
 		documentId: string;
 		sourceFileName: string;
 		totalProblems: number;
-		byDifficulty: Record<ExtractedProblemDifficulty, number>;
+		byComplexityBand: Record<ExtractedProblemDifficulty, number>;
 	}>;
 	documentSimilarity: Array<{
 		leftDocumentId: string;
@@ -254,7 +254,7 @@ export interface MergedProblemEntry {
 	text: string;
 	concepts: string[];
 	representations: string[];
-	difficulty: ExtractedProblemDifficulty;
+	complexityBand: ExtractedProblemDifficulty;
 	sourceDocumentIds: string[];
 	sourceFileNames: string[];
 	sourceAnchors: ProductSourceAnchor[];
@@ -372,10 +372,10 @@ export interface UnitProduct extends IntentProductMetadata {
 		documentIds: string[];
 		prerequisites: string[];
 	}>;
-	difficultyCurve: Array<{
+	complexityCurve: Array<{
 		documentId: string;
 		sourceFileName: string;
-		averageDifficultyScore: number;
+		averageComplexityScore: number;
 	}>;
 	representationCurve: Array<{
 		documentId: string;
@@ -416,10 +416,10 @@ export interface InstructionalMapProduct extends IntentProductMetadata {
 		nodes: string[];
 		edges: GraphEdge[];
 	};
-	difficultyCurve: Array<{
+	complexityCurve: Array<{
 		documentId: string;
 		sourceFileName: string;
-		averageDifficultyScore: number;
+		averageComplexityScore: number;
 	}>;
 	documentConceptAlignment: Array<{
 		documentId: string;

@@ -7,7 +7,7 @@ export interface DocumentInsights {
 	scoredConcepts?: ScoredDocumentConcept[];
 	conceptFrequencies: Record<string, number>;
 	representations: string[];
-	difficultyDistribution: Record<ExtractedProblemDifficulty, number>;
+	complexityDistribution: Record<ExtractedProblemDifficulty, number>;
 	misconceptionThemes: string[];
 	instructionalDensity: number;
 	problemCount: number;

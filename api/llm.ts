@@ -12,6 +12,7 @@
  */
 
 import { authenticateUser } from "../lib/auth";
+import { assertBackendStartupEnv } from "../lib/envGuard";
 import { callGemini } from "../lib/gemini";
 import {
   retrieveRelevantChunks,
@@ -24,6 +25,12 @@ import { buildBlueprint, buildBlueprintPrompt } from "../lib/blueprint/buildBlue
 import { validateOutput, buildCorrectionPrompt } from "../lib/blueprint/validateOutput";
 
 export const runtime = "nodejs";
+
+assertBackendStartupEnv([
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+  ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+], "api/llm");
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

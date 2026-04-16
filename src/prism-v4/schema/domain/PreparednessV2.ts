@@ -1,6 +1,6 @@
 export interface PreparednessAlignmentV2 {
   prep_concepts: string[];
-  prep_difficulty: number;
+  prep_complexity: number;
   test_items: PreparednessTestItemV2[];
   coverage_summary: PreparednessCoverageSummaryV2;
   teacher_summary: string;
@@ -11,7 +11,7 @@ export interface PreparednessTestItemV2 {
   question_text: string;
   concepts: string[];
   alignment: "covered" | "uncovered" | "misaligned";
-  difficulty: number;
+  test_complexity: number;
   explanation: string;
 }
 

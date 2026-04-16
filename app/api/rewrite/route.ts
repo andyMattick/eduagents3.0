@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 
+import { assertBackendStartupEnv } from "../../../lib/envGuard";
 import { callGeminiDetailed } from "../../../lib/gemini";
 import { supabaseAdmin } from "../../../lib/supabase";
 
 export const runtime = "nodejs";
+
+assertBackendStartupEnv([
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+  ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+], "app/api/rewrite/route");
 
 type DocType = "assignment" | "assessment" | "mixed" | "notes";
 

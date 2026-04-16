@@ -17,7 +17,7 @@ export interface ExtractedProblem {
 	};
 	concepts: string[];
 	representations: string[];
-	difficulty: ExtractedProblemDifficulty;
+	complexityBand: ExtractedProblemDifficulty;
 	misconceptions: string[];
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
 }

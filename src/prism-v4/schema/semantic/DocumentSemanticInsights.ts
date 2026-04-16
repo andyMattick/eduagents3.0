@@ -36,7 +36,7 @@ export interface DocumentSemanticInsights {
   documentConcepts?: Record<string, number>;
   documentConceptDetails?: DocumentSemanticConceptDetail[];
   documentStandards?: Record<string, number>;
-  overallDifficulty?: number;
+  overallContentComplexity?: number;
   overallLinguisticLoad?: number;
 
   conceptGraph?: {

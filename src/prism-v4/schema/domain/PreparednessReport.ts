@@ -14,14 +14,14 @@ export type ReverseAlignmentStatus =
 
 export interface ReverseAlignmentEvidence {
   assessmentItemNumber: number;
-  difficulty: number;  // 1–5 test difficulty
+  testComplexity: number;  // 1–5 test complexity
   alignment: ReverseAlignmentStatus;
 }
 
 export interface ReverseAlignmentRecord {
   prepItemNumber: number;
   concepts: ConceptItem[];
-  prepDifficulty: number; // 1–5
+  prepComplexity: number; // 1–5
   testEvidence: ReverseAlignmentEvidence[];
 }
 
@@ -32,8 +32,8 @@ export interface ReverseAlignmentResult {
 export interface CoveredReportItem {
   assessmentItemNumber: number;
   concepts: ConceptItem[];
-  difficulty: number;
-  prepDifficulty: number;
+  testComplexity: number;
+  prepComplexity: number;
   alignment: "aligned" | "slightly_above" | "misaligned_above";
   teacherAction: "add_prep_support" | "remove_question" | "no_action";
 }
@@ -41,8 +41,8 @@ export interface CoveredReportItem {
 export interface UncoveredReportItem {
   assessmentItemNumber: number;
   concepts: [];
-  difficulty: number;
-  prepDifficulty: 0;
+  testComplexity: number;
+  prepComplexity: 0;
   alignment: "missing_in_prep";
 }
 
@@ -50,13 +50,13 @@ export interface TeacherCorrection {
   assessmentItemNumber: number;
   overrideAlignment?: "aligned" | "slightly_above" | "misaligned_above" | "missing_in_prep";
   overrideConcepts?: string[];
-  overrideDifficulty?: number;
+  overrideComplexity?: number;
   overrideSuggestionType?: "none" | "add_prep_support" | "remove_question";
 }
 
 export interface TeacherOverrideEvent {
   assessmentItemNumber: number;
-  field: "alignment" | "concepts" | "difficulty" | "suggestionType";
+  field: "alignment" | "concepts" | "complexity" | "suggestionType";
   modelValue: string;
   teacherValue: string;
 }

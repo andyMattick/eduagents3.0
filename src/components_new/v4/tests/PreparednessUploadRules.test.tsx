@@ -35,7 +35,6 @@ describe("preparedness upload rules", () => {
 				secondaryAccept=".txt,.doc,.docx,.rtf"
 				primaryRef={primaryRef}
 				secondaryRef={secondaryRef}
-				uploadedSources={[]}
 				canRun={false}
 				ctaLabel="Build Instructional Blueprint"
 				usageCount={0}
@@ -63,5 +62,7 @@ describe("preparedness upload rules", () => {
 		const fileInputs = Array.from(container.querySelectorAll('input[type="file"]'));
 		expect(fileInputs).toHaveLength(2);
 		expect(fileInputs.every((input) => !input.hasAttribute("multiple"))).toBe(true);
+		expect(screen.queryByText(/merged sources/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/merged document/i)).not.toBeInTheDocument();
 	});
 });

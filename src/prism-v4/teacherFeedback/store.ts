@@ -379,6 +379,7 @@ function normalizeTemplate(template: TeacherDerivedTemplateRecord) {
 		bloom: template.bloom ?? null,
 		difficulty_boost: template.difficultyBoost ?? null,
 		misconception_risk_boost: template.misconceptionRiskBoost ?? null,
+		multi_step_boost: template.multiStepBoost ?? null,
 		created_at: template.createdAt,
 	};
 }
@@ -804,14 +805,29 @@ export async function learnTemplateFromFeedback(feedback: TeacherFeedback): Prom
 		: template;
 
 	if (canUseSupabase()) {
-		await supabaseRest("cognitive_templates", {
-			method: "POST",
-			body: normalizeTemplate(merged),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
-	} else {
-		templateMemory.set(merged.id, merged);
+		try {
+			await supabaseRest("cognitive_templates", {
+				method: "POST",
+				body: normalizeTemplate(merged),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+		} catch (insertError) {
+			// Fallback if multi_step_boost column doesn't exist - try without it
+			const normalizedWithoutBoost = { ...normalizeTemplate(merged) };
+			delete (normalizedWithoutBoost as Record<string, unknown>).multi_step_boost;
+			try {
+				await supabaseRest("cognitive_templates", {
+					method: "POST",
+					body: normalizedWithoutBoost,
+					prefer: "resolution=merge-duplicates,return=minimal",
+				});
+			} catch (fallbackError) {
+				// If both fail, throw the original error
+				throw insertError;
+			}
+		}
 	}
+	templateMemory.set(merged.id, merged);
 
 	return merged;
 }
@@ -823,38 +839,101 @@ export async function upsertTeacherDerivedTemplateRecord(record: TeacherDerivedT
 	}
 
 	if (canUseSupabase()) {
-		await supabaseRest("cognitive_templates", {
-			method: "POST",
-			body: normalizeTemplate(record),
-			prefer: "resolution=merge-duplicates,return=minimal",
-		});
-	} else {
-		templateMemory.set(record.id, record);
+		try {
+			await supabaseRest("cognitive_templates", {
+				method: "POST",
+				body: normalizeTemplate(record),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+		} catch (insertError) {
+			// Fallback if multi_step_boost column doesn't exist - try without it
+			const normalizedWithoutBoost = { ...normalizeTemplate(record) };
+			delete (normalizedWithoutBoost as Record<string, unknown>).multi_step_boost;
+			try {
+				await supabaseRest("cognitive_templates", {
+					method: "POST",
+					body: normalizedWithoutBoost,
+					prefer: "resolution=merge-duplicates,return=minimal",
+				});
+			} catch (fallbackError) {
+				// If both fail, throw the original error
+				throw insertError;
+			}
+		}
 	}
+	templateMemory.set(record.id, record);
 
 	return record;
 }
 
 export async function getTeacherDerivedTemplateRecords(subject?: string, domain?: string): Promise<TeacherDerivedTemplateRecord[]> {
+	const mergeAndFilter = (fromDb: TeacherDerivedTemplateRecord[]) => {
+		const mergedById = new Map<string, TeacherDerivedTemplateRecord>();
+		for (const record of fromDb) {
+			mergedById.set(record.id, record);
+		}
+		for (const record of templateMemory.values()) {
+			const existing = mergedById.get(record.id);
+			if (!existing) {
+				mergedById.set(record.id, record);
+				continue;
+			}
+			mergedById.set(record.id, {
+				...existing,
+				...record,
+				bloom: { ...(existing.bloom ?? {}), ...(record.bloom ?? {}) },
+				difficultyBoost: record.difficultyBoost ?? existing.difficultyBoost,
+				multiStepBoost: record.multiStepBoost ?? existing.multiStepBoost,
+				misconceptionRiskBoost: record.misconceptionRiskBoost ?? existing.misconceptionRiskBoost,
+			});
+		}
+		return [...mergedById.values()].filter((record) =>
+			(!subject || !record.subject || record.subject === subject)
+			&& (!domain || !record.domain || record.domain === domain)
+		);
+	};
+
 	if (canUseSupabase()) {
-		const rows = await supabaseRest("cognitive_templates", {
-			select: "id,teacher_id,source_feedback_id,evidence_text,subject,domain,bloom,difficulty_boost,misconception_risk_boost,created_at",
-		});
-		return ((rows as Array<Record<string, unknown>>) ?? []).map((row) => ({
-			id: String(row.id),
-			teacherId: String(row.teacher_id),
-			sourceFeedbackId: String(row.source_feedback_id),
-			evidenceText: String(row.evidence_text),
-			subject: typeof row.subject === "string" ? row.subject : undefined,
-			domain: typeof row.domain === "string" ? row.domain : undefined,
-			bloom: row.bloom as TeacherDerivedTemplateRecord["bloom"],
-			difficultyBoost: typeof row.difficulty_boost === "number" ? row.difficulty_boost : undefined,
-			misconceptionRiskBoost: typeof row.misconception_risk_boost === "number" ? row.misconception_risk_boost : undefined,
-			createdAt: String(row.created_at),
-		})).filter((record) => (!subject || !record.subject || record.subject === subject) && (!domain || !record.domain || record.domain === domain));
+		try {
+			const rows = await supabaseRest("cognitive_templates", {
+				select: "id,teacher_id,source_feedback_id,evidence_text,subject,domain,bloom,difficulty_boost,misconception_risk_boost,multi_step_boost,created_at",
+			});
+			const records = ((rows as Array<Record<string, unknown>>) ?? []).map((row) => ({
+				id: String(row.id),
+				teacherId: String(row.teacher_id),
+				sourceFeedbackId: String(row.source_feedback_id),
+				evidenceText: String(row.evidence_text),
+				subject: typeof row.subject === "string" ? row.subject : undefined,
+				domain: typeof row.domain === "string" ? row.domain : undefined,
+				bloom: row.bloom as TeacherDerivedTemplateRecord["bloom"],
+				difficultyBoost: typeof row.difficulty_boost === "number" ? row.difficulty_boost : undefined,
+				misconceptionRiskBoost: typeof row.misconception_risk_boost === "number" ? row.misconception_risk_boost : undefined,
+				multiStepBoost: typeof row.multi_step_boost === "number" ? row.multi_step_boost : undefined,
+				createdAt: String(row.created_at),
+			}));
+			return mergeAndFilter(records);
+		} catch (error) {
+			// Fallback if multi_step_boost column doesn't exist yet
+			const rows = await supabaseRest("cognitive_templates", {
+				select: "id,teacher_id,source_feedback_id,evidence_text,subject,domain,bloom,difficulty_boost,misconception_risk_boost,created_at",
+			});
+			const records = ((rows as Array<Record<string, unknown>>) ?? []).map((row) => ({
+				id: String(row.id),
+				teacherId: String(row.teacher_id),
+				sourceFeedbackId: String(row.source_feedback_id),
+				evidenceText: String(row.evidence_text),
+				subject: typeof row.subject === "string" ? row.subject : undefined,
+				domain: typeof row.domain === "string" ? row.domain : undefined,
+				bloom: row.bloom as TeacherDerivedTemplateRecord["bloom"],
+				difficultyBoost: typeof row.difficulty_boost === "number" ? row.difficulty_boost : undefined,
+				misconceptionRiskBoost: typeof row.misconception_risk_boost === "number" ? row.misconception_risk_boost : undefined,
+				createdAt: String(row.created_at),
+			}));
+			return mergeAndFilter(records);
+		}
 	}
 
-	return [...templateMemory.values()].filter((record) => (!subject || !record.subject || record.subject === subject) && (!domain || !record.domain || record.domain === domain));
+	return mergeAndFilter([]);
 }
 
 export async function listTeacherDerivedTemplates(subject?: string, domain?: string): Promise<CognitiveTemplate[]> {

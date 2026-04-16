@@ -7,7 +7,7 @@ export interface InstructionalUnit {
 	skills: string[];
 	learningTargets: string[];
 	misconceptions: string[];
-	difficulty: number;
+	contentComplexity: number;
 	linguisticLoad: number;
 	sourceSections: string[];
 	confidence: number;

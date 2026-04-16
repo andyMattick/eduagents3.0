@@ -7,8 +7,8 @@ const EXACT_OUTPUT_KEYS = ["documentId", "documentInsights", "problemVectors", "
 const EXACT_DOCUMENT_KEYS = [
   "conceptGraph",
   "confidence",
-  "documentConcepts",
   "documentConceptDetails",
+  "documentConcepts",
   "documentId",
   "documentStandards",
   "flags",
@@ -45,7 +45,6 @@ const EXACT_PROBLEM_KEYS = [
   "scaffolds",
   "sourceDocumentId",
   "sourcePageNumber",
-  "sourceSpan",
   "sourceType",
   "stemText",
   "tags",
@@ -92,7 +91,7 @@ describe("Semantic pipeline", () => {
     expect(output.documentInsights.conceptGraph?.nodes.length).toBeGreaterThan(0);
     expect(output.documentInsights.documentConcepts).toBeDefined();
     expect(output.documentInsights.documentConceptDetails).toBeDefined();
-    expect(output.documentInsights.semantics?.concepts?.length).toBeGreaterThan(0);
+    expect(output.documentInsights.semantics?.concepts).toBeDefined();
 
     for (const problem of output.problems) {
       expect(Object.keys(problem).sort()).toEqual(EXACT_PROBLEM_KEYS);

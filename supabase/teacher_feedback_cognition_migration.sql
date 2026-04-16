@@ -27,6 +27,7 @@ create table if not exists cognitive_templates (
   bloom jsonb,
   difficulty_boost double precision,
   misconception_risk_boost double precision,
+  multi_step_boost double precision,
   created_at timestamptz default now()
 );
 

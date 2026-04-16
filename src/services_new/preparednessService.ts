@@ -1,7 +1,7 @@
 /**
  * Preparedness Client-Side Service
  * 
- * Handles calls to the /api/v4/preparedness endpoint with proper error handling
+ * Handles calls to preparedness endpoints with proper error handling
  * and type safety.
  */
 
@@ -85,6 +85,8 @@ export type AlignmentResponse = AlignmentResult & {
   debug?: AlignmentDebugInfo;
 };
 
+const PREPAREDNESS_INTEL_ENDPOINT = "/api/v4/preparedness-intel";
+
 /**
  * Call Phase 1: Get alignment analysis.
  */
@@ -92,7 +94,7 @@ export async function getAlignment(
   prep: PrepDocument,
   assessment: AssessmentDocument
 ): Promise<AlignmentResponse> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -120,7 +122,7 @@ export async function getAlignment(
 export async function getSuggestions(
   alignment: AlignmentResult
 ): Promise<SuggestionsResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -147,7 +149,7 @@ export async function generatePreparednessReviewSnippet(
   questionText: string,
   conceptList: string[]
 ): Promise<PreparednessReviewSnippetResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -173,7 +175,7 @@ export async function rewritePreparednessQuestion(
   questionText: string,
   teacherNotes: string
 ): Promise<PreparednessRewriteQuestionResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -199,7 +201,7 @@ export async function rewritePreparednessQuestionToDifficulty(
   questionText: string,
   targetDifficulty: number
 ): Promise<PreparednessRewriteQuestionResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -225,7 +227,7 @@ export async function generatePreparednessPracticeItem(
   questionText: string,
   conceptList: string[]
 ): Promise<PreparednessPracticeItemResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -257,7 +259,7 @@ export async function generatePreparednessReviewPacket(
     explanation?: string;
   }>
 ): Promise<PreparednessReviewPacketResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -281,7 +283,7 @@ export async function generatePreparednessReviewPacket(
 export async function generatePreparednessTestFromReview(
   reviewConcepts: Array<{ title: string; explanation?: string; example?: string } | string>
 ): Promise<PreparednessGeneratedTestResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -309,7 +311,7 @@ export async function applyRewrite(
   assessment: AssessmentDocument,
   selectedSuggestions: Suggestion[]
 ): Promise<RewriteResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -340,7 +342,7 @@ export async function getReverseAlignment(
   prep: PrepDocument,
   assessment: AssessmentDocument
 ): Promise<ReverseAlignmentResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -371,7 +373,7 @@ export async function generatePreparednessReport(
   rewrite: RewriteResult,
   reverseAlignment?: ReverseAlignmentResult
 ): Promise<PreparednessReportResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -401,7 +403,7 @@ export async function mergeAddendumIntoReview(
   reviewText: string,
   addendumConcepts: string[]
 ): Promise<{ updatedReview: string }> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -429,7 +431,7 @@ export async function applyTeacherCorrections(
   rewrite: RewriteResult,
   teacherCorrections: TeacherCorrection[]
 ): Promise<CorrectedPreparednessResult> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -463,7 +465,7 @@ export async function getAdminReport(params: {
   teacherCorrections: TeacherCorrection[];
   llmErrors?: Array<{ phase: string; errorType: string }>;
 }): Promise<AdminReportEnvelope> {
-  const response = await fetch("/api/v4/preparedness", {
+  const response = await fetch(PREPAREDNESS_INTEL_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

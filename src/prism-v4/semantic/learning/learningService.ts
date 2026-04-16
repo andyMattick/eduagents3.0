@@ -390,7 +390,7 @@ export async function loadTemplateLearning(): Promise<TemplateLearningRecord[]> 
 		return loadTemplateLearningRecords();
 	}
 
-	if (learningDirty && !canUseSupabase()) {
+	if (learningDirty) {
 		return aggregateTemplateLearning();
 	}
 

@@ -1,3 +1,6 @@
+⚠️ DO NOT DELETE OR OVERWRITE `.env` / `.env.local`.
+The app will not run without required environment variables.
+
 Absolutely, Andy — here is a **developer‑onboarding README** written in the same tone and structure as your original, but focused on helping new engineers understand the system quickly and contribute confidently.
 
 It’s crisp, operational, and gives a new dev exactly what they need to get productive without drowning them in architecture.

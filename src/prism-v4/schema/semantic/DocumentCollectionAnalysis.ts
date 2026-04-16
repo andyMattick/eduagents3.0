@@ -1,8 +1,8 @@
 export interface ConceptDifficultyStep {
 	documentId: string;
-	difficulty: "low" | "medium" | "high";
+	complexityBand: "low" | "medium" | "high";
 	problemCount: number;
-	averageDifficultyScore: number;
+	averageComplexityScore: number;
 }
 
 export interface ConceptRepresentationStep {
@@ -36,7 +36,7 @@ export interface DocumentCoverageSnapshot {
 	problemCount: number;
 	instructionalDensity: number;
 	representations: string[];
-	dominantDifficulty: "low" | "medium" | "high";
+	dominantComplexityBand: "low" | "medium" | "high";
 	averageConceptScore?: number;
 	uniqueConcepts?: string[];
 	anchorConcepts?: string[];
@@ -67,7 +67,7 @@ export interface DocumentCollectionAnalysis {
 	documentIds: string[];
 	conceptOverlap: Record<string, string[]>;
 	conceptGaps: string[];
-	difficultyProgression: Record<string, ConceptDifficultyStep[]>;
+	complexityProgression: Record<string, ConceptDifficultyStep[]>;
 	representationProgression: Record<string, ConceptRepresentationStep[]>;
 	redundancy: Record<string, RedundancyEntry[]>;
 	coverageSummary: {

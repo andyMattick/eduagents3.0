@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { IncomingMessage } from "http";
 
-import { supabaseAdmin } from "../../../lib/supabase";
+import { assertBackendStartupEnv } from "../../../lib/envGuard";
 import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument } from "../../../src/prism-v4/documents/analysis";
 import {
@@ -19,8 +19,23 @@ export const config = {
 	},
 };
 
+assertBackendStartupEnv([
+	"SUPABASE_URL",
+	"SUPABASE_ANON_KEY",
+	["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+], "api/v4/documents/upload");
+
 function getSingleHeaderValue(header: string | string[] | undefined) {
 	return Array.isArray(header) ? header[0] : header;
+}
+
+function parseBooleanHeader(header: string | string[] | undefined): boolean {
+	const value = getSingleHeaderValue(header);
+	if (!value) {
+		return false;
+	}
+	const normalized = value.trim().toLowerCase();
+	return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 async function readRequestBody(req: IncomingMessage & { arrayBuffer?: () => Promise<ArrayBuffer> }) {
@@ -161,28 +176,6 @@ async function logTokenUsageEvent(params: {
 	}
 }
 
-async function incrementTokenUsage(actorKey: string, userId: string | null, tokens: number): Promise<void> {
-	if (!Number.isFinite(tokens) || tokens <= 0) return;
-	try {
-		const { url, key } = supabaseAdmin();
-		await fetch(`${url}/rest/v1/rpc/increment_token_usage`, {
-			method: "POST",
-			headers: {
-				apikey: key,
-				Authorization: `Bearer ${key}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				p_actor_key: actorKey,
-				p_tokens: Math.max(1, Math.round(tokens)),
-				p_user_id: userId,
-			}),
-		});
-	} catch {
-		// Non-fatal metering write failure.
-	}
-}
-
 const DAILY_TOKEN_LIMIT = 25_000;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -211,6 +204,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		const fileName = getSingleHeaderValue(headers["x-file-name"]);
 		const requestedSessionId = getSingleHeaderValue(headers["x-session-id"]);
+		const forceNewSession = parseBooleanHeader(headers["x-force-new-session"]);
+		const resolvedSessionId = forceNewSession ? null : requestedSessionId;
 		if (isJsonPayload) {
 		const payload = parseBody(req.body ?? {});
 		const documents = (payload.documents ?? []).filter((entry) => entry.sourceFileName && entry.sourceMimeType);
@@ -221,15 +216,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		const registered = await registerDocumentsStore(documents as Array<{ sourceFileName: string; sourceMimeType: string; azureExtract?: { fileName: string; content: string; pages: Array<{ pageNumber: number; text: string }>; paragraphs?: Array<{ text: string; pageNumber: number; role?: string }>; tables?: Array<{ rowCount: number; columnCount: number; pageNumber?: number; cells: Array<{ rowIndex: number; columnIndex: number; text: string }> }>; readingOrder?: string[] } }>);
 		const session = payload.createSession === false
 			? null
-			: requestedSessionId
-				? await ensureSessionDocumentsStore(requestedSessionId, registered.map((entry) => entry.documentId))
+			: resolvedSessionId
+				? await ensureSessionDocumentsStore(resolvedSessionId, registered.map((entry) => entry.documentId))
 				: await createDocumentSessionStore(registered.map((entry) => entry.documentId));
 
 		for (let index = 0; index < registered.length; index++) {
 			const doc = documents[index];
 			const reg = registered[index];
 			const estimatedTokens = estimateTokensFromText(doc?.azureExtract?.content ?? `${doc?.sourceFileName ?? ""} ${doc?.sourceMimeType ?? ""}`);
-			await incrementTokenUsage(actor.actorKey, actor.userId, estimatedTokens);
 			await logTokenUsageEvent({
 				actorKey: actor.actorKey,
 				userId: actor.userId,
@@ -271,9 +265,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			catch (err) {
 			return res.status(400).json({ error: "Failed to read request body as binary data." });
 		}
-		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: normalizedContentType, rawBinary: buffer }], requestedSessionId ?? null);
-		const session = requestedSessionId
-			? await ensureSessionDocumentsStore(requestedSessionId, [registered.documentId])
+		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: normalizedContentType, rawBinary: buffer }], resolvedSessionId ?? null);
+		const session = resolvedSessionId
+			? await ensureSessionDocumentsStore(resolvedSessionId, [registered.documentId])
 			: await createDocumentSessionStore([registered.documentId]);
 
 		// Analyze inline while the binary is available in this invocation.
@@ -311,8 +305,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				binary_bytes: buffer.length,
 			},
 		});
-
-		await incrementTokenUsage(actor.actorKey, actor.userId, Math.max(1, Math.ceil(buffer.length / 4)));
 
 		return res.status(200).json({
 			documentId: registered.documentId,

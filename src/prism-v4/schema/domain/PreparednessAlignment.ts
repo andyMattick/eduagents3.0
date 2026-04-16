@@ -26,8 +26,8 @@ export interface ConceptItem {
 export interface AlignmentRecord {
   assessmentItemNumber: number;
   concepts: ConceptItem[];
-  difficulty: number; // 1–5 test difficulty
-  prepDifficulty: number; // 1–5 prep difficulty
+  testComplexity: number; // 1–5 test complexity
+  prepComplexity: number; // 1–5 prep complexity
   alignment: AlignmentStatus;
 }
 

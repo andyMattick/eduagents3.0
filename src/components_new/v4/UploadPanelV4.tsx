@@ -1,6 +1,4 @@
 import React from "react";
-import type { UploadedSource } from "./MergedSourcesList";
-import { MergedSourcesList } from "./MergedSourcesList";
 
 type Goal = "simulate" | "preparedness";
 
@@ -90,7 +88,6 @@ interface UploadPanelV4Props {
   secondaryAccept: string;
   primaryRef: React.RefObject<HTMLInputElement | null>;
   secondaryRef: React.RefObject<HTMLInputElement | null>;
-  uploadedSources: UploadedSource[];
   canRun: boolean;
   ctaLabel: string;
   usageCount: number;
@@ -123,7 +120,6 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
     secondaryAccept,
     primaryRef,
     secondaryRef,
-    uploadedSources,
     canRun,
     ctaLabel,
     usageCount,
@@ -191,8 +187,6 @@ export function UploadPanelV4(props: UploadPanelV4Props) {
             onChange={onPrimaryChange}
             onRemove={onClearPrimary}
           />
-
-          {goal === "preparedness" && <MergedSourcesList sources={uploadedSources} />}
 
           <p style={{ fontSize: "0.75rem", color: "#9c4d2b", opacity: 0.75, margin: 0 }}>
             Uploaded documents are processed by Google Gemini to generate analysis and suggestions. Avoid uploading files

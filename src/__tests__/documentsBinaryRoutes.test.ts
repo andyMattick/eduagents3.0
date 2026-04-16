@@ -151,6 +151,37 @@ describe("v4 documents binary routes", () => {
 		expect(analyzeResponse.body.analyzedDocument.problems.length).toBeGreaterThan(0);
 	});
 
+	it("forces a new session for isolated binary uploads even when x-session-id is provided", async () => {
+		runAzureExtractionMock.mockResolvedValue({
+			content: "1. Solve the fraction problem.",
+			pages: [{ pageNumber: 1, lines: [{ content: "1. Solve the fraction problem." }] }],
+			paragraphs: [{ content: "1. Solve the fraction problem.", boundingRegions: [{ pageNumber: 1 }] }],
+			tables: [],
+		});
+
+		const app = createApp();
+		const firstUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/pdf")
+			.set("x-file-name", "first.pdf")
+			.send(Buffer.from("%PDF-1.4 first"));
+
+		expect(firstUpload.status).toBe(200);
+
+		const isolatedUpload = await request(app)
+			.post("/api/v4/documents/upload")
+			.set("Content-Type", "application/pdf")
+			.set("x-file-name", "isolated.pdf")
+			.set("x-session-id", firstUpload.body.sessionId)
+			.set("x-force-new-session", "true")
+			.send(Buffer.from("%PDF-1.4 isolated"));
+
+		expect(isolatedUpload.status).toBe(200);
+		expect(isolatedUpload.body.sessionId).not.toBe(firstUpload.body.sessionId);
+		expect(isolatedUpload.body.registered).toHaveLength(1);
+		expect(isolatedUpload.body.registered[0].sourceFileName).toBe("isolated.pdf");
+	});
+
 	it("builds Wave 4 collection analysis and intents across PDF, DOCX, and PPTX uploads", async () => {
 		runAzureExtractionMock.mockResolvedValue({
 			content: "1. Solve the fraction problem.",

@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 import { useAuth } from "../Auth/useAuth";
-import { createStudioSessionFromFileApi } from "../../lib/teacherStudioApi";
+import { createStudioSessionFromFileApi, createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import type { DocumentStatus } from "../../lib/documentStatusApi";
 import { getDocumentStatus } from "../../lib/documentStatusApi";
 import {
@@ -78,11 +78,6 @@ type ItemAction =
 	| "context"
 	| "type"
 	| "subparts";
-
-interface UploadedSource {
-	name: string;
-	tag: "PREP" | "TEST";
-}
 
 interface StudioState {
 	goal: Goal | null;
@@ -418,17 +413,6 @@ function buildPreparednessSupplementText(params: {
 		`Reading load target: ${params.readingLoad}`,
 		`Length target: ${params.length}`,
 	].join("\n");
-}
-
-function collectUploadedSources(prepFile: File | null, testFile: File | null): UploadedSource[] {
-	const sources: UploadedSource[] = [];
-	if (prepFile) {
-		sources.push({ name: prepFile.name, tag: "PREP" });
-	}
-	if (testFile) {
-		sources.push({ name: testFile.name, tag: "TEST" });
-	}
-	return sources;
 }
 
 function itemActionLabel(action: ItemAction): string {
@@ -1142,7 +1126,13 @@ export function TeacherStudio() {
 
 		try {
 			if (state.goal === "simulate") {
-				const { sessionId, documentId, originalText } = await createStudioSessionFromFileApi(simulationFile!, user?.id);
+				const { sessionId, registered, originalTextMap } = await createStudioSessionFromFilesApi([simulationFile!], user?.id);
+				const uploaded = registered[0];
+				if (!uploaded) {
+					throw new Error("Upload completed without a registered document for simulation.");
+				}
+				const documentId = uploaded.documentId;
+				const originalText = originalTextMap[documentId] ?? null;
 				void refreshUsage();
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile }, user?.id);
 				setState((prev) => ({
@@ -1513,8 +1503,6 @@ export function TeacherStudio() {
 			? "Simulate Experience"
 			: "Build Instructional Blueprint";
 
-	const uploadedSources = collectUploadedSources(state.secondaryFile, state.primaryFile);
-
 	return (
 		<div className="v4-viewer">
 			<div className="v4-shell">
@@ -1620,7 +1608,6 @@ export function TeacherStudio() {
 							secondaryAccept={ACCEPTED_TEXT}
 							primaryRef={primaryRef}
 							secondaryRef={secondaryRef}
-							uploadedSources={uploadedSources}
 							canRun={canRun}
 							ctaLabel={ctaLabel}
 							usageCount={state.usageCount}
