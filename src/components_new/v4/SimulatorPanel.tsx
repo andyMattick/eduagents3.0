@@ -137,6 +137,7 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 	const [narrative, setNarrative] = useState<string | null>(null);
 	const [simData, setSimData] = useState<SimulatorData | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [tokenUsage, setTokenUsage] = useState<{ used: number; remaining: number; limit: number } | null>(null);
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 				const res = await runSingleSimulatorApi({ sessionId, studentProfile: profile });
 				setNarrative(res.narrative);
 				setSimData(res.data);
+				if (res.tokenUsage) setTokenUsage(res.tokenUsage);
 			}
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Simulation failed. Please try again.");
@@ -245,7 +247,22 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 			{/* ── Error ── */}
 			{error && <p className="v4-error" style={{ marginTop: "0.75rem" }}>{error}</p>}
 
-			{/* ── Result ── */}
+		{/* ── Token usage ── */}
+		{tokenUsage && (
+			<div style={{ marginTop: "0.75rem", fontSize: "0.78rem", color: "var(--v4-muted)" }}>
+				<div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
+					<span>Daily tokens: {tokenUsage.used.toLocaleString()} / {tokenUsage.limit.toLocaleString()}</span>
+					<span>{tokenUsage.remaining.toLocaleString()} remaining</span>
+				</div>
+				<div style={{ height: 5, borderRadius: 3, background: "var(--v4-border, #e5e7eb)" }}>
+					<div style={{
+						height: 5, borderRadius: 3, transition: "width 0.4s",
+						width: `${Math.min(100, Math.round((tokenUsage.used / tokenUsage.limit) * 100))}%`,
+						background: tokenUsage.used / tokenUsage.limit >= 0.9 ? "var(--v4-error, #dc2626)" : "var(--v4-accent, #2563eb)",
+					}} />
+				</div>
+			</div>
+		)}
 			{hasResult && (
 				<div style={{ marginTop: "1.5rem" }}>
 					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>

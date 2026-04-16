@@ -21,6 +21,24 @@ import "./conceptMatch.css";
 
 type Phase = "upload" | "analyzing" | "review" | "generating" | "results";
 
+/* ── Token progress bar ─────────────────────────────────────────────────── */
+
+function TokenBar({ usage }: { usage: { used: number; remaining: number; limit: number } }) {
+  const pct = Math.min(100, Math.round((usage.used / usage.limit) * 100));
+  const color = pct >= 90 ? "#b53535" : pct >= 70 ? "#b97a2a" : "#2a7a4b";
+  return (
+    <div style={{ fontSize: "0.78rem", color: "#6b5040", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+        <span>Daily tokens: {usage.used.toLocaleString()} / {usage.limit.toLocaleString()}</span>
+        <span>{usage.remaining.toLocaleString()} remaining</span>
+      </div>
+      <div style={{ height: 6, borderRadius: 3, background: "rgba(86,57,32,0.12)" }}>
+        <div style={{ height: 6, borderRadius: 3, width: `${pct}%`, background: color, transition: "width 0.4s" }} />
+      </div>
+    </div>
+  );
+}
+
 export function ConceptMatchPage() {
   /* ── Input state ── */
   const [prepTitle, setPrepTitle] = useState("");
@@ -45,6 +63,9 @@ export function ConceptMatchPage() {
 
   /* ── Generate result ── */
   const [generateResult, setGenerateResult] = useState<ConceptMatchGenerateResponse | null>(null);
+
+  /* ── Token usage ── */
+  const [tokenUsage, setTokenUsage] = useState<{ used: number; remaining: number; limit: number } | null>(null);
 
   /* ── Parse assessment text into items ── */
   const parseAssessmentItems = useCallback((text: string): AssessmentItem[] => {
@@ -92,6 +113,7 @@ export function ConceptMatchPage() {
       });
 
       setIntel(result);
+      if (result.tokenUsage) setTokenUsage(result.tokenUsage);
       setPhase("review");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
@@ -142,6 +164,9 @@ export function ConceptMatchPage() {
           test: type === "test" || type === "both",
         },
       });
+      if ((result as unknown as { tokenUsage?: { used: number; remaining: number; limit: number } }).tokenUsage) {
+        setTokenUsage((result as unknown as { tokenUsage: { used: number; remaining: number; limit: number } }).tokenUsage);
+      }
       setGenerateResult(result);
       setPhase("results");
     } catch (err) {
@@ -156,10 +181,6 @@ export function ConceptMatchPage() {
       <div className="cm-page">
         <p className="cm-kicker">ConceptMatch v1</p>
         <h1>Concept Match</h1>
-        <p style={{ color: "#433228", marginBottom: "1.5rem", maxWidth: 600 }}>
-          Upload your prep notes and assessment to analyze concept coverage,
-          identify gaps, and generate aligned materials.
-        </p>
 
         {error && (
           <div className="cm-panel" style={{ borderColor: "rgba(201,55,55,0.3)", background: "rgba(201,55,55,0.05)" }}>
@@ -271,6 +292,8 @@ export function ConceptMatchPage() {
     <div className="cm-page">
       <p className="cm-kicker">ConceptMatch v1</p>
       <h1>Concept Match</h1>
+
+      {tokenUsage && <TokenBar usage={tokenUsage} />}
 
       {error && (
         <div className="cm-panel" style={{ borderColor: "rgba(201,55,55,0.3)", background: "rgba(201,55,55,0.05)" }}>

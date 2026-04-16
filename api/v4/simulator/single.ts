@@ -10,6 +10,8 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
+import { resolveActor, getDailyUsage, DAILY_TOKEN_LIMIT, isTokenLimitError, sendTokenLimitResponse, checkTokenBudget, incrementTokens } from "../../../lib/tokenGate";
+import { callGeminiDetailed } from "../../../lib/gemini";
 import type { SimulatorData, StudentProfile } from "../../../src/types/simulator";
 import { fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
 
@@ -165,9 +167,43 @@ ${text.substring(0, 12000)}
 Here is the student profile:
 ${profileStr}`;
 
-	const raw = await callLLM({ prompt, metadata: { runType: "simulate-single", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
+	const actor = resolveActor(req);
+
+	try {
+		await checkTokenBudget(actor.actorKey);
+	} catch (err) {
+		if (isTokenLimitError(err)) return sendTokenLimitResponse(res, err);
+		throw err;
+	}
+
+	let raw: string;
+	try {
+		const result = await callGeminiDetailed({
+			model: "gemini-2.0-flash",
+			prompt,
+			temperature: 0.4,
+			maxOutputTokens: 8192,
+		});
+		raw = result.text;
+		const tokensUsed =
+			result.usageMetadata?.totalTokenCount ??
+			(result.usageMetadata?.promptTokenCount ?? 0) +
+				(result.usageMetadata?.candidatesTokenCount ?? 0);
+		await incrementTokens(actor.actorKey, actor.userId, tokensUsed);
+	} catch (err) {
+		if (isTokenLimitError(err)) return sendTokenLimitResponse(res, err);
+		// Fall back to unmetered callLLM so existing behaviour is preserved
+		raw = await callLLM({ prompt, metadata: { runType: "simulate-single", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
+	}
 
 	const { narrative, data } = parseSimulatorResponse(raw);
 
-	return res.status(200).json({ narrative, data: data as SimulatorData | null });
+	const usedAfter = await getDailyUsage(actor.actorKey).catch(() => 0);
+	const tokenUsage = {
+		used: usedAfter,
+		remaining: Math.max(0, DAILY_TOKEN_LIMIT - usedAfter),
+		limit: DAILY_TOKEN_LIMIT,
+	};
+
+	return res.status(200).json({ narrative, data: data as SimulatorData | null, tokenUsage });
 }

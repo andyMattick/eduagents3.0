@@ -150,6 +150,7 @@ export interface SingleSimulatorRequest {
 export interface SingleSimulatorResponse {
 	narrative: string;
 	data: SimulatorData | null;
+	tokenUsage?: { used: number; remaining: number; limit: number };
 }
 
 // ---------------------------------------------------------------------------

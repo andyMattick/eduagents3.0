@@ -9,6 +9,7 @@ import type {
   PrepConceptStat,
   ConceptCoverage,
 } from "../../../src/prism-v4/schema/domain/ConceptMatch";
+import { normalizeConcepts } from "./conceptNormalization";
 
 export const runtime = "nodejs";
 
@@ -333,6 +334,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const result = buildTestConceptStatsFromTags(body.assessment.items);
       testConceptStats = result.stats;
       testDifficulty = result.testDifficulty;
+      enrichedItems = body.assessment.items;
     } else {
       // Items don't have concept tags — use LLM to extract
       const result = await buildTestConceptStatsFromLLM(body.assessment.items, callLLM);
@@ -341,10 +343,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       enrichedItems = result.enrichedItems;
     }
 
-    // Phase 2: Prep concept profile (LLM, anchored to test concept labels)
+    // Phase 1b: Canonical concept normalization
+    // Collect all raw concept strings extracted from test items, then normalize
+    // them via embedding + clustering + LLM canonicalization so that downstream
+    // prep extraction and coverage comparisons use a single canonical vocabulary.
+    const rawTestConcepts = enrichedItems.flatMap(
+      (item) => item.tags?.concepts ?? []
+    );
+
+    let canonicalMap: Record<string, string> = {};
+    let canonicalLabels: string[] = [];
+    try {
+      const normResult = await normalizeConcepts(rawTestConcepts, callLLM);
+      canonicalMap = normResult.canonicalMap;
+      canonicalLabels = normResult.canonicalLabels;
+    } catch {
+      // Normalization is best-effort; fall back to LLM-extracted labels as-is
+      canonicalLabels = Object.keys(testConceptStats);
+    }
+
+    // Rewrite assessment items so every concept tag uses the canonical label
+    const cmAssessmentItems: AssessmentItem[] = enrichedItems.map((item) => ({
+      ...item,
+      tags: {
+        ...item.tags,
+        concepts: (item.tags?.concepts ?? []).map(
+          (c) => canonicalMap[c] ?? canonicalMap[c.toLowerCase().trim()] ?? c
+        ),
+        difficulty: item.tags?.difficulty,
+      },
+    }));
+
+    // Rebuild test concept stats from canonical items
+    const canonicalResult = buildTestConceptStatsFromTags(cmAssessmentItems);
+    testConceptStats = canonicalResult.stats;
+    testDifficulty = canonicalResult.testDifficulty;
+
+    // Use canonical labels for the prep extraction anchor list
+    const testConceptLabels = canonicalLabels.length
+      ? canonicalLabels
+      : Object.keys(testConceptStats);
+
+    // Phase 2: Prep concept profile (LLM, anchored to canonical test concept labels)
     const { stats: prepConceptStats, prepDifficulty } = await buildPrepConceptStats(
       body.prep.rawText,
-      Object.keys(testConceptStats),
+      testConceptLabels,
       callLLM
     );
 
@@ -370,10 +413,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       teacherSummary,
     };
 
-    // Include enriched items (with LLM-extracted concepts) for evidence modal
+    // Include enriched items (with canonical concepts) for evidence modal
     const usedAfter = await getDailyUsage(actor.actorKey).catch(() => 0);
     const tokenUsage = { used: usedAfter, remaining: Math.max(0, DAILY_TOKEN_LIMIT - usedAfter), limit: DAILY_TOKEN_LIMIT };
-    return res.status(200).json({ ...response, enrichedItems, tokenUsage });
+    return res.status(200).json({ ...response, enrichedItems: cmAssessmentItems, tokenUsage });
   } catch (err) {
     if (isTokenLimitError(err)) {
       return sendTokenLimitResponse(res, err);
