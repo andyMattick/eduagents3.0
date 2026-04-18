@@ -129,7 +129,7 @@ function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean)
 }
 
 export function DocumentUpload() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const {
     workspace,
     isUploading,
@@ -179,6 +179,13 @@ export function DocumentUpload() {
       .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
       .sort()
       .join("|");
+
+    if (authLoading || !user) {
+      logUploadTrace("ignored submit: session not hydrated", { authLoading, hasUser: !!user });
+      warnUploadGuard("upload:session-not-hydrated", { authLoading, hasUser: !!user });
+      setError("Please wait for your session to load before uploading.");
+      return;
+    }
 
     if (uploadInFlightRef.current || isUploading) {
       logUploadTrace("ignored submit while upload in flight", { isUploading, selectedFileCount: selectedFiles.length });

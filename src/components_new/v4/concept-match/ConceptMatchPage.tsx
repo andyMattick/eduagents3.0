@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type {
   AssessmentItem,
   ConceptMatchIntelResponse,
@@ -11,6 +11,7 @@ import {
   fetchTestEvidence,
   fetchConceptMatchGenerate,
 } from "../../../services_new/conceptMatchService";
+import { supabase } from "../../../supabase/client";
 import { TestConceptProfilePanel } from "./TestConceptProfilePanel";
 import { PrepCoveragePanel } from "./PrepCoveragePanel";
 import { TeacherActionPanel } from "./TeacherActionPanel";
@@ -45,6 +46,15 @@ export function ConceptMatchPage() {
   const [prepText, setPrepText] = useState("");
   const [assessmentTitle, setAssessmentTitle] = useState("");
   const [assessmentText, setAssessmentText] = useState("");
+
+  /* ── Auth ── */
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user?.id ?? null);
+    });
+  }, []);
 
   /* ── Workflow state ── */
   const [phase, setPhase] = useState<Phase>("upload");
@@ -110,7 +120,7 @@ export function ConceptMatchPage() {
       const result = await fetchConceptMatchIntel({
         prep: { title: prepTitle, rawText: prepText },
         assessment: { title: assessmentTitle, items: parsedItems },
-      });
+      }, userId);
 
       setIntel(result);
       if (result.tokenUsage) setTokenUsage(result.tokenUsage);
@@ -125,7 +135,7 @@ export function ConceptMatchPage() {
   const handleViewEvidence = async (concept: string) => {
     setEvidenceLoading(true);
     try {
-      const result = await fetchTestEvidence(concept, items);
+      const result = await fetchTestEvidence(concept, items, userId);
       setEvidenceData(result);
     } catch {
       setEvidenceData({
@@ -163,7 +173,7 @@ export function ConceptMatchPage() {
           review: type === "review" || type === "both",
           test: type === "test" || type === "both",
         },
-      });
+      }, userId);
       if ((result as unknown as { tokenUsage?: { used: number; remaining: number; limit: number } }).tokenUsage) {
         setTokenUsage((result as unknown as { tokenUsage: { used: number; remaining: number; limit: number } }).tokenUsage);
       }

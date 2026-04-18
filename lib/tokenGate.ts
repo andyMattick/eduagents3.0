@@ -103,6 +103,11 @@ export async function incrementTokens(
   tokens: number,
 ): Promise<void> {
   if (!Number.isFinite(tokens) || tokens <= 0) return;
+  if (!actorKey || actorKey === "ip:unknown") {
+    // No identifiable actor — skip accounting to prevent orphan anonymous rows.
+    console.warn("[tokenGate] incrementTokens called with unresolvable actor, skipping");
+    return;
+  }
   try {
     const { url, key } = supabaseAdmin();
     await fetch(`${url}/rest/v1/rpc/increment_token_usage`, {

@@ -55,14 +55,29 @@ Return your answer in two parts:
     "estimatedCompletionTimeSeconds": number,
     "fatigueRisk": number (0.0–1.0),
     "pacingRisk": number (0.0–1.0),
-    "majorRedFlags": [string]
+    "majorRedFlags": [string],
+    "predictedStates": {
+      "fatigue": number (0.0–1.0),
+      "confusion": number (0.0–1.0),
+      "guessing": number (0.0–1.0),
+      "overload": number (0.0–1.0),
+      "frustration": number (0.0–1.0),
+      "timePressureCollapse": number (0.0–1.0)
+    }
   },
   "rewriteSuggestions": {
     "testLevel": [string],
     "itemLevel": {
       "ITEM_NUMBER": [string]
     }
-  }
+  },
+  "suggestions": [
+    {
+      "text": string,
+      "type": "item_rewrite" | "instructional_support" | "student_behavior",
+      "itemNumber": number (optional, only for item-level suggestions)
+    }
+  ]
 }`;
 
 const SYSTEM_PROMPT = `You are a student-experience simulator for teachers.
@@ -101,22 +116,31 @@ For each item, evaluate:
 - misconception risk
 - red flags
 
-After completing the simulation, produce a final section called "rewriteSuggestions" inside the DATA JSON.
-Rewrite suggestions must be grounded ONLY in the metrics you generated:
-- high cognitiveLoad
-- high confusionRisk
-- high readingLoad
-- high vocabularyDifficulty
-- high misconceptionRisk
-- long timeToProcessSeconds
+After completing the simulation, populate the following sections in the DATA JSON:
+
+"overall.predictedStates": Predict the probability (0.0–1.0) of each unobservable student state across the full assessment:
+- fatigue: likelihood the student fatigues before finishing
+- confusion: overall confusion likelihood
+- guessing: likelihood the student resorts to guessing
+- overload: cognitive overload risk
+- frustration: emotional frustration likelihood
+- timePressureCollapse: likelihood time pressure causes performance collapse
+
+"rewriteSuggestions": legacy flat format — still required for backwards compatibility.
+- testLevel: 2–5 whole-assessment suggestions as plain strings.
+- itemLevel: only include items that scored high on risk metrics.
+
+"suggestions": new typed format — a flat array of ALL suggestions, each tagged with a routing type:
+- "item_rewrite": the issue is in the item text and CAN be fixed by rewriting the item (ambiguous wording, excessive reading load, missing scaffold, misleading distractor, cognitive overload in the item itself).
+- "instructional_support": the issue requires teacher action outside the item (re-teach concept, in-class support, pacing adjustment, supplemental materials).
+- "student_behavior": a predicted student behavior pattern, diagnostic only (fatigue spike, guessing burst, confusion loop, attention drift) — NOT fixable by rewriting.
+Include itemNumber for item-level suggestions.
 
 Rules for suggestions:
-- Suggestions must be actionable and teacher-friendly.
+- Suggestions must be grounded ONLY in the metrics you generated.
+- item_rewrite suggestions must be actionable and teacher-friendly.
 - Suggestions must NOT rewrite the item directly.
-- Suggestions must NOT introduce new content.
 - Focus on clarity, pacing, cognitive load, vocabulary, and fairness.
-- testLevel: 2–5 whole-assessment suggestions.
-- itemLevel: only include items that scored high on risk metrics.
 
 IMPORTANT — STRICT OUTPUT FORMAT:
 - In the DATA section, output ONLY the raw JSON object.

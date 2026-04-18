@@ -85,7 +85,7 @@ export type RegenerateAssessmentSectionRequest = {
 };
 
 export async function fetchJson<T>(input: string, init?: RequestInit) {
-	const response = await fetch(input, init);
+	const response = await fetch(input, { credentials: "include", ...init });
 	let rawBody = "";
 	let payload: unknown;
 

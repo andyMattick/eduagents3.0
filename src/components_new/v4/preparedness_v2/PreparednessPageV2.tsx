@@ -10,11 +10,13 @@ import type {
 import {
   fetchConceptMatchIntel,
   fetchConceptMatchGenerate,
+  invalidateConceptMatchIntelCache,
 } from "../../../services_new/conceptMatchService";
 import {
   getAlignment,
   type AlignmentResponse,
 } from "../../../services_new/preparednessService";
+import { supabase } from "../../../supabase/client";
 import TeacherSummaryCard from "./TeacherSummaryCard";
 import { TestConceptProfilePanel } from "../concept-match/TestConceptProfilePanel";
 import { PrepCoveragePanel } from "../concept-match/PrepCoveragePanel";
@@ -104,6 +106,15 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  /* ── Auth ── */
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUserId(data.session?.user?.id ?? null);
+    });
+  }, []);
+
   /* ── Token budget state ── */
   const [tokenUsed, setTokenUsed] = useState(0);
   const [tokenLimit, setTokenLimit] = useState(25_000);
@@ -140,12 +151,15 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
   const [cmGenerating, setCmGenerating] = useState(false);
   const [cmGenerateResult, setCmGenerateResult] = useState<ConceptMatchGenerateResponse | null>(null);
 
+  // Alignment auto-runs on mount — powers TeacherSummaryCard and other panels.
+  // Concept-match intel does NOT auto-run here; the teacher triggers it explicitly
+  // via the "Run Concept Analysis" button below.  This prevents the double LLM
+  // burst (alignment + normalization + prep extraction + summary) on every panel expand.
   useEffect(() => {
     let active = true;
 
     const run = async () => {
       setIsLoading(true);
-      setCmLoading(true);
       setError(null);
       try {
         const result = normalizeAlignmentResponse(await getAlignment(prep, assessment));
@@ -158,41 +172,12 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
         }
 
         setAlignment(result);
-
-        /* ── ConceptMatch intel — reuse alignment's rich concepts ── */
-        const testItems = result.debug?.testItems;
-        if (testItems?.length) {
-          const taggedItems: CMAssessmentItem[] = testItems.map((item) => ({
-            itemNumber: item.questionNumber,
-            rawText: item.questionText,
-            tags: {
-              concepts: item.concepts ?? [],
-              difficulty: item.difficulty ?? 3,
-            },
-          }));
-
-          try {
-            const cmResult = await fetchConceptMatchIntel({
-              prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
-              assessment: { title: assessment.title ?? "Assessment", items: taggedItems },
-            });
-            if (active) {
-              setCmIntel(cmResult);
-              applyTokenUsage(cmResult.tokenUsage);
-            }
-          } catch (cmErr) {
-            console.warn("[ConceptMatch] Intel call failed:", cmErr);
-          }
-        }
       } catch (err) {
         if (!active) return;
         if (isTokenLimitError(err)) setTokenUsed(tokenLimit);
         setError(getErrorMessage(err, "Failed to load preparedness alignment"));
       } finally {
-        if (active) {
-          setIsLoading(false);
-          setCmLoading(false);
-        }
+        if (active) setIsLoading(false);
       }
     };
 
@@ -202,20 +187,63 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
     };
   }, [prep, assessment]);
 
+  /* ── Explicit concept analysis trigger ── */
+  // Build the tagged items from alignment debug (already concept-extracted by alignment LLM).
+  // These are passed to the intel endpoint which canonicalizes them — no second
+  // concept-extraction LLM call is made when items already have tags.
+  const buildIntelRequest = useCallback(() => {
+    const testItems = alignment?.debug?.testItems ?? [];
+    const taggedItems: CMAssessmentItem[] = testItems.length
+      ? testItems.map((item) => ({
+          itemNumber: item.questionNumber,
+          rawText: item.questionText,
+          tags: { concepts: item.concepts ?? [], difficulty: item.difficulty ?? 3 },
+        }))
+      : assessment.items.map((item): CMAssessmentItem => ({
+          itemNumber: item.itemNumber,
+          rawText: item.text,
+        }));
+    return {
+      prep: { title: prep.title ?? "Prep Material", rawText: prep.rawText },
+      assessment: { title: assessment.title ?? "Assessment", items: taggedItems },
+    };
+  }, [alignment, prep, assessment]);
+
+  const handleRunConceptAnalysis = useCallback(async (forceRefresh = false) => {
+    if (tokenExhausted) {
+      setError("Daily token limit reached — AI actions are disabled.");
+      return;
+    }
+    setCmLoading(true);
+    setError(null);
+    const intelReq = buildIntelRequest();
+    if (forceRefresh) invalidateConceptMatchIntelCache(intelReq);
+    try {
+      const cmResult = await fetchConceptMatchIntel(intelReq, userId);
+      setCmIntel(cmResult);
+      applyTokenUsage(cmResult.tokenUsage);
+    } catch (cmErr) {
+      if (isTokenLimitError(cmErr)) setTokenUsed(tokenLimit);
+      setError(getErrorMessage(cmErr, "Concept analysis failed"));
+    } finally {
+      setCmLoading(false);
+    }
+  }, [buildIntelRequest, tokenExhausted, applyTokenUsage, tokenLimit]);
+
   const hasAlignment = alignment !== null;
 
   /* ── ConceptMatch handlers ── */
 
   const cmAssessmentItems: CMAssessmentItem[] = useMemo(() => {
-    // Primary: alignment debug items (rich QA concepts — single source of truth)
+    // Primary: canonical items returned by intel endpoint (concept names are
+    // normalized + deduplicated — use these for generate so prompts stay consistent).
+    if (cmIntel?.enrichedItems?.length) return cmIntel.enrichedItems;
+    // Secondary: alignment debug items (rich QA concepts but not yet canonicalized)
     if (alignment?.debug?.testItems?.length) {
       return alignment.debug.testItems.map((item): CMAssessmentItem => ({
         itemNumber: item.questionNumber,
         rawText: item.questionText,
-        tags: {
-          concepts: item.concepts ?? [],
-          difficulty: item.difficulty ?? 3,
-        },
+        tags: { concepts: item.concepts ?? [], difficulty: item.difficulty ?? 3 },
       }));
     }
     // Fallback: raw assessment items (no tags)
@@ -223,7 +251,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
       itemNumber: item.itemNumber,
       rawText: item.text,
     }));
-  }, [assessment, alignment]);
+  }, [cmIntel, assessment, alignment]);
 
   const handleCmViewEvidence = useCallback((concept: string) => {
     // Build evidence client-side from the same tagged items — no server round-trip.
@@ -258,7 +286,7 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
           review: type === "review" || type === "both",
           test: type === "test" || type === "both",
         },
-      });
+      }, userId);
       setCmGenerateResult(result);
       applyTokenUsage(result.tokenUsage);
     } catch (err) {
@@ -300,6 +328,32 @@ export default function PreparednessPageV2({ prep, assessment }: PreparednessPag
 
       {hasAlignment && alignment ? (
         <>
+          {/* ── Concept analysis trigger ── */}
+          {!cmIntel && !cmLoading && (
+            <div style={{ marginBottom: "1rem", textAlign: "center" }}>
+              <button
+                type="button"
+                className="cm-btn cm-btn--primary"
+                disabled={tokenExhausted}
+                onClick={() => void handleRunConceptAnalysis()}
+              >
+                Run Concept Analysis
+              </button>
+            </div>
+          )}
+          {cmIntel && !cmLoading && (
+            <div style={{ marginBottom: "0.5rem", textAlign: "right" }}>
+              <button
+                type="button"
+                className="cm-btn"
+                style={{ fontSize: "0.75rem", padding: "0.25rem 0.75rem" }}
+                disabled={tokenExhausted}
+                onClick={() => void handleRunConceptAnalysis(true)}
+              >
+                Re-run Analysis
+              </button>
+            </div>
+          )}
           <TeacherSummaryCard
             summary={
               cmIntel?.teacherSummary ??
