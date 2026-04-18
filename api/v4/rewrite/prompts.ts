@@ -1,5 +1,23 @@
 import type { V4Item, V4Section } from "../simulator/shared";
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Collapse runs of whitespace and deduplicate consecutive identical lines. */
+function normalizeItemStem(stem: string): string {
+  const normalized = stem.replace(/\s+/g, " ").trim();
+  // Deduplicate consecutive identical sentences/fragments separated by newlines
+  const lines = normalized.split(/\n/).map((l) => l.trim()).filter(Boolean);
+  const deduped: string[] = [];
+  for (const line of lines) {
+    if (deduped.length === 0 || deduped[deduped.length - 1] !== line) {
+      deduped.push(line);
+    }
+  }
+  return deduped.join(" ");
+}
+
 /**
  * NOTES-ONLY REWRITE PROMPT
  * Used when doc_type = "notes"
@@ -83,7 +101,7 @@ export function buildMixedRewritePrompt({
     .join("\n\n");
 
   const itemText = items
-    .map((i) => ({ itemNumber: i.itemNumber, stem: i.stem }))
+    .map((i) => ({ itemNumber: i.itemNumber, stem: normalizeItemStem(i.stem) }))
     .map((i) => JSON.stringify(i, null, 2))
     .join("\n\n");
 

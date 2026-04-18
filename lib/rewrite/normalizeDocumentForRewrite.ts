@@ -102,9 +102,15 @@ function lineSetToCandidate(lines: string[]): string[] {
 }
 
 export function normalizeDocumentForRewrite(original: string): string {
-  const blocks = extractCandidateBlocks(original);
+  // Pre-pass: remove consecutive identical paragraphs (common duplication source)
+  const dedupedOriginal = original
+    .split(/\n{2,}/)
+    .filter((para, idx, arr) => idx === 0 || para.trim() !== arr[idx - 1].trim())
+    .join("\n\n");
+
+  const blocks = extractCandidateBlocks(dedupedOriginal);
   if (blocks.length === 0) {
-    return original.trim();
+    return dedupedOriginal.trim();
   }
 
   const candidatesByNumber = new Map<number, string[][]>();
@@ -140,7 +146,7 @@ export function normalizeDocumentForRewrite(original: string): string {
   }
 
   if (normalizedItems.length === 0) {
-    return original.trim();
+    return dedupedOriginal.trim();
   }
 
   return normalizedItems.join("\n\n");

@@ -6,6 +6,8 @@
  * we are only reading already-stored text, not re-processing anything.
  *
  * Profile formatting: turns a StudentProfile into an LLM-readable paragraph.
+ *
+ * Confusion model: multi-factor metric that goes beyond cognitive load alone.
  */
 
 import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/supabase";
@@ -240,6 +242,58 @@ export function parseSimulatorResponse(raw: string): { narrative: string; data: 
 
 	// No valid JSON found
 	return { narrative: raw.trim(), data: null };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-profile parallel simulation prompt
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Confusion model — multi-factor score
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum subset of measurables needed to compute the confusion score.
+ * Using a partial interface so this can be called from both the backend and
+ * any utility that assembles measurables on the fly.
+ */
+export interface ConfusionMeasurables {
+	cognitiveLoad: number;       // 0–1
+	readingLoad: number;         // 0–1
+	distractorDensity: number;   // 0–1
+	steps: number;               // integer reasoning steps
+	timeToProcessSeconds: number;
+	[key: string]: unknown;
+}
+
+/**
+ * Compute a multi-factor confusion score (0–1) that goes beyond cognitive
+ * load alone.
+ *
+ * Weights:
+ *   0.30 × cognitiveLoad
+ *   0.20 × readingLoad
+ *   0.15 × distractorDensity
+ *   0.15 × steps (capped at 5 → 1.0)
+ *   0.10 × misconceptionRisk
+ *   0.10 × timeToProcess (capped at 30 s → 1.0)
+ */
+export function computeConfusionScore(
+	m: ConfusionMeasurables,
+	states: { misconceptionRisk: number },
+): number {
+	const stepsNorm = Math.min((m.steps ?? 1) / 5, 1);
+	const timeNorm  = Math.min((m.timeToProcessSeconds ?? 0) / 30, 1);
+
+	const raw =
+		0.30 * (m.cognitiveLoad ?? 0) +
+		0.20 * (m.readingLoad ?? 0) +
+		0.15 * (m.distractorDensity ?? 0) +
+		0.15 * stepsNorm +
+		0.10 * (states.misconceptionRisk ?? 0) +
+		0.10 * timeNorm;
+
+	return Math.min(Math.max(raw, 0), 1);
 }
 
 // ---------------------------------------------------------------------------

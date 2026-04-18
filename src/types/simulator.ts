@@ -301,6 +301,58 @@ export interface MultiProfileSimulatorResponse {
 // Rewrite engine
 // ---------------------------------------------------------------------------
 
+/**
+ * Records a single suggestion-driven change applied to one assessment item.
+ * Carries enough context to render diffs in the UI and the PDF.
+ */
+export interface ItemChange {
+	suggestionId: string;
+	type: SimulationSuggestionType;
+	itemId: string;
+	original: string;
+	rewritten: string;
+	/** Precomputed HTML diff fragment — optional, computed in UI if absent. */
+	diffHtml?: string;
+	/** Proprietary aggregate load score 0–1 — from simulator measurables. */
+	loadScore?: number;
+	/** Human-readable reason for this rewrite. */
+	reason?: string;
+}
+
+/**
+ * A single item in an assessment document, with optional simulator-derived
+ * changes attached.  This is the canonical model for the PDF renderer.
+ */
+export interface AssessmentItem {
+	id: string;
+	number: number;
+	stem: string;
+	/** Answer choices, if multiple-choice. */
+	choices?: string[];
+	metadata?: {
+		standard?: string;
+		difficulty?: string;
+	};
+	/** Suggestion-driven changes that were applied to this item. */
+	changes?: ItemChange[];
+}
+
+/**
+ * The root document model passed to `renderAssessmentToPdf()`.
+ * Decouples PDF layout logic from data-source specifics.
+ */
+export interface AssessmentDocument {
+	title: string;
+	course?: string;
+	date?: string;
+	teacherName?: string;
+	/** Optional directions rendered before item 1. */
+	directions?: string;
+	items: AssessmentItem[];
+	/** Maps item number → correct answer letter (e.g. "A"). */
+	answerKey?: Record<number, string>;
+}
+
 export interface RewrittenItem {
 	originalItemNumber: number;
 	rewrittenStem: string;

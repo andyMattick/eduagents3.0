@@ -12,8 +12,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
 import { resolveActor, getDailyUsage, DAILY_TOKEN_LIMIT, isTokenLimitError, sendTokenLimitResponse, checkTokenBudget, incrementTokens } from "../../../lib/tokenGate";
 import { callGeminiDetailed } from "../../../lib/gemini";
-import type { SimulatorData, StudentProfile } from "../../../src/types/simulator";
-import { fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
+import type { SimulationProfileMetrics, SimulatorData, StudentProfile } from "../../../src/types/simulator";
+import { computeConfusionScore, fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,6 +36,9 @@ Return your answer in two parts:
       "confusionRisk": number (0.0–1.0),
       "timeToProcessSeconds": number,
       "misconceptionRisk": number (0.0–1.0),
+      "difficulty": number (1–5, integer),
+      "steps": number (integer, estimated reasoning steps required),
+      "distractorDensity": number (0.0–1.0, share of choices designed to mislead),
       "redFlags": [string]
     }
   ],
@@ -229,5 +232,64 @@ ${profileStr}`;
 		limit: DAILY_TOKEN_LIMIT,
 	};
 
-	return res.status(200).json({ narrative, data: data as SimulatorData | null, tokenUsage });
+	// Build a SimulationProfileMetrics entry for the submitted profile so the
+	// UI can use the unified `profiles` format even for single-profile runs.
+	const simData = data as SimulatorData | null;
+	const profiles: SimulationProfileMetrics[] | undefined = simData?.items
+		? [
+				{
+					profileId: studentProfile?.attentionProfile === "ADHD" ? "adhd"
+						: studentProfile?.readingProfile === "dyslexia" ? "dyslexia"
+						: studentProfile?.readingProfile === "ELL" ? "ell"
+						: "average",
+					profileLabel: formatStudentProfileLabel(studentProfile),
+					color: "#3b82f6",
+					measurables: simData.items.map((item, idx) => ({
+						itemId: String(item.itemNumber),
+						index: idx,
+						wordCount: item.wordCount,
+						cognitiveLoad: item.cognitiveLoad,
+						difficulty: (item as unknown as { difficulty?: number }).difficulty ?? 3,
+						timeToProcessSeconds: item.timeToProcessSeconds,
+						readingLoad: item.readingLoad,
+						steps: (item as unknown as { steps?: number }).steps ?? 1,
+						distractorDensity: (item as unknown as { distractorDensity?: number }).distractorDensity ?? 0,
+						confusionScore: computeConfusionScore(
+							{
+								cognitiveLoad: item.cognitiveLoad,
+								readingLoad: item.readingLoad,
+								distractorDensity: (item as unknown as { distractorDensity?: number }).distractorDensity ?? 0,
+								steps: (item as unknown as { steps?: number }).steps ?? 1,
+								timeToProcessSeconds: item.timeToProcessSeconds,
+								wordCount: item.wordCount,
+								difficulty: (item as unknown as { difficulty?: number }).difficulty ?? 3,
+								itemId: String(item.itemNumber),
+								index: idx,
+							},
+							{ misconceptionRisk: item.misconceptionRisk },
+						),
+					})),
+					predictedStates: simData.overall.predictedStates ?? {
+						fatigue: 0,
+						confusion: 0,
+						guessing: 0,
+						overload: 0,
+						frustration: 0,
+						timePressureCollapse: 0,
+					},
+				},
+			]
+		: undefined;
+
+	return res.status(200).json({ narrative, data: simData, profiles, tokenUsage });
+}
+
+function formatStudentProfileLabel(profile?: StudentProfile): string {
+	if (!profile) return "Average Student";
+	if (profile.attentionProfile === "ADHD") return "ADHD Profile";
+	if (profile.readingProfile === "dyslexia") return "Dyslexia Profile";
+	if (profile.readingProfile === "ELL") return "ELL Profile";
+	if (profile.confidence === "low" && profile.anxietyLevel === "high") return "High Anxiety";
+	if (profile.confidence === "high" && profile.pacingStyle === "fast") return "Gifted / Fast Processor";
+	return "Average Student";
 }
