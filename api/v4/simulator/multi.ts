@@ -12,11 +12,18 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { callLLM } from "../../../lib/llm";
-import type { ParallelSimulatorData, StudentProfile } from "../../../src/types/simulator";
+import type {
+	ParallelSimulatorData,
+	SimulationMeasurables,
+	SimulationProfileMetrics,
+	StudentProfile,
+} from "../../../src/types/simulator";
 import {
 	buildMultiProfilePrompt,
+	computeConfusionScore,
 	fetchSessionText,
 	formatStudentProfile,
+	PROFILE_CATALOG,
 	parseSimulatorResponse,
 } from "./shared";
 
@@ -85,9 +92,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				? (parsed.data as ParallelSimulatorData)
 				: null;
 
+		// Build SimulationProfileMetrics[] from the students map so the UI can
+		// use the unified profiles format directly.
+		const profiles: SimulationProfileMetrics[] = [];
+		if (data?.students) {
+			for (const entry of studentProfiles) {
+				const profileData = data.students[entry.label];
+				if (!profileData) continue;
+
+				// Resolve color from catalog by matching label → id
+				const catalogEntry = PROFILE_CATALOG.find(
+					(c) => c.label.toLowerCase() === entry.label.toLowerCase()
+						|| c.id === entry.label.toLowerCase().replace(/\s+/g, "_"),
+				) ?? PROFILE_CATALOG[0];
+
+				const measurables: SimulationMeasurables[] = (profileData.items ?? []).map(
+					(item, idx) => ({
+						itemId: String(item.itemNumber),
+						index: item.itemNumber,
+						wordCount: item.wordCount,
+						cognitiveLoad: item.cognitiveLoad,
+						difficulty: (item as { difficulty?: number }).difficulty ?? 3,
+						timeToProcessSeconds: item.timeToProcessSeconds,
+						readingLoad: item.readingLoad,
+						steps: (item as { steps?: number }).steps ?? 1,
+						distractorDensity: (item as { distractorDensity?: number }).distractorDensity ?? 0,
+						vocabularyDifficulty: (item as { vocabularyDifficulty?: number }).vocabularyDifficulty ?? 0,
+						misconceptionRisk: item.misconceptionRisk,
+						fatigueIncrease: (item as { fatigueIncrease?: number }).fatigueIncrease ?? 0,
+						attentionDrop: (item as { attentionDrop?: number }).attentionDrop ?? 0,
+						confusionScore: (item as { confusionScore?: number }).confusionScore ??
+							computeConfusionScore(
+								{
+									cognitiveLoad: item.cognitiveLoad,
+									readingLoad: item.readingLoad,
+									distractorDensity: (item as { distractorDensity?: number }).distractorDensity ?? 0,
+									steps: (item as { steps?: number }).steps ?? 1,
+									timeToProcessSeconds: item.timeToProcessSeconds,
+								},
+								{ misconceptionRisk: item.misconceptionRisk },
+							),
+					}),
+				);
+
+				profiles.push({
+					profileId: catalogEntry.id,
+					profileLabel: entry.label,
+					color: catalogEntry.color,
+					measurables,
+					predictedStates: {
+						fatigue: profileData.overall.predictedStates?.fatigue ?? profileData.overall.fatigueRisk,
+						confusion: profileData.overall.predictedStates?.confusion ?? 0,
+						guessing: profileData.overall.predictedStates?.guessing ?? 0,
+						overload: profileData.overall.predictedStates?.overload ?? 0,
+						frustration: profileData.overall.predictedStates?.frustration ?? 0,
+						timePressureCollapse: profileData.overall.predictedStates?.timePressureCollapse ?? profileData.overall.pacingRisk,
+						emotionalFriction: (profileData.overall.predictedStates as { emotionalFriction?: number } | undefined)?.emotionalFriction ?? 0,
+						confidenceImpact: (profileData.overall.predictedStates as { confidenceImpact?: number } | undefined)?.confidenceImpact ?? 0,
+						pacingPressure: (profileData.overall.predictedStates as { pacingPressure?: number } | undefined)?.pacingPressure ?? profileData.overall.pacingRisk,
+					},
+				});
+			}
+		}
+
+		// Extract per-profile narratives if present
+		const rawData = parsed.data as Record<string, unknown> | null;
+		const profileNarratives: Record<string, string> =
+			rawData && typeof rawData.profileNarratives === "object" && rawData.profileNarratives !== null
+				? (rawData.profileNarratives as Record<string, string>)
+				: {};
+
 		return res.status(200).json({
 			narrative: parsed.narrative,
 			data,
+			profiles,
+			profileNarratives,
 			meta: {
 				profiles: labels,
 				docCount,

@@ -198,11 +198,24 @@ export function renderAssessmentToPdf(
 					y = drawWrapped(doc, `Reason: ${change.reason}`, MARGIN + 4, y, CONTENT_W - 4, LINE_H - 1);
 					doc.setFont("helvetica", "normal");
 				}
+				if (change.profileHelped) {
+					doc.setTextColor(30, 60, 140);
+					y = drawWrapped(doc, `Profile helped: ${change.profileHelped}`, MARGIN + 4, y, CONTENT_W - 4, LINE_H - 1);
+					doc.setTextColor(0, 0, 0);
+				}
+				if (change.misconceptionReduced) {
+					doc.setTextColor(120, 50, 0);
+					y = drawWrapped(doc, `Misconception reduced: ${change.misconceptionReduced}`, MARGIN + 4, y, CONTENT_W - 4, LINE_H - 1);
+					doc.setTextColor(0, 0, 0);
+				}
 				doc.setFontSize(FONT_BODY);
 				y += 4;
 			}
 		}
 	}
+
+	// ── Metric glossary appendix (always included) ──────────────────────────
+	appendMetricGlossaryPage(doc);
 
 	const filename = `${assessment.title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.pdf`;
 	doc.save(filename);

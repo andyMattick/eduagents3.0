@@ -127,22 +127,32 @@ export interface SimulationMeasurables {
 	itemId: string;
 	index: number;
 	wordCount: number;
-	cognitiveLoad: number;       // 0–1
-	difficulty: number;          // 1–5
+	cognitiveLoad: number;         // 0–1
+	difficulty: number;            // 1–5
 	timeToProcessSeconds: number;
-	readingLoad: number;         // 0–1
+	readingLoad: number;           // 0–1
 	steps: number;
-	distractorDensity: number;   // 0–1
+	distractorDensity: number;     // 0–1
+	// Extended metrics (Phase 1 / 4)
+	vocabularyDifficulty: number;  // 0–1
+	misconceptionRisk: number;     // 0–1
+	confusionScore: number;        // 0–1  composite confusion model
+	fatigueIncrease: number;       // 0–1  incremental fatigue added by this item
+	attentionDrop: number;         // 0–1  attention reduction caused by this item
 }
 
 /** Predicted unobservable state vector for a profile across the full assessment. */
 export interface SimulationPredictedStates {
-	fatigue: number;             // 0–1
-	confusion: number;           // 0–1
-	guessing: number;            // 0–1
-	overload: number;            // 0–1
-	frustration: number;         // 0–1
+	fatigue: number;              // 0–1
+	confusion: number;            // 0–1
+	guessing: number;             // 0–1
+	overload: number;             // 0–1
+	frustration: number;          // 0–1
 	timePressureCollapse: number; // 0–1
+	// Immeasurable states (Phase 1.4)
+	emotionalFriction: number;    // 0–1
+	confidenceImpact: number;     // 0–1  (higher = bigger confidence dip)
+	pacingPressure: number;       // 0–1
 }
 
 /** Rich per-profile metrics block used in multi-profile (parallel) simulation. */
@@ -199,6 +209,9 @@ export interface SimulatorOverallData {
 		overload: number;
 		frustration: number;
 		timePressureCollapse: number;
+		emotionalFriction?: number;
+		confidenceImpact?: number;
+		pacingPressure?: number;
 	};
 }
 
@@ -232,6 +245,8 @@ export interface SingleSimulatorRequest {
 export interface SingleSimulatorResponse {
 	narrative: string;
 	data: SimulatorData | null;
+	/** Rich single-profile metrics in the unified format (new). */
+	profiles?: SimulationProfileMetrics[];
 	tokenUsage?: { used: number; remaining: number; limit: number };
 }
 
@@ -295,6 +310,12 @@ export interface MultiProfileSimulatorRequest {
 export interface MultiProfileSimulatorResponse {
 	narrative: string;
 	data: ParallelSimulatorData | null;
+	/** Rich per-profile metrics returned directly (new format). */
+	profiles?: SimulationProfileMetrics[];
+	/** Per-profile LLM-generated narrative paragraphs (Phase 3). */
+	profileNarratives?: Record<string, string>;
+	/** LLM-generated cross-profile comparison summary (Phase 3). */
+	comparisonSummary?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +338,10 @@ export interface ItemChange {
 	loadScore?: number;
 	/** Human-readable reason for this rewrite. */
 	reason?: string;
+	/** Which student profile this rewrite is most intended to help. */
+	profileHelped?: string;
+	/** Which misconception this rewrite specifically targets. */
+	misconceptionReduced?: string;
 }
 
 /**
@@ -371,7 +396,14 @@ export interface RewriteResponse {
 	rewrittenItems: RewrittenItem[];
 	docType?: "problem" | "notes" | "mixed";
 	sections?: RewrittenSection[];
-	items?: Array<{ itemNumber: number; rewrittenStem: string; original?: string }>;
+	items?: Array<{
+		itemNumber: number;
+		rewrittenStem: string;
+		original?: string;
+		reason?: string;
+		profileHelped?: string;
+		misconceptionReduced?: string;
+	}>;
 	testLevel?: string[];
 	appliedSuggestions?: string[];
 	profileApplied?: string | null;

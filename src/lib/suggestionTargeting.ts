@@ -14,7 +14,9 @@ const RED_THRESHOLD = 0.7;
 
 /**
  * Generate item_rewrite suggestions for a single profile.
- * Only items that score RED or above produce suggestions.
+ * An item is flagged when its composite load score is at or above RED_THRESHOLD,
+ * OR when any of the Phase-6 explicit trigger conditions are met:
+ *   confusionScore > 0.65  |  readingLoad > 0.70  |  steps > 4
  */
 export function buildSuggestionsForProfile(
 	profile: SimulationProfileMetrics,
@@ -27,16 +29,30 @@ export function buildSuggestionsForProfile(
 	}));
 
 	return scoredItems
-		.filter((item) => item.loadScore >= RED_THRESHOLD)
+		.filter((item) =>
+			item.loadScore >= RED_THRESHOLD ||
+			(item.confusionScore ?? 0) > 0.65 ||
+			item.readingLoad > 0.70 ||
+			item.steps > 4,
+		)
 		.sort((a, b) => b.loadScore - a.loadScore)
-		.map((item) => ({
-			id: `${profile.profileId}-${item.itemId}`,
-			text: `Item ${item.index} is high load for ${profile.profileLabel} (score ${(item.loadScore * 100).toFixed(0)}%). Consider simplifying language, reducing steps, or adding scaffolds.`,
-			type: "item_rewrite" as const,
-			profileId: profile.profileId,
-			itemId: item.itemId,
-			loadScore: item.loadScore,
-		}));
+		.map((item) => {
+			// Build a more specific message based on which trigger fired
+			const triggers: string[] = [];
+			if (item.loadScore >= RED_THRESHOLD) triggers.push(`load score ${(item.loadScore * 100).toFixed(0)}%`);
+			if ((item.confusionScore ?? 0) > 0.65)  triggers.push(`confusion ${Math.round((item.confusionScore ?? 0) * 100)}%`);
+			if (item.readingLoad > 0.70)             triggers.push(`reading load ${Math.round(item.readingLoad * 100)}%`);
+			if (item.steps > 4)                      triggers.push(`${item.steps} reasoning steps`);
+
+			return {
+				id: `${profile.profileId}-${item.itemId}`,
+				text: `Item ${item.index} is high load for ${profile.profileLabel} (${triggers.join(", ")}). Consider simplifying language, reducing steps, or adding scaffolds.`,
+				type: "item_rewrite" as const,
+				profileId: profile.profileId,
+				itemId: item.itemId,
+				loadScore: item.loadScore,
+			};
+		});
 }
 
 /**

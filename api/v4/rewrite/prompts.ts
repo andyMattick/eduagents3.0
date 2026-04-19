@@ -148,7 +148,10 @@ Return ONLY JSON:
   "items": [
     {
       "itemNumber": number,
-      "rewrittenStem": "string"
+      "rewrittenStem": "string",
+      "reason": "string — why this change was needed",
+      "profileHelped": "string — which student profile benefits most",
+      "misconceptionReduced": "string — which misconception or barrier is addressed"
     }
   ],
   "testLevel": ["string"],

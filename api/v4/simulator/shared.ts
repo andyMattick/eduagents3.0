@@ -249,6 +249,18 @@ export function parseSimulatorResponse(raw: string): { narrative: string; data: 
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// Canonical multi-profile catalog
+// ---------------------------------------------------------------------------
+
+export const PROFILE_CATALOG: Array<{ id: string; label: string; color: string }> = [
+	{ id: "average",  label: "Average Student",   color: "#3b82f6" },
+	{ id: "adhd",     label: "ADHD Profile",       color: "#f97316" },
+	{ id: "dyslexia", label: "Dyslexia Profile",   color: "#22c55e" },
+	{ id: "ell",      label: "ELL Profile",        color: "#a855f7" },
+	{ id: "gifted",   label: "Gifted / Fast",      color: "#eab308" },
+];
+
+// ---------------------------------------------------------------------------
 // Confusion model — multi-factor score
 // ---------------------------------------------------------------------------
 
@@ -379,8 +391,14 @@ Return your answer in two parts:
           "vocabularyDifficulty": number (0.0–1.0),
           "cognitiveLoad": number (0.0–1.0),
           "confusionRisk": number (0.0–1.0),
+          "confusionScore": number (0.0–1.0, composite confusion: cogLoad+readingLoad+distractors+steps+misconception),
           "timeToProcessSeconds": number,
           "misconceptionRisk": number (0.0–1.0),
+          "difficulty": number (1–5, integer),
+          "steps": number (integer, estimated reasoning steps required),
+          "distractorDensity": number (0.0–1.0, share of choices designed to mislead),
+          "fatigueIncrease": number (0.0–1.0, incremental fatigue this item adds cumulatively),
+          "attentionDrop": number (0.0–1.0, attention reduction caused by this item),
           "redFlags": [string]
         }
       ],
@@ -400,7 +418,18 @@ Return your answer in two parts:
         "estimatedCompletionTimeSeconds": number,
         "fatigueRisk": number (0.0–1.0),
         "pacingRisk": number (0.0–1.0),
-        "majorRedFlags": [string]
+        "majorRedFlags": [string],
+        "predictedStates": {
+          "fatigue": number (0.0–1.0),
+          "confusion": number (0.0–1.0),
+          "guessing": number (0.0–1.0),
+          "overload": number (0.0–1.0),
+          "frustration": number (0.0–1.0),
+          "timePressureCollapse": number (0.0–1.0),
+          "emotionalFriction": number (0.0–1.0, emotional work needed to persist through the assessment),
+          "confidenceImpact": number (0.0–1.0, degree to which assessment dents student confidence),
+          "pacingPressure": number (0.0–1.0, time-pressure felt throughout)
+        }
       }
     }
   },
@@ -422,6 +451,9 @@ Return your answer in two parts:
     "itemLevel": {
       "ITEM_NUMBER": [string]
     }
+  },
+  "profileNarratives": {
+    "PROFILE_NAME": "2–3 sentence paragraph describing this profile's specific experience of the assessment — what they struggled with, what triggered fatigue or confusion, and any standout risks."
   }
 }
 
