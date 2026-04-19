@@ -24,8 +24,8 @@ import {
 	reportBadRewriteApi,
 	runGenerateTestApi,
 	runRewriteApi,
-	runSingleSimulatorApi,
 } from "../../lib/simulatorApi";
+import { SimulatorPanel } from "./SimulatorPanel";
 import type {
 	AssessmentDocument,
 	PrepDocument,
@@ -1134,14 +1134,11 @@ export function TeacherStudio() {
 				const documentId = uploaded.documentId;
 				const originalText = originalTextMap[documentId] ?? null;
 				void refreshUsage();
-				const res = await runSingleSimulatorApi({ sessionId, studentProfile: state.profile }, user?.id);
 				setState((prev) => ({
 					...prev,
 					sessionId,
 					documentId,
 					originalText,
-					narrative: res.narrative,
-					simData: res.data,
 					isLoading: false,
 				}));
 			} else if (state.goal === "preparedness") {
@@ -1629,7 +1626,38 @@ export function TeacherStudio() {
 					)}
 
 					{/* ═══ PHASE: RESULTS ═══════════════════════════════════════ */}
-					{state.phase === "results" && (
+
+					{/* Simulate goal: hand off directly to SimulatorPanel (has its own panel + full UI) */}
+					{state.phase === "results" && state.goal === "simulate" && (
+						<>
+							{state.isLoading && (
+								<section className="v4-panel v4-vector-span">
+									<div style={{ textAlign: "center", padding: "3.5rem 1rem" }}>
+										<p className="v4-kicker" style={{ marginBottom: "0.5rem" }}>Uploading…</p>
+										<p className="v4-body-copy">Preparing your document for simulation.</p>
+										<div className="spinner" style={{ margin: "1.75rem auto 0", width: "36px", height: "36px" }} />
+									</div>
+								</section>
+							)}
+							{!state.isLoading && state.sessionId && (
+								<>
+									<div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+										<button type="button" className="v4-button v4-button-secondary v4-button-sm" onClick={startOver}>
+											Start over
+										</button>
+									</div>
+									<SimulatorPanel sessionId={state.sessionId} />
+								</>
+							)}
+							{!state.isLoading && !state.sessionId && state.error && (
+								<section className="v4-panel v4-vector-span">
+									<p className="v4-error">{state.error}</p>
+								</section>
+							)}
+						</>
+					)}
+
+					{state.phase === "results" && state.goal !== "simulate" && (
 						<section className="v4-panel v4-vector-span">
 
 							{/* Loading */}
@@ -1745,273 +1773,10 @@ export function TeacherStudio() {
 												onClose={() => setModeSelectOpen(false)}
 											/>
 										</>
-									) : (
-										<>
-									{/* Tab bar */}
-									{(() => {
-										const suggestions: RewriteSuggestions | undefined = state.simData?.rewriteSuggestions;
-										const hasSuggestions =
-											suggestions != null &&
-											(suggestions.testLevel.length > 0 || Object.keys(suggestions.itemLevel).length > 0);
-										const hasJson = state.simData !== null;
-										const hasRewrite = state.rewriteResults !== null;
-										const tabs: Array<{ id: ResultTab; label: string }> = [
-											{ id: "narrative", label: "Narrative" },
-											...(hasSuggestions ? [{ id: "suggestions" as ResultTab, label: "Suggestions" }] : []),
-											...(hasRewrite ? [{ id: "rewrite" as ResultTab, label: "Rewrite" }] : []),
-											...(hasJson ? [{ id: "json" as ResultTab, label: "JSON" }] : []),
-										];
-										return tabs.length > 1 ? (
-											<div
-												style={{
-													display: "flex",
-													gap: "0.25rem",
-													marginTop: "1rem",
-													marginBottom: "0.25rem",
-													borderBottom: "2px solid rgba(86,57,32,0.14)",
-												}}
-											>
-												{tabs.map((tab) => (
-													<button
-														key={tab.id}
-														type="button"
-														onClick={() => setState((prev) => ({ ...prev, activeTab: tab.id }))}
-														style={{
-															all: "unset",
-															cursor: "pointer",
-															padding: "0.45rem 1rem",
-															fontSize: "0.8rem",
-															fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif",
-															textTransform: "uppercase",
-															letterSpacing: "0.1em",
-															color: state.activeTab === tab.id ? "#bb5b35" : "#9c4d2b",
-															borderBottom: state.activeTab === tab.id
-																? "2px solid #bb5b35"
-																: "2px solid transparent",
-															marginBottom: "-2px",
-															transition: "color 0.15s",
-														}}
-													>
-														{tab.label}
-													</button>
-												))}
-											</div>
-										) : null;
-									})()}
+									) : null}
 
-									{/* Tab: Narrative */}
-									{state.activeTab === "narrative" && (
-										<>
-											<pre
-												style={{
-													marginTop: "1.25rem",
-													whiteSpace: "pre-wrap",
-													wordBreak: "break-word",
-													background: "rgba(255,251,245,0.7)",
-													border: "1px solid rgba(86,57,32,0.14)",
-													borderRadius: "12px",
-													padding: "1rem 1.15rem",
-													fontFamily: "inherit",
-													fontSize: "0.875rem",
-													lineHeight: 1.7,
-													color: "#1f1a17",
-												}}
-											>
-												{state.narrative}
-											</pre>
-											{state.simData && state.simData.items.length > 0 && (
-												<>
-													<OverallStats data={state.simData} />
-													<ItemTable data={state.simData} />
-												</>
-											)}
-										</>
-									)}
-									{/* Tab: Suggestions */}
-									{state.activeTab === "suggestions" && (
-										<RewriteSuggestionsPanel
-											suggestions={state.simData?.rewriteSuggestions}
-												itemRedFlags={Object.fromEntries(
-													(state.simData?.items ?? []).map((item) => [String(item.itemNumber), item.redFlags ?? []]),
-												)}
-											selectedSuggestions={state.selectedSuggestions}
-											teacherNotes={state.teacherNotes}
-											onToggle={(key) =>
-												setState((prev) => {
-													const base = prev.selectedSuggestions ?? {};
-													return {
-														...prev,
-														selectedSuggestions: {
-															...base,
-															[key]: !base[key],
-														},
-													};
-												})
-											}
-											onTeacherNotesChange={(val) =>
-												setState((prev) => ({ ...prev, teacherNotes: val }))
-											}
-											rewriteLoading={state.rewriteLoading}
-											rewriteDisabledReason={!canRewriteFromDocType(state.documentDocType)
-												? "Rewriting is only supported for assignment, assessment, or mixed documents."
-												: null}
-											onRewrite={async () => {
-													if (rewriteInFlightRef.current) return;
-												const suggestions = state.simData?.rewriteSuggestions;
-												if (!suggestions) return;
-												if (!canRewriteFromDocType(state.documentDocType)) {
-													setState((prev) => ({
-														...prev,
-														error: "Rewriting is only supported for assignment, assessment, or mixed documents.",
-													}));
-													return;
-												}
 
-												// Build selected suggestion ID set from checkbox state
-												const sel = state.selectedSuggestions ?? {};
-
-												// Teacher-authored suggestions (split by newline)
-												const teacherSuggestions = (state.teacherNotes ?? "")
-													.split("\n")
-													.map((l) => l.trim())
-													.filter(Boolean);
-
-												const flattenedSuggestions: RewriteSuggestion[] = [];
-												for (const [index, text] of suggestions.testLevel.entries()) {
-													flattenedSuggestions.push({
-														id: `test:${index}`,
-														label: `Global suggestion ${index + 1}`,
-														instruction: text,
-														rationale: "Generated from simulation risk signals.",
-														severity: "medium",
-														actionable: true,
-													});
-												}
-												for (const [itemNum, entries] of Object.entries(suggestions.itemLevel)) {
-													for (const [index, text] of entries.entries()) {
-														flattenedSuggestions.push({
-															id: `item:${itemNum}:${index}`,
-															label: `Item ${itemNum} suggestion ${index + 1}`,
-															instruction: text,
-															rationale: `Targets risk observed for item ${itemNum}.`,
-															severity: "medium",
-															actionable: true,
-														});
-													}
-												}
-												for (const [index, text] of teacherSuggestions.entries()) {
-													flattenedSuggestions.push({
-														id: `teacher:${index}`,
-														label: `Teacher note ${index + 1}`,
-														instruction: text,
-														rationale: "Teacher-authored rewrite directive.",
-														severity: "high",
-														actionable: true,
-													});
-												}
-
-												const selectedSuggestionIds = flattenedSuggestions
-													.filter((entry) => {
-														if (entry.id.startsWith("teacher:")) return true;
-														return Boolean(sel[entry.id]);
-													})
-													.map((entry) => entry.id);
-												if (selectedSuggestionIds.length === 0) {
-													setState((prev) => ({
-														...prev,
-														error: "Select at least one rewrite suggestion.",
-													}));
-													return;
-												}
-
-												const originalText = await buildRewriteOriginalText(
-													state.primaryFile,
-													state.originalText,
-													state.narrative,
-												);
-												if (!originalText) {
-													setState((prev) => ({
-														...prev,
-														error: "Original document text is required for rewrite.",
-													}));
-													return;
-												}
-
-												setState((prev) => ({ ...prev, rewriteLoading: true }));
-													rewriteInFlightRef.current = true;
-												try {
-													const request: RewriteRequest = {
-														docType: state.documentDocType ?? undefined,
-														original: originalText,
-														suggestions: flattenedSuggestions,
-														selectedSuggestionIds,
-														profileApplied: state.differentiationProfile || undefined,
-													};
-													const result = await runRewriteApi(request, user?.id);
-													const appliedSuggestions = flattenedSuggestions
-														.filter((entry) => result.appliedSuggestionIds.includes(entry.id))
-														.map((entry) => entry.instruction);
-
-																	const preview = pickRewritePreview(
-																		result,
-																			originalText,
-																			appliedSuggestions,
-																		state.differentiationProfile,
-																	);
-													setState((prev) => ({
-														...prev,
-														rewriteResults: result,
-															rewritePreview: preview,
-														rewriteLoading: false,
-														activeTab: "rewrite",
-													}));
-												} catch (err) {
-													setState((prev) => ({
-														...prev,
-														rewriteLoading: false,
-														error: err instanceof Error ? err.message : "Rewrite failed",
-													}));
-															} finally {
-																rewriteInFlightRef.current = false;
-																void refreshUsage();
-												}
-											}}
-										/>
-									)}
-
-									{/* Tab: Rewrite */}
-									{state.activeTab === "rewrite" && state.rewriteResults && (
-										<RewriteViewer rewrite={state.rewriteResults} documentId={state.documentId} />
-									)}
-
-									{/* Tab: JSON */}
-									{state.activeTab === "json" && (
-										<pre
-											style={{
-												marginTop: "1.25rem",
-												whiteSpace: "pre-wrap",
-												wordBreak: "break-word",
-												background: "rgba(30,20,10,0.96)",
-												color: "#d4c5b0",
-												border: "1px solid rgba(86,57,32,0.3)",
-												borderRadius: "12px",
-												padding: "1rem 1.15rem",
-												fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-												fontSize: "0.78rem",
-												lineHeight: 1.6,
-											}}
-										>
-											{JSON.stringify(
-												state.simData,
-												null,
-												2,
-											)}
-										</pre>
-									)}
-										</>
-									)}
-
-									{/* Rewrite Diff Viewer Modal */}
+								{/* Rewrite Diff Viewer Modal */}
 									{state.rewritePreview && (
 										<RewriteDiffViewer
 											original={state.rewritePreview.original}

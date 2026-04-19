@@ -1,21 +1,13 @@
 import type { V4Item, V4Section } from "../simulator/shared";
+import { normalizeDocumentForRewrite } from "../../../lib/rewrite/normalizeDocumentForRewrite";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Collapse runs of whitespace and deduplicate consecutive identical lines. */
+/** Normalize an individual item stem using the Phase 8 enhanced normalizer. */
 function normalizeItemStem(stem: string): string {
-  const normalized = stem.replace(/\s+/g, " ").trim();
-  // Deduplicate consecutive identical sentences/fragments separated by newlines
-  const lines = normalized.split(/\n/).map((l) => l.trim()).filter(Boolean);
-  const deduped: string[] = [];
-  for (const line of lines) {
-    if (deduped.length === 0 || deduped[deduped.length - 1] !== line) {
-      deduped.push(line);
-    }
-  }
-  return deduped.join(" ");
+  return normalizeDocumentForRewrite(stem).trim();
 }
 
 /**
