@@ -361,8 +361,7 @@ export const PROFILE_CATALOG: Array<{ id: string; label: string; color: string }
  * any utility that assembles measurables on the fly.
  */
 export interface ConfusionMeasurables {
-	cognitiveLoad: number;       // 0–1
-	readingLoad: number;         // 0–1
+	linguisticLoad: number;      // 0–1 (replaces cognitiveLoad + readingLoad)
 	distractorDensity: number;   // 0–1
 	steps: number;               // integer reasoning steps
 	timeToProcessSeconds: number;
@@ -370,15 +369,13 @@ export interface ConfusionMeasurables {
 }
 
 /**
- * Compute a multi-factor confusion score (0–1) that goes beyond cognitive
- * load alone.
+ * Compute a multi-factor confusion score (0–1).
  *
  * Weights:
- *   0.30 × cognitiveLoad
- *   0.20 × readingLoad
- *   0.15 × distractorDensity
+ *   0.40 × linguisticLoad
+ *   0.20 × distractorDensity
  *   0.15 × steps (capped at 5 → 1.0)
- *   0.10 × misconceptionRisk
+ *   0.15 × misconceptionRisk
  *   0.10 × timeToProcess (capped at 30 s → 1.0)
  */
 export function computeConfusionScore(
@@ -389,11 +386,10 @@ export function computeConfusionScore(
 	const timeNorm  = Math.min((m.timeToProcessSeconds ?? 0) / 30, 1);
 
 	const raw =
-		0.30 * (m.cognitiveLoad ?? 0) +
-		0.20 * (m.readingLoad ?? 0) +
-		0.15 * (m.distractorDensity ?? 0) +
+		0.40 * (m.linguisticLoad ?? 0) +
+		0.20 * (m.distractorDensity ?? 0) +
 		0.15 * stepsNorm +
-		0.10 * (states.misconceptionRisk ?? 0) +
+		0.15 * (states.misconceptionRisk ?? 0) +
 		0.10 * timeNorm;
 
 	return Math.min(Math.max(raw, 0), 1);
@@ -460,9 +456,7 @@ Return your answer in two parts:
 			"sections": [
 				{
 					"sectionId": string,
-					"readingLoad": number (0.0–1.0),
-					"vocabularyDifficulty": number (0.0–1.0),
-					"cognitiveLoad": number (0.0–1.0),
+					"linguisticLoad": number (0.0–1.0),
 					"confusionRisk": number (0.0–1.0),
 					"fatigueRisk": number (0.0–1.0),
 					"redFlags": [string]
@@ -981,16 +975,93 @@ export async function runSemanticOnText(
 }
 
 /** Local measurable fields mapped from a ProblemTagVector. */
+export interface VocabCounts {
+	level1: number; // easy (1-syllable)
+	level2: number; // moderate (2-syllable)
+	level3: number; // difficult (3+ syllable)
+}
+
 export interface LocalMeasurables {
-	cognitiveLoad: number;
-	readingLoad: number;
-	vocabularyDifficulty: number;
+	/** Combined vocabulary + word-length score, 0–1. Primary linguistic metric. */
+	linguisticLoad: number;
+	/** Avg syllable-based vocab level of the item text (1–3). */
+	avgVocabLevel: number;
+	/** Avg word character length. */
+	avgWordLength: number;
+	vocabCounts: VocabCounts;
 	misconceptionRisk: number;
 	distractorDensity: number;
 	steps: number;
 	timeToProcessSeconds: number;
 	wordCount: number;
 	confusionScore: number;
+}
+
+/**
+ * Normalize all LocalMeasurables fields to a uniform 0–1 scale for charting.
+ *
+ * linguisticLoad / misconceptionRisk / distractorDensity / confusionScore are
+ * already 0–1. steps and timeToProcessSeconds are converted to bucket curves.
+ */
+export function normalizeMetrics(m: LocalMeasurables): LocalMeasurables & {
+	stepsNormalized: number;
+	timeNormalized: number;
+} {
+	const stepsNormalized =
+		m.steps <= 1 ? 0.1 :
+		m.steps <= 3 ? 0.3 :
+		m.steps <= 5 ? 0.6 : 1.0;
+
+	const minutes = m.timeToProcessSeconds / 60;
+	const timeNormalized =
+		minutes <= 1 ? 0.2 :
+		minutes <= 2 ? 0.4 :
+		minutes <= 3 ? 0.6 :
+		minutes <= 4 ? 0.8 : 1.0;
+
+	return { ...m, stepsNormalized, timeNormalized };
+}
+
+// ---------------------------------------------------------------------------
+// Vocab stats (syllable-based)
+// ---------------------------------------------------------------------------
+
+function countSyllables(word: string): number {
+	return (word.toLowerCase().match(/[aeiouy]+/g) ?? []).length || 1;
+}
+
+function syllableVocabLevel(word: string): 1 | 2 | 3 {
+	const s = countSyllables(word);
+	if (s <= 1) return 1;
+	if (s === 2) return 2;
+	return 3;
+}
+
+export function computeVocabStats(text: string): {
+	vocabCounts: VocabCounts;
+	avgVocabLevel: number;
+	avgWordLength: number;
+} {
+	const words = text
+		.toLowerCase()
+		.replace(/[^a-z0-9\s]/g, "")
+		.split(/\s+/)
+		.filter(Boolean);
+
+	if (words.length === 0) {
+		return { vocabCounts: { level1: 0, level2: 0, level3: 0 }, avgVocabLevel: 1, avgWordLength: 4 };
+	}
+
+	const levels = words.map(syllableVocabLevel);
+	const vocabCounts: VocabCounts = {
+		level1: levels.filter((l) => l === 1).length,
+		level2: levels.filter((l) => l === 2).length,
+		level3: levels.filter((l) => l === 3).length,
+	};
+	const avgVocabLevel = levels.reduce((a, b) => a + b, 0) / levels.length;
+	const avgWordLength = words.reduce((a, w) => a + w.length, 0) / words.length;
+
+	return { vocabCounts, avgVocabLevel, avgWordLength };
 }
 
 /**
@@ -1005,22 +1076,26 @@ export function vectorToMeasurables(vec: ProblemTagVector, text: string): LocalM
 
 	const triggerValues = Object.values(vec.misconceptionTriggers ?? {});
 	const misconceptionRisk = clamp(triggerValues.length > 0 ? Math.max(...triggerValues) : 0);
-	const cognitiveLoad = clamp(vec.cognitive?.difficulty ?? 0);
-	const readingLoad = clamp(vec.linguisticLoad ?? 0);
-	const vocabularyDifficulty = clamp(((vec.vocabularyTier ?? 1) - 1) / 2);
 	const distractorDensity = clamp(vec.distractorDensity ?? 0);
 
+	// Linguistic load: syllable-based vocab difficulty + avg word length.
+	const { vocabCounts, avgVocabLevel, avgWordLength } = computeVocabStats(text);
+	const normalizedVocab = (avgVocabLevel - 1) / 2;          // 1–3 → 0–1
+	const normalizedWordLen = Math.min(avgWordLength / 10, 1); // 10+ chars = max
+	const linguisticLoad = clamp(0.6 * normalizedVocab + 0.4 * normalizedWordLen);
+
 	return {
-		cognitiveLoad,
-		readingLoad,
-		vocabularyDifficulty,
+		linguisticLoad,
+		avgVocabLevel,
+		avgWordLength,
+		vocabCounts,
 		misconceptionRisk,
 		distractorDensity,
 		steps,
 		timeToProcessSeconds,
 		wordCount,
 		confusionScore: computeConfusionScore(
-			{ cognitiveLoad, readingLoad, distractorDensity, steps, timeToProcessSeconds },
+			{ linguisticLoad, distractorDensity, steps, timeToProcessSeconds },
 			{ misconceptionRisk },
 		),
 	};

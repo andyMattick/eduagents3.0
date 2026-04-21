@@ -96,23 +96,21 @@ export const STUDENT_PROFILE_PRESETS: Array<{ label: string; profile: StudentPro
 
 export interface SimulatorItemData {
 	itemNumber: number;
-	readingLoad: number;           // 0–1
+	/** Linguistic load — replaces cognitiveLoad + readingLoad + vocabularyDifficulty. */
+	linguisticLoad: number;        // 0–1
 	wordCount: number;
 	sentenceCount: number;
-	vocabularyDifficulty: number;  // 0–1
-	cognitiveLoad: number;         // 0–1
+	distractorDensity?: number;    // 0–1
 	confusionRisk: number;         // 0–1
 	timeToProcessSeconds: number;
 	misconceptionRisk: number;     // 0–1
-	alignmentScore?: never;       // removed — preparedness moved to new pipeline
 	redFlags: string[];
 }
 
 export interface SimulatorSectionData {
 	sectionId: string;
-	readingLoad: number;
-	vocabularyDifficulty: number;
-	cognitiveLoad: number;
+	/** Linguistic load — replaces readingLoad + vocabularyDifficulty + cognitiveLoad. */
+	linguisticLoad: number;        // 0–1
 	confusionRisk: number;
 	fatigueRisk: number;
 	redFlags: string[];
@@ -127,14 +125,12 @@ export interface SimulationMeasurables {
 	itemId: string;
 	index: number;
 	wordCount: number;
-	cognitiveLoad: number;         // 0–1
+	/** Combined vocabulary + word-length load (0–1). Replaces cognitiveLoad + readingLoad + vocabularyDifficulty. */
+	linguisticLoad: number;
 	difficulty: number;            // 1–5
 	timeToProcessSeconds: number;
-	readingLoad: number;           // 0–1
 	steps: number;
 	distractorDensity: number;     // 0–1
-	// Extended metrics (Phase 1 / 4)
-	vocabularyDifficulty: number;  // 0–1
 	misconceptionRisk: number;     // 0–1
 	confusionScore: number;        // 0–1  composite confusion model
 }

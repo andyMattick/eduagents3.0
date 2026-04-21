@@ -124,17 +124,13 @@ function singleDataToProfiles(data: SimulatorData, profileLabel = "Average Stude
 			itemId: String(item.itemNumber),
 			index: item.itemNumber,
 			wordCount: item.wordCount,
-			cognitiveLoad: item.cognitiveLoad,
-			difficulty: 1 + item.cognitiveLoad * 4, // approximation when difficulty absent
+			linguisticLoad: item.linguisticLoad,
+			difficulty: 1 + item.linguisticLoad * 4,
 			timeToProcessSeconds: item.timeToProcessSeconds,
-			readingLoad: item.readingLoad,
 			steps: item.sentenceCount,
 			distractorDensity: item.distractorDensity ?? 0,
-			vocabularyDifficulty: item.vocabularyDifficulty,
 			misconceptionRisk: item.misconceptionRisk,
 			confusionScore: item.confusionRisk,
-			fatigueIncrease: item.fatigueIncrease ?? 0,
-			attentionDrop: item.attentionDrop ?? 0,
 		})),
 		predictedStates: {
 			fatigue: data.overall.predictedStates?.fatigue ?? data.overall.fatigueRisk,
@@ -155,16 +151,12 @@ function singleDataToProfiles(data: SimulatorData, profileLabel = "Average Stude
 // ---------------------------------------------------------------------------
 
 const CHART_METRICS: Array<{ key: keyof SimulationMeasurables; label: string; unit: "%" | "s" | "int" }> = [
-	{ key: "cognitiveLoad",        label: "Cognitive Load",        unit: "%" },
-	{ key: "readingLoad",          label: "Reading Load",          unit: "%" },
-	{ key: "confusionScore",       label: "Confusion Score",       unit: "%" },
-	{ key: "misconceptionRisk",    label: "Misconception Risk",    unit: "%" },
-	{ key: "vocabularyDifficulty", label: "Vocabulary Difficulty", unit: "%" },
-	{ key: "distractorDensity",    label: "Distractor Density",    unit: "%" },
-	{ key: "fatigueIncrease",      label: "Fatigue Increase",      unit: "%" },
-	{ key: "attentionDrop",        label: "Attention Drop",        unit: "%" },
-	{ key: "timeToProcessSeconds", label: "Time to Process",       unit: "s" },
-	{ key: "steps",                label: "Reasoning Steps",       unit: "int" },
+	{ key: "linguisticLoad",     label: "Linguistic Load",    unit: "%" },
+	{ key: "confusionScore",     label: "Confusion Score",    unit: "%" },
+	{ key: "misconceptionRisk",  label: "Misconception Risk", unit: "%" },
+	{ key: "distractorDensity", label: "Distractor Density", unit: "%" },
+	{ key: "timeToProcessSeconds", label: "Time to Process", unit: "s" },
+	{ key: "steps",              label: "Reasoning Steps",   unit: "int" },
 ];
 
 const IMMEASURABLE_METRICS: Array<{ key: keyof SimulationPredictedStates; label: string }> = [
@@ -242,13 +234,13 @@ function ImmeasurableTrendsChart({
 	if (profiles.length === 0 || profiles[0].measurables.length === 0) return null;
 	const itemCount = profiles[0].measurables.length;
 
-	// Derive cumulative pressure curve from cognitive + reading load
+	// Derive cumulative pressure curve from linguistic load
 	function buildCurve(p: SimulationProfileMetrics): number[] {
-		const total = p.measurables.reduce((s, m) => s + m.cognitiveLoad, 0) || 1;
+		const total = p.measurables.reduce((s, m) => s + m.linguisticLoad, 0) || 1;
 		let cumsum = 0;
 		const finalValue = (p.predictedStates[metricKey] as number) ?? 0;
 		return p.measurables.map((m, i) => {
-			cumsum += m.cognitiveLoad;
+			cumsum += m.linguisticLoad;
 			const pressure = (cumsum / total) * 0.7 + ((i + 1) / itemCount) * 0.3;
 			return finalValue * pressure;
 		});

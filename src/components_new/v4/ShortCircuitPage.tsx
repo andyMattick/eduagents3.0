@@ -15,6 +15,7 @@
 import { useState } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SegmentationVisualizer } from "./SegmentationVisualizer";
+import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
 
 interface SegmentedItem {
@@ -207,7 +208,9 @@ export function ShortCircuitPage() {
 					</div>
 
 					<ShortCircuitGraph items={items} />
-
+				<div style={{ marginTop: "2.5rem" }}>
+					<SimulationExplanationPanel />
+				</div>
 				{segDebug && (
 					<SegmentationVisualizer
 						fullText={segDebug.fullText}

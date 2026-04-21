@@ -9,10 +9,9 @@
 import type { SimulationMeasurables, SimulationPredictedStates } from "../types/simulator";
 
 const WEIGHTS = {
-	cognitiveLoad: 0.35,
+	linguisticLoad: 0.45,  // replaces cognitiveLoad (0.35) + readingLoad (0.10)
 	difficulty: 0.25,   // normalised 1–5 → 0–1
 	timeToProcess: 0.15, // capped at 30 s
-	readingLoad: 0.10,
 	confusion: 0.10,
 	guessing: 0.05,
 } as const;
@@ -31,10 +30,9 @@ export function computeLoadScore(
 	const timeNorm = Math.min(measurables.timeToProcessSeconds / 30, 1);
 
 	const raw =
-		WEIGHTS.cognitiveLoad * measurables.cognitiveLoad +
+		WEIGHTS.linguisticLoad * measurables.linguisticLoad +
 		WEIGHTS.difficulty * difficulty01 +
 		WEIGHTS.timeToProcess * timeNorm +
-		WEIGHTS.readingLoad * measurables.readingLoad +
 		WEIGHTS.confusion * states.confusion +
 		WEIGHTS.guessing * states.guessing;
 

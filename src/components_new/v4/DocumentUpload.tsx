@@ -200,7 +200,7 @@ export function DocumentUpload() {
     }
 
     if (selectedFiles.length === 0) {
-      setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
+      setError("Choose one or more PDF files before building the workspace.");
       warnUploadGuard("upload:no-files-selected");
       return;
     }
@@ -380,7 +380,7 @@ export function DocumentUpload() {
                 id="v4-upload-input"
                 type="file"
                 multiple
-                accept=".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                accept=".pdf,application/pdf"
                 onChange={handleFileChange}
               />
             </label>

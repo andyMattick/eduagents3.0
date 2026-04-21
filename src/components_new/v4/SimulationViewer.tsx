@@ -26,9 +26,7 @@ export function SimulationViewer({ sections = [] }: Props) {
 					<p style={{ margin: "0 0 0.4rem", fontWeight: 700, fontSize: "0.82rem", color: "#563920" }}>
 						Section {section.sectionId}
 					</p>
-					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Reading Load: {Math.round(section.readingLoad * 100)}%</p>
-					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Vocabulary Difficulty: {Math.round(section.vocabularyDifficulty * 100)}%</p>
-					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Cognitive Load: {Math.round(section.cognitiveLoad * 100)}%</p>
+					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Linguistic Load: {Math.round(section.linguisticLoad * 100)}%</p>
 					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Confusion Risk: {Math.round(section.confusionRisk * 100)}%</p>
 					<p style={{ margin: "0.2rem 0", fontSize: "0.82rem" }}>Fatigue Risk: {Math.round(section.fatigueRisk * 100)}%</p>
 					{section.redFlags.length > 0 ? (

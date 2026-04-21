@@ -33,9 +33,10 @@ export const maxDuration = 60;
 export interface ShortCircuitItem {
 	itemNumber: number;
 	text: string;
-	cognitiveLoad: number;
-	readingLoad: number;
-	vocabularyDifficulty: number;
+	linguisticLoad: number;
+	avgVocabLevel: number;
+	avgWordLength: number;
+	vocabCounts: { level1: number; level2: number; level3: number };
 	misconceptionRisk: number;
 	distractorDensity: number;
 	steps: number;
@@ -143,7 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			}
 
 			const m = vectorToMeasurables(vec, seg.text);
-			console.log(`[shortcircuit] item ${seg.itemNumber}: cogLoad=${m.cognitiveLoad.toFixed(2)} readLoad=${m.readingLoad.toFixed(2)} confusion=${m.confusionScore.toFixed(2)}`);
+			console.log(`[shortcircuit] item ${seg.itemNumber}: linguistic=${m.linguisticLoad.toFixed(2)} confusion=${m.confusionScore.toFixed(2)} steps=${m.steps}`);
 			items.push({
 				itemNumber: seg.itemNumber,
 				text: seg.text,

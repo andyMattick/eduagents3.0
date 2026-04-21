@@ -41,20 +41,20 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
 			"Consider trimming or breaking a long item into two.",
 	},
 	{
-		key: "cognitiveLoad",
-		label: "Cognitive Load",
+		key: "linguisticLoad",
+		label: "Linguistic Load",
 		unit: "",
 		range: "0.0 – 1.0",
 		definition:
-			"Composite score representing the total mental effort required to process and answer the item.",
+			"Combined vocabulary difficulty and word length into a single linguistic burden score.",
 		computation:
-			"Assessed by the simulation model based on the number of reasoning steps required, " +
-			"the abstractness of the language, and the number of distinct concepts in the stem. " +
-			"Values are normalized to 0–1.",
+			"0.6 × normalizedVocabLevel (syllable-based, 1–3 → 0–1) + " +
+			"0.4 × normalizedWordLength (avg chars / 10, capped at 1). " +
+			"Replaces cognitiveLoad + readingLoad + vocabularyDifficulty.",
 		interpretation:
-			"Below 0.4: accessible to most students. " +
-			"0.4–0.65: moderate; appropriate for grade-level work. " +
-			"Above 0.65: high — consider scaffolding or simplifying the stem.",
+			"Below 0.35: accessible. " +
+			"0.35–0.6: moderate; appropriate for grade-level work. " +
+			"Above 0.6: high — consider simplifying vocabulary or sentence structure.",
 	},
 	{
 		key: "confusionRisk",
@@ -65,25 +65,11 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
 			"Multi-factor score estimating the probability that a typical student will be confused by this item.",
 		computation:
 			"Weighted composite: " +
-			"30% cognitive load, 20% reading load, 15% distractor density, " +
-			"15% reasoning steps (capped at 5), 10% misconception risk, 10% time-to-process (capped at 30 s).",
+			"40% linguistic load, 20% distractor density, " +
+			"15% reasoning steps (capped at 5), 15% misconception risk, 10% time-to-process (capped at 30 s).",
 		interpretation:
 			"Above 0.6: many students are likely to hesitate, misread, or guess. " +
 			"Review distractor quality, stem clarity, and vocabulary load.",
-	},
-	{
-		key: "readingLoad",
-		label: "Reading Load",
-		unit: "",
-		range: "0.0 – 1.0",
-		definition:
-			"Estimated effort required to decode and comprehend the text, independent of content difficulty.",
-		computation:
-			"Derived from sentence length, average syllables per word, and passive/complex syntactic constructions " +
-			"as judged by the simulation model.",
-		interpretation:
-			"High reading load (> 0.6) can disadvantage ELL, dyslexic, and low-confidence readers " +
-			"even when they understand the underlying concept. Simplify sentence structure rather than content.",
 	},
 	{
 		key: "timeToProcessSeconds",
@@ -112,20 +98,6 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
 		interpretation:
 			"High values (> 0.5) suggest the item tests a concept where students often hold incorrect " +
 			"mental models. A pre-teaching moment or a targeted distractor review may help.",
-	},
-	{
-		key: "vocabularyDifficulty",
-		label: "Vocabulary Difficulty",
-		unit: "",
-		range: "0.0 – 1.0",
-		definition:
-			"Estimated difficulty of the domain-specific and academic vocabulary used in the item.",
-		computation:
-			"Rated by the simulation model against grade-level word frequency lists and the identified " +
-			"subject-area vocabulary from the uploaded document.",
-		interpretation:
-			"Items above 0.6 may unfairly disadvantage ELL and lower-proficiency readers. " +
-			"Clarify technical terms in the stem or provide a brief glossary.",
 	},
 	{
 		key: "distractorDensity",

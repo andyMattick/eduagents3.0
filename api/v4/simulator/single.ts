@@ -40,9 +40,7 @@ Return your answer in two parts:
   "sections": [
     {
       "sectionId": string,
-      "readingLoad": number (0.0-1.0),
-      "vocabularyDifficulty": number (0.0-1.0),
-      "cognitiveLoad": number (0.0-1.0),
+      "linguisticLoad": number (0.0-1.0),
       "confusionRisk": number (0.0-1.0),
       "fatigueRisk": number (0.0-1.0),
       "redFlags": [string]
@@ -100,9 +98,9 @@ Focus on:
 - Per-item red flags based on wording and structure
 
 If the document includes explanatory notes or sections, evaluate each section for:
-- reading load, vocabulary difficulty, cognitive load, confusion risk, fatigue risk, red flags
+- linguistic load, confusion risk, fatigue risk, red flags
 
-IMPORTANT: All numeric fields (readingLoad, vocabularyDifficulty, cognitiveLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
+IMPORTANT: All numeric fields (linguisticLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
 
 "overall.predictedStates": Predict the probability (0.0–1.0) of each unobservable student state:
 - fatigue: likelihood the student fatigues before finishing
@@ -268,9 +266,7 @@ ${profileStr}`;
 		const geminiItem = (simData?.items ?? []).find((it) => it.itemNumber === m.itemNumber);
 		return {
 			itemNumber: m.itemNumber,
-			cognitiveLoad: m.cognitiveLoad,
-			readingLoad: m.readingLoad,
-			vocabularyDifficulty: m.vocabularyDifficulty,
+			linguisticLoad: m.linguisticLoad,
 			misconceptionRisk: m.misconceptionRisk,
 			distractorDensity: m.distractorDensity,
 			steps: m.steps,
@@ -297,13 +293,11 @@ ${profileStr}`;
 						itemId: String(m.itemNumber),
 						index: idx,
 						wordCount: m.wordCount,
-						cognitiveLoad: m.cognitiveLoad,
-						difficulty: 3,
-						timeToProcessSeconds: m.timeToProcessSeconds,
-						readingLoad: m.readingLoad,
-						steps: m.steps,
-						distractorDensity: m.distractorDensity,
-						vocabularyDifficulty: m.vocabularyDifficulty,
+					linguisticLoad: m.linguisticLoad,
+					difficulty: 3,
+					timeToProcessSeconds: m.timeToProcessSeconds,
+					steps: m.steps,
+					distractorDensity: m.distractorDensity,
 						misconceptionRisk: m.misconceptionRisk,
 						confusionScore: m.confusionScore,
 					})),
