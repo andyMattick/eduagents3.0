@@ -25,7 +25,9 @@ import {
 	ComposedChart,
 	Area,
 } from "recharts";
-import { runSingleSimulatorApi, runMultiSimulatorApi } from "../../lib/simulatorApi";
+import { runMultiSimulatorApi } from "../../lib/simulatorApi";
+import { ShortCircuitGraph } from "./ShortCircuitGraph";
+import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
 import type {
 	SimulationMeasurables,
 	SimulationPredictedStates,
@@ -722,8 +724,8 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 	const [narrative, setNarrative] = useState<string | null>(null);
 	const [simData, setSimData] = useState<SimulatorData | null>(null);
 	const [multiProfiles, setMultiProfiles] = useState<SimulationProfileMetrics[]>([]);
+	const [shortCircuitItems, setShortCircuitItems] = useState<ShortCircuitItem[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [tokenUsage, setTokenUsage] = useState<{ used: number; remaining: number; limit: number } | null>(null);
 	const [selectedSuggestion, setSelectedSuggestion] = useState<SimulationSuggestion | null>(null);
 
 	// Phase 3: per-profile narratives
@@ -749,6 +751,7 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		setNarrative(null);
 		setSimData(null);
 		setMultiProfiles([]);
+		setShortCircuitItems(null);
 		setError(null);
 		setSelectedSuggestion(null);
 		setProfileNarratives({});
@@ -760,13 +763,21 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		setSelectedSuggestion(null);
 		setNarrative(null);
 		setSimData(null);
+		setShortCircuitItems(null);
 		setError(null);
 		try {
 			if (mode === "single") {
-				const res = await runSingleSimulatorApi({ sessionId, studentProfile: profile });
-				setNarrative(res.narrative);
-				setSimData(res.data);
-				if (res.tokenUsage) setTokenUsage(res.tokenUsage);
+				const res = await fetch("/api/v4/simulator/shortcircuit", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ sessionId }),
+				});
+				const data = await res.json();
+				if (!res.ok) {
+					setError(data.error ?? `Server error ${res.status}`);
+					return;
+				}
+				setShortCircuitItems(data.items ?? []);
 			} else if (mode === "multi") {
 				if (selectedMultiPresets.length < 2) {
 					setError("Select at least 2 profiles to compare.");
@@ -819,14 +830,15 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		mode !== null &&
 		!loading &&
 		(mode !== "multi" || selectedMultiPresets.length >= 2);
-	const hasResult = narrative !== null || multiProfiles.length > 0;
+	const hasResult = narrative !== null || multiProfiles.length > 0 || shortCircuitItems !== null;
 
 	return (
 		<section className="v4-panel v4-vector-span">
 			<p className="v4-kicker">Student Simulation Tools</p>
 			<p className="v4-body-copy" style={{ marginBottom: "1rem" }}>
-				Run a quick simulation using your uploaded document — no pipeline, one AI call.
-			</p>
+			<strong>Simulate Student Experience</strong> uses local analysis only — no AI, no 429s.<br />
+			<strong>Compare Profiles</strong> uses Gemini for multi-profile narrative simulation.
+		</p>
 
 			{/* ── Mode buttons ── */}
 			<div className="v4-upload-actions" style={{ flexWrap: "wrap", gap: "0.5rem" }}>
@@ -846,27 +858,7 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 				</button>
 			</div>
 
-			{/* ── Single-mode profile dropdown ── */}
-			{mode === "single" && (
-				<div style={{ marginTop: "1rem" }}>
-					<label className="v4-kicker" htmlFor="simulator-profile-select">
-						Student Profile
-					</label>
-					<select
-						id="simulator-profile-select"
-						className="v4-item-count-input"
-						style={{ marginTop: "0.35rem", width: "auto", minWidth: "200px" }}
-						value={selectedPreset}
-						onChange={(e) => handlePresetChange(e.target.value)}
-					>
-						{STUDENT_PROFILE_PRESETS.map((p) => (
-							<option key={p.label} value={p.label}>
-								{p.label}
-							</option>
-						))}
-					</select>
-				</div>
-			)}
+			{/* Single mode uses short-circuit — no profile selection needed */}
 
 			{/* ── Multi-mode profile checkboxes ── */}
 			{mode === "multi" && (
@@ -922,7 +914,9 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 						disabled={!canRun}
 						onClick={handleRun}
 					>
-						{loading ? "Running…" : "Run Simulation"}
+						{loading
+							? (mode === "single" ? "Analysing…" : "Running…")
+							: (mode === "single" ? "Generate (Short-Circuit)" : "Run Simulation")}
 					</button>
 				</div>
 			)}
@@ -930,24 +924,18 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 			{/* ── Error ── */}
 			{error && <p className="v4-error" style={{ marginTop: "0.75rem" }}>{error}</p>}
 
-			{/* ── Token usage ── */}
-			{tokenUsage && (
-				<div style={{ marginTop: "0.75rem", fontSize: "0.78rem", color: "var(--v4-muted)" }}>
-					<div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
-						<span>Daily tokens: {tokenUsage.used.toLocaleString()} / {tokenUsage.limit.toLocaleString()}</span>
-						<span>{tokenUsage.remaining.toLocaleString()} remaining</span>
-					</div>
-					<div style={{ height: 5, borderRadius: 3, background: "var(--v4-border, #e5e7eb)" }}>
-						<div style={{
-							height: 5, borderRadius: 3, transition: "width 0.4s",
-							width: `${Math.min(100, Math.round((tokenUsage.used / tokenUsage.limit) * 100))}%`,
-							background: tokenUsage.used / tokenUsage.limit >= 0.9 ? "var(--v4-error, #dc2626)" : "var(--v4-accent, #2563eb)",
-						}} />
-					</div>
+			{/* Token counter removed — single mode uses short-circuit (no AI) */}
+
+			{/* ── Single-mode short-circuit result ── */}
+			{mode === "single" && shortCircuitItems !== null && (
+				<div style={{ marginTop: "1.5rem" }}>
+					<p className="v4-kicker" style={{ marginBottom: "0.75rem" }}>Measurables Graph</p>
+					<ShortCircuitGraph items={shortCircuitItems} />
 				</div>
 			)}
 
-			{hasResult && (
+			{/* ── Multi-mode Gemini result ── */}
+			{mode !== "single" && hasResult && (
 				<div style={{ marginTop: "1.5rem" }}>
 					<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
 						<p className="v4-kicker" style={{ margin: 0 }}>Simulation Narrative</p>
@@ -1089,3 +1077,8 @@ export function SimulatorPanel({ sessionId }: SimulatorPanelProps) {
 		</section>
 	);
 }
+
+// Suppress unused-variable warnings for single-mode state that is retained
+// for structural symmetry with the multi-mode path.
+void (0 as unknown as ReturnType<typeof useState>);
+

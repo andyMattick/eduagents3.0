@@ -9,7 +9,6 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callLLM } from "../../../lib/llm";
 import { resolveActor, getDailyUsage, DAILY_TOKEN_LIMIT, isTokenLimitError, sendTokenLimitResponse, checkTokenBudget, incrementTokens } from "../../../lib/tokenGate";
 import { callGeminiDetailed } from "../../../lib/gemini";
 import type { SimulationProfileMetrics, SimulatorData, StudentProfile } from "../../../src/types/simulator";
@@ -153,6 +152,17 @@ IMPORTANT — STRICT OUTPUT FORMAT:
 ${DATA_SCHEMA}`;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+	try {
+		return await simulateHandler(req, res);
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		console.error("[simulator/single] unhandled error:", message);
+		const status = (err as { httpStatus?: number }).httpStatus ?? 500;
+		return res.status(status).json({ error: message });
+	}
+}
+
+async function simulateHandler(req: VercelRequest, res: VercelResponse) {
 	if (req.method === "OPTIONS") {
 		return res.status(200).setHeader("Access-Control-Allow-Origin", "*")
 			.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -219,8 +229,10 @@ ${profileStr}`;
 		await incrementTokens(actor.actorKey, actor.userId, tokensUsed);
 	} catch (err) {
 		if (isTokenLimitError(err)) return sendTokenLimitResponse(res, err);
-		// Fall back to unmetered callLLM so existing behaviour is preserved
-		raw = await callLLM({ prompt, metadata: { runType: "simulate-single", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
+		// Re-throw Gemini errors (including 429) — do NOT fall back to a second
+		// callLLM attempt, which would double the quota pressure and extend any
+		// active throttle window.
+		throw err;
 	}
 
 	const { narrative, data } = parseSimulatorResponse(raw);
@@ -254,6 +266,8 @@ ${profileStr}`;
 						readingLoad: item.readingLoad,
 						steps: (item as unknown as { steps?: number }).steps ?? 1,
 						distractorDensity: (item as unknown as { distractorDensity?: number }).distractorDensity ?? 0,
+						vocabularyDifficulty: (item as unknown as { vocabularyDifficulty?: number }).vocabularyDifficulty ?? 0,
+						misconceptionRisk: item.misconceptionRisk,
 						confusionScore: computeConfusionScore(
 							{
 								cognitiveLoad: item.cognitiveLoad,
@@ -269,13 +283,20 @@ ${profileStr}`;
 							{ misconceptionRisk: item.misconceptionRisk },
 						),
 					})),
-					predictedStates: simData.overall.predictedStates ?? {
-						fatigue: 0,
-						confusion: 0,
-						guessing: 0,
-						overload: 0,
-						frustration: 0,
-						timePressureCollapse: 0,
+					predictedStates: {
+						...(simData.overall.predictedStates ?? {
+							fatigue: 0,
+							confusion: 0,
+							guessing: 0,
+							overload: 0,
+							frustration: 0,
+							timePressureCollapse: 0,
+						}),
+						emotionalFriction: simData.overall.predictedStates?.emotionalFriction ?? 0,
+						confidenceImpact: simData.overall.predictedStates?.confidenceImpact ?? 0,
+						pacingPressure: simData.overall.predictedStates?.pacingPressure ?? 0,
+						fatigueIncrease: (simData.overall.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
+						attentionDrop: (simData.overall.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
 					},
 				},
 			]

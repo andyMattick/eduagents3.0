@@ -11,13 +11,14 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudio } from './components_new/v4/TeacherStudio';
 import { ConceptMatchPage } from './components_new/v4/concept-match/ConceptMatchPage';
+import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/preparedness', '/concept-match']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/preparedness', '/concept-match', '/shortcircuit']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -84,6 +85,8 @@ function TeacherAppContent() {
           ? <LegacyDocumentCreation />
           : pathname === '/concept-match'
           ? <ConceptMatchPage />
+          : pathname === '/shortcircuit'
+          ? <ShortCircuitPage />
           : pathname === '/sim'
           ? <TeacherStudio />
           : pathname === '/preparedness'

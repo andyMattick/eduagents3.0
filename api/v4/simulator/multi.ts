@@ -119,8 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 						distractorDensity: (item as { distractorDensity?: number }).distractorDensity ?? 0,
 						vocabularyDifficulty: (item as { vocabularyDifficulty?: number }).vocabularyDifficulty ?? 0,
 						misconceptionRisk: item.misconceptionRisk,
-						fatigueIncrease: (item as { fatigueIncrease?: number }).fatigueIncrease ?? 0,
-						attentionDrop: (item as { attentionDrop?: number }).attentionDrop ?? 0,
+
 						confusionScore: (item as { confusionScore?: number }).confusionScore ??
 							computeConfusionScore(
 								{
@@ -150,6 +149,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 						emotionalFriction: (profileData.overall.predictedStates as { emotionalFriction?: number } | undefined)?.emotionalFriction ?? 0,
 						confidenceImpact: (profileData.overall.predictedStates as { confidenceImpact?: number } | undefined)?.confidenceImpact ?? 0,
 						pacingPressure: (profileData.overall.predictedStates as { pacingPressure?: number } | undefined)?.pacingPressure ?? profileData.overall.pacingRisk,
+					fatigueIncrease: (profileData.overall.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
+					attentionDrop: (profileData.overall.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
 					},
 				});
 			}

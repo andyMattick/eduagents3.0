@@ -23,6 +23,14 @@ async function delay(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Thin outer retry wrapper around callLLM.
+ *
+ * NOTE: callGeminiDetailed already applies its own exponential-backoff retry
+ * for 429/5xx (up to 4 attempts).  This outer wrapper adds a final-resort
+ * retry pass for cases where the inner retries are exhausted, without
+ * doubling up on every attempt.
+ */
 export async function callGeminiWithRetry(params: {
 	prompt: string;
 	metadata?: Record<string, unknown>;
@@ -33,7 +41,7 @@ export async function callGeminiWithRetry(params: {
 	};
 	maxRetries?: number;
 }): Promise<string> {
-	const { maxRetries = 2, ...rest } = params;
+	const { maxRetries = 1, ...rest } = params;
 
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
@@ -61,7 +69,7 @@ export async function callGeminiWithRetryWithUsage(params: {
 	};
 	maxRetries?: number;
 }): Promise<GeminiCallResult> {
-	const { maxRetries = 2, ...rest } = params;
+	const { maxRetries = 1, ...rest } = params;
 
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {

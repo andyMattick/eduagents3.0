@@ -397,8 +397,6 @@ Return your answer in two parts:
           "difficulty": number (1–5, integer),
           "steps": number (integer, estimated reasoning steps required),
           "distractorDensity": number (0.0–1.0, share of choices designed to mislead),
-          "fatigueIncrease": number (0.0–1.0, incremental fatigue this item adds cumulatively),
-          "attentionDrop": number (0.0–1.0, attention reduction caused by this item),
           "redFlags": [string]
         }
       ],
@@ -428,7 +426,9 @@ Return your answer in two parts:
           "timePressureCollapse": number (0.0–1.0),
           "emotionalFriction": number (0.0–1.0, emotional work needed to persist through the assessment),
           "confidenceImpact": number (0.0–1.0, degree to which assessment dents student confidence),
-          "pacingPressure": number (0.0–1.0, time-pressure felt throughout)
+          "pacingPressure": number (0.0–1.0, time-pressure felt throughout),
+          "fatigueIncrease": number[] (per-item fatigue increase, one value per item in order),
+          "attentionDrop": number[] (per-item attention drop, one value per item in order)
         }
       }
     }

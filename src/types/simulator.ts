@@ -137,8 +137,6 @@ export interface SimulationMeasurables {
 	vocabularyDifficulty: number;  // 0–1
 	misconceptionRisk: number;     // 0–1
 	confusionScore: number;        // 0–1  composite confusion model
-	fatigueIncrease: number;       // 0–1  incremental fatigue added by this item
-	attentionDrop: number;         // 0–1  attention reduction caused by this item
 }
 
 /** Predicted unobservable state vector for a profile across the full assessment. */
@@ -153,6 +151,8 @@ export interface SimulationPredictedStates {
 	emotionalFriction: number;    // 0–1
 	confidenceImpact: number;     // 0–1  (higher = bigger confidence dip)
 	pacingPressure: number;       // 0–1
+	fatigueIncrease: number[];    // per-item fatigue increase series
+	attentionDrop: number[];      // per-item attention drop series
 }
 
 /** Rich per-profile metrics block used in multi-profile (parallel) simulation. */
@@ -212,6 +212,8 @@ export interface SimulatorOverallData {
 		emotionalFriction?: number;
 		confidenceImpact?: number;
 		pacingPressure?: number;
+		fatigueIncrease?: number[];
+		attentionDrop?: number[];
 	};
 }
 

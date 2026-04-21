@@ -238,6 +238,7 @@ const localPrismRoutes: LocalApiRoute[] = [
   },
   { pattern: /^\/studio\/generateItems$/, modulePath: '/api/v4/studio/generateItems.ts' },
   { pattern: /^\/simulator\/single$/, modulePath: '/api/v4/simulator/single.ts' },
+  { pattern: /^\/simulator\/shortcircuit$/, modulePath: '/api/v4/simulator/shortcircuit.ts' },
   { pattern: /^\/preparedness$/, modulePath: '/api/v4/preparedness.ts' },
   { pattern: /^\/preparedness-intel$/, modulePath: '/api/v4/preparedness-intel.ts' },
   { pattern: /^\/concept-match\/intel$/, modulePath: '/api/v4/concept-match/intel.ts' },
