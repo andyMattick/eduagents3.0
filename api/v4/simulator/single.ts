@@ -12,7 +12,14 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { resolveActor, getDailyUsage, DAILY_TOKEN_LIMIT, isTokenLimitError, sendTokenLimitResponse, checkTokenBudget, incrementTokens } from "../../../lib/tokenGate";
 import { callGeminiDetailed } from "../../../lib/gemini";
 import type { SimulationProfileMetrics, SimulatorData, StudentProfile } from "../../../src/types/simulator";
-import { computeConfusionScore, fetchSessionText, formatStudentProfile, parseSimulatorResponse } from "./shared";
+import {
+	fetchSessionDocuments,
+	formatStudentProfile,
+	parseSimulatorResponse,
+	runSemanticOnText,
+	segmentText,
+	vectorToMeasurables,
+} from "./shared";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,44 +34,38 @@ Return your answer in two parts:
   "items": [
     {
       "itemNumber": number,
-      "readingLoad": number (0.0–1.0),
-      "wordCount": number,
-      "sentenceCount": number,
-      "vocabularyDifficulty": number (0.0–1.0),
-      "cognitiveLoad": number (0.0–1.0),
-      "confusionRisk": number (0.0–1.0),
-      "timeToProcessSeconds": number,
-      "misconceptionRisk": number (0.0–1.0),
-      "difficulty": number (1–5, integer),
-      "steps": number (integer, estimated reasoning steps required),
-      "distractorDensity": number (0.0–1.0, share of choices designed to mislead),
       "redFlags": [string]
     }
   ],
-	"sections": [
-		{
-			"sectionId": string,
-			"readingLoad": number (0.0–1.0),
-			"vocabularyDifficulty": number (0.0–1.0),
-			"cognitiveLoad": number (0.0–1.0),
-			"confusionRisk": number (0.0–1.0),
-			"fatigueRisk": number (0.0–1.0),
-			"redFlags": [string]
-		}
-	],
+  "sections": [
+    {
+      "sectionId": string,
+      "readingLoad": number (0.0-1.0),
+      "vocabularyDifficulty": number (0.0-1.0),
+      "cognitiveLoad": number (0.0-1.0),
+      "confusionRisk": number (0.0-1.0),
+      "fatigueRisk": number (0.0-1.0),
+      "redFlags": [string]
+    }
+  ],
   "overall": {
     "totalItems": number,
     "estimatedCompletionTimeSeconds": number,
-    "fatigueRisk": number (0.0–1.0),
-    "pacingRisk": number (0.0–1.0),
+    "fatigueRisk": number (0.0-1.0),
+    "pacingRisk": number (0.0-1.0),
     "majorRedFlags": [string],
     "predictedStates": {
-      "fatigue": number (0.0–1.0),
-      "confusion": number (0.0–1.0),
-      "guessing": number (0.0–1.0),
-      "overload": number (0.0–1.0),
-      "frustration": number (0.0–1.0),
-      "timePressureCollapse": number (0.0–1.0)
+      "fatigue": number (0.0-1.0),
+      "confusion": number (0.0-1.0),
+      "guessing": number (0.0-1.0),
+      "overload": number (0.0-1.0),
+      "frustration": number (0.0-1.0),
+      "timePressureCollapse": number (0.0-1.0),
+      "emotionalFriction": number (0.0-1.0),
+      "confidenceImpact": number (0.0-1.0),
+      "pacingPressure": number (0.0-1.0),
+      "fatigueIncrease": number[],
+      "attentionDrop": number[]
     }
   },
   "rewriteSuggestions": {
@@ -77,50 +78,33 @@ Return your answer in two parts:
     {
       "text": string,
       "type": "item_rewrite" | "instructional_support" | "student_behavior",
-      "itemNumber": number (optional, only for item-level suggestions)
+      "itemNumber": number
     }
   ]
 }`;
 
 const SYSTEM_PROMPT = `You are a student-experience simulator for teachers.
-Given a test and a student profile, analyze how a typical student would experience the assessment in real time.
+You receive pre-analyzed items — measurables (cognitive load, reading load, etc.) are already computed.
+
+Your job:
+- Write a narrative describing how this student experiences the assessment
+- Identify red flags per item (wording issues, ambiguity, pacing, hidden difficulty)
+- Predict overall unobservable student states
+- Provide rewrite suggestions grounded in patterns you observe
 
 Focus on:
-- cognitive load
-- confusion points
-- pacing and time pressure
-- attention drift
-- emotional responses (frustration, confidence dips, fatigue)
-- likely misconceptions
-- where students will lose time
-- where sequencing creates difficulty
-- readability and clarity of wording
-- sentence length, vocabulary load, and unnecessary complexity
+- Pacing and time pressure
+- Attention drift and fatigue arc
+- Emotional responses (frustration, confidence dips, confusion spikes)
+- Where sequencing creates difficulty
+- Per-item red flags based on wording and structure
 
-If the document includes explanatory notes or sections, also evaluate each section for:
-- reading load
-- vocabulary difficulty
-- conceptual density via cognitiveLoad
-- confusion risk
-- fatigue risk
-- red flags
+If the document includes explanatory notes or sections, evaluate each section for:
+- reading load, vocabulary difficulty, cognitive load, confusion risk, fatigue risk, red flags
 
 IMPORTANT: All numeric fields (readingLoad, vocabularyDifficulty, cognitiveLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
 
-For each item, evaluate:
-- reading load
-- word count
-- sentence count
-- vocabulary difficulty
-- cognitive load
-- confusion risk
-- time to process
-- misconception risk
-- red flags
-
-After completing the simulation, populate the following sections in the DATA JSON:
-
-"overall.predictedStates": Predict the probability (0.0–1.0) of each unobservable student state across the full assessment:
+"overall.predictedStates": Predict the probability (0.0–1.0) of each unobservable student state:
 - fatigue: likelihood the student fatigues before finishing
 - confusion: overall confusion likelihood
 - guessing: likelihood the student resorts to guessing
@@ -188,18 +172,48 @@ async function simulateHandler(req: VercelRequest, res: VercelResponse) {
 		return res.status(400).json({ error: "sessionId is required" });
 	}
 
-	const { text, docCount } = await fetchSessionText(sessionId);
+	const { text, docCount, azureExtracts } = await fetchSessionDocuments(sessionId);
 	if (!text) {
 		return res.status(422).json({ error: "No document text found for this session." });
 	}
+
+	// Step 1 — Hybrid segmentation (Azure layout + local rules). No Gemini.
+	// Segment each doc individually; items are numbered across all docs.
+	const segments: Array<{ itemNumber: number; text: string }> = [];
+	let itemOffset = 0;
+	for (const azure of azureExtracts) {
+		const docItems = await segmentText(azure);
+		for (const item of docItems) {
+			segments.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
+		}
+		itemOffset += docItems.length;
+	}
+	// If no azure_extracts available, fall back to segmenting the full text
+	if (segments.length === 0 && text) {
+		const fallback = await segmentText({ content: text });
+		segments.push(...fallback.map((item) => ({ itemNumber: item.itemNumber, text: item.text })));
+	}
+
+	// Step 2 — Local semantic pipeline per segment → measurables.
+	const localMeasurables: Array<ReturnType<typeof vectorToMeasurables> & { itemNumber: number }> = [];
+	for (const seg of segments) {
+		const vec = await runSemanticOnText(seg.text);
+		if (!vec) continue;
+		localMeasurables.push({ itemNumber: seg.itemNumber, ...vectorToMeasurables(vec, seg.text) });
+	}
+
+	// Step 3 — Build items JSON for Gemini (text only, no measurables).
+	const itemsForPrompt = segments
+		.map((s) => `Item ${s.itemNumber}:\n${s.text.substring(0, 600)}`)
+		.join("\n\n");
 
 	const profileStr = formatStudentProfile(studentProfile);
 
 	const prompt = `${SYSTEM_PROMPT}
 
 USER:
-Here is the test (from ${docCount} document${docCount === 1 ? "" : "s"}):
-${text.substring(0, 12000)}
+Here are the pre-segmented items (from ${docCount} document${docCount === 1 ? "" : "s"}):
+${itemsForPrompt.substring(0, 8000)}
 
 Here is the student profile:
 ${profileStr}`;
@@ -244,10 +258,33 @@ ${profileStr}`;
 		limit: DAILY_TOKEN_LIMIT,
 	};
 
-	// Build a SimulationProfileMetrics entry for the submitted profile so the
-	// UI can use the unified `profiles` format even for single-profile runs.
+	// Build SimulationProfileMetrics from LOCAL measurables (Option D).
+	// Gemini no longer provides per-item measurables — they come from the
+	// local semantic pipeline run above.
 	const simData = data as SimulatorData | null;
-	const profiles: SimulationProfileMetrics[] | undefined = simData?.items
+
+	// Merge local measurables into data.items so the full schema is present.
+	const mergedItems = localMeasurables.map((m) => {
+		const geminiItem = (simData?.items ?? []).find((it) => it.itemNumber === m.itemNumber);
+		return {
+			itemNumber: m.itemNumber,
+			cognitiveLoad: m.cognitiveLoad,
+			readingLoad: m.readingLoad,
+			vocabularyDifficulty: m.vocabularyDifficulty,
+			misconceptionRisk: m.misconceptionRisk,
+			distractorDensity: m.distractorDensity,
+			steps: m.steps,
+			wordCount: m.wordCount,
+			timeToProcessSeconds: m.timeToProcessSeconds,
+			confusionScore: m.confusionScore,
+			difficulty: 3,
+			sentenceCount: 0,
+			confusionRisk: m.confusionScore,
+			redFlags: (geminiItem as { redFlags?: string[] } | undefined)?.redFlags ?? [],
+		};
+	});
+
+	const profiles: SimulationProfileMetrics[] | undefined = localMeasurables.length > 0
 		? [
 				{
 					profileId: studentProfile?.attentionProfile === "ADHD" ? "adhd"
@@ -256,35 +293,22 @@ ${profileStr}`;
 						: "average",
 					profileLabel: formatStudentProfileLabel(studentProfile),
 					color: "#3b82f6",
-					measurables: simData.items.map((item, idx) => ({
-						itemId: String(item.itemNumber),
+					measurables: localMeasurables.map((m, idx) => ({
+						itemId: String(m.itemNumber),
 						index: idx,
-						wordCount: item.wordCount,
-						cognitiveLoad: item.cognitiveLoad,
-						difficulty: (item as unknown as { difficulty?: number }).difficulty ?? 3,
-						timeToProcessSeconds: item.timeToProcessSeconds,
-						readingLoad: item.readingLoad,
-						steps: (item as unknown as { steps?: number }).steps ?? 1,
-						distractorDensity: (item as unknown as { distractorDensity?: number }).distractorDensity ?? 0,
-						vocabularyDifficulty: (item as unknown as { vocabularyDifficulty?: number }).vocabularyDifficulty ?? 0,
-						misconceptionRisk: item.misconceptionRisk,
-						confusionScore: computeConfusionScore(
-							{
-								cognitiveLoad: item.cognitiveLoad,
-								readingLoad: item.readingLoad,
-								distractorDensity: (item as unknown as { distractorDensity?: number }).distractorDensity ?? 0,
-								steps: (item as unknown as { steps?: number }).steps ?? 1,
-								timeToProcessSeconds: item.timeToProcessSeconds,
-								wordCount: item.wordCount,
-								difficulty: (item as unknown as { difficulty?: number }).difficulty ?? 3,
-								itemId: String(item.itemNumber),
-								index: idx,
-							},
-							{ misconceptionRisk: item.misconceptionRisk },
-						),
+						wordCount: m.wordCount,
+						cognitiveLoad: m.cognitiveLoad,
+						difficulty: 3,
+						timeToProcessSeconds: m.timeToProcessSeconds,
+						readingLoad: m.readingLoad,
+						steps: m.steps,
+						distractorDensity: m.distractorDensity,
+						vocabularyDifficulty: m.vocabularyDifficulty,
+						misconceptionRisk: m.misconceptionRisk,
+						confusionScore: m.confusionScore,
 					})),
 					predictedStates: {
-						...(simData.overall.predictedStates ?? {
+						...(simData?.overall?.predictedStates ?? {
 							fatigue: 0,
 							confusion: 0,
 							guessing: 0,
@@ -292,17 +316,18 @@ ${profileStr}`;
 							frustration: 0,
 							timePressureCollapse: 0,
 						}),
-						emotionalFriction: simData.overall.predictedStates?.emotionalFriction ?? 0,
-						confidenceImpact: simData.overall.predictedStates?.confidenceImpact ?? 0,
-						pacingPressure: simData.overall.predictedStates?.pacingPressure ?? 0,
-						fatigueIncrease: (simData.overall.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
-						attentionDrop: (simData.overall.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
+						emotionalFriction: simData?.overall?.predictedStates?.emotionalFriction ?? 0,
+						confidenceImpact: simData?.overall?.predictedStates?.confidenceImpact ?? 0,
+						pacingPressure: simData?.overall?.predictedStates?.pacingPressure ?? 0,
+						fatigueIncrease: (simData?.overall?.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
+						attentionDrop: (simData?.overall?.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
 					},
 				},
 			]
 		: undefined;
 
-	return res.status(200).json({ narrative, data: simData, profiles, tokenUsage });
+	const outputData = simData ? { ...simData, items: mergedItems } : null;
+	return res.status(200).json({ narrative, data: outputData, profiles, tokenUsage });
 }
 
 function formatStudentProfileLabel(profile?: StudentProfile): string {

@@ -8,17 +8,10 @@ import { cleanText } from "../src/prism-v4/ingestion/normalize/textCleaner";
 import type { TaggingPipelineInput } from "../src/prism-v4/schema/semantic";
 
 const DEFAULT_MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set([".pdf", ".doc", ".docx"]);
-const ALLOWED_MIME_TYPES = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/octet-stream",
-]);
 
-function isAllowedUpload(fileName: string, mimeType: string) {
+function isPdfUpload(fileName: string, mimeType: string) {
   const extension = path.extname(fileName).toLowerCase();
-  return ALLOWED_EXTENSIONS.has(extension) && ALLOWED_MIME_TYPES.has(mimeType || "application/octet-stream");
+  return extension === ".pdf" && (mimeType === "application/pdf" || mimeType === "application/octet-stream");
 }
 
 function getUploadSizeLimit() {
@@ -162,12 +155,12 @@ export default async function handler(req: IncomingMessage & { method?: string; 
       throw new Error("Missing x-file-name header.");
     }
 
-    if (!isAllowedUpload(fileName, mimeType || "application/octet-stream")) {
-      throw new Error("Unsupported file type. Allowed types: PDF, DOC, DOCX.");
+    if (!isPdfUpload(fileName, mimeType || "application/octet-stream")) {
+      throw new Error("Please upload a PDF file. DOCX and other formats are not supported.");
     }
 
     const fileBuffer = await readRequestBody(req);
-    const rawAzure = await runAzureExtraction(fileBuffer);
+    const rawAzure = await runAzureExtraction(fileBuffer, "application/pdf");
     const normalizedAzure = normalizeAzureLayout(rawAzure);
     const canonical = cleanCanonicalText(mapAzureToCanonical(normalizedAzure, fileName));
 
@@ -180,7 +173,7 @@ export default async function handler(req: IncomingMessage & { method?: string; 
     sendJson(res, 200, response);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Document ingestion failed";
-    const statusCode = message.includes("Unsupported file type") || message.includes("Missing x-file-name") || message.includes("empty") || message.includes("upload limit")
+    const statusCode = message.includes("Please upload a PDF") || message.includes("Missing x-file-name") || message.includes("empty") || message.includes("upload limit")
       ? 400
       : message.toLowerCase().includes("azure")
         ? 502

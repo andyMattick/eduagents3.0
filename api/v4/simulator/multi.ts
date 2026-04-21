@@ -21,10 +21,13 @@ import type {
 import {
 	buildMultiProfilePrompt,
 	computeConfusionScore,
-	fetchSessionText,
+	fetchSessionDocuments,
 	formatStudentProfile,
 	PROFILE_CATALOG,
 	parseSimulatorResponse,
+	runSemanticOnText,
+	segmentText,
+	vectorToMeasurables,
 } from "./shared";
 
 export const runtime = "nodejs";
@@ -65,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 	}
 
 	try {
-		const { text, docCount } = await fetchSessionText(sessionId);
+		const { text, docCount, azureExtracts } = await fetchSessionDocuments(sessionId);
 
 		if (!text || docCount === 0) {
 			return res.status(404).json({ error: "No document text found for this session." });
@@ -79,8 +82,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return `${label}:\n${formatStudentProfile(profiles[i])}`;
 		}).join("\n\n");
 
-		// Build the full prompt (system + user combined as a single Gemini user message)
-		const prompt = buildMultiProfilePrompt(text, labels, profiles);
+		// Step 1 — Hybrid segmentation (Azure layout + local rules). No Gemini.
+		// Shared across all profiles — content measurables are profile-independent.
+		const segments: Array<{ itemNumber: number; text: string }> = [];
+		let itemOffset = 0;
+		for (const azure of azureExtracts) {
+			const docItems = await segmentText(azure);
+			for (const item of docItems) {
+				segments.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
+			}
+			itemOffset += docItems.length;
+		}
+		if (segments.length === 0 && text) {
+			const fallback = await segmentText({ content: text });
+			segments.push(...fallback.map((item) => ({ itemNumber: item.itemNumber, text: item.text })));
+		}
+
+		// Step 2 — Local semantic pipeline per segment (profile-independent content measurables).
+		const localMeasurables: Array<ReturnType<typeof vectorToMeasurables> & { itemNumber: number }> = [];
+		for (const seg of segments) {
+			const vec = await runSemanticOnText(seg.text);
+			if (!vec) continue;
+			localMeasurables.push({ itemNumber: seg.itemNumber, ...vectorToMeasurables(vec, seg.text) });
+		}
+
+		// Build items text for Gemini (no measurables in prompt).
+		const itemsForPrompt = segments
+			.map((s) => `Item ${s.itemNumber}:\n${s.text.substring(0, 400)}`)
+			.join("\n\n");
+
+		// Step 3 — Small Gemini call: only narrative + predictedStates + comparison.
+		const prompt = buildMultiProfilePrompt(itemsForPrompt, labels, profiles);
 
 		const raw = await callLLM({ prompt, metadata: { runType: "simulate-multi", sessionId }, options: { temperature: 0.4, maxOutputTokens: 8192 } });
 
@@ -92,68 +124,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				? (parsed.data as ParallelSimulatorData)
 				: null;
 
-		// Build SimulationProfileMetrics[] from the students map so the UI can
-		// use the unified profiles format directly.
+		// Build SimulationProfileMetrics[] using local measurables (Option D).
+		// Measurables are content properties — same across all profiles.
+		// Profile-specific values (predictedStates) come from Gemini.
 		const profiles: SimulationProfileMetrics[] = [];
-		if (data?.students) {
-			for (const entry of studentProfiles) {
-				const profileData = data.students[entry.label];
-				if (!profileData) continue;
+		for (const entry of studentProfiles) {
+			const catalogEntry = PROFILE_CATALOG.find(
+				(c) => c.label.toLowerCase() === entry.label.toLowerCase()
+					|| c.id === entry.label.toLowerCase().replace(/\s+/g, "_"),
+			) ?? PROFILE_CATALOG[0];
 
-				// Resolve color from catalog by matching label → id
-				const catalogEntry = PROFILE_CATALOG.find(
-					(c) => c.label.toLowerCase() === entry.label.toLowerCase()
-						|| c.id === entry.label.toLowerCase().replace(/\s+/g, "_"),
-				) ?? PROFILE_CATALOG[0];
+			const profileData = data?.students?.[entry.label];
 
-				const measurables: SimulationMeasurables[] = (profileData.items ?? []).map(
-					(item, idx) => ({
-						itemId: String(item.itemNumber),
-						index: item.itemNumber,
-						wordCount: item.wordCount,
-						cognitiveLoad: item.cognitiveLoad,
-						difficulty: (item as { difficulty?: number }).difficulty ?? 3,
-						timeToProcessSeconds: item.timeToProcessSeconds,
-						readingLoad: item.readingLoad,
-						steps: (item as { steps?: number }).steps ?? 1,
-						distractorDensity: (item as { distractorDensity?: number }).distractorDensity ?? 0,
-						vocabularyDifficulty: (item as { vocabularyDifficulty?: number }).vocabularyDifficulty ?? 0,
-						misconceptionRisk: item.misconceptionRisk,
+			const measurables: SimulationMeasurables[] = localMeasurables.map((m, idx) => ({
+				itemId: String(m.itemNumber),
+				index: idx,
+				wordCount: m.wordCount,
+				cognitiveLoad: m.cognitiveLoad,
+				difficulty: 3,
+				timeToProcessSeconds: m.timeToProcessSeconds,
+				readingLoad: m.readingLoad,
+				steps: m.steps,
+				distractorDensity: m.distractorDensity,
+				vocabularyDifficulty: m.vocabularyDifficulty,
+				misconceptionRisk: m.misconceptionRisk,
+				confusionScore: m.confusionScore,
+			}));
 
-						confusionScore: (item as { confusionScore?: number }).confusionScore ??
-							computeConfusionScore(
-								{
-									cognitiveLoad: item.cognitiveLoad,
-									readingLoad: item.readingLoad,
-									distractorDensity: (item as { distractorDensity?: number }).distractorDensity ?? 0,
-									steps: (item as { steps?: number }).steps ?? 1,
-									timeToProcessSeconds: item.timeToProcessSeconds,
-								},
-								{ misconceptionRisk: item.misconceptionRisk },
-							),
-					}),
-				);
-
-				profiles.push({
-					profileId: catalogEntry.id,
-					profileLabel: entry.label,
-					color: catalogEntry.color,
-					measurables,
-					predictedStates: {
-						fatigue: profileData.overall.predictedStates?.fatigue ?? profileData.overall.fatigueRisk,
-						confusion: profileData.overall.predictedStates?.confusion ?? 0,
-						guessing: profileData.overall.predictedStates?.guessing ?? 0,
-						overload: profileData.overall.predictedStates?.overload ?? 0,
-						frustration: profileData.overall.predictedStates?.frustration ?? 0,
-						timePressureCollapse: profileData.overall.predictedStates?.timePressureCollapse ?? profileData.overall.pacingRisk,
-						emotionalFriction: (profileData.overall.predictedStates as { emotionalFriction?: number } | undefined)?.emotionalFriction ?? 0,
-						confidenceImpact: (profileData.overall.predictedStates as { confidenceImpact?: number } | undefined)?.confidenceImpact ?? 0,
-						pacingPressure: (profileData.overall.predictedStates as { pacingPressure?: number } | undefined)?.pacingPressure ?? profileData.overall.pacingRisk,
-					fatigueIncrease: (profileData.overall.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
-					attentionDrop: (profileData.overall.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
-					},
-				});
-			}
+			profiles.push({
+				profileId: catalogEntry.id,
+				profileLabel: entry.label,
+				color: catalogEntry.color,
+				measurables,
+				predictedStates: {
+					fatigue: profileData?.overall?.predictedStates?.fatigue ?? profileData?.overall?.fatigueRisk ?? 0,
+					confusion: profileData?.overall?.predictedStates?.confusion ?? 0,
+					guessing: profileData?.overall?.predictedStates?.guessing ?? 0,
+					overload: profileData?.overall?.predictedStates?.overload ?? 0,
+					frustration: profileData?.overall?.predictedStates?.frustration ?? 0,
+					timePressureCollapse: profileData?.overall?.predictedStates?.timePressureCollapse ?? profileData?.overall?.pacingRisk ?? 0,
+					emotionalFriction: (profileData?.overall?.predictedStates as { emotionalFriction?: number } | undefined)?.emotionalFriction ?? 0,
+					confidenceImpact: (profileData?.overall?.predictedStates as { confidenceImpact?: number } | undefined)?.confidenceImpact ?? 0,
+					pacingPressure: (profileData?.overall?.predictedStates as { pacingPressure?: number } | undefined)?.pacingPressure ?? profileData?.overall?.pacingRisk ?? 0,
+					fatigueIncrease: (profileData?.overall?.predictedStates as { fatigueIncrease?: number[] } | undefined)?.fatigueIncrease ?? [],
+					attentionDrop: (profileData?.overall?.predictedStates as { attentionDrop?: number[] } | undefined)?.attentionDrop ?? [],
+				},
+			});
 		}
 
 		// Extract per-profile narratives if present

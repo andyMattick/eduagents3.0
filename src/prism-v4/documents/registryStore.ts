@@ -1,5 +1,6 @@
 import { supabaseRest } from "../../../lib/supabase";
 import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragments } from "./analysis";
+import { canonicalDocumentToAzureExtract } from "./analysis/canonicalize";
 import { withPreferredContentHash } from "./contentHash";
 import { buildInstructionalUnitOverrideId, getProblemOverride } from "../teacherFeedback";
 import {
@@ -1038,7 +1039,14 @@ export async function saveAnalyzedDocumentStore(
 	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "PATCH",
 		filters: { document_id: `eq.${normalized.document.id}` },
-		body: { canonical_document: normalized.document },
+		body: {
+			canonical_document: normalized.document,
+			// Derive and persist azure_extract so simulator routes always have structured text.
+			// For PDF: already written during registerDocumentsStore (rawBinary path).
+			// For DOCX/PPTX: analyzeRegisteredDocument builds azureExtract from canonical nodes,
+			// but the original registration row has azure_extract=null. Writing it here fixes that.
+			azure_extract: canonicalDocumentToAzureExtract(normalized.document),
+		},
 		prefer: "return=minimal",
 	});
 	markCollectionAnalysisStale(sessionId);

@@ -7,12 +7,12 @@ function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export async function runAzureExtraction(fileBuffer: Buffer) {
+export async function runAzureExtraction(fileBuffer: Buffer, mimeType = "application/pdf") {
   let attempt = 0;
 
   while (attempt < MAX_RETRIES) {
     try {
-      return await callAzureLayoutModel(fileBuffer);
+      return await callAzureLayoutModel(fileBuffer, mimeType);
     } catch (err) {
       attempt++;
       if (attempt >= MAX_RETRIES) {

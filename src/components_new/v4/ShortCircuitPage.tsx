@@ -14,13 +14,26 @@
 
 import { useState } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
+import { SegmentationVisualizer } from "./SegmentationVisualizer";
 import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
+
+interface SegmentedItem {
+	itemNumber: number;
+	text: string;
+}
+
+interface SegDebugResult {
+	fullText: string;
+	segmented: SegmentedItem[];
+}
 
 export function ShortCircuitPage() {
 	const [sessionId, setSessionId] = useState("");
 	const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [segDebug, setSegDebug] = useState<SegDebugResult | null>(null);
+	const [debugLoading, setDebugLoading] = useState(false);
 
 	const generate = async () => {
 		if (!sessionId.trim()) {
@@ -56,6 +69,30 @@ export function ShortCircuitPage() {
 	const reset = () => {
 		setItems(null);
 		setError(null);
+		setSegDebug(null);
+	};
+
+	const debugSegmentation = async () => {
+		if (!sessionId.trim()) return;
+		setDebugLoading(true);
+		setError(null);
+		try {
+			const res = await fetch("/api/v4/simulator/debug/segmentation", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ sessionId: sessionId.trim() }),
+			});
+			const data = await res.json();
+			if (!res.ok) {
+				setError(data.error ?? `Debug error ${res.status}`);
+				return;
+			}
+			setSegDebug({ fullText: data.fullText ?? "", segmented: data.segmented ?? [] });
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Network error");
+		} finally {
+			setDebugLoading(false);
+		}
 	};
 
 	return (
@@ -114,6 +151,23 @@ export function ShortCircuitPage() {
 					>
 						{loading ? "Processing…" : "Generate"}
 					</button>
+
+					<button
+						onClick={debugSegmentation}
+						disabled={debugLoading || !sessionId.trim()}
+						style={{
+							padding: "0.5rem 1.25rem",
+							background: "transparent",
+							color: debugLoading || !sessionId.trim() ? "#9ca3af" : "#374151",
+							border: `1px solid ${debugLoading || !sessionId.trim() ? "#d1d5db" : "#6b7280"}`,
+							borderRadius: "6px",
+							fontSize: "0.875rem",
+							fontWeight: 500,
+							cursor: debugLoading || !sessionId.trim() ? "not-allowed" : "pointer",
+						}}
+					>
+						{debugLoading ? "Fetching…" : "Debug Segmentation"}
+					</button>
 				</div>
 			)}
 
@@ -153,8 +207,15 @@ export function ShortCircuitPage() {
 					</div>
 
 					<ShortCircuitGraph items={items} />
-				</div>
-			)}
-		</div>
-	);
+
+				{segDebug && (
+					<SegmentationVisualizer
+						fullText={segDebug.fullText}
+						segmented={segDebug.segmented}
+					/>
+				)}
+			</div>
+		)}
+	</div>
+);
 }

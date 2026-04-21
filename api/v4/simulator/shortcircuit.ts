@@ -1,19 +1,27 @@
 /**
  * POST /api/v4/simulator/shortcircuit
  *
- * Short-circuit diagnostic: Azure ingestion → local semantic analysis → measurables.
- * No Gemini. No profiles. No narratives. No rewrite. No heavy prompt.
+ * Option D diagnostic path:
+ *   Azure extract → Gemini segmentation (text only) → local semantic pipeline
+ *   per segment → measurables → graph.
  *
- * Accepts { sessionId } — session must already exist in prism_v4_documents.
- * Runs runSemanticPipeline locally on each stored document and returns
- * per-item measurables for graph rendering.
+ * Gemini does ONLY segmentation (250–400 tokens in / ~200 tokens out).
+ * All measurables are computed locally — no Gemini measurables, no 429 storms.
+ *
+ * Returns:
+ *   { rawItems: SegmentedItem[], items: ShortCircuitItem[] }
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseRest } from "../../../lib/supabase";
-import { runSemanticPipeline } from "../../../src/prism-v4/semantic/pipeline/runSemanticPipeline";
-import { computeConfusionScore } from "./shared";
-import type { AzureExtractResult } from "../../../src/prism-v4/schema/semantic";
+import {
+	buildAzureExtractFromRow,
+	computeConfusionScore,
+	runSemanticOnText,
+	segmentText,
+	vectorToMeasurables,
+	type SegmentedItem,
+} from "./shared";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,27 +30,32 @@ export const maxDuration = 60;
 // Types
 // ---------------------------------------------------------------------------
 
-interface DocumentRow {
-	document_id: string;
-	source_file_name: string | null;
-	azure_extract: AzureExtractResult | Record<string, unknown> | null;
-	canonical_document: {
-		content?: string;
-		nodes?: Array<{ text?: string; normalizedText?: string }>;
-	} | null;
-}
-
 export interface ShortCircuitItem {
 	itemNumber: number;
-	documentId: string;
+	text: string;
 	cognitiveLoad: number;
 	readingLoad: number;
 	vocabularyDifficulty: number;
 	misconceptionRisk: number;
 	distractorDensity: number;
 	steps: number;
-	confusionScore: number;
+	wordCount: number;
 	timeToProcessSeconds: number;
+	confusionScore: number;
+}
+
+interface DocumentRow {
+	document_id: string;
+	source_file_name: string | null;
+	azure_extract: {
+		content?: string;
+		paragraphs?: Array<{ text?: string }>;
+		pages?: Array<{ text?: string }>;
+	} | null;
+	canonical_document: {
+		content?: string;
+		nodes?: Array<{ text?: string; normalizedText?: string }>;
+	} | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,11 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 	let body = req.body;
 	if (typeof body === "string") {
-		try {
-			body = JSON.parse(body);
-		} catch {
-			/* keep as-is */
-		}
+		try { body = JSON.parse(body); } catch { /* keep as-is */ }
 	}
 
 	const { sessionId } = (body ?? {}) as { sessionId?: string };
@@ -89,89 +98,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			});
 		}
 
-		const items: ShortCircuitItem[] = [];
-		let globalItemNumber = 0;
+		console.log(`[shortcircuit] session=${sessionId} docs=${rows.length}`);
+		rows.forEach((r, i) => {
+			const paras = r.azure_extract?.paragraphs?.length ?? 0;
+			const pages = r.azure_extract?.pages?.length ?? 0;
+			const chars = r.azure_extract?.content?.length ?? 0;
+			console.log(`[shortcircuit] doc[${i}] id=${r.document_id} file=${r.source_file_name ?? "?"} paras=${paras} pages=${pages} content=${chars}chars`);
+		});
 
+		// Step 1 — Hybrid segmentation per document (Azure layout + local rules).
+		// Gemini is NOT called here; segmentText only falls back to Gemini when
+		// hybrid returns ≤1 item, which is rare for real teacher documents.
+		const rawItems: SegmentedItem[] = [];
+		let itemOffset = 0;
 		for (const row of rows) {
-			const azureExtract = reconstructAzureExtract(row);
-			if (!azureExtract) {
-				console.warn("[shortcircuit] no usable azure_extract for document", row.document_id);
-				continue;
+			const azure = buildAzureExtractFromRow(row);
+			const docItems = await segmentText(azure);
+			console.log(`[shortcircuit] doc=${row.document_id} → ${docItems.length} segment(s)`);
+			for (const item of docItems) {
+				rawItems.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
 			}
-
-			let pipelineOutput;
-			try {
-				pipelineOutput = await runSemanticPipeline({
-					documentId: row.document_id,
-					fileName: row.source_file_name ?? "document",
-					azureExtract,
-				});
-			} catch (err) {
-				console.warn(
-					"[shortcircuit] runSemanticPipeline failed for",
-					row.document_id,
-					err instanceof Error ? err.message : err,
-				);
-				continue;
-			}
-
-			for (const vec of pipelineOutput.problemVectors) {
-				globalItemNumber++;
-
-				// cognitiveLoad — fused difficulty from fuseCognition: weighted blend of
-				// azure difficulty, structural cues, and template knowledge.
-				const cognitiveLoad = clamp01(vec.cognitive?.difficulty ?? 0);
-
-				// readingLoad — tagLinguisticLoad value passed through fuseCognition unchanged.
-				// vec.linguisticLoad === vec.cognitive.linguisticLoad; both are safe.
-				const readingLoad = clamp01(vec.linguisticLoad ?? 0);
-
-				// vocabularyDifficulty — normalize vocabularyTier (1–3) to 0–1.
-				// (abstractionLevel is conceptual depth, not vocabulary difficulty).
-				const vocabularyDiff = clamp01(((vec.vocabularyTier ?? 1) - 1) / 2);
-
-				// misconceptionRisk — aggregate of misconceptionTriggers scores rather than
-				// vec.cognitive.misconceptionRisk which is template-dependent and often 0
-				// when no template has been matched for the problem.
-				const triggerValues = Object.values(vec.misconceptionTriggers ?? {});
-				const misconceptionRsk = clamp01(triggerValues.length > 0 ? Math.max(...triggerValues) : 0);
-
-				const distractorDens = clamp01(vec.distractorDensity ?? 0);
-				const steps          = Math.max(1, Math.round(vec.steps ?? 1));
-
-				// Estimate processing time from text length + step count.
-				// (word_count / 3.3 words·s⁻¹) + steps × 8 s per reasoning step
-				const stemText  = (vec.azure?.text ?? "").toString();
-				const wordCount = stemText.split(/\s+/).filter(Boolean).length || 10;
-				const timeToProcessSeconds = Math.max(5, Math.round(wordCount / 3.3 + steps * 8));
-
-				const confusionScore = computeConfusionScore(
-					{ cognitiveLoad, readingLoad, distractorDensity: distractorDens, steps, timeToProcessSeconds },
-					{ misconceptionRisk: misconceptionRsk },
-				);
-
-				items.push({
-					itemNumber: globalItemNumber,
-					documentId: row.document_id,
-					cognitiveLoad,
-					readingLoad,
-					vocabularyDifficulty: vocabularyDiff,
-					misconceptionRisk: misconceptionRsk,
-					distractorDensity: distractorDens,
-					steps,
-					confusionScore,
-					timeToProcessSeconds,
-				});
-			}
+			itemOffset += docItems.length;
 		}
 
-		if (items.length === 0) {
-			return res.status(422).json({
-				error: "No items could be extracted from the stored documents. Check that the session has analysed content.",
+		console.log(`[shortcircuit] total rawItems after segmentation: ${rawItems.length}`);
+
+		if (rawItems.length === 0) {
+			// Nothing from azure_extract — check if there is at least some plain text
+			const fullText = rows.map(extractFullText).filter(Boolean).join("\n\n---\n\n");
+			if (!fullText.trim()) {
+				return res.status(422).json({ error: "No readable text found in the stored documents." });
+			}
+			return res.status(422).json({ error: "Segmentation produced no items." });
+		}
+
+		// Step 2 — Local semantic pipeline per segment.
+		const items: ShortCircuitItem[] = [];
+		for (const seg of rawItems) {
+			console.log(`[shortcircuit] item ${seg.itemNumber}: running semantic pipeline (${seg.text.length} chars)`);
+			const vec = await runSemanticOnText(seg.text);
+			if (!vec) {
+				console.warn(`[shortcircuit] item ${seg.itemNumber}: semantic pipeline returned null — skipped`);
+				continue;
+			}
+
+			const m = vectorToMeasurables(vec, seg.text);
+			console.log(`[shortcircuit] item ${seg.itemNumber}: cogLoad=${m.cognitiveLoad.toFixed(2)} readLoad=${m.readingLoad.toFixed(2)} confusion=${m.confusionScore.toFixed(2)}`);
+			items.push({
+				itemNumber: seg.itemNumber,
+				text: seg.text,
+				...m,
 			});
 		}
 
-		return res.status(200).json({ items });
+		console.log(`[shortcircuit] done: ${items.length}/${rawItems.length} items with measurables`);
+
+		if (items.length === 0) {
+			return res.status(422).json({
+				error: "Local semantic pipeline produced no measurables. Check that documents have analysed content.",
+			});
+		}
+
+		return res.status(200).json({ rawItems, items });
 	} catch (err) {
 		console.error("[shortcircuit] ERROR:", err);
 		return res.status(500).json({
@@ -184,63 +172,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function clamp01(v: number): number {
-	return Math.min(1, Math.max(0, v));
+function extractFullText(row: DocumentRow): string {
+	const nodes = row.canonical_document?.nodes;
+	if (nodes && nodes.length > 0) {
+		return nodes.map((n) => n.text ?? n.normalizedText ?? "").filter(Boolean).join("\n");
+	}
+
+	const azureContent = row.azure_extract?.content;
+	if (azureContent) return azureContent;
+
+	const paras = row.azure_extract?.paragraphs;
+	if (paras && paras.length > 0) {
+		return paras.map((p) => p.text ?? "").filter(Boolean).join("\n");
+	}
+
+	const pages = row.azure_extract?.pages;
+	if (pages && pages.length > 0) {
+		return pages.map((p) => p.text ?? "").filter(Boolean).join("\n");
+	}
+
+	return "";
 }
 
-/**
- * Reconstruct an AzureExtractResult from the stored row.
- * The `azure_extract` column stores the full AzureExtractResult shape when
- * the document was uploaded via the teacher upload pipeline.  Falls back to
- * a synthetic extract built from canonical_document nodes when azure_extract
- * is absent or incomplete.
- */
-function reconstructAzureExtract(row: DocumentRow): AzureExtractResult | null {
-	const raw = row.azure_extract as AzureExtractResult | null;
+// Re-export for backward-compat consumers.
+export { computeConfusionScore };
 
-	// Prefer the stored azure_extract when it has the required fields
-	if (raw && raw.content && Array.isArray(raw.pages) && raw.pages.length > 0) {
-		return {
-			fileName: row.source_file_name ?? raw.fileName ?? "document",
-			content: raw.content,
-			pages: raw.pages,
-			paragraphs: raw.paragraphs ?? [],
-			tables: raw.tables ?? [],
-			readingOrder: raw.readingOrder ?? [],
-		};
-	}
-
-	// Fallback — reconstruct from canonical_document nodes
-	const nodes = row.canonical_document?.nodes ?? [];
-	const content = nodes.map((n) => n.text ?? n.normalizedText ?? "").filter(Boolean).join("\n");
-	if (content) {
-		const paragraphs = content
-			.split(/\n{2,}/)
-			.filter(Boolean)
-			.map((text, i) => ({ text, pageNumber: Math.floor(i / 20) + 1 }));
-
-		return {
-			fileName: row.source_file_name ?? "document",
-			content,
-			pages: [{ pageNumber: 1, text: content }],
-			paragraphs,
-			tables: [],
-			readingOrder: [],
-		};
-	}
-
-	// Last resort — use raw azure_extract content string only
-	const rawContent = (row.azure_extract as { content?: string } | null)?.content;
-	if (rawContent) {
-		return {
-			fileName: row.source_file_name ?? "document",
-			content: rawContent,
-			pages: [{ pageNumber: 1, text: rawContent }],
-			paragraphs: [],
-			tables: [],
-			readingOrder: [],
-		};
-	}
-
-	return null;
-}

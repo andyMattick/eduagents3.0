@@ -8,7 +8,7 @@ import { buildAnalyzedDocumentInsights } from "./buildInsights";
 import { canonicalDocumentToAzureExtract, canonicalizeAzureExtract } from "./canonicalize";
 import { classifyFragments } from "./classifyFragments";
 import { extractAnchoredProblems } from "./extractAnchoredProblems";
-import { parseDocxToCanonicalDocument, parsePptxToCanonicalDocument } from "./parseOfficeDocuments";
+import { parsePptxToCanonicalDocument } from "./parseOfficeDocuments";
 import { validateCanonicalDocument } from "./validateCanonicalDocument";
 
 function cleanAzureExtract(extract: AzureExtractResult): AzureExtractResult {
@@ -38,12 +38,9 @@ export async function analyzeRegisteredDocument(args: {
 
 	if (!canonicalDocument && !azureExtract && args.rawBinary) {
 		if (args.sourceMimeType.includes("pdf")) {
-			const rawAzure = await runAzureExtraction(args.rawBinary);
+			const rawAzure = await runAzureExtraction(args.rawBinary, "application/pdf");
 			azureExtract = cleanAzureExtract(mapAzureToCanonical(normalizeAzureLayout(rawAzure), args.sourceFileName));
 			canonicalDocument = canonicalizeAzureExtract(args.documentId, azureExtract);
-		} else if (args.sourceMimeType.includes("wordprocessingml") || args.sourceMimeType === "application/msword") {
-			canonicalDocument = await parseDocxToCanonicalDocument(args.documentId, args.sourceFileName, args.sourceMimeType, args.rawBinary);
-			azureExtract = canonicalDocumentToAzureExtract(canonicalDocument);
 		} else if (args.sourceMimeType.includes("presentationml")) {
 			canonicalDocument = await parsePptxToCanonicalDocument(args.documentId, args.sourceFileName, args.sourceMimeType, args.rawBinary);
 			azureExtract = canonicalDocumentToAzureExtract(canonicalDocument);

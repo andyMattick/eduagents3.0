@@ -11,7 +11,12 @@
  */
 
 import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/supabase";
+import { callGeminiDetailed } from "../../../lib/gemini";
+import { runSemanticPipeline } from "../../../src/prism-v4/semantic/pipeline/runSemanticPipeline";
+import type { AzureExtractResult, ProblemTagVector } from "../../../src/prism-v4/schema/semantic";
 import type { StudentProfile } from "../../../src/types/simulator";
+import { hybridSegment } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
+export type { AzureExtractLike } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
 
 let warnedMissingServiceRoleForV4Writes = false;
 let v4ItemsTableSupported = true;
@@ -77,6 +82,7 @@ interface SupabaseDocumentRow {
 	azure_extract: {
 		content?: string;
 		paragraphs?: Array<{ text?: string }>;
+		pages?: Array<{ text?: string; pageNumber?: number }>;
 	} | null;
 	source_file_name: string | null;
 }
@@ -89,19 +95,104 @@ interface SupabaseDocumentRow {
  * number of documents found.
  */
 export async function fetchSessionText(sessionId: string): Promise<{ text: string; docCount: number }> {
+	const { docCount, rows } = await _fetchSessionRows(sessionId);
+	const docs: string[] = [];
+	for (const row of rows) {
+		const text = extractTextFromRow(row);
+		if (text) docs.push(text);
+	}
+	return { text: docs.join("\n\n---\n\n"), docCount };
+}
+
+/**
+ * Fetch documents for a session, returning both flattened text and the raw
+ * azure_extract objects for hybrid segmentation.
+ *
+ * When a stored azure_extract is empty/null (common for DOCX uploaded before
+ * the registryStore fix), synthesizes a best-effort extract from
+ * canonical_document.nodes so segmentation always has text to work with.
+ */
+export async function fetchSessionDocuments(sessionId: string): Promise<{
+	text: string;
+	docCount: number;
+	azureExtracts: Array<{ content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> }>;
+}> {
+	const { docCount, rows } = await _fetchSessionRows(sessionId);
+	const docs: string[] = [];
+	const azureExtracts: ReturnType<typeof buildAzureExtractFromRow>[] = [];
+
+	for (const row of rows) {
+		const text = extractTextFromRow(row);
+		if (text) docs.push(text);
+		azureExtracts.push(buildAzureExtractFromRow(row));
+	}
+
+	return {
+		text: docs.join("\n\n---\n\n"),
+		docCount,
+		azureExtracts,
+	};
+}
+
+/**
+ * Build the best available azure_extract from a document row.
+ *
+ * Priority:
+ *   1. Stored azure_extract with content/paragraphs/pages
+ *   2. Synthesized from canonical_document.nodes (DOCX fallback for old rows)
+ *   3. Empty object (segmentText will handle gracefully)
+ */
+export function buildAzureExtractFromRow(row: {
+	azure_extract: { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> } | null;
+	canonical_document: { nodes?: Array<{ text?: string; normalizedText?: string; nodeType?: string }>; paragraphs?: Array<{ text?: string }> } | null;
+}): { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> } {
+	const ae = row.azure_extract;
+
+	// Has usable stored extract?
+	if (ae && (ae.content || ae.paragraphs?.length || ae.pages?.length)) {
+		return ae;
+	}
+
+	// Synthesize from canonical nodes (DOCX / old rows)
+	const nodes = row.canonical_document?.nodes;
+	if (nodes && nodes.length > 0) {
+		const texts = nodes
+			.filter((n) => n.nodeType !== "tableRow" && n.nodeType !== "table" && n.nodeType !== "inline")
+			.map((n) => n.text ?? n.normalizedText ?? "")
+			.filter(Boolean);
+		if (texts.length > 0) {
+			console.log(`[buildAzureExtractFromRow] synthesizing azure extract from ${texts.length} canonical node(s) (azure_extract was empty)`);
+			return {
+				content: texts.join("\n\n"),
+				paragraphs: texts.map((t) => ({ text: t })),
+				pages: [{ text: texts.join("\n"), pageNumber: 1 }],
+			};
+		}
+	}
+
+	// Fallback: canonical paragraphs
+	const paras = row.canonical_document?.paragraphs;
+	if (paras && paras.length > 0) {
+		const texts = paras.map((p) => p.text ?? "").filter(Boolean);
+		if (texts.length > 0) {
+			console.log(`[buildAzureExtractFromRow] synthesizing azure extract from ${texts.length} canonical paragraph(s)`);
+			return {
+				content: texts.join("\n\n"),
+				paragraphs: texts.map((t) => ({ text: t })),
+			};
+		}
+	}
+
+	return {};
+}
+
+async function _fetchSessionRows(sessionId: string): Promise<{ rows: SupabaseDocumentRow[]; docCount: number }> {
 	const rows = (await supabaseRest("prism_v4_documents", {
 		select: "document_id,canonical_document,azure_extract,source_file_name",
 		filters: { session_id: `eq.${sessionId}` },
 	})) as SupabaseDocumentRow[] | null;
 
-	const docs: string[] = [];
-
-	for (const row of rows ?? []) {
-		const text = extractTextFromRow(row);
-		if (text) docs.push(text);
-	}
-
-	return { text: docs.join("\n\n---\n\n"), docCount: docs.length };
+	return { rows: rows ?? [], docCount: (rows ?? []).length };
 }
 
 function extractTextFromRow(row: SupabaseDocumentRow): string {
@@ -329,44 +420,22 @@ export function buildMultiProfilePrompt(documentText: string, profileLabels: str
 
 	return `SYSTEM:
 You are a student-experience simulator for teachers.
-Given a test and multiple student profiles, simulate how EACH student would experience the assessment.
+You receive pre-segmented items — measurables (cognitive load, reading load, etc.) are already computed locally.
 
 For EACH student profile:
-- simulate cognitive load per item
-- identify confusion points
-- estimate pacing and time pressure
-- identify attention drift
-- estimate emotional responses (frustration, confidence dips, fatigue)
-- identify likely misconceptions
-- evaluate reading load, vocabulary difficulty, and clarity
-- identify red flags and time risks
-- when notes/explanatory sections are present, evaluate per-section reading load, vocabulary difficulty, cognitive load, confusion risk, fatigue risk, and red flags
+- Identify red flags per item (wording issues, pacing, ambiguity, difficulty for this profile)
+- Estimate emotional responses (frustration, fatigue, confidence dips) per profile
+- Predict pacing and time pressure patterns
+- Identify likely misconceptions from wording
+- Evaluate explanatory sections if present (reading load, vocabulary difficulty, confusion risk, fatigue risk, red flags)
 
 Then produce a CROSS-STUDENT COMPARISON showing:
-- which items are universally difficult (high cognitive load across ALL profiles)
-- which items disproportionately affect certain profiles (e.g. ADHD, dyslexia, ELL, low confidence)
-- where pacing diverges most
-- where cognitive load variance is highest across profiles
+- Which items are universally difficult (high risk across ALL profiles)
+- Which items disproportionately affect certain profiles (ADHD, dyslexia, ELL, low confidence)
+- Where pacing diverges most
+- Where behavioral risks are highest across profiles
 
-IMPORTANT: All numeric fields (readingLoad, vocabularyDifficulty, cognitiveLoad, confusionRisk, misconceptionRisk, fatigueRisk, pacingRisk) MUST be decimals between 0.0 and 1.0. Do NOT use percentages.
-
-After completing the simulation, produce a final section called "rewriteSuggestions" inside the DATA JSON (top-level, alongside "students" and "comparison").
-Rewrite suggestions must be grounded ONLY in the metrics you generated:
-- high cognitiveLoad
-- high confusionRisk
-- high readingLoad
-- high vocabularyDifficulty
-- high misconceptionRisk
-- long timeToProcessSeconds
-- profile-specific difficulty patterns (items that disproportionately affect certain profiles)
-
-Rules for suggestions:
-- Suggestions must be actionable and teacher-friendly.
-- Suggestions must NOT rewrite the item directly.
-- Suggestions must NOT introduce new content.
-- Focus on clarity, pacing, cognitive load, vocabulary, and fairness.
-- testLevel: 2–5 whole-assessment suggestions.
-- itemLevel: only include items that scored high on risk metrics.
+IMPORTANT: All numeric fields (fatigueRisk, pacingRisk, predictedStates values) MUST be decimals between 0.0 and 1.0.
 
 IMPORTANT — STRICT OUTPUT FORMAT:
 - In the DATA section, output ONLY the raw JSON object.
@@ -385,18 +454,6 @@ Return your answer in two parts:
       "items": [
         {
           "itemNumber": number,
-          "readingLoad": number (0.0–1.0),
-          "wordCount": number,
-          "sentenceCount": number,
-          "vocabularyDifficulty": number (0.0–1.0),
-          "cognitiveLoad": number (0.0–1.0),
-          "confusionRisk": number (0.0–1.0),
-          "confusionScore": number (0.0–1.0, composite confusion: cogLoad+readingLoad+distractors+steps+misconception),
-          "timeToProcessSeconds": number,
-          "misconceptionRisk": number (0.0–1.0),
-          "difficulty": number (1–5, integer),
-          "steps": number (integer, estimated reasoning steps required),
-          "distractorDensity": number (0.0–1.0, share of choices designed to mislead),
           "redFlags": [string]
         }
       ],
@@ -424,11 +481,11 @@ Return your answer in two parts:
           "overload": number (0.0–1.0),
           "frustration": number (0.0–1.0),
           "timePressureCollapse": number (0.0–1.0),
-          "emotionalFriction": number (0.0–1.0, emotional work needed to persist through the assessment),
-          "confidenceImpact": number (0.0–1.0, degree to which assessment dents student confidence),
-          "pacingPressure": number (0.0–1.0, time-pressure felt throughout),
-          "fatigueIncrease": number[] (per-item fatigue increase, one value per item in order),
-          "attentionDrop": number[] (per-item attention drop, one value per item in order)
+          "emotionalFriction": number (0.0–1.0),
+          "confidenceImpact": number (0.0–1.0),
+          "pacingPressure": number (0.0–1.0),
+          "fatigueIncrease": number[],
+          "attentionDrop": number[]
         }
       }
     }
@@ -437,13 +494,6 @@ Return your answer in two parts:
     "universallyDifficultItems": [number],
     "profileSpecificRisks": {
       "PROFILE_NAME": [number]
-    },
-    "itemDifficultySpread": {
-      "ITEM_NUMBER": {
-        "min": number,
-        "max": number,
-        "variance": number
-      }
     }
   },
   "rewriteSuggestions": {
@@ -453,12 +503,12 @@ Return your answer in two parts:
     }
   },
   "profileNarratives": {
-    "PROFILE_NAME": "2–3 sentence paragraph describing this profile's specific experience of the assessment — what they struggled with, what triggered fatigue or confusion, and any standout risks."
+    "PROFILE_NAME": "2–3 sentence paragraph describing this profile's specific experience."
   }
 }
 
 USER:
-Here is the test:
+Here are the pre-segmented items:
 ${truncatedText}
 
 Here are the student profiles:
@@ -757,4 +807,221 @@ export async function getItemsForDocument(documentId: string): Promise<V4Item[]>
 		// Non-fatal: fall back to text-based prompts
 		return [];
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Option D: Gemini segmentation + local semantic pipeline helpers
+// ---------------------------------------------------------------------------
+
+export interface SegmentedItem {
+	itemNumber: number;
+	text: string;
+}
+
+/**
+ * Primary segmentation entry point — hybrid Azure-layout + local-rules.
+ * Gemini is called ONLY as a last-resort fallback when hybrid returns ≤1 item
+ * (i.e. completely unstructured single-block text with no detectable boundaries).
+ *
+ * This eliminates 429s, retries, and quota windows in the normal (>99%) case.
+ */
+export async function segmentText(
+	azure: { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> },
+): Promise<SegmentedItem[]> {
+	const paras = azure.paragraphs?.length ?? 0;
+	const pages = azure.pages?.length ?? 0;
+	const chars = azure.content?.length ?? 0;
+	console.log(`[segmentText] input: paragraphs=${paras}, pages=${pages}, content=${chars} chars`);
+
+	const hybrid = hybridSegment(azure);
+	console.log(`[segmentText] hybrid result: ${hybrid.length} item(s)`);
+
+	if (hybrid.length > 1) {
+		console.log("[segmentText] ✅ hybrid path — no Gemini call");
+		return hybrid;
+	}
+
+	// Hybrid returned ≤1 item — fall back to Gemini (optional, quota-limited path)
+	const text = azure.content
+		?? (azure.paragraphs ?? []).map((p) => p.text ?? "").filter(Boolean).join("\n")
+		?? "";
+
+	if (!text.trim()) {
+		console.warn("[segmentText] no text available for Gemini fallback — returning empty");
+		return hybrid;
+	}
+
+	console.warn(`[segmentText] ⚠️ hybrid ≤1 item — falling back to Gemini (${text.length} chars)`);
+	try {
+		const geminiItems = await segmentTextWithGemini(text);
+		console.log(`[segmentText] Gemini fallback returned ${geminiItems.length} item(s)`);
+		return geminiItems;
+	} catch (err) {
+		console.error("[segmentText] Gemini fallback threw — using naive fallback:", err instanceof Error ? err.message : err);
+		return hybrid.length > 0 ? hybrid : _naiveSegmentFallback(text);
+	}
+}
+
+/**
+ * @deprecated Use segmentText(azureExtract) instead.
+ * Kept for backward compatibility — calls Gemini directly.
+ * Will fall back to _naiveSegmentFallback on Gemini failure.
+ */
+export async function segmentTextWithGemini(text: string): Promise<SegmentedItem[]> {
+	console.log(`[segmentTextWithGemini] sending ${Math.min(text.length, 8000)} chars to Gemini`);
+	const prompt = `You split text into items. No think. No explain. No extra words.
+Return JSON only:
+
+{ "items": [ { "itemNumber": 1, "text": "..." } ] }
+
+Rules:
+- New item starts when line begins with number + ")" or number + "." or "Question".
+- Keep item text EXACT as input. No rewrite.
+
+Text:
+${text.substring(0, 8000)}`;
+
+	try {
+		const result = await callGeminiDetailed({
+			model: "gemini-2.0-flash",
+			prompt,
+			temperature: 0,
+			maxOutputTokens: 2048,
+			maxRetries: 1,
+		});
+
+		const cleaned = result.text.replace(/```(?:json)?\s*\n?/gi, "").trim();
+		const firstBrace = cleaned.indexOf("{");
+		const lastBrace  = cleaned.lastIndexOf("}");
+		if (firstBrace === -1 || lastBrace === -1) throw new Error("no JSON in segmentation response");
+		const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as { items?: unknown[] };
+		if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
+			const items = (parsed.items as Array<{ itemNumber?: number; text?: string }>)
+				.map((it, i) => ({
+					itemNumber: Number(it.itemNumber ?? i + 1),
+					text: String(it.text ?? ""),
+				}))
+				.filter((it) => it.text.trim().length > 0);
+			console.log(`[segmentTextWithGemini] parsed ${items.length} item(s) from Gemini response`);
+			return items;
+		}
+		console.warn("[segmentTextWithGemini] Gemini returned items array but it was empty or malformed");
+	} catch (err) {
+		console.warn(
+			"[segmentTextWithGemini] Gemini segmentation failed — using structural fallback:",
+			err instanceof Error ? err.message : err,
+		);
+	}
+
+	return _naiveSegmentFallback(text);
+}
+
+function _naiveSegmentFallback(text: string): SegmentedItem[] {
+	console.log("[_naiveSegmentFallback] running line-based fallback segmentation");
+	const lines = text.split("\n");
+	const segments: SegmentedItem[] = [];
+	let current: string[] = [];
+	let itemNumber = 0;
+
+	for (const line of lines) {
+		if (/^(?:Question\s+\d+|\d+[.)]\s)/.test(line.trim()) && current.length > 0) {
+			const t = current.join("\n").trim();
+			if (t) segments.push({ itemNumber: ++itemNumber, text: t });
+			current = [line];
+		} else {
+			current.push(line);
+		}
+	}
+	const last = current.join("\n").trim();
+	if (last) segments.push({ itemNumber: ++itemNumber, text: last });
+
+	if (segments.length <= 1) {
+		console.warn("[_naiveSegmentFallback] could not split text — treating as single item");
+		return [{ itemNumber: 1, text: text.trim() }];
+	}
+	console.log(`[_naiveSegmentFallback] produced ${segments.length} item(s)`);
+	return segments;
+}
+
+/**
+ * Run the local semantic pipeline on a raw text string.
+ * Creates a synthetic AzureExtractResult so the pipeline can process it.
+ * Returns the first ProblemTagVector, or null on failure.
+ */
+export async function runSemanticOnText(
+	text: string,
+	documentId = "synthetic",
+): Promise<ProblemTagVector | null> {
+	console.log(`[runSemanticOnText] doc=${documentId} wc=${text.split(/\s+/).filter(Boolean).length}`);
+	const syntheticExtract: AzureExtractResult = {
+		fileName: "segment",
+		content: text,
+		pages: [{ pageNumber: 1, text }],
+		paragraphs: [{ text, pageNumber: 1 }],
+		tables: [],
+		readingOrder: [],
+	};
+
+	try {
+		const output = await runSemanticPipeline({
+			documentId,
+			fileName: "segment",
+			azureExtract: syntheticExtract,
+		});
+		const vec = output.problemVectors?.[0] ?? null;
+		console.log(`[runSemanticOnText] doc=${documentId} → ${vec ? "vector OK" : "NO vector (null)"}`);
+		return vec;
+	} catch (err) {
+		console.warn(
+			"[runSemanticOnText] pipeline failed:",
+			err instanceof Error ? err.message : err,
+		);
+		return null;
+	}
+}
+
+/** Local measurable fields mapped from a ProblemTagVector. */
+export interface LocalMeasurables {
+	cognitiveLoad: number;
+	readingLoad: number;
+	vocabularyDifficulty: number;
+	misconceptionRisk: number;
+	distractorDensity: number;
+	steps: number;
+	timeToProcessSeconds: number;
+	wordCount: number;
+	confusionScore: number;
+}
+
+/**
+ * Map a ProblemTagVector (from local semantic pipeline) to the full measurables
+ * object. Replaces values previously generated by Gemini.
+ */
+export function vectorToMeasurables(vec: ProblemTagVector, text: string): LocalMeasurables {
+	const clamp = (v: number) => Math.min(1, Math.max(0, v));
+	const wordCount = text.split(/\s+/).filter(Boolean).length || 10;
+	const steps = Math.max(1, Math.round(vec.steps ?? 1));
+	const timeToProcessSeconds = Math.max(5, Math.round(wordCount / 3.3 + steps * 8));
+
+	const triggerValues = Object.values(vec.misconceptionTriggers ?? {});
+	const misconceptionRisk = clamp(triggerValues.length > 0 ? Math.max(...triggerValues) : 0);
+	const cognitiveLoad = clamp(vec.cognitive?.difficulty ?? 0);
+	const readingLoad = clamp(vec.linguisticLoad ?? 0);
+	const vocabularyDifficulty = clamp(((vec.vocabularyTier ?? 1) - 1) / 2);
+	const distractorDensity = clamp(vec.distractorDensity ?? 0);
+
+	return {
+		cognitiveLoad,
+		readingLoad,
+		vocabularyDifficulty,
+		misconceptionRisk,
+		distractorDensity,
+		steps,
+		timeToProcessSeconds,
+		wordCount,
+		confusionScore: computeConfusionScore(
+			{ cognitiveLoad, readingLoad, distractorDensity, steps, timeToProcessSeconds },
+			{ misconceptionRisk },
+		),
+	};
 }
