@@ -1,224 +1,284 @@
 /**
  * src/components_new/v4/ShortCircuitPage.tsx
  *
- * Single-screen diagnostic harness.
+ * Primary simulation experience -- single screen, progressive reveal.
  *
- * Flow:
- *   1. Enter or paste a sessionId
- *   2. Click "Generate"
- *   3. API runs Azure ingestion → local semantic measurables (no Gemini)
- *   4. Graph renders immediately on the same screen
+ * Phases:
+ *   1. Upload  -- drag/drop a PDF (or Word/PowerPoint)
+ *   2. Profiles -- select up to 3 student profiles (default: Average Student)
+ *   3. Results  -- ShortCircuitGraph + SimulationExplanationPanel + Start over
  *
- * No profiles. No narratives. No immeasurables. No rewrite. No 429s.
+ * Calls POST /api/v4/simulator/shortcircuit with { sessionId, profiles }.
+ * All measurables are computed locally -- no Gemini, no 429s.
  */
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
-import { SegmentationVisualizer } from "./SegmentationVisualizer";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
+import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
 
-interface SegmentedItem {
-	itemNumber: number;
-	text: string;
-}
+const PROFILES = [
+	{ id: "average",  label: "Average Student",   color: "#3b82f6" },
+	{ id: "adhd",     label: "ADHD Profile",       color: "#f97316" },
+	{ id: "dyslexia", label: "Dyslexia Profile",   color: "#22c55e" },
+	{ id: "ell",      label: "ELL Profile",        color: "#a855f7" },
+	{ id: "gifted",   label: "Gifted / Fast",      color: "#eab308" },
+] as const;
 
-interface SegDebugResult {
-	fullText: string;
-	segmented: SegmentedItem[];
-}
+const MAX_PROFILES = 3;
+const ACCEPTED_EXTENSIONS = ".pdf,.doc,.docx,.ppt,.pptx";
+const DROP_RE = /\.(pdf|doc|docx|ppt|pptx)$/i;
+
+type Phase = "upload" | "profile" | "running" | "results";
 
 export function ShortCircuitPage() {
-	const [sessionId, setSessionId] = useState("");
+	const [phase, setPhase] = useState<Phase>("upload");
+	const [file, setFile] = useState<File | null>(null);
+	const [dragging, setDragging] = useState(false);
+	const [uploadError, setUploadError] = useState<string | null>(null);
+	const [uploading, setUploading] = useState(false);
+	const [sessionId, setSessionId] = useState<string | null>(null);
+	const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set(["average"]));
+	const [runError, setRunError] = useState<string | null>(null);
 	const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
-	const [loading, setLoading] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const [segDebug, setSegDebug] = useState<SegDebugResult | null>(null);
-	const [debugLoading, setDebugLoading] = useState(false);
+	const [profiles, setProfiles] = useState<ProfileShortCircuitResult[] | null>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 
-	const generate = async () => {
-		if (!sessionId.trim()) {
-			setError("Enter a session ID first.");
+	const startOver = useCallback(() => {
+		setPhase("upload");
+		setFile(null);
+		setDragging(false);
+		setUploadError(null);
+		setUploading(false);
+		setSessionId(null);
+		setSelectedProfiles(new Set(["average"]));
+		setRunError(null);
+		setItems(null);
+		setProfiles(null);
+	}, []);
+
+	const handleFile = useCallback((f: File) => {
+		if (!DROP_RE.test(f.name)) {
+			setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
 			return;
 		}
-		setLoading(true);
-		setError(null);
-		setItems(null);
+		setFile(f);
+		setUploadError(null);
+	}, []);
 
+	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const f = e.target.files?.[0];
+		if (f) handleFile(f);
+	};
+
+	const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
+	const handleDragLeave = () => setDragging(false);
+	const handleDrop = (e: React.DragEvent) => {
+		e.preventDefault();
+		setDragging(false);
+		const f = Array.from(e.dataTransfer.files).find((ff) => DROP_RE.test(ff.name));
+		if (f) { handleFile(f); } else { setUploadError("Only PDF, Word, or PowerPoint files are accepted."); }
+	};
+
+	const handleUpload = async () => {
+		setUploading(true);
+		setUploadError(null);
+		try {
+			const { sessionId: sid } = await createStudioSessionFromFilesApi([file]);
+			setSessionId(sid);
+			setPhase("profile");
+		} catch (err) {
+			setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
+		} finally {
+			setUploading(false);
+		}
+	};
+
+	const toggleProfile = (id: string) => {
+		setSelectedProfiles((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) {
+				if (next.size === 1) return prev;
+				next.delete(id);
+			} else {
+				if (next.size >= MAX_PROFILES) return prev;
+				next.add(id);
+			}
+			return next;
+		});
+	};
+
+	const handleRun = async () => {
+		setPhase("running");
+		setRunError(null);
+		setItems(null);
+		setProfiles(null);
 		try {
 			const res = await fetch("/api/v4/simulator/shortcircuit", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ sessionId: sessionId.trim() }),
+				body: JSON.stringify({ sessionId, profiles: Array.from(selectedProfiles) }),
 			});
-
 			const data = await res.json();
-
 			if (!res.ok) {
-				setError(data.error ?? `Server error ${res.status}`);
+				setRunError(data.error ?? "Simulation failed.");
+				setPhase("profile");
 				return;
 			}
-
 			setItems(data.items ?? []);
+			setProfiles(data.profiles ?? []);
+			setPhase("results");
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Network error");
-		} finally {
-			setLoading(false);
+			setRunError(err instanceof Error ? err.message : "Network error. Please try again.");
+			setPhase("profile");
 		}
 	};
 
-	const reset = () => {
-		setItems(null);
-		setError(null);
-		setSegDebug(null);
-	};
-
-	const debugSegmentation = async () => {
-		if (!sessionId.trim()) return;
-		setDebugLoading(true);
-		setError(null);
-		try {
-			const res = await fetch("/api/v4/simulator/debug/segmentation", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ sessionId: sessionId.trim() }),
-			});
-			const data = await res.json();
-			if (!res.ok) {
-				setError(data.error ?? `Debug error ${res.status}`);
-				return;
-			}
-			setSegDebug({ fullText: data.fullText ?? "", segmented: data.segmented ?? [] });
-		} catch (err) {
-			setError(err instanceof Error ? err.message : "Network error");
-		} finally {
-			setDebugLoading(false);
-		}
-	};
+	const phaseOrder: Phase[] = ["upload", "profile", "running", "results"];
+	const currentPhaseIdx = phaseOrder.indexOf(phase);
 
 	return (
 		<div style={{ padding: "2rem", maxWidth: "1100px", margin: "0 auto" }}>
-			<h2 style={{ marginBottom: "0.25rem" }}>Short-Circuit Diagnostic</h2>
-			<p style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "1.5rem" }}>
-				Azure ingestion → local measurable analysis → graph. No Gemini. No profiles.
-			</p>
+			<div style={{ marginBottom: "2rem" }}>
+				<p style={{ margin: "0 0 0.25rem", textTransform: "uppercase", letterSpacing: "0.12em", fontSize: "0.72rem", color: "#9c4d2b", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif" }}>
+					Teacher Studio
+				</p>
+				<h1 style={{ margin: "0 0 0.35rem", fontSize: "1.75rem", color: "#1f1a17" }}>Simulate Student Experience</h1>
+				<p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>
+					Upload a document, choose student profiles, and see exactly how each profile will experience your material.
+				</p>
+			</div>
 
-			{!items && (
-				<div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1rem" }}>
-					<div>
-						<label
-							htmlFor="sc-session-id"
-							style={{
-								display: "block",
-								fontSize: "0.8rem",
-								fontWeight: 600,
-								color: "#374151",
-								marginBottom: "0.25rem",
-							}}
-						>
-							Session ID
-						</label>
-						<input
-							id="sc-session-id"
-							type="text"
-							value={sessionId}
-							onChange={(e) => setSessionId(e.target.value)}
-							placeholder="Paste session ID here"
-							disabled={loading}
-							style={{
-								width: "320px",
-								padding: "0.5rem 0.75rem",
-								border: "1px solid #d1d5db",
-								borderRadius: "6px",
-								fontSize: "0.875rem",
-								outline: "none",
-							}}
-						/>
+			<div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "2rem", fontSize: "0.8rem" }}>
+				{[
+					{ key: "upload" as Phase,  label: "1. Upload" },
+					{ key: "profile" as Phase, label: "2. Profiles" },
+					{ key: "results" as Phase, label: "3. Results" },
+				].map(({ key, label }, idx, arr) => {
+					const stepIdx = phaseOrder.indexOf(key);
+					const done = currentPhaseIdx > stepIdx;
+					const active = key === "profile" ? (phase === "profile" || phase === "running") : phase === key;
+					return (
+						<span key={key} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+							<span style={{ fontWeight: active ? 700 : done ? 500 : 400, color: active ? "#1f1a17" : done ? "#9c4d2b" : "#9ca3af" }}>{label}</span>
+							{idx < arr.length - 1 && <span style={{ color: "#d1d5db" }}>›</span>}
+						</span>
+					);
+				})}
+			</div>
+
+			{phase === "upload" && (
+				<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "2rem", maxWidth: "560px" }}>
+					<h2 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem", color: "#1f1a17" }}>Upload your document</h2>
+					<p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1.25rem" }}>
+						PDF, Word, or PowerPoint. This is the document your students will experience.
+					</p>
+					<div
+						onDragOver={handleDragOver}
+						onDragLeave={handleDragLeave}
+						onDrop={handleDrop}
+						onClick={() => fileInputRef.current?.click()}
+						style={{
+							border: `2px dashed ${dragging ? "#bb5b35" : file ? "#22c55e" : "rgba(86,57,32,0.3)"}`,
+							borderRadius: "12px", padding: "2.5rem 1.5rem", textAlign: "center", cursor: "pointer",
+							background: dragging ? "rgba(187,91,53,0.05)" : file ? "rgba(34,197,94,0.05)" : "transparent",
+							transition: "all 0.15s", marginBottom: "1rem",
+						}}
+					>
+						<input ref={fileInputRef} type="file" accept={ACCEPTED_EXTENSIONS} style={{ display: "none" }} onChange={handleInputChange} />
+						{file ? (
+							<>
+								<div style={{ fontSize: "2rem", marginBottom: "0.35rem" }}>&#x2713;</div>
+								<p style={{ margin: 0, fontWeight: 600, color: "#1f1a17" }}>{file.name}</p>
+								<p style={{ margin: "0.25rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>{(file.size / 1024).toFixed(0)} KB -- click to change</p>
+							</>
+						) : (
+							<>
+								<div style={{ fontSize: "2.5rem", marginBottom: "0.5rem", color: "rgba(86,57,32,0.4)" }}>⬆</div>
+								<p style={{ margin: 0, fontWeight: 600, color: "#1f1a17" }}>Drop your file here</p>
+								<p style={{ margin: "0.35rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>or click to browse -- PDF, Word, PowerPoint accepted</p>
+							</>
+						)}
 					</div>
-
+					{uploadError && (
+						<div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "0.6rem 0.85rem", color: "#dc2626", fontSize: "0.82rem", marginBottom: "1rem" }}>
+							{uploadError}
+						</div>
+					)}
 					<button
-						onClick={generate}
-						disabled={loading || !sessionId.trim()}
-						style={{
-							padding: "0.5rem 1.25rem",
-							background: loading || !sessionId.trim() ? "#9ca3af" : "#2563eb",
-							color: "#fff",
-							border: "none",
-							borderRadius: "6px",
-							fontSize: "0.875rem",
-							fontWeight: 600,
-							cursor: loading || !sessionId.trim() ? "not-allowed" : "pointer",
-						}}
+						type="button"
+						onClick={() => void handleUpload()}
+						disabled={!file || uploading}
+						style={{ padding: "0.65rem 1.5rem", background: !file || uploading ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading ? "not-allowed" : "pointer", width: "100%" }}
 					>
-						{loading ? "Processing…" : "Generate"}
-					</button>
-
-					<button
-						onClick={debugSegmentation}
-						disabled={debugLoading || !sessionId.trim()}
-						style={{
-							padding: "0.5rem 1.25rem",
-							background: "transparent",
-							color: debugLoading || !sessionId.trim() ? "#9ca3af" : "#374151",
-							border: `1px solid ${debugLoading || !sessionId.trim() ? "#d1d5db" : "#6b7280"}`,
-							borderRadius: "6px",
-							fontSize: "0.875rem",
-							fontWeight: 500,
-							cursor: debugLoading || !sessionId.trim() ? "not-allowed" : "pointer",
-						}}
-					>
-						{debugLoading ? "Fetching…" : "Debug Segmentation"}
+						{uploading ? "Uploading…" : "Continue →"}
 					</button>
 				</div>
 			)}
 
-			{error && (
-				<div
-					style={{
-						background: "#fef2f2",
-						border: "1px solid #fca5a5",
-						borderRadius: "6px",
-						padding: "0.75rem 1rem",
-						color: "#dc2626",
-						fontSize: "0.875rem",
-						marginBottom: "1rem",
-					}}
-				>
-					{error}
-				</div>
-			)}
-
-			{items && (
-				<div>
-					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-						<h3 style={{ margin: 0 }}>Measurables Graph</h3>
+			{(phase === "profile" || phase === "running") && (
+				<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "2rem", maxWidth: "560px" }}>
+					<h2 style={{ margin: "0 0 0.35rem", fontSize: "1.1rem", color: "#1f1a17" }}>Select student profiles</h2>
+					<p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1.25rem" }}>
+						Choose up to {MAX_PROFILES} profiles to compare. Modifiers are deterministic -- no AI calls.
+					</p>
+					<div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", marginBottom: "1.5rem" }}>
+						{PROFILES.map(({ id, label, color }) => {
+							const checked = selectedProfiles.has(id);
+							const disabled = !checked && selectedProfiles.size >= MAX_PROFILES;
+							return (
+								<label key={id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem 1rem", borderRadius: "10px", border: `2px solid ${checked ? color : "rgba(86,57,32,0.14)"}`, background: checked ? `${color}14` : "transparent", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1, transition: "all 0.15s" }}>
+									<input type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleProfile(id)} style={{ accentColor: color, width: "16px", height: "16px" }} />
+									<span style={{ width: "12px", height: "12px", borderRadius: "50%", background: color, display: "inline-block", flexShrink: 0 }} />
+									<span style={{ fontWeight: checked ? 600 : 400, color: "#1f1a17", fontSize: "0.9rem" }}>{label}</span>
+								</label>
+							);
+						})}
+					</div>
+					<p style={{ fontSize: "0.75rem", color: "#9ca3af", marginBottom: "1rem" }}>{selectedProfiles.size}/{MAX_PROFILES} selected -- must keep at least 1</p>
+					{runError && (
+						<div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "0.6rem 0.85rem", color: "#dc2626", fontSize: "0.82rem", marginBottom: "1rem" }}>
+							{runError}
+						</div>
+					)}
+					<div style={{ display: "flex", gap: "0.75rem" }}>
+						<button type="button" onClick={startOver} style={{ padding: "0.65rem 1.25rem", background: "transparent", color: "#6b5040", border: "1px solid rgba(86,57,32,0.25)", borderRadius: "8px", fontSize: "0.9rem", cursor: "pointer" }}>
+							← Back
+						</button>
 						<button
-							onClick={reset}
-							style={{
-								padding: "0.3rem 0.75rem",
-								border: "1px solid #d1d5db",
-								borderRadius: "6px",
-								fontSize: "0.8rem",
-								cursor: "pointer",
-								background: "transparent",
-							}}
+							type="button"
+							onClick={() => void handleRun()}
+							disabled={phase === "running" || selectedProfiles.size === 0}
+							style={{ padding: "0.65rem 1.5rem", background: phase === "running" || selectedProfiles.size === 0 ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: phase === "running" || selectedProfiles.size === 0 ? "not-allowed" : "pointer", flex: 1 }}
 						>
-							← New session
+							{phase === "running" ? "Running simulation…" : "Run Simulation →"}
 						</button>
 					</div>
-
-					<ShortCircuitGraph items={items} />
-				<div style={{ marginTop: "2.5rem" }}>
-					<SimulationExplanationPanel />
 				</div>
-				{segDebug && (
-					<SegmentationVisualizer
-						fullText={segDebug.fullText}
-						segmented={segDebug.segmented}
-					/>
-				)}
-			</div>
-		)}
-	</div>
-);
+			)}
+
+			{phase === "results" && items && (
+				<div>
+					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+						<div>
+							<h2 style={{ margin: "0 0 0.2rem", fontSize: "1.25rem", color: "#1f1a17" }}>Simulation Results</h2>
+							<p style={{ margin: 0, fontSize: "0.8rem", color: "#6b7280" }}>
+								{file?.name} · {items.length} item{items.length !== 1 ? "s" : ""} · {profiles?.length ?? 0} profile{(profiles?.length ?? 0) !== 1 ? "s" : ""}
+							</p>
+						</div>
+						<button type="button" onClick={startOver} style={{ padding: "0.4rem 1rem", border: "1px solid rgba(86,57,32,0.25)", borderRadius: "8px", fontSize: "0.82rem", background: "transparent", color: "#6b5040", cursor: "pointer" }}>
+							← Start over
+						</button>
+					</div>
+					<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "1.5rem", marginBottom: "1.5rem" }}>
+						<ShortCircuitGraph items={items} profiles={profiles ?? undefined} />
+					</div>
+					<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "1.5rem" }}>
+						<SimulationExplanationPanel />
+					</div>
+				</div>
+			)}
+		</div>
+	);
 }

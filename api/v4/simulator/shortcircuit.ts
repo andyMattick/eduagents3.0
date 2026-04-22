@@ -17,6 +17,7 @@ import { supabaseRest } from "../../../lib/supabase";
 import {
 	buildAzureExtractFromRow,
 	computeConfusionScore,
+	PROFILE_CATALOG,
 	runSemanticOnText,
 	segmentText,
 	vectorToMeasurables,
@@ -44,6 +45,25 @@ export interface ShortCircuitItem {
 	timeToProcessSeconds: number;
 	confusionScore: number;
 }
+
+export interface ProfileShortCircuitResult {
+	profileId: string;
+	profileLabel: string;
+	color: string;
+	items: ShortCircuitItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Profile load modifiers — deterministic, no Gemini
+// ---------------------------------------------------------------------------
+
+const PROFILE_LOAD_MODIFIERS: Record<string, { linguistic: number; confusion: number; time: number }> = {
+	average:  { linguistic: 1.00, confusion: 1.00, time: 1.00 },
+	adhd:     { linguistic: 1.15, confusion: 1.25, time: 0.85 },
+	dyslexia: { linguistic: 1.40, confusion: 1.15, time: 1.50 },
+	ell:      { linguistic: 1.50, confusion: 1.30, time: 1.40 },
+	gifted:   { linguistic: 0.70, confusion: 0.75, time: 0.70 },
+};
 
 interface DocumentRow {
 	document_id: string;
@@ -82,10 +102,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		try { body = JSON.parse(body); } catch { /* keep as-is */ }
 	}
 
-	const { sessionId } = (body ?? {}) as { sessionId?: string };
+	const { sessionId, profiles: rawProfiles } = (body ?? {}) as { sessionId?: string; profiles?: string[] };
 	if (!sessionId) {
 		return res.status(400).json({ error: "sessionId is required" });
 	}
+	const requestedProfiles: string[] =
+		Array.isArray(rawProfiles) && rawProfiles.length > 0 ? rawProfiles : ["average"];
 
 	try {
 		const rows = (await supabaseRest("prism_v4_documents", {
@@ -160,7 +182,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			});
 		}
 
-		return res.status(200).json({ rawItems, items });
+		// Build per-profile adjusted items (deterministic modifiers, no Gemini).
+		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
+			const catalog = PROFILE_CATALOG.find((p) => p.id === profileId);
+			const mods = PROFILE_LOAD_MODIFIERS[profileId] ?? PROFILE_LOAD_MODIFIERS["average"]!;
+			const profileItems: ShortCircuitItem[] = items.map((item) => ({
+				...item,
+				linguisticLoad: Math.min(1, item.linguisticLoad * mods.linguistic),
+				confusionScore: Math.min(1, item.confusionScore * mods.confusion),
+				timeToProcessSeconds: Math.round(item.timeToProcessSeconds * mods.time),
+			}));
+			return {
+				profileId,
+				profileLabel: catalog?.label ?? profileId,
+				color: catalog?.color ?? "#3b82f6",
+				items: profileItems,
+			};
+		});
+
+		return res.status(200).json({ rawItems, items, profiles: profileResults });
 	} catch (err) {
 		console.error("[shortcircuit] ERROR:", err);
 		return res.status(500).json({

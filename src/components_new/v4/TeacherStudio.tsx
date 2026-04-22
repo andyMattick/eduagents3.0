@@ -25,7 +25,6 @@ import {
 	runGenerateTestApi,
 	runRewriteApi,
 } from "../../lib/simulatorApi";
-import { SimulatorPanel } from "./SimulatorPanel";
 import type {
 	AssessmentDocument,
 	PrepDocument,
@@ -1167,17 +1166,6 @@ export function TeacherStudio() {
 		}
 	}, [refreshUsage, state.goal, state.primaryFile, state.secondaryFile, state.profile, user?.id]);
 
-	function handleDownload() {
-		const content = state.narrative ?? "";
-		const blob = new Blob([content], { type: "text/plain" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `studio-${state.goal ?? "result"}.txt`;
-		a.click();
-		URL.revokeObjectURL(url);
-	}
-
 	async function handleGeneratePreparednessMode(mode: GenerationMode) {
 		if (!state.sessionId) {
 			setState((prev) => ({ ...prev, error: "Session not ready. Please run preparedness analysis first." }));
@@ -1627,34 +1615,24 @@ export function TeacherStudio() {
 
 					{/* ═══ PHASE: RESULTS ═══════════════════════════════════════ */}
 
-					{/* Simulate goal: hand off directly to SimulatorPanel (has its own panel + full UI) */}
-					{state.phase === "results" && state.goal === "simulate" && (
-						<>
-							{state.isLoading && (
-								<section className="v4-panel v4-vector-span">
-									<div style={{ textAlign: "center", padding: "3.5rem 1rem" }}>
-										<p className="v4-kicker" style={{ marginBottom: "0.5rem" }}>Uploading…</p>
-										<p className="v4-body-copy">Preparing your document for simulation.</p>
-										<div className="spinner" style={{ margin: "1.75rem auto 0", width: "36px", height: "36px" }} />
-									</div>
-								</section>
-							)}
-							{!state.isLoading && state.sessionId && (
-								<>
-									<div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-										<button type="button" className="v4-button v4-button-secondary v4-button-sm" onClick={startOver}>
-											Start over
-										</button>
-									</div>
-									<SimulatorPanel sessionId={state.sessionId} />
-								</>
-							)}
-							{!state.isLoading && !state.sessionId && state.error && (
-								<section className="v4-panel v4-vector-span">
-									<p className="v4-error">{state.error}</p>
-								</section>
-							)}
-						</>
+{/* Simulate goal: redirect to ShortCircuitPage (new primary simulation experience) */}
+				{state.phase === "results" && state.goal === "simulate" && (
+					<section className="v4-panel v4-vector-span">
+						<div style={{ textAlign: "center", padding: "3rem 1rem" }}>
+							<p className="v4-kicker" style={{ marginBottom: "0.5rem" }}>Simulation moved</p>
+							<p className="v4-body-copy" style={{ marginBottom: "1.5rem" }}>
+								The simulation experience now lives at the main page. Upload your document there to select profiles and see the full graph.
+							</p>
+							<div style={{ display: "flex", gap: "0.75rem", justifyContent: "center" }}>
+								<button type="button" className="v4-button" onClick={() => { window.location.href = "/"; }}>
+									Go to simulation
+								</button>
+								<button type="button" className="v4-button v4-button-secondary" onClick={startOver}>
+									Start over
+								</button>
+							</div>
+						</div>
+					</section>
 					)}
 
 					{state.phase === "results" && state.goal !== "simulate" && (
@@ -1693,7 +1671,6 @@ export function TeacherStudio() {
 									>
 										<div>
 											<p className="v4-kicker">
-												{state.goal === "simulate" && "Student Experience Simulation"}
 												{state.goal === "preparedness" && "Instructional Blueprint"}
 											</p>
 											<p
@@ -1705,15 +1682,6 @@ export function TeacherStudio() {
 											{state.documentId ? <DocumentStatusBadge documentId={state.documentId} /> : null}
 										</div>
 										<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-											{state.goal === "simulate" && (
-												<button
-													type="button"
-													className="v4-button v4-button-secondary v4-button-sm"
-													onClick={handleDownload}
-												>
-													Download
-												</button>
-											)}
 											<button
 												type="button"
 												className="v4-button v4-button-secondary v4-button-sm"

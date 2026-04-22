@@ -15,7 +15,6 @@ import type { TeacherStudioOutputArtifact } from "../../prism-v4/studio/artifact
 import type { InstructionalAnalysis, RichConceptMapModel } from "../../prism-v4/session/InstructionalIntelligenceSession";
 import type { TestProduct, TestItem, Misconception } from "../../prism-v4/schema/integration/IntentProduct";
 import { exportTestPDF, exportAnswerKeyPDF } from "../../utils/exportTestProductPDF";
-import { SimulatorPanel } from "./SimulatorPanel";
 import "./v4.css";
 
 // ---------------------------------------------------------------------------
@@ -254,9 +253,6 @@ export function CreateDocumentFlow({ variant = "sim" }: { variant?: "sim" | "leg
 							onSimulate={() => void handleUploadForSim()}
 							variant={variant}
 						/>
-					)}
-					{variant === "sim" && state.step === 1 && state.sessionId && !state.isLoading && (
-						<SimulatorPanel sessionId={state.sessionId} />
 					)}
 					{state.step === 2 && (
 					<Screen2

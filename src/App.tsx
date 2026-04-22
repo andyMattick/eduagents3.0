@@ -85,13 +85,9 @@ function TeacherAppContent() {
           ? <LegacyDocumentCreation />
           : pathname === '/concept-match'
           ? <ConceptMatchPage />
-          : pathname === '/shortcircuit'
-          ? <ShortCircuitPage />
-          : pathname === '/sim'
-          ? <TeacherStudio />
           : pathname === '/preparedness'
           ? <TeacherStudio />
-          : <TeacherStudio />}
+          : <ShortCircuitPage />}
       </main>
     </div>
   );

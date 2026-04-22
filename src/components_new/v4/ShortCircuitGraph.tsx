@@ -28,7 +28,7 @@ import {
 	CartesianGrid,
 	ResponsiveContainer,
 } from "recharts";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
+import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
 
 // ---------------------------------------------------------------------------
 // Tooltip copy
@@ -94,17 +94,29 @@ function timeNorm(timeSeconds: number): number {
 
 interface ShortCircuitGraphProps {
 	items: ShortCircuitItem[];
+	profiles?: ProfileShortCircuitResult[];
 }
 
-export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
+export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 	const [selected, setSelected] = useState<Set<SeriesKey>>(
 		new Set(["cumulativeLinguistic", "confusion"] as SeriesKey[]),
+	);
+	const [activeProfileIds, setActiveProfileIds] = useState<Set<string>>(
+		() => new Set(profiles?.map((p) => p.profileId) ?? []),
 	);
 
 	const toggle = (key: SeriesKey) => {
 		setSelected((prev) => {
 			const next = new Set(prev);
 			if (next.has(key)) { next.delete(key); } else { next.add(key); }
+			return next;
+		});
+	};
+
+	const toggleProfile = (id: string) => {
+		setActiveProfileIds((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) { next.delete(id); } else { next.add(id); }
 			return next;
 		});
 	};
@@ -222,6 +234,125 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 			<p style={{ fontSize: "0.75rem", color: "#6b7280", marginTop: "0.75rem" }}>
 				{items.length} item{items.length !== 1 ? "s" : ""} — local semantic analysis (no Gemini)
 			</p>
+
+		{/* Profile Comparison — only shown when profiles are returned */}
+		{profiles && profiles.length > 0 && (
+			<div style={{ marginTop: "3rem", borderTop: "1px solid #e5e7eb", paddingTop: "1.5rem" }}>
+				<h3 style={{ margin: "0 0 0.25rem", fontSize: "1rem", color: "#111827" }}>Profile Comparison</h3>
+				<p style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.85rem" }}>
+					Shows how each student profile experiences linguistic load across items. Modifiers are deterministic — no Gemini.
+				</p>
+
+				{/* Profile toggles */}
+				<div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+					{profiles.map((p) => {
+						const active = activeProfileIds.has(p.profileId);
+						return (
+							<button
+								key={p.profileId}
+								onClick={() => toggleProfile(p.profileId)}
+								style={{
+									padding: "0.3rem 0.75rem",
+									borderRadius: "6px",
+									border: `2px solid ${p.color}`,
+									background: active ? p.color : "transparent",
+									color: active ? "#fff" : p.color,
+									fontSize: "0.8rem",
+									cursor: "pointer",
+									fontWeight: active ? 600 : 400,
+									transition: "all 0.15s",
+								}}
+							>
+								{p.profileLabel}
+							</button>
+						);
+					})}
+				</div>
+
+				{/* Linguistic load per profile */}
+				<div style={{ marginBottom: "1.5rem" }}>
+					<p style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem" }}>Cumulative Linguistic Load by Profile</p>
+					<ResponsiveContainer width="100%" height={320}>
+						<LineChart
+							data={items.map((item, idx) => {
+								const obj: Record<string, number> = { x: item.itemNumber };
+								profiles
+									.filter((p) => activeProfileIds.has(p.profileId))
+									.forEach((p) => {
+										let sum = 0;
+										for (let i = 0; i <= idx; i++) {
+											sum += p.items[i]?.linguisticLoad ?? 0;
+										}
+										obj[p.profileId] = Number(sum.toFixed(4));
+									});
+								return obj;
+							})}
+							margin={{ top: 8, right: 24, left: 0, bottom: 8 }}
+						>
+							<CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+							<XAxis dataKey="x" label={{ value: "Item #", position: "insideBottom", offset: -4 }} tick={{ fontSize: 11 }} />
+							<YAxis domain={[0, "auto"]} tick={{ fontSize: 11 }} width={36} />
+							<RechartsTooltip formatter={(value: number, name: string) => [value.toFixed(3), name]} labelFormatter={(label) => `Item ${label}`} />
+							<Legend verticalAlign="top" />
+							{profiles
+								.filter((p) => activeProfileIds.has(p.profileId))
+								.map((p) => (
+									<Line
+										key={p.profileId}
+										type="monotone"
+										dataKey={p.profileId}
+										name={p.profileLabel}
+										stroke={p.color}
+										strokeWidth={2.5}
+										dot={false}
+										activeDot={{ r: 4 }}
+									/>
+								))}
+						</LineChart>
+					</ResponsiveContainer>
+				</div>
+
+				{/* Confusion score per profile */}
+				<div>
+					<p style={{ fontSize: "0.8rem", fontWeight: 600, color: "#374151", marginBottom: "0.35rem" }}>Confusion Score by Profile</p>
+					<ResponsiveContainer width="100%" height={280}>
+						<LineChart
+							data={items.map((item) => {
+								const obj: Record<string, number> = { x: item.itemNumber };
+								profiles
+									.filter((p) => activeProfileIds.has(p.profileId))
+									.forEach((p) => {
+										obj[p.profileId] = Number((p.items.find((it) => it.itemNumber === item.itemNumber)?.confusionScore ?? 0).toFixed(4));
+									});
+								return obj;
+							})}
+							margin={{ top: 8, right: 24, left: 0, bottom: 8 }}
+						>
+							<CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+							<XAxis dataKey="x" label={{ value: "Item #", position: "insideBottom", offset: -4 }} tick={{ fontSize: 11 }} />
+							<YAxis domain={[0, 1]} tick={{ fontSize: 11 }} width={36} />
+							<RechartsTooltip formatter={(value: number, name: string) => [value.toFixed(3), name]} labelFormatter={(label) => `Item ${label}`} />
+							<Legend verticalAlign="top" />
+							{profiles
+								.filter((p) => activeProfileIds.has(p.profileId))
+								.map((p) => (
+									<Line
+										key={p.profileId}
+										type="monotone"
+										dataKey={p.profileId}
+										name={p.profileLabel}
+										stroke={p.color}
+										strokeWidth={2.5}
+										strokeDasharray="4 2"
+										dot={false}
+										activeDot={{ r: 4 }}
+									/>
+								))}
+						</LineChart>
+					</ResponsiveContainer>
+				</div>
+			</div>
+		)}
 		</div>
 	);
 }
