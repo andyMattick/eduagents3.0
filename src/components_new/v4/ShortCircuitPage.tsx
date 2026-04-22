@@ -140,16 +140,6 @@ export function ShortCircuitPage() {
 
 	return (
 		<div style={{ padding: "2rem", maxWidth: "1100px", margin: "0 auto" }}>
-			<div style={{ marginBottom: "2rem" }}>
-				<p style={{ margin: "0 0 0.25rem", textTransform: "uppercase", letterSpacing: "0.12em", fontSize: "0.72rem", color: "#9c4d2b", fontFamily: "Avenir Next Condensed, Franklin Gothic Medium, sans-serif" }}>
-					Teacher Studio
-				</p>
-				<h1 style={{ margin: "0 0 0.35rem", fontSize: "1.75rem", color: "#1f1a17" }}>Simulate Student Experience</h1>
-				<p style={{ margin: 0, color: "#6b7280", fontSize: "0.875rem" }}>
-					Upload a document, choose student profiles, and see exactly how each profile will experience your material.
-				</p>
-			</div>
-
 			<div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "2rem", fontSize: "0.8rem" }}>
 				{[
 					{ key: "upload" as Phase,  label: "1. Upload" },

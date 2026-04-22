@@ -2445,6 +2445,63 @@
   }
 }
 
+/* ── Dark-mode reset (data-theme toggle) ──────────────────────────────────
+   Mirrors the @media block above so manual theme toggling via ThemeProvider
+   also keeps the warm-parchment look inside .v4-viewer.
+   ──────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .v4-viewer .v4-shell {
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.16), transparent 28%),
+    linear-gradient(180deg, #f7f1e8 0%, #f1e7d5 48%, #ece2d3 100%) !important;
+  color: #1f1a17 !important;
+}
+
+[data-theme="dark"] .v4-viewer .v4-panel {
+  background: rgba(255, 251, 245, 0.88) !important;
+  color: #1f1a17 !important;
+}
+
+[data-theme="dark"] .v4-viewer h1,
+[data-theme="dark"] .v4-viewer h2,
+[data-theme="dark"] .v4-viewer h3,
+[data-theme="dark"] .v4-viewer h4,
+[data-theme="dark"] .v4-viewer h5,
+[data-theme="dark"] .v4-viewer h6 {
+  color: #1f1a17 !important;
+}
+
+[data-theme="dark"] .v4-viewer pre,
+[data-theme="dark"] .v4-viewer code {
+  background-color: transparent !important;
+  color: #1f1a17 !important;
+  border: none !important;
+}
+
+[data-theme="dark"] .v4-viewer input,
+[data-theme="dark"] .v4-viewer textarea,
+[data-theme="dark"] .v4-viewer select {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  color: #3f2a1d !important;
+  border-color: rgba(86, 57, 32, 0.24) !important;
+}
+
+[data-theme="dark"] .v4-viewer button {
+  background-color: initial !important;
+  color: initial !important;
+  border-color: initial !important;
+}
+
+[data-theme="dark"] .v4-viewer .v4-button {
+  background: linear-gradient(135deg, #bb5b35, #874122) !important;
+  color: #fff8ef !important;
+  border-color: transparent !important;
+}
+
+[data-theme="dark"] .v4-viewer .v4-button-secondary {
+  background: #f0dfc8 !important;
+  color: #4e301d !important;
+}
+
 /* ── Viewer top bar: light theme override (prevents dark-container leakage) ── */
 .v4-viewer .review-viewer-topbar,
 .v4-viewer .review-viewer-topbar * {

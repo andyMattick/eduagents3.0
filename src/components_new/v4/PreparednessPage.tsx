@@ -1011,16 +1011,6 @@ export const PreparednessPage: React.FC<PreparednessPageProps> = ({
 
   return (
     <div className="prep-pipeline-shell">
-      {/* Header */}
-      <div className="prep-stage-header">
-        <h1 className="prep-stage-title">
-          Preparedness Analysis
-        </h1>
-        <p className="prep-stage-subtitle">
-          Ensure your assessment aligns with your preparation materials.
-        </p>
-      </div>
-
       {/* Phase Indicator */}
       {phase !== "upload" && (
         <div className="prep-phase-indicator">

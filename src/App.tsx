@@ -10,7 +10,7 @@ import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudio } from './components_new/v4/TeacherStudio';
-import { ConceptMatchPage } from './components_new/v4/concept-match/ConceptMatchPage';
+import { PreparednessPage } from './components_new/v4/PreparednessPage';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
 import './App.css';
 
@@ -18,7 +18,7 @@ console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/preparedness', '/concept-match', '/shortcircuit']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/preparedness', '/compare', '/documents/compare']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -34,13 +34,47 @@ export interface AssignmentContext {
     | 'view rubric';
 }
 
+// ---------------------------------------------------------------------------
+// Home landing page — entry point for both main flows
+// ---------------------------------------------------------------------------
+function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
+  return (
+    <div className="home-landing">
+      <p className="home-landing-kicker">Teacher Studio</p>
+      <h2 className="home-landing-heading">What would you like to do?</h2>
+      <p className="home-landing-sub">Choose a workflow below to get started.</p>
 
+      <div className="home-landing-cards">
+        <button className="home-card" onClick={() => navigate("/sim")}>
+          <span className="home-card-icon">📊</span>
+          <span className="home-card-title">Simulate Student Experience</span>
+          <span className="home-card-desc">
+            Upload a document and see how each student profile will experience your material — per-item metrics, Bloom's levels, and cumulative load by profile.
+          </span>
+        </button>
+
+        <button className="home-card" onClick={() => navigate("/compare")}>
+          <span className="home-card-icon">📄</span>
+          <span className="home-card-title">Compare Documents</span>
+          <span className="home-card-desc">
+            Upload documents to run preparedness checks, alignment analysis, rewrite suggestions, and generate aligned tests.
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
 /* ------------------------------
    Teacher App (with theme toggle)
 --------------------------------*/
 function TeacherAppContent() {
   const [pathname, setPathname] = useState<string>(window.location.pathname);
   const { logout, user } = useAuth();
+
+  const navigate = (path: string) => {
+    window.history.pushState({}, '', path);
+    setPathname(path);
+  };
 
   useEffect(() => {
     const onPopState = () => setPathname(window.location.pathname);
@@ -52,12 +86,18 @@ function TeacherAppContent() {
     if (isAllowedV4Path(pathname)) {
       return;
     }
-
     window.history.replaceState({}, '', '/');
     setPathname('/');
   }, [pathname]);
 
   const handleLogout = async () => await logout();
+
+  // Derive page title for the header
+  const pageTitle =
+    pathname === '/sim' || pathname === '/shortcircuit' ? 'Simulate Student Experience' :
+    pathname === '/compare' || pathname === '/documents/compare' ? 'Compare Documents' :
+    pathname === '/preparedness' ? 'Student Preparedness' :
+    'Teacher Studio';
 
   return (
     <div className="app-container">
@@ -65,10 +105,17 @@ function TeacherAppContent() {
         <div className="app-header-content v4-home-header-content">
           <div className="v4-home-brand">
             <p className="v4-home-kicker">Agents of Education</p>
-            <h1>
-              Educational Simulation
+            <h1
+              className={pathname !== '/' ? 'v4-home-brand-h1--clickable' : undefined}
+              onClick={() => pathname !== '/' && navigate('/')}
+            >
+              {pageTitle}
             </h1>
-
+            {pathname !== '/' && (
+              <button className="v4-back-link" onClick={() => navigate('/')}>
+                ← Back to home
+              </button>
+            )}
           </div>
 
           <div className="v4-home-actions">
@@ -81,17 +128,22 @@ function TeacherAppContent() {
       </header>
 
       <main className="app-content app-content--v4">
-        {pathname === '/legacy'
+        {pathname === '/'
+          ? <HomeLanding navigate={navigate} />
+          : pathname === '/legacy'
           ? <LegacyDocumentCreation />
-          : pathname === '/concept-match'
-          ? <ConceptMatchPage />
           : pathname === '/preparedness'
           ? <TeacherStudio />
-          : <ShortCircuitPage />}
+          : pathname === '/compare' || pathname === '/documents/compare'
+          ? <PreparednessPage />
+          : pathname === '/sim' || pathname === '/shortcircuit'
+          ? <ShortCircuitPage />
+          : <HomeLanding navigate={navigate} />}
       </main>
     </div>
   );
 }
+
 
 /* ------------------------------
    Auth Gate

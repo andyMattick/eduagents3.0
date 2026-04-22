@@ -84,6 +84,27 @@
   justify-content: flex-end;
 }
 
+.v4-home-brand-h1--clickable {
+  cursor: pointer;
+}
+
+.v4-back-link {
+  background: none !important;
+  border: none !important;
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #9c4d2b !important;
+  padding: 0.1rem 0;
+  text-decoration: underline;
+  margin-top: 0.1rem;
+  font-weight: 500;
+}
+
+.v4-back-link:hover {
+  color: #7a3820 !important;
+  background: none !important;
+}
+
 .v4-home-user {
   display: inline-flex;
   align-items: center;
@@ -112,6 +133,21 @@
   background: #fee;
   border-color: #fcc;
   color: #c33;
+}
+
+/* Header dark-mode overrides — keep warm-parchment header legible */
+@media (prefers-color-scheme: dark) {
+  .v4-home-user {
+    background: rgba(255, 251, 245, 0.84) !important;
+    color: #574233 !important;
+    border-color: rgba(86, 57, 32, 0.12) !important;
+  }
+}
+
+[data-theme="dark"] .v4-home-user {
+  background: rgba(255, 251, 245, 0.84) !important;
+  color: #574233 !important;
+  border-color: rgba(86, 57, 32, 0.12) !important;
 }
 
 /* ============================================================
@@ -242,7 +278,116 @@
 }
 
 /* ============================================================
+   HOME LANDING
+   ============================================================ */
+
+.home-landing {
+  padding: 3rem 2rem;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.home-landing-kicker {
+  margin: 0 0 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.72rem;
+  color: #9c4d2b;
+}
+
+.home-landing-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1.5rem;
+  color: #1f1a17;
+}
+
+.home-landing-sub {
+  margin: 0 0 2.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.home-landing-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.home-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 14px;
+  border: 1.5px solid rgba(86, 57, 32, 0.2);
+  background: rgba(255, 251, 245, 0.9);
+  color: #1f1a17;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, background 0.15s, border-color 0.15s;
+  width: 100%;
+}
+
+.home-card:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  background: rgba(255, 251, 245, 1);
+  border-color: rgba(86, 57, 32, 0.35);
+}
+
+.home-card-icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.home-card-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: #1f1a17;
+}
+
+.home-card-desc {
+  font-size: 0.85rem;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+/* Dark mode overrides for landing page */
+@media (prefers-color-scheme: dark) {
+  .home-landing-heading { color: #f9fafb; }
+  .home-landing-sub     { color: #9ca3af; }
+  .home-card {
+    background: #1e2433;
+    border-color: rgba(156, 163, 175, 0.2);
+    color: #f9fafb;
+  }
+  .home-card:hover {
+    background: #252d40;
+    border-color: rgba(156, 163, 175, 0.4);
+  }
+  .home-card-title { color: #f9fafb; }
+  .home-card-desc  { color: #9ca3af; }
+}
+
+[data-theme="dark"] .home-landing-heading { color: #f9fafb; }
+[data-theme="dark"] .home-landing-sub     { color: #9ca3af; }
+[data-theme="dark"] .home-card {
+  background: #1e2433;
+  border-color: rgba(156, 163, 175, 0.2);
+  color: #f9fafb;
+}
+[data-theme="dark"] .home-card:hover {
+  background: #252d40;
+  border-color: rgba(156, 163, 175, 0.4);
+}
+[data-theme="dark"] .home-card-title { color: #f9fafb; }
+[data-theme="dark"] .home-card-desc  { color: #9ca3af; }
+
+/* ============================================================
    DARK MODE (GLOBAL)
+   Supports both system preference and manual toggle.
+   The ThemeProvider sets data-theme="dark" on <html> when the
+   user toggles dark mode; prefers-color-scheme covers system-level.
    ============================================================ */
 
 @media (prefers-color-scheme: dark) {
@@ -273,7 +418,9 @@
     border-color: #444;
   }
 
-  button {
+  /* Scope button dark-mode only to generic dark containers, not globally */
+  .card button,
+  .section button {
     background-color: #2a2a2a;
     color: #e5e5e5;
     border-color: #444;
@@ -290,12 +437,90 @@
       linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%) !important;
   }
 
+  /* All buttons inside the warm header stay light — no dark override */
+  .v4-home-header button {
+    background: revert !important;
+    color: revert !important;
+    border-color: revert !important;
+  }
+
   .v4-home-brand h1,
   .v4-home-kicker,
   .v4-home-subtitle,
   .v4-home-user {
     color: inherit !important;
   }
+}
+
+/* ================================================================
+   DARK MODE — manual toggle (data-theme="dark" on <html>)
+   Mirrors the prefers-color-scheme block above so the ThemeProvider
+   toggle button actually applies dark styles regardless of OS setting.
+   ================================================================ */
+
+[data-theme="dark"] body {
+  background-color: #121212;
+  color: #e5e5e5;
+}
+
+[data-theme="dark"] .card,
+[data-theme="dark"] .section {
+  background-color: #1e1e1e;
+  color: #e5e5e5;
+  border-color: #333;
+}
+
+[data-theme="dark"] pre,
+[data-theme="dark"] code {
+  background-color: #1a1a1a;
+  color: #d0d0d0;
+  border: 1px solid #333;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: #1a1a1a;
+  color: #e5e5e5;
+  border-color: #444;
+}
+
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] h5,
+[data-theme="dark"] h6 {
+  color: var(--text);
+}
+
+/* Scope button dark-mode only to generic dark containers, not globally */
+[data-theme="dark"] .card button,
+[data-theme="dark"] .section button {
+  background-color: #2a2a2a;
+  color: #e5e5e5;
+  border-color: #444;
+}
+
+/* v4 home header: always warm (even when data-theme="dark") */
+[data-theme="dark"] .v4-home-header {
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.18), transparent 30%),
+    linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%) !important;
+}
+
+/* All buttons inside the warm header stay light — no dark override */
+[data-theme="dark"] .v4-home-header button {
+  background: revert !important;
+  color: revert !important;
+  border-color: revert !important;
+}
+
+[data-theme="dark"] .v4-home-brand h1,
+[data-theme="dark"] .v4-home-kicker,
+[data-theme="dark"] .v4-home-subtitle,
+[data-theme="dark"] .v4-home-user {
+  color: inherit !important;
 }
 
 /* ============================================================

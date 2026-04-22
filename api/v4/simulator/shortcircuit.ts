@@ -44,6 +44,11 @@ export interface ShortCircuitItem {
 	wordCount: number;
 	timeToProcessSeconds: number;
 	confusionScore: number;
+	bloomsLevel: number;
+	bloomsLabel: string;
+	sentenceCount: number;
+	avgSentenceLength: number;
+	symbolDensity: number;
 }
 
 export interface ProfileShortCircuitResult {
