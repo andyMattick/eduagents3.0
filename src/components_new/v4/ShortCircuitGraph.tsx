@@ -59,17 +59,16 @@ function useChartTheme() {
 // ---------------------------------------------------------------------------
 
 const DETERMINISTIC_SERIES = [
-	{ key: "linguisticLoad",     label: "Linguistic Load",      color: "#0ea5e9", description: "Combined vocab difficulty + avg word length (0–1)." },
-	{ key: "confusion",          label: "Confusion",            color: "#f97316", description: "Multi-factor confusion score (0–1): linguistic load, distractor density, steps, misconception risk, time." },
-	{ key: "wordCount",          label: "Word Count",           color: "#6366f1", description: "Number of words in the item." },
-	{ key: "avgWordLength",      label: "Avg Word Length",      color: "#8b5cf6", description: "Average character length of words in this item." },
-	{ key: "steps",              label: "Steps",                color: "#14b8a6", description: "Estimated reasoning steps (integer)." },
-	{ key: "time",               label: "Time (norm)",          color: "#f59e0b", description: "Estimated processing time, normalized 0–1." },
-	{ key: "bloomsLevel",        label: "Bloom's Level",        color: "#ec4899", description: "Bloom's Taxonomy level: 1=Remember, 2=Understand, 3=Apply, 4=Analyze, 5=Evaluate, 6=Create." },
-	{ key: "sentenceCount",      label: "Sentence Count",       color: "#84cc16", description: "Number of sentences in the item." },
-	{ key: "avgSentenceLength",  label: "Avg Sentence Length",  color: "#06b6d4", description: "Average words per sentence." },
-	{ key: "distractorDensity",  label: "Distractor Density",   color: "#ef4444", description: "Density of distractors/misleading elements (0–1). Especially relevant for multiple-choice items." },
-	{ key: "symbolDensity",      label: "Symbol Density",       color: "#f97316", description: "Density of math/science symbols (0–1)." },
+	{ key: "linguisticLoad",     label: "Linguistic Load",       color: "#0ea5e9", description: "Combined vocab difficulty + avg word length (0–1). Already normalized." },
+	{ key: "confusion",          label: "Confusion",             color: "#f97316", description: "Multi-factor confusion score (0–1): linguistic load, distractor density, steps, misconception risk, time." },
+	{ key: "wordCount",          label: "Word Count",            color: "#6366f1", description: "Words in the item, normalized 0–1 (ceiling: 60 words)." },
+	{ key: "avgWordLength",      label: "Avg Word Length",       color: "#8b5cf6", description: "Average character length of words, normalized 0–1 (ceiling: 8 chars)." },
+	{ key: "steps",              label: "Steps",                 color: "#14b8a6", description: "Reasoning steps, normalized 0–1 against the hardest item in this document." },
+	{ key: "time",               label: "Time (norm)",           color: "#f59e0b", description: "Estimated processing time, normalized 0–1." },
+	{ key: "sentenceCount",      label: "Sentence Count",        color: "#84cc16", description: "Number of sentences, normalized 0–1 (ceiling: 8 sentences)." },
+	{ key: "avgSentenceLength",  label: "Avg Sentence Length",   color: "#06b6d4", description: "Average words per sentence, normalized 0–1 (ceiling: 16 words)." },
+	{ key: "distractorDensity",  label: "Distractor Density",    color: "#ef4444", description: "Density of distractors/misleading elements (0–1). Hidden when always zero." },
+	{ key: "symbolDensity",      label: "Symbol Density",        color: "#a78bfa", description: "Density of math/science symbols (0–1). Already normalized." },
 ] as const;
 
 type DeterministicKey = typeof DETERMINISTIC_SERIES[number]["key"];
@@ -77,13 +76,6 @@ type DeterministicKey = typeof DETERMINISTIC_SERIES[number]["key"];
 // ---------------------------------------------------------------------------
 // Normalize helpers
 // ---------------------------------------------------------------------------
-
-function stepsNorm(steps: number): number {
-	if (steps <= 1) return 0.1;
-	if (steps <= 3) return 0.3;
-	if (steps <= 5) return 0.6;
-	return 1.0;
-}
 
 function timeNorm(timeSeconds: number): number {
 	const m = timeSeconds / 60;
@@ -168,7 +160,7 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 
 	// Section 1 state — selected deterministic series
 	const [selectedDet, setSelectedDet] = useState<Set<DeterministicKey>>(
-		new Set(["linguisticLoad", "confusion", "bloomsLevel"] as DeterministicKey[]),
+		new Set(["linguisticLoad", "confusion"] as DeterministicKey[]),
 	);
 
 	// Section 2 state — active profiles
@@ -196,35 +188,37 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 	const timeValues = items.map((i) => timeNorm(i.timeToProcessSeconds));
 	const timeIsFlat = isFlat(timeValues);
 
-	// Build deterministic chart data
-	const detChartData = items.map((item, idx) => ({
-		x: item.itemNumber,
-		label: item.bloomsLabel,
+	// Detect flat distractor density (hide when always zero)
+	const distractorValues = items.map((i) => i.distractorDensity);
+	const distractorIsFlat = isFlat(distractorValues);
+
+	// Dynamic step ceiling — normalize steps relative to the hardest item in this doc
+	const maxSteps = Math.max(...items.map((i) => i.steps), 1);
+
+	// Build deterministic chart data — all continuous values normalized to 0–1
+	const detChartData = items.map((item) => ({
+		x:                 item.itemNumber,
+		bloomsLevel:       item.bloomsLevel,    // raw integer, for categorical band only
+		bloomsLabel:       item.bloomsLabel,    // for Bloom's tooltip
 		linguisticLoad:    Number(item.linguisticLoad.toFixed(4)),
 		confusion:         Number(item.confusionScore.toFixed(4)),
-		wordCount:         item.wordCount,
-		avgWordLength:     Number(item.avgWordLength.toFixed(2)),
-		steps:             item.steps,
+		wordCount:         Number((item.wordCount / 60).toFixed(4)),
+		avgWordLength:     Number((item.avgWordLength / 8).toFixed(4)),
+		steps:             Number((item.steps / maxSteps).toFixed(4)),
 		time:              Number(timeNorm(item.timeToProcessSeconds).toFixed(4)),
-		bloomsLevel:       item.bloomsLevel,
-		sentenceCount:     item.sentenceCount,
-		avgSentenceLength: Number(item.avgSentenceLength.toFixed(2)),
+		sentenceCount:     Number((item.sentenceCount / 8).toFixed(4)),
+		avgSentenceLength: Number((item.avgSentenceLength / 16).toFixed(4)),
 		distractorDensity: Number(item.distractorDensity.toFixed(4)),
 		symbolDensity:     Number(item.symbolDensity.toFixed(4)),
-		// used for Bloom's bar coloring (same index, different render)
-		_bloomsIdx:        idx,
 	}));
 
 	// Description shown when exactly one series is selected
 	const activeDet = DETERMINISTIC_SERIES.filter((s) => selectedDet.has(s.key));
 	const singleDescription = activeDet.length === 1 ? activeDet[0]?.description ?? "" : "";
 
-	// Determine if Bloom's is the ONLY selected series (needs bar chart)
-	const onlyBlooms = selectedDet.size === 1 && selectedDet.has("bloomsLevel");
-
-	// Filter out flat time series from the selectable list
+	// Filter out flat/always-zero series
 	const availableSeries = DETERMINISTIC_SERIES.filter(
-		(s) => !(s.key === "time" && timeIsFlat),
+		(s) => !(s.key === "time" && timeIsFlat) && !(s.key === "distractorDensity" && distractorIsFlat),
 	);
 
 	return (
@@ -274,75 +268,83 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 			)}
 
 			{timeIsFlat && (
-				<p style={{ fontSize: "0.72rem", color: theme.subTextColor, fontStyle: "italic", marginBottom: "0.5rem" }}>
+				<p style={{ fontSize: "0.72rem", color: theme.subTextColor, fontStyle: "italic", marginBottom: "0.25rem" }}>
 					Time (norm) hidden — all items produce the same value.
 				</p>
 			)}
 
-			{/* Bloom's Level bar chart (when selected alone) */}
-			{onlyBlooms ? (
-				<div style={{ marginBottom: "1.5rem" }}>
-					<p style={{ fontSize: "0.8rem", fontWeight: 600, color: theme.textColor, marginBottom: "0.35rem" }}>
-						Bloom's Level per Item (1=Remember … 6=Create)
-					</p>
-					<ResponsiveContainer width="100%" height={300}>
-						<BarChart data={detChartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-							<CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
-							<XAxis dataKey="x" label={{ value: "Item #", position: "insideBottom", offset: -2, fill: theme.textColor }} tick={axisTick(theme.textColor)} />
-							<YAxis domain={[0, 6]} ticks={[1, 2, 3, 4, 5, 6]} tick={axisTick(theme.textColor)} width={36} />
-							<RechartsTooltip
-								contentStyle={{ background: theme.bgColor, border: `1px solid ${theme.borderColor}`, color: theme.textColor }}
-								formatter={(value: number, _name: string, props) => {
-									const label = (props as { payload?: { label?: string } }).payload?.label ?? "";
-									return [`${value} — ${label}`, "Bloom's Level"];
-								}}
-								labelFormatter={(label) => `Item ${label}`}
-							/>
-							<Bar dataKey="bloomsLevel" name="Bloom's Level" radius={[4, 4, 0, 0]}>
-								{detChartData.map((entry) => (
-									<Cell key={`cell-${entry.x}`} fill={bloomsColor(entry.bloomsLevel)} />
-								))}
-							</Bar>
-						</BarChart>
-					</ResponsiveContainer>
-				</div>
-			) : (
-				/* Multi-series line chart */
-				selectedDet.size > 0 && (
-					<ResponsiveContainer width="100%" height={360}>
-						<LineChart data={detChartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-							<CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
-							<XAxis
-								dataKey="x"
-								label={{ value: "Item #", position: "insideBottom", offset: -4, fill: theme.textColor }}
-								tick={axisTick(theme.textColor)}
-							/>
-							<YAxis domain={[0, "auto"]} tick={axisTick(theme.textColor)} width={36} />
-							<RechartsTooltip
-								contentStyle={{ background: theme.bgColor, border: `1px solid ${theme.borderColor}`, color: theme.textColor }}
-								formatter={(value: number, name: string) => [
-									typeof value === "number" ? value.toFixed(3) : value,
-									name,
-								]}
-								labelFormatter={(label) => `Item ${label}`}
-							/>
-							<Legend verticalAlign="top" />
-							{DETERMINISTIC_SERIES.filter((s) => selectedDet.has(s.key)).map((s) => (
-								<Line
-									key={s.key}
-									type="monotone"
-									dataKey={s.key}
-									name={s.label}
-									stroke={s.color}
-									strokeWidth={3}
-									dot={false}
-									activeDot={{ r: 4 }}
-								/>
-							))}
-						</LineChart>
-					</ResponsiveContainer>
-				)
+			{distractorIsFlat && (
+				<p style={{ fontSize: "0.72rem", color: theme.subTextColor, fontStyle: "italic", marginBottom: "0.25rem" }}>
+					Distractor Density hidden — no distractors detected in this document.
+				</p>
 			)}
+
+			{/* Multi-series line chart — all values normalized to 0–1 */}
+			{selectedDet.size > 0 && (
+				<ResponsiveContainer width="100%" height={360}>
+					<LineChart data={detChartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
+						<CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
+						<XAxis
+							dataKey="x"
+							label={{ value: "Item #", position: "insideBottom", offset: -4, fill: theme.textColor }}
+							tick={axisTick(theme.textColor)}
+						/>
+						<YAxis domain={[0, 1]} tick={axisTick(theme.textColor)} width={36} />
+						<RechartsTooltip
+							contentStyle={{ background: theme.bgColor, border: `1px solid ${theme.borderColor}`, color: theme.textColor }}
+							formatter={(value: number, name: string) => [
+								typeof value === "number" ? value.toFixed(3) : value,
+								name,
+							]}
+							labelFormatter={(label) => `Item ${label}`}
+						/>
+						<Legend verticalAlign="top" />
+						{DETERMINISTIC_SERIES.filter((s) => selectedDet.has(s.key)).map((s) => (
+							<Line
+								key={s.key}
+								type="monotone"
+								dataKey={s.key}
+								name={s.label}
+								stroke={s.color}
+								strokeWidth={3}
+								dot={false}
+								activeDot={{ r: 4 }}
+							/>
+						))}
+					</LineChart>
+				</ResponsiveContainer>
+			)}
+
+			{/* Bloom's Taxonomy — categorical band, always shown, never on the line graph */}
+			<div style={{ marginTop: "1.5rem" }}>
+				<p style={{ fontWeight: 600, fontSize: "0.9rem", color: theme.headingColor, margin: "0 0 0.1rem" }}>
+					Bloom's Taxonomy Level
+				</p>
+				<p style={{ fontSize: "0.75rem", color: theme.subTextColor, margin: "0 0 0.35rem" }}>
+					Derived from cognitive keyword matching — independent of reasoning steps.{" "}
+					1=Remember · 2=Understand · 3=Apply · 4=Analyze · 5=Evaluate · 6=Create
+				</p>
+				<ResponsiveContainer width="100%" height={160}>
+					<BarChart data={detChartData} margin={{ top: 4, right: 24, left: 0, bottom: 4 }}>
+						<CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
+						<XAxis dataKey="x" label={{ value: "Item #", position: "insideBottom", offset: -2, fill: theme.textColor }} tick={axisTick(theme.textColor)} />
+						<YAxis domain={[0, 6]} ticks={[1, 2, 3, 4, 5, 6]} tick={axisTick(theme.textColor)} width={36} />
+						<RechartsTooltip
+							contentStyle={{ background: theme.bgColor, border: `1px solid ${theme.borderColor}`, color: theme.textColor }}
+							formatter={(value: number, _name: string, props) => {
+								const label = (props as { payload?: { bloomsLabel?: string } }).payload?.bloomsLabel ?? "";
+								return [`Level ${value} — ${label}`, "Bloom's"];
+							}}
+							labelFormatter={(label) => `Item ${label}`}
+						/>
+						<Bar dataKey="bloomsLevel" name="Bloom's Level" radius={[4, 4, 0, 0]}>
+							{detChartData.map((entry) => (
+								<Cell key={`cell-${entry.x}`} fill={bloomsColor(entry.bloomsLevel)} />
+							))}
+						</Bar>
+					</BarChart>
+				</ResponsiveContainer>
+			</div>
 
 			{/* Vocab heatmap — always shown, unchanged */}
 			<div style={{ marginTop: "2rem" }}>

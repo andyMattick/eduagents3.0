@@ -35,7 +35,7 @@
 .v4-home-header {
   background:
     radial-gradient(circle at top left, rgba(201, 93, 55, 0.18), transparent 30%),
-    linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%);
+    linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%) !important;
 }
 
 .v4-home-header-content {
@@ -133,21 +133,6 @@
   background: #fee;
   border-color: #fcc;
   color: #c33;
-}
-
-/* Header dark-mode overrides — keep warm-parchment header legible */
-@media (prefers-color-scheme: dark) {
-  .v4-home-user {
-    background: rgba(255, 251, 245, 0.84) !important;
-    color: #574233 !important;
-    border-color: rgba(86, 57, 32, 0.12) !important;
-  }
-}
-
-[data-theme="dark"] .v4-home-user {
-  background: rgba(255, 251, 245, 0.84) !important;
-  color: #574233 !important;
-  border-color: rgba(86, 57, 32, 0.12) !important;
 }
 
 /* ============================================================
@@ -383,86 +368,15 @@
 [data-theme="dark"] .home-card-title { color: #f9fafb; }
 [data-theme="dark"] .home-card-desc  { color: #9ca3af; }
 
-/* ============================================================
-   DARK MODE (GLOBAL)
-   Supports both system preference and manual toggle.
-   The ThemeProvider sets data-theme="dark" on <html> when the
-   user toggles dark mode; prefers-color-scheme covers system-level.
-   ============================================================ */
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #121212;
-    color: #e5e5e5;
-  }
-
-  .card,
-  .section {
-    background-color: #1e1e1e;
-    color: #e5e5e5;
-    border-color: #333;
-  }
-
-  pre,
-  code {
-    background-color: #1a1a1a;
-    color: #d0d0d0;
-    border: 1px solid #333;
-  }
-
-  input,
-  textarea,
-  select {
-    background-color: #1a1a1a;
-    color: #e5e5e5;
-    border-color: #444;
-  }
-
-  /* Scope button dark-mode only to generic dark containers, not globally */
-  .card button,
-  .section button {
-    background-color: #2a2a2a;
-    color: #e5e5e5;
-    border-color: #444;
-  }
-
-  h1, h2, h3, h4, h5, h6 {
-    color: var(--text);
-  }
-
-  /* v4 home header must stay warm in dark mode */
-  .v4-home-header {
-    background:
-      radial-gradient(circle at top left, rgba(201, 93, 55, 0.18), transparent 30%),
-      linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%) !important;
-  }
-
-  /* All buttons inside the warm header stay light — no dark override */
-  .v4-home-header button {
-    background: revert !important;
-    color: revert !important;
-    border-color: revert !important;
-  }
-
-  .v4-home-brand h1,
-  .v4-home-kicker,
-  .v4-home-subtitle,
-  .v4-home-user {
-    color: inherit !important;
-  }
-}
-
 /* ================================================================
    DARK MODE — manual toggle (data-theme="dark" on <html>)
-   Mirrors the prefers-color-scheme block above so the ThemeProvider
-   toggle button actually applies dark styles regardless of OS setting.
+   Dark is the default palette in index.css :root; these rules only
+   handle App.css-specific components with hardcoded light values.
+   CSS vars (--bg, --text, etc.) cover body, headings, and inputs
+   automatically — no need to override them here.
    ================================================================ */
 
-[data-theme="dark"] body {
-  background-color: #121212;
-  color: #e5e5e5;
-}
-
+/* .card and .section have hardcoded `background: white` */
 [data-theme="dark"] .card,
 [data-theme="dark"] .section {
   background-color: #1e1e1e;
@@ -477,24 +391,7 @@
   border: 1px solid #333;
 }
 
-[data-theme="dark"] input,
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
-  background-color: #1a1a1a;
-  color: #e5e5e5;
-  border-color: #444;
-}
-
-[data-theme="dark"] h1,
-[data-theme="dark"] h2,
-[data-theme="dark"] h3,
-[data-theme="dark"] h4,
-[data-theme="dark"] h5,
-[data-theme="dark"] h6 {
-  color: var(--text);
-}
-
-/* Scope button dark-mode only to generic dark containers, not globally */
+/* Buttons scoped to dark containers only — not globally */
 [data-theme="dark"] .card button,
 [data-theme="dark"] .section button {
   background-color: #2a2a2a;
@@ -502,40 +399,26 @@
   border-color: #444;
 }
 
-/* v4 home header: always warm (even when data-theme="dark") */
-[data-theme="dark"] .v4-home-header {
-  background:
-    radial-gradient(circle at top left, rgba(201, 93, 55, 0.18), transparent 30%),
-    linear-gradient(180deg, #f7f1e8 0%, #f3ebdf 100%) !important;
-}
-
-/* All buttons inside the warm header stay light — no dark override */
-[data-theme="dark"] .v4-home-header button {
-  background: revert !important;
-  color: revert !important;
-  border-color: revert !important;
-}
-
-[data-theme="dark"] .v4-home-brand h1,
-[data-theme="dark"] .v4-home-kicker,
-[data-theme="dark"] .v4-home-subtitle,
-[data-theme="dark"] .v4-home-user {
-  color: inherit !important;
-}
-
 /* ============================================================
    V4 ANALYSIS PAGES — LIGHT MODE ISLAND
-   Overrides global dark-mode rules so the warm-parchment
-   teacher studio never goes dark-on-dark.
+   Always white background, dark text — regardless of theme toggle.
+   Use targeted element selectors instead of wildcard (*) so
+   Recharts SVG text/fill set via component props is not overridden.
    ============================================================ */
-
-.v4-viewer,
-.v4-viewer * {
-  color: #111 !important;
-}
 
 .v4-viewer {
   background: #ffffff !important;
+  color: #111111 !important;
+}
+
+/* Target text-bearing elements directly — not SVGs or chart layers */
+.v4-viewer p,
+.v4-viewer span,
+.v4-viewer li,
+.v4-viewer label,
+.v4-viewer h1, .v4-viewer h2, .v4-viewer h3,
+.v4-viewer h4, .v4-viewer h5, .v4-viewer h6 {
+  color: #111111 !important;
 }
 
 /* Panels inside v4 viewer */
@@ -545,10 +428,6 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 8px;
   padding: 1rem;
-}
-
-.v4-panel * {
-  color: #111111 !important;
 }
 
 /* Tables inside v4 viewer */
@@ -567,22 +446,10 @@
   background: rgba(0, 0, 0, 0.04) !important;
 }
 
-/* Recharts — light tooltip */
-.recharts-tooltip-wrapper,
-.recharts-default-tooltip {
-  background: #ffffff !important;
-  color: #111111 !important;
-  border: 1px solid rgba(0, 0, 0, 0.15) !important;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
-}
-
-.recharts-cartesian-axis-tick text {
-  fill: #444444 !important;
-}
-
-.recharts-layer text {
-  fill: #444444 !important;
-}
+/* Recharts — ShortCircuitGraph passes all colors via component props
+   (contentStyle, tick, stroke, fill). Global overrides here conflict
+   with those props and cause the black-on-black / white-on-white bug.
+   No global Recharts rules needed. */
 
 /* ============================================================
    FEEDBACK GRID (LIGHT MODE)

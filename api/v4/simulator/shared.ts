@@ -1075,43 +1075,35 @@ export function computeVocabStats(text: string): {
 }
 
 // ---------------------------------------------------------------------------
-// Bloom's taxonomy helpers
+// Bloom's taxonomy keyword dictionary (deterministic, keyword-first)
+// Checked highest → lowest so higher-order verbs are never shadowed by lower ones.
+// Default fallback: Understand (level 2) — safest for K-12 items.
 // ---------------------------------------------------------------------------
-
-const BLOOMS_LABELS = ["Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create"] as const;
-type BloomsKey = "remember" | "understand" | "apply" | "analyze" | "evaluate" | "create";
+const BLOOMS_KEYWORDS = {
+	create:     ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+	evaluate:   ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+	analyze:    ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+	apply:      ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out"],
+	understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate"],
+	remember:   ["identify", "list", "define", "recall", "name", "label", "match", "select", "state", "recognize", "repeat", "choose", "find", "underline", "point", "circle", "highlight"],
+} as const;
 
 /**
- * Derive the dominant Bloom's level (1–6) from a vector's bloom scores.
- * Falls back to keyword scanning of the text when the vector has no bloom info.
+ * Derive Bloom's level (1–6) from keyword matching only.
+ * Independent of vec.steps or any procedural-complexity metric.
+ * Checked highest → lowest; first match wins.
+ * Default: 2 (Understand) — safe fallback for K-12 items.
  */
-function computeBloomsLevel(vec: ProblemTagVector, text: string): { level: number; label: string } {
-	const bloom = vec.bloom;
-	if (bloom) {
-		const entries: [BloomsKey, number][] = [
-			["remember", bloom.remember ?? 0],
-			["understand", bloom.understand ?? 0],
-			["apply", bloom.apply ?? 0],
-			["analyze", bloom.analyze ?? 0],
-			["evaluate", bloom.evaluate ?? 0],
-			["create", bloom.create ?? 0],
-		];
-		const total = entries.reduce((s, [, v]) => s + v, 0);
-		if (total > 0) {
-			// Weighted centroid for a smoother level
-			const weightedSum = entries.reduce((s, [, v], i) => s + v * (i + 1), 0);
-			const level = Math.round(weightedSum / total);
-			return { level: Math.min(6, Math.max(1, level)), label: BLOOMS_LABELS[level - 1] ?? "Remember" };
-		}
-	}
-	// Keyword fallback
+function computeBloomsLevel(text: string): { level: number; label: string } {
 	const lower = text.toLowerCase();
-	if (/design|create|construct|develop|formulate|compose|invent/.test(lower)) return { level: 6, label: "Create" };
-	if (/judge|evaluate|assess|justify|argue|defend|critique/.test(lower)) return { level: 5, label: "Evaluate" };
-	if (/analyze|differentiate|distinguish|examine|compare|contrast/.test(lower)) return { level: 4, label: "Analyze" };
-	if (/solve|use|demonstrate|apply|show|implement|calculate/.test(lower)) return { level: 3, label: "Apply" };
-	if (/explain|summarize|classify|interpret|paraphrase|describe/.test(lower)) return { level: 2, label: "Understand" };
-	return { level: 1, label: "Remember" };
+	const hit = (kws: readonly string[]) => kws.some((kw) => lower.includes(kw));
+	if (hit(BLOOMS_KEYWORDS.create))     return { level: 6, label: "Create" };
+	if (hit(BLOOMS_KEYWORDS.evaluate))   return { level: 5, label: "Evaluate" };
+	if (hit(BLOOMS_KEYWORDS.analyze))    return { level: 4, label: "Analyze" };
+	if (hit(BLOOMS_KEYWORDS.apply))      return { level: 3, label: "Apply" };
+	if (hit(BLOOMS_KEYWORDS.understand)) return { level: 2, label: "Understand" };
+	if (hit(BLOOMS_KEYWORDS.remember))   return { level: 1, label: "Remember" };
+	return { level: 2, label: "Understand" };
 }
 
 // ---------------------------------------------------------------------------
@@ -1151,7 +1143,7 @@ export function vectorToMeasurables(vec: ProblemTagVector, text: string): LocalM
 	const normalizedWordLen = Math.min(avgWordLength / 10, 1); // 10+ chars = max
 	const linguisticLoad = clamp(0.6 * normalizedVocab + 0.4 * normalizedWordLen);
 
-	const { level: bloomsLevel, label: bloomsLabel } = computeBloomsLevel(vec, text);
+	const { level: bloomsLevel, label: bloomsLabel } = computeBloomsLevel(text);
 	const { sentenceCount, avgSentenceLength } = computeSentenceStats(text);
 	const symbolDensity = computeSymbolDensity(text);
 
