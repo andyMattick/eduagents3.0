@@ -12,35 +12,18 @@
 // ── Embedding ───────────────────────────────────────────────────────────────
 
 async function batchEmbedConcepts(
-  concepts: string[],
-  apiKey: string
+  concepts: string[]
 ): Promise<number[][]> {
   if (concepts.length === 0) return [];
-
-  const requests = concepts.map((c) => ({
-    model: "models/text-embedding-004",
-    content: { parts: [{ text: c }] },
-  }));
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:batchEmbedContents?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ requests }),
+  return concepts.map((concept) => {
+    const dims = 48;
+    const vector = new Array<number>(dims).fill(0);
+    for (let i = 0; i < concept.length; i++) {
+      vector[i % dims] += (concept.charCodeAt(i) % 89) / 89;
     }
-  );
-
-  if (!res.ok) {
-    // Non-fatal: return empty arrays so the caller falls back to LLM-only
-    console.warn("[conceptNormalization] Embedding API error:", res.status);
-    return concepts.map(() => []);
-  }
-
-  const data = (await res.json()) as {
-    embeddings?: Array<{ values?: number[] }>;
-  };
-  return (data.embeddings ?? []).map((e) => e.values ?? []);
+    const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+    return norm > 0 ? vector.map((value) => value / norm) : vector;
+  });
 }
 
 // ── Cosine similarity ────────────────────────────────────────────────────────
@@ -166,9 +149,7 @@ export async function normalizeConcepts(
   const uniqueConcepts = Array.from(seenLower.values());
 
   // Step 2: embed
-  const apiKey =
-    process.env.GEMINI_API_KEY ?? process.env.GOOGLE_API_KEY ?? "";
-  const embeddings = await batchEmbedConcepts(uniqueConcepts, apiKey);
+  const embeddings = await batchEmbedConcepts(uniqueConcepts);
 
   // Step 3: cluster
   const clusters = clusterEmbeddings(uniqueConcepts, embeddings);

@@ -10,7 +10,7 @@
  */
 
 import type { VercelRequest } from "@vercel/node";
-import { callGeminiDetailed, type GeminiUsageMetadata } from "./gemini";
+import { callGeminiDetailed, type GeminiCallMetadata, type GeminiUsageMetadata } from "./gemini";
 import { supabaseAdmin, supabaseRest } from "./supabase";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -151,6 +151,7 @@ export async function callGeminiMetered(
     model?: string;
     temperature?: number;
     maxOutputTokens?: number;
+    metadata?: GeminiCallMetadata;
   },
 ): Promise<MeteredResult> {
   await checkTokenBudget(actor.actorKey);
@@ -160,6 +161,7 @@ export async function callGeminiMetered(
     prompt: args.prompt,
     temperature: args.temperature ?? 0.3,
     maxOutputTokens: args.maxOutputTokens ?? 2000,
+    metadata: args.metadata,
   });
 
   const tokensUsed =

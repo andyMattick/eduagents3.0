@@ -195,7 +195,15 @@ function countRepeatedParagraphs(paragraphs: string[]): { repeatedCount: number;
 }
 
 function hasQuestionNumberSignals(paragraphs: string[]): boolean {
-  return paragraphs.some((paragraph) => /^\s*\d{1,2}[.)]\s+/.test(paragraph));
+  return paragraphs.some(
+    (paragraph) =>
+      // "1. Text" or "2) Text" — standard numbered question lead
+      /^\s*\d{1,2}[.)]\s+/.test(paragraph) ||
+      // "6)___" — numbered answer blank with no space after the punctuation
+      /^\s*\d{1,2}[.)]\s*_/.test(paragraph) ||
+      // "10___" — number followed directly by underscores, no separator
+      /^\s*\d{1,2}_{2,}/.test(paragraph)
+  );
 }
 
 function normalizeExtractedParagraphs(paragraphs: string[]): string[] {
@@ -305,11 +313,14 @@ async function extractPdfText(file: File): Promise<ExtractionResult> {
   const buffer = await file.arrayBuffer();
   const typed = new Uint8Array(buffer);
   const pdf = await getDocument({ data: typed }).promise;
-  const pages: string[] = [];
+  const allParagraphs: string[] = [];
+  const pageFallbacks: string[] = [];
 
   for (let pageNo = 1; pageNo <= pdf.numPages; pageNo += 1) {
     const page = await pdf.getPage(pageNo);
     const textContent = await page.getTextContent();
+
+    // Build page-level fallback (original behaviour — one string per page).
     const pageText = textContent.items
       .map((item) => {
         const token = item as { str?: string };
@@ -318,13 +329,66 @@ async function extractPdfText(file: File): Promise<ExtractionResult> {
       .join(" ")
       .replace(/\s+/g, " ")
       .trim();
-    if (pageText) {
-      pages.push(pageText);
+    if (pageText) pageFallbacks.push(pageText);
+
+    // Group text items into lines by y-coordinate, then split into paragraphs.
+    const tokens: { y: number; str: string }[] = [];
+    for (const item of textContent.items) {
+      const token = item as { str?: string; transform?: number[] };
+      const str = (token.str ?? "").trim();
+      if (!str) continue;
+      const y = token.transform ? Math.round(token.transform[5]) : 0;
+      tokens.push({ y, str });
+    }
+
+    if (tokens.length === 0) continue;
+
+    // Merge tokens that share the same y position into a single line.
+    const lines: { y: number; text: string }[] = [];
+    for (const token of tokens) {
+      const existing = lines.find((l) => Math.abs(l.y - token.y) <= 2);
+      if (existing) {
+        existing.text += " " + token.str;
+      } else {
+        lines.push({ y: token.y, text: token.str });
+      }
+    }
+
+    // PDF y=0 is bottom-left, so sort descending to get top-to-bottom reading order.
+    lines.sort((a, b) => b.y - a.y);
+
+    // Compute the median inter-line gap to identify paragraph breaks.
+    const gaps = lines.slice(0, -1).map((l, i) => Math.abs(l.y - lines[i + 1].y));
+    const sortedGaps = [...gaps].sort((a, b) => a - b);
+    const typicalLineHeight =
+      sortedGaps.length > 0 ? sortedGaps[Math.floor(sortedGaps.length / 2)] : 12;
+    const paragraphThreshold = Math.max(typicalLineHeight * 1.8, 4);
+
+    // Walk lines and emit a new paragraph when the vertical gap exceeds the threshold.
+    let currentLines: string[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      currentLines.push(lines[i].text.trim());
+      const gap =
+        i < lines.length - 1
+          ? Math.abs(lines[i].y - lines[i + 1].y)
+          : paragraphThreshold + 1;
+      if (gap > paragraphThreshold) {
+        const para = currentLines.join(" ").replace(/\s+/g, " ").trim();
+        if (para) allParagraphs.push(para);
+        currentLines = [];
+      }
+    }
+    if (currentLines.length > 0) {
+      const para = currentLines.join(" ").replace(/\s+/g, " ").trim();
+      if (para) allParagraphs.push(para);
     }
   }
 
+  // Fall back to page-level strings if positional detection produced too few segments.
+  const paragraphs = allParagraphs.length >= 3 ? allParagraphs : pageFallbacks;
+
   return {
-    ...buildExtractionResult(pages),
+    ...buildExtractionResult(paragraphs),
     source: "pdf",
   };
 }
@@ -360,6 +424,53 @@ async function extractTextFromFile(file: File): Promise<ExtractionResult> {
     ...buildExtractionResult(decoded.split(/\n+/)),
     source: "fallback",
   };
+}
+
+// Returns true for lines that are exclusively answer-blank content (underscores, lettered
+// or numbered answer slots like "6)___" or "b)___").
+function isAnswerBlankParagraph(value: string): boolean {
+  if (!value) return false;
+  // Pure underscores (and whitespace)
+  if (/^[\s_]+$/.test(value)) return true;
+  // Numbered answer blank: "6)___" or "10___"
+  if (/^\d{1,2}[.)]\s*_{2,}/.test(value)) return true;
+  // Lettered answer blank: "b)___" or "a)___"
+  if (/^[a-z][.)]\s*_{2,}/i.test(value)) return true;
+  // Mostly underscores (> 50% of non-whitespace chars)
+  const nonSpace = value.replace(/\s/g, "");
+  return nonSpace.length > 4 && (nonSpace.split("_").length - 1) / nonSpace.length > 0.5;
+}
+
+// Fallback for assessments where questions are NOT number-prefixed.
+// Uses answer-blank lines and "?" endings as question delimiters.
+function parseAssessmentItemsFallback(paragraphs: string[]): Array<{ itemNumber: number; text: string }> {
+  const isDataRow = (p: string) => /^\d+\s+(\d+(?:\.\d+)?\s+){2,}/.test(p);
+
+  // Build an index of which positions are answer-blank lines for lookahead.
+  const blankSet = new Set<number>();
+  paragraphs.forEach((p, i) => {
+    if (isAnswerBlankParagraph(p.trim())) blankSet.add(i);
+  });
+
+  const items: Array<{ itemNumber: number; text: string }> = [];
+
+  for (let i = 0; i < paragraphs.length; i++) {
+    const value = paragraphs[i].trim();
+    if (!value) continue;
+    if (isAnswerBlankParagraph(value)) continue;
+    if (isDataRow(value)) continue;
+    // Skip very short non-question labels ("Female", "Male", "Percent", etc.)
+    if (value.length < 20 && !value.includes("?")) continue;
+
+    const endsWithQuestion = value.endsWith("?");
+    const followedByBlank = blankSet.has(i + 1);
+
+    if (endsWithQuestion || followedByBlank) {
+      items.push({ itemNumber: items.length + 1, text: value });
+    }
+  }
+
+  return items;
 }
 
 function parseAssessmentItemsFromParagraphs(paragraphs: string[]): AssessmentDocument["items"] {
@@ -409,27 +520,41 @@ function parseAssessmentItemsFromParagraphs(paragraphs: string[]): AssessmentDoc
 
   pushCurrent();
 
-  return items
+  const standardItems = items
     .map((item, idx) => ({ itemNumber: idx + 1, text: normalizeAssessmentDisplayText(item.text) }))
     .filter((item) => item.text.length > 0);
+
+  // If the standard number-prefix approach didn't find enough items, try the
+  // fallback that uses answer-blank lines and "?" endings as question boundaries.
+  // This handles assessments where questions are plain prose (not number-prefixed).
+  if (standardItems.length < 5) {
+    const fallbackItems = parseAssessmentItemsFallback(paragraphs)
+      .map((item, idx) => ({ itemNumber: idx + 1, text: normalizeAssessmentDisplayText(item.text) }))
+      .filter((item) => item.text.length > 0);
+    if (fallbackItems.length > standardItems.length) {
+      return fallbackItems;
+    }
+  }
+
+  return standardItems;
 }
 
 function validateAssessmentExtraction(result: ExtractionResult, items: AssessmentDocument["items"]): string | null {
   const { repeatedCount, duplicateRatio } = countRepeatedParagraphs(result.paragraphs);
   if (!result.text || result.text.length < 300) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document appears to be empty or unreadable. Make sure the file contains selectable text.";
   }
   if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document contains unreadable content. Upload a PDF with selectable text or a DOCX file — scanned images cannot be processed.";
   }
   if (!isMostlyPrintable(result.text)) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document contains unsupported characters. Upload a standard PDF or DOCX with regular text.";
   }
   if (result.paragraphs.length < INGESTION_LIMITS.minParagraphs) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document is too short to analyze. Upload a document with more questions.";
   }
   if (!hasQuestionNumberSignals(result.paragraphs)) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document doesn't appear to contain numbered questions. Make sure questions are numbered (e.g. \"1.\", \"2)\", etc.).";
   }
   if (result.text.length > INGESTION_LIMITS.testMaxChars || result.paragraphs.length > INGESTION_LIMITS.testMaxParagraphs) {
     return "This document is too large to process. Please upload a smaller section.";
@@ -438,20 +563,20 @@ function validateAssessmentExtraction(result: ExtractionResult, items: Assessmen
     return "This document is too long to analyze. Please upload a shorter section.";
   }
   if (result.paragraphs.some((paragraph) => paragraph.length > INGESTION_LIMITS.maxParagraphChars)) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document has a section that is too long to process. Try splitting it into smaller sections.";
   }
   if (repeatedCount > INGESTION_LIMITS.maxRepeatedParagraphs || duplicateRatio > INGESTION_LIMITS.maxDuplicateRatio) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "Your test document contains too much repeated content to analyze reliably. Please upload a document with varied questions.";
   }
   if (items.length < 5) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "We found fewer than 5 questions in your test document. Please upload a document with more numbered questions.";
   }
   if (items.length > INGESTION_LIMITS.maxAssessmentQuestions) {
     return "This document is too large to process. Please upload a smaller section.";
   }
   const sequential = items.every((item, idx) => item.itemNumber === idx + 1);
   if (!sequential) {
-    return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+    return "The question numbers in your test document don't appear to be consecutive. Please check that questions are numbered sequentially starting from 1.";
   }
 
   const explicitNumbers = result.paragraphs
@@ -464,11 +589,11 @@ function validateAssessmentExtraction(result: ExtractionResult, items: Assessmen
   if (explicitNumbers.length >= 3) {
     const sorted = [...explicitNumbers].sort((a, b) => a - b);
     if (sorted[0] > 2) {
-      return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+      return "Your test document's questions don't start from question 1. Please check the document and re-upload beginning from question 1.";
     }
     const hasLargeGap = sorted.some((value, index) => index > 0 && value - sorted[index - 1] > 3);
     if (hasLargeGap) {
-      return "We couldn't read your test document. Please upload a clean DOCX or PDF.";
+      return "Your test document has gaps in the question numbering. Please check that questions are numbered consecutively.";
     }
   }
 
@@ -478,16 +603,16 @@ function validateAssessmentExtraction(result: ExtractionResult, items: Assessmen
 function validatePrepExtraction(result: ExtractionResult): string | null {
   const { repeatedCount, duplicateRatio } = countRepeatedParagraphs(result.paragraphs);
   if (!result.text || result.text.length < 500) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document appears to be empty or unreadable. Make sure the file contains selectable text.";
   }
   if (looksLikeBinaryPayload(result.text) || containsExtractionArtifacts(result.text)) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document contains unreadable content. Upload a PDF with selectable text or a DOCX file — scanned images cannot be processed.";
   }
   if (!isMostlyPrintable(result.text)) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document contains unsupported characters. Upload a standard PDF or DOCX with regular text.";
   }
   if (result.paragraphs.length < 5) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document is too short to analyze. Upload a document with more content (at least a few paragraphs).";
   }
   if (result.text.length > INGESTION_LIMITS.reviewMaxChars || result.paragraphs.length > INGESTION_LIMITS.reviewMaxParagraphs) {
     return "This document is too large to process. Please upload a smaller section.";
@@ -496,10 +621,10 @@ function validatePrepExtraction(result: ExtractionResult): string | null {
     return "This document is too long to analyze. Please upload a shorter section.";
   }
   if (result.paragraphs.some((paragraph) => paragraph.length > INGESTION_LIMITS.maxParagraphChars)) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document has a section that is too long to process. Try splitting it into smaller sections.";
   }
   if (repeatedCount > INGESTION_LIMITS.maxRepeatedParagraphs || duplicateRatio > INGESTION_LIMITS.maxDuplicateRatio) {
-    return "We couldn't read your prep document. Please upload a clean DOCX or PDF.";
+    return "Your prep document contains too much repeated content to analyze reliably.";
   }
   return null;
 }

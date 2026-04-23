@@ -1965,11 +1965,53 @@ function buildCompareMetricEntries(context: BuilderContext<"compare-documents">)
 	}));
 }
 
+type CompareDocsMode = "all" | "prep" | "practice";
+
+function getCompareDocsMode(options: Record<string, unknown> | undefined): CompareDocsMode {
+	const mode = options?.mode;
+	if (mode === "practice" || mode === "prep") return mode;
+	return "all";
+}
+
+/**
+ * Filter a concept list to match the requested Compare-Docs mode.
+ *
+ * "practice" — only concepts surfaced from extracted problems (student-facing).
+ * "prep"     — only concepts that are NOT exclusively tied to problems
+ *              (teacher-facing instructional content).
+ * "all"      — no filtering (default).
+ */
+function filterConceptsByMode(
+	concepts: string[],
+	mode: CompareDocsMode,
+	analyzedDocuments: BuilderContext<"compare-documents">["analyzedDocuments"],
+): string[] {
+	if (mode === "all") return concepts;
+	const problemConcepts = new Set(
+		analyzedDocuments.flatMap((analyzed) => analyzed.problems.flatMap((problem) => problem.concepts)),
+	);
+	if (mode === "practice") {
+		return concepts.filter((concept) => problemConcepts.has(concept));
+	}
+	// prep: concepts that are not exclusively tied to problems
+	return concepts.filter((concept) => !problemConcepts.has(concept));
+}
+
 function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents">): CompareDocumentsProduct {
 	const focus = getFocus(context.request.options);
+	const mode = getCompareDocsMode(context.request.options);
 	const metrics = buildCompareMetricEntries(context);
-	const filteredOverlap = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis))
-		.filter(([concept]) => matchesFocus([concept], focus))
+	const allConceptEntries = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis))
+		.filter(([concept]) => matchesFocus([concept], focus));
+	const modeFilteredConcepts = new Set(
+		filterConceptsByMode(
+			allConceptEntries.map(([concept]) => concept),
+			mode,
+			context.analyzedDocuments,
+		),
+	);
+	const filteredOverlap = allConceptEntries
+		.filter(([concept]) => modeFilteredConcepts.has(concept))
 		.map(([concept, documentIds]) => {
 			const coverage = context.collectionAnalysis.coverageSummary.conceptCoverage?.[concept];
 			return {
@@ -1982,6 +2024,15 @@ function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents
 			};
 		});
 
+	// For practice mode, only include problem-distribution data (student-facing);
+	// for prep mode, zero out problem counts since we're comparing instructional content.
+	const problemDistributionComparison = context.analyzedDocuments.map((analyzed) => ({
+		documentId: analyzed.document.id,
+		sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
+		totalProblems: mode === "prep" ? 0 : analyzed.problems.length,
+		byDifficulty: analyzed.insights.difficultyDistribution,
+	}));
+
 	return {
 		kind: "compare-documents",
 		focus,
@@ -1992,12 +2043,7 @@ function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents
 		difficultyComparison: [...metrics].sort((left, right) => left.averageDifficultyScore - right.averageDifficultyScore || left.documentId.localeCompare(right.documentId)),
 		representationComparison: [...metrics].sort((left, right) => left.representations.length - right.representations.length || left.documentId.localeCompare(right.documentId)),
 		instructionalDensityComparison: [...metrics].sort((left, right) => right.instructionalDensity - left.instructionalDensity || left.documentId.localeCompare(right.documentId)),
-		problemDistributionComparison: context.analyzedDocuments.map((analyzed) => ({
-			documentId: analyzed.document.id,
-			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			totalProblems: analyzed.problems.length,
-			byDifficulty: analyzed.insights.difficultyDistribution,
-		})),
+		problemDistributionComparison,
 		documentSimilarity: context.collectionAnalysis.documentSimilarity,
 		sourceAnchors: collectSourceAnchors(context.analyzedDocuments),
 		generatedAt: new Date().toISOString(),

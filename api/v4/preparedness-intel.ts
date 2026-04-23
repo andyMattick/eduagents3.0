@@ -32,7 +32,6 @@ export const runtime = "nodejs";
 assertBackendStartupEnv([
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
-  ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
 ], "api/v4/preparedness-intel");
 
 const INGESTION_GUARDS = {
@@ -238,6 +237,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prompt,
         temperature: options?.temperature ?? 0.3,
         maxOutputTokens: options?.maxOutputTokens ?? 2000,
+        metadata: {
+          route: "api/v4/preparedness-intel",
+          phase,
+          source: "preparedness_pipeline",
+        },
       });
       return result.text;
     };

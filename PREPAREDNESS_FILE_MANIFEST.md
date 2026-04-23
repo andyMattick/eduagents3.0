@@ -274,7 +274,7 @@ START HERE
 
 ### **DevOps/Deployment**
 - Check: `api/v4/preparedness.ts` (Vercel handler)
-- Verify: Environment has `GEMINI_API_KEY` or configured LLM
+- Verify: Environment has `STUB_LLM_KEY` or configured LLM
 
 ### **QA/Testing**
 - Review: `PREPAREDNESS_GUIDE.md` section on testing

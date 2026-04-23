@@ -22,7 +22,6 @@ export const config = {
 assertBackendStartupEnv([
 	"SUPABASE_URL",
 	"SUPABASE_ANON_KEY",
-	["GOOGLE_API_KEY", "GEMINI_API_KEY"],
 ], "api/v4/documents/upload");
 
 function getSingleHeaderValue(header: string | string[] | undefined) {

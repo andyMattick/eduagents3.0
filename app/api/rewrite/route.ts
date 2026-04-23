@@ -9,7 +9,6 @@ export const runtime = "nodejs";
 assertBackendStartupEnv([
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
-  ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
 ], "app/api/rewrite/route");
 
 type DocType = "assignment" | "assessment" | "mixed" | "notes";
@@ -281,6 +280,11 @@ async function callRewriteModel(
     prompt,
     temperature: 0.3,
     maxOutputTokens: 8192,
+    metadata: {
+      route: "app/api/rewrite/route",
+      source: "rewrite_api",
+      phase: "rewrite",
+    },
   });
 
   const rewritten = stripFence(result.text).trim();

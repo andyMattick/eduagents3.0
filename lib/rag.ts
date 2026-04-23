@@ -200,30 +200,26 @@ export function chunkText(text: string, size = 500, overlap = 100): string[] {
   return chunks;
 }
 
+function buildStubEmbedding(text: string, dims = 64): number[] {
+  const vector = new Array<number>(dims).fill(0);
+  const input = text || "";
+  for (let i = 0; i < input.length; i++) {
+    const code = input.charCodeAt(i);
+    vector[i % dims] += (code % 97) / 97;
+  }
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (norm > 0) {
+    for (let i = 0; i < vector.length; i++) {
+      vector[i] = vector[i] / norm;
+    }
+  }
+  return vector;
+}
+
 // ── Embedding ───────────────────────────────────────────────────────────────
 
 export async function embedText(text: string): Promise<number[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY missing");
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/embedding-001:embedContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: { parts: [{ text }] },
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Embedding failed (${res.status}): ${err}`);
-  }
-
-  const data = await res.json();
-  return data.embedding.values;
+  return buildStubEmbedding(text);
 }
 
 // ── Content hashing (deduplication) ─────────────────────────────────────────
@@ -337,12 +333,6 @@ async function embedAndStoreChunks({
   metadata?: Record<string, unknown>;
 }) {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("[rag] GEMINI_API_KEY missing — skipping embeddings for doc", docId);
-      return;
-    }
-
     const chunks = chunkText(content);
     const chunkMeta = { title, ...(metadata ?? {}) };
 
@@ -395,11 +385,6 @@ export async function retrieveRelevantChunks({
   userId: string;
   matchCount?: number;
 }): Promise<RankedChunk[]> {
-  if (!process.env.GEMINI_API_KEY) {
-    console.warn("[RAG] GEMINI_API_KEY missing — fallback mode");
-    return [];
-  }
-
   try {
     const embedding = await embedText(query);
     const { url, key } = supabaseAdmin();

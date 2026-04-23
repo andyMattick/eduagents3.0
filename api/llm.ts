@@ -29,7 +29,6 @@ export const runtime = "nodejs";
 assertBackendStartupEnv([
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
-  ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
 ], "api/llm");
 
 const CORS_HEADERS = {

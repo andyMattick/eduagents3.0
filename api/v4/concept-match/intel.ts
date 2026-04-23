@@ -14,7 +14,7 @@ import { normalizeConcepts } from "./conceptNormalization";
 export const runtime = "nodejs";
 
 assertBackendStartupEnv(
-  ["SUPABASE_URL", "SUPABASE_ANON_KEY", ["GOOGLE_API_KEY", "GEMINI_API_KEY"]],
+  ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
   "api/v4/concept-match/intel"
 );
 
@@ -317,6 +317,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prompt,
         temperature: 0.3,
         maxOutputTokens: 2000,
+        metadata: {
+          route: "api/v4/concept-match/intel",
+          source: "concept_match_intel",
+        },
       });
       return result.text;
     };

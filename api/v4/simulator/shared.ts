@@ -882,6 +882,11 @@ ${text.substring(0, 8000)}`;
 			temperature: 0,
 			maxOutputTokens: 2048,
 			maxRetries: 1,
+			metadata: {
+				route: "api/v4/simulator/shared",
+				source: "segmentTextWithGemini_fallback",
+				phase: "segmentation",
+			},
 		});
 
 		const cleaned = result.text.replace(/```(?:json)?\s*\n?/gi, "").trim();

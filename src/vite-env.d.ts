@@ -4,7 +4,7 @@
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL: string
   readonly VITE_SUPABASE_ANON_KEY: string
-  // GEMINI_API_KEY is server-only — NOT exposed to the browser.
+  readonly VITE_STUB_LLM_KEY?: string
 }
 
 interface ImportMeta {

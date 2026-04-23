@@ -108,7 +108,7 @@ export default async function handler(req: any, res: any) {
       supabaseUrl: Boolean(process.env.SUPABASE_URL),
       supabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
       supabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-      geminiApiKey: Boolean(process.env.GEMINI_API_KEY),
+      stubLlmKey: Boolean(process.env.STUB_LLM_KEY),
     };
 
     const keyMode = process.env.SUPABASE_SERVICE_ROLE_KEY ? "service_role" : "anon_fallback";
@@ -139,9 +139,9 @@ export default async function handler(req: any, res: any) {
       documents,
       documentChunks,
       matchChunks,
-      embedding: env.geminiApiKey
-        ? { status: "ok", detail: "GEMINI_API_KEY present" }
-        : { status: "warning", detail: "GEMINI_API_KEY missing; chunk embedding and retrieval will degrade" },
+      embedding: env.stubLlmKey
+        ? { status: "ok", detail: "STUB_LLM_KEY present (stub embedding mode)" }
+        : { status: "warning", detail: "STUB_LLM_KEY missing; default deterministic stub embedding will be used" },
       keyMode:
         keyMode === "service_role"
           ? { status: "ok", detail: "Using SUPABASE_SERVICE_ROLE_KEY for server-side RAG operations" }

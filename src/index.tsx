@@ -6,8 +6,8 @@ import { inject } from '@vercel/analytics'
 import "./styles/tokens.css"
 import "./styles/global.css"
 
-if (!import.meta.env.VITE_GOOGLE_API_KEY) {
-  console.warn("VITE_GOOGLE_API_KEY not set: frontend Gemini direct calls are disabled; backend/API flows still work.");
+if (!import.meta.env.VITE_STUB_LLM_KEY) {
+  console.warn("VITE_STUB_LLM_KEY not set: frontend direct LLM calls are disabled; backend/API flows still work.");
 }
 
 // Initialize analytics

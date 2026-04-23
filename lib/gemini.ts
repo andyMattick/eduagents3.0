@@ -16,6 +16,12 @@ export type GeminiCallResult = {
   usageMetadata?: GeminiUsageMetadata;
 };
 
+export type GeminiCallMetadata = {
+  route?: string;
+  phase?: string;
+  source?: string;
+};
+
 // ---------------------------------------------------------------------------
 // Global concurrency limiter — max 1 in-flight Gemini call at a time
 //
@@ -89,77 +95,32 @@ function geminiBackoffMs(attempt: number, status?: number): number {
 // Raw single-attempt fetch (no retry)
 // ---------------------------------------------------------------------------
 
+function buildStubGeminiText(prompt: string): string {
+  if (/return\s+json/i.test(prompt) || /json\s+only/i.test(prompt)) {
+    return '{"status":"stub","message":"LLM is stubbed"}';
+  }
+  return "Stub response: LLM integration is currently disabled.";
+}
+
 async function callGeminiOnce({
   model,
   prompt,
   temperature,
   maxOutputTokens,
-  apiKey,
 }: {
   model: string;
   prompt: string;
   temperature: number;
   maxOutputTokens: number;
-  apiKey: string;
 }): Promise<GeminiCallResult> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 50_000); // 50s safety net
-
-  let res: Response;
-  try {
-    res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature, maxOutputTokens },
-        }),
-        signal: controller.signal,
-      }
-    );
-  } catch (err: unknown) {
-    clearTimeout(timeout);
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Gemini request timed out (50s)");
-    }
-    throw err;
-  }
-  clearTimeout(timeout);
-
-  if (!res.ok) {
-    const text = await res.text();
-    let providerMessage = text;
-
-    try {
-      const parsed = JSON.parse(text) as {
-        error?: { message?: string; status?: string; details?: Array<{ reason?: string }> };
-      };
-      const reason = parsed.error?.details?.find((detail) => typeof detail.reason === "string")?.reason;
-      providerMessage = [
-        parsed.error?.status,
-        reason,
-        parsed.error?.message,
-      ].filter(Boolean).join(" | ") || text;
-    } catch {
-      // Keep raw text if provider body is not JSON.
-    }
-
-    console.error("Gemini error:", res.status, providerMessage);
-    const err = new Error(`Gemini failed (${res.status}): ${providerMessage}`);
-    (err as Error & { httpStatus: number }).httpStatus = res.status;
-    throw err;
-  }
-
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!text) throw new Error("Empty Gemini response");
-
+  const text = buildStubGeminiText(prompt);
   return {
     text,
-    usageMetadata: data?.usageMetadata,
+    usageMetadata: {
+      promptTokenCount: Math.ceil(prompt.length / 4),
+      candidatesTokenCount: Math.ceil(text.length / 4),
+      totalTokenCount: Math.ceil((prompt.length + text.length) / 4),
+    },
   };
 }
 
@@ -173,6 +134,7 @@ export async function callGeminiDetailed({
   temperature = 0.2,
   maxOutputTokens = 4096,
   maxRetries = 2,
+  metadata,
 }: {
   model: string;
   prompt: string;
@@ -180,28 +142,47 @@ export async function callGeminiDetailed({
   maxOutputTokens?: number;
   /** Max retry attempts on retryable errors (default 2). */
   maxRetries?: number;
+  metadata?: GeminiCallMetadata;
 }): Promise<GeminiCallResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const context = [
+    metadata?.route ? `route=${metadata.route}` : "",
+    metadata?.phase ? `phase=${metadata.phase}` : "",
+    metadata?.source ? `source=${metadata.source}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY missing");
-  }
+  const requestStart = Date.now();
+  console.info(
+    `[gemini] request_start model=${model} promptChars=${prompt.length} maxOutputTokens=${maxOutputTokens}${context ? ` ${context}` : ""}`
+  );
 
   let lastErr: unknown;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      return await geminiLimit(() => callGeminiOnce({ model, prompt, temperature, maxOutputTokens, apiKey }));
+      const result = await geminiLimit(() => callGeminiOnce({ model, prompt, temperature, maxOutputTokens }));
+      const elapsedMs = Date.now() - requestStart;
+      console.info(
+        `[gemini] request_success model=${model} attempts=${attempt + 1}/${maxRetries + 1} elapsedMs=${elapsedMs}${context ? ` ${context}` : ""}`
+      );
+      return result;
     } catch (err: unknown) {
       lastErr = err;
       const status = (err as { httpStatus?: number }).httpStatus ?? null;
       const isRetryable = status !== null && isRetryableHttpStatus(status);
 
       if (!isRetryable || attempt >= maxRetries) {
+        const elapsedMs = Date.now() - requestStart;
+        console.error(
+          `[gemini] request_fail model=${model} attempts=${attempt + 1}/${maxRetries + 1} status=${status ?? "unknown"} elapsedMs=${elapsedMs}${context ? ` ${context}` : ""}`
+        );
         throw err;
       }
 
       const wait = geminiBackoffMs(attempt, status ?? undefined);
-      console.warn(`[gemini] ${status} on attempt ${attempt + 1}/${maxRetries + 1} — retrying in ${wait}ms`);
+      console.warn(
+        `[gemini] ${status} on attempt ${attempt + 1}/${maxRetries + 1} — retrying in ${wait}ms${context ? ` ${context}` : ""}`
+      );
       await new Promise((resolve) => setTimeout(resolve, wait));
     }
   }
@@ -214,6 +195,7 @@ export async function callGemini(args: {
   prompt: string;
   temperature?: number;
   maxOutputTokens?: number;
+  metadata?: GeminiCallMetadata;
 }): Promise<string> {
   const result = await callGeminiDetailed(args);
   return result.text;

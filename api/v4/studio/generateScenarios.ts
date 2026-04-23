@@ -947,7 +947,7 @@ export async function generateScenarioSection(
  * little content for that concept.
  *
  * Falls back per-section (or per-concept) if individual generation fails.
- * No-ops entirely if GEMINI_API_KEY is not set.
+ * Runs in local stub mode when external LLM access is disabled.
  */
 export async function enrichProductWithScenarios(
 	product: TestProduct,
@@ -961,11 +961,6 @@ export async function enrichProductWithScenarios(
 	 *  with item-level plans instead of the flat concept-quota list. */
 	richConceptGraph?: RichConceptGraphInput,
 ): Promise<TestProduct> {
-	if (!process.env.GEMINI_API_KEY) {
-		console.log("[generateScenarios] GEMINI_API_KEY not set — using extracted items.");
-		return product;
-	}
-
 	// Build a lookup from concept id → extracted section (for source metadata reuse)
 	const extractedByConceptId = new Map<string, TestSection>();
 	for (const section of product.sections) {

@@ -24,9 +24,9 @@ vi.mock("../../lib/gemini", () => ({
 	callGemini: callGeminiMock,
 }));
 
-// Ensure GEMINI_API_KEY is set so enrichProductWithScenarios doesn't no-op.
+// Ensure stub LLM env is set for scenario enrichment tests.
 beforeAll(() => {
-	vi.stubEnv("GEMINI_API_KEY", "test-key");
+	vi.stubEnv("STUB_LLM_KEY", "test-key");
 });
 
 afterEach(() => {

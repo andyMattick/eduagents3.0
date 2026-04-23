@@ -11,7 +11,7 @@ import type {
 export const runtime = "nodejs";
 
 assertBackendStartupEnv(
-  ["SUPABASE_URL", "SUPABASE_ANON_KEY", ["GOOGLE_API_KEY", "GEMINI_API_KEY"]],
+  ["SUPABASE_URL", "SUPABASE_ANON_KEY"],
   "api/v4/concept-match/generate"
 );
 
@@ -165,6 +165,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         prompt,
         temperature: 0.3,
         maxOutputTokens: 4000,
+        metadata: {
+          route: "api/v4/concept-match/generate",
+          source: "concept_match_generate",
+        },
       });
       return result.text;
     };

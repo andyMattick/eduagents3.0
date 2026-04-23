@@ -278,10 +278,10 @@ async function invokeLocalApiRoute(server: any, req: any, res: any, route: Local
  * Local dev middleware — serves /api/llm so `npm run dev` works without
  * Vercel CLI. In production, the real Vercel serverless function takes over.
  *
- * Security note: GEMINI_API_KEY is read by the Vite Node.js process and
- * is NEVER sent to the browser — it stays server-side even locally.
+ * Local dev note: this proxy now returns stub responses and does not require
+ * external LLM credentials.
  */
-function localLLMProxy(geminiApiKey: string): Plugin {
+function localLLMProxy(): Plugin {
   return {
     name: 'local-llm-proxy',
     configureServer(server) {
@@ -302,12 +302,6 @@ function localLLMProxy(geminiApiKey: string): Plugin {
           return;
         }
 
-        if (!geminiApiKey) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'GEMINI_API_KEY not set in .env.local' }));
-          return;
-        }
-
         try {
           // Read request body
           const chunks: Buffer[] = [];
@@ -325,29 +319,9 @@ function localLLMProxy(geminiApiKey: string): Plugin {
             return;
           }
 
-          // Call Gemini REST API from the Node.js process (key never reaches browser)
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { temperature, maxOutputTokens },
-              }),
-            }
-          );
-
-          if (!geminiRes.ok) {
-            const err = await geminiRes.text();
-            console.error('[local-llm-proxy] Gemini error:', geminiRes.status, err);
-            res.writeHead(502, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: `Gemini returned ${geminiRes.status}` }));
-            return;
-          }
-
-          const data = await geminiRes.json() as any;
-          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+          const text = /json\s+only|return\s+json/i.test(prompt)
+            ? JSON.stringify({ status: 'stub', model, temperature, maxOutputTokens })
+            : 'Stub response: local LLM proxy is running in offline mode.';
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ text }));
@@ -775,11 +749,10 @@ export default defineConfig(({ mode }) => {
       process.env[key] = value
     }
   })
-  const geminiApiKey = env.GEMINI_API_KEY || env.GOOGLE_API_KEY || '';
   const devApiTarget = env.VITE_DEV_SERVER_URL || 'http://localhost:3000';
 
   return {
-    plugins: [tsconfigPaths(), react(), localLLMProxy(geminiApiKey), localPrismV4Proxy(), localApiProxy()],
+    plugins: [tsconfigPaths(), react(), localLLMProxy(), localPrismV4Proxy(), localApiProxy()],
     server: {
       port: 3000,
       open: true,

@@ -108,6 +108,7 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
  */
 export async function callLLM({
   prompt,
+  metadata,
   options,
 }: {
   prompt: string;
@@ -123,11 +124,17 @@ export async function callLLM({
     prompt,
     temperature:     options?.temperature     ?? 0.2,
     maxOutputTokens: options?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    metadata: {
+      source: typeof metadata?.source === "string" ? metadata.source : "lib/llm.callLLM",
+      route: typeof metadata?.route === "string" ? metadata.route : undefined,
+      phase: typeof metadata?.phase === "string" ? metadata.phase : undefined,
+    },
   });
 }
 
 export async function callLLMWithUsage({
   prompt,
+  metadata,
   options,
 }: {
   prompt: string;
@@ -143,5 +150,10 @@ export async function callLLMWithUsage({
     prompt,
     temperature:     options?.temperature     ?? 0.2,
     maxOutputTokens: options?.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+    metadata: {
+      source: typeof metadata?.source === "string" ? metadata.source : "lib/llm.callLLMWithUsage",
+      route: typeof metadata?.route === "string" ? metadata.route : undefined,
+      phase: typeof metadata?.phase === "string" ? metadata.phase : undefined,
+    },
   });
 }
