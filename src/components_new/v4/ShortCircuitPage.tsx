@@ -42,6 +42,28 @@ type SimulationSectionView = {
 	itemTrees: SimulationItemTree[];
 };
 
+export function extractParentStem(text: string): string {
+	if (!text) return "";
+	const lines = text.split(/\r?\n/);
+	const stemLines: string[] = [];
+
+	for (const line of lines) {
+		if (/^\s*[a-h]\)/i.test(line) || /^\s*[a-h][.)]\s+/i.test(line)) {
+			break;
+		}
+		stemLines.push(line);
+	}
+
+	const stem = stemLines.join("\n").trim();
+	const trimmed = text.trim();
+	if (stem && stem !== trimmed) return stem;
+
+	const inlineMatch = trimmed.match(/^(.*?)(?=\s+[a-h][.)]\s+)/i);
+	if (inlineMatch?.[1]) return inlineMatch[1].trim();
+
+	return stem || trimmed;
+}
+
 function flattenExpandedItems(itemTrees: SimulationItemTree[]): ShortCircuitItem[] {
 	const result: ShortCircuitItem[] = [];
 	for (const tree of itemTrees) {
@@ -373,7 +395,7 @@ export function ShortCircuitPage() {
 														{tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
 														{tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
 													</summary>
-													<p className="v4-shortcircuit-tree-parent-text">{tree.item.text}</p>
+													<p className="v4-shortcircuit-tree-parent-text">{tree.item.isMultiPartItem ? extractParentStem(tree.item.text) : tree.item.text}</p>
 													{tree.subItems && tree.subItems.length > 0 && (
 														<ul className="v4-shortcircuit-tree-children">
 															{tree.subItems.map((sub, subIndex) => (

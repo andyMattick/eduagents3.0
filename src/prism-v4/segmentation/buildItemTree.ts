@@ -19,6 +19,28 @@ function countSyllables(word: string): number {
   return Math.max(1, matches ? matches.length : 1);
 }
 
+const BLOOMS_KEYWORDS = {
+  create: ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+  evaluate: ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+  analyze: ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+  apply: ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out", "find"],
+  understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate", "state", "name"],
+  remember: ["identify", "list", "define", "recall", "label", "match", "select", "recognize", "repeat", "choose", "underline", "point", "circle", "highlight"],
+} as const;
+
+function computeBloomsLevel(text: string): { level: number; label: string } {
+  const lower = text.toLowerCase();
+  const hit = (keywords: readonly string[]) => keywords.some((keyword) => lower.includes(keyword));
+
+  if (hit(BLOOMS_KEYWORDS.create)) return { level: 6, label: "Create" };
+  if (hit(BLOOMS_KEYWORDS.evaluate)) return { level: 5, label: "Evaluate" };
+  if (hit(BLOOMS_KEYWORDS.analyze)) return { level: 4, label: "Analyze" };
+  if (hit(BLOOMS_KEYWORDS.apply)) return { level: 3, label: "Apply" };
+  if (hit(BLOOMS_KEYWORDS.understand)) return { level: 2, label: "Understand" };
+  if (hit(BLOOMS_KEYWORDS.remember)) return { level: 1, label: "Remember" };
+  return { level: 2, label: "Understand" };
+}
+
 function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<SimulationItem,
   "wordCount" |
   "steps" |
@@ -33,6 +55,8 @@ function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<Simul
   "sentenceCount" |
   "avgSentenceLength" |
   "symbolDensity" |
+  "bloomsLevel" |
+  "bloomsLabel" |
   "writingMode" |
   "reasoningSteps" |
   "expectedResponseLength"
@@ -92,6 +116,7 @@ function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<Simul
   );
 
   const writingMode = detectWritingMode(text) || parent.writingMode;
+  const { level: bloomsLevel, label: bloomsLabel } = computeBloomsLevel(text);
 
   return {
     wordCount,
@@ -107,6 +132,8 @@ function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<Simul
     sentenceCount,
     avgSentenceLength,
     symbolDensity,
+    bloomsLevel,
+    bloomsLabel,
     writingMode,
     reasoningSteps,
     expectedResponseLength: 0,
