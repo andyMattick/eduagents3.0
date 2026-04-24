@@ -2,11 +2,11 @@
  * POST /api/v4/simulator/shortcircuit
  *
  * Option D diagnostic path:
- *   Azure extract → Gemini segmentation (text only) → local semantic pipeline
+ *   Azure extract → LLM segmentation (text only) → local semantic pipeline
  *   per segment → measurables → graph.
  *
- * Gemini does ONLY segmentation (250–400 tokens in / ~200 tokens out).
- * All measurables are computed locally — no Gemini measurables, no 429 storms.
+ * LLM does ONLY segmentation (250–400 tokens in / ~200 tokens out).
+ * All measurables are computed locally — no LLM measurables, no 429 storms.
  *
  * Returns:
  *   { rawItems: SegmentedItem[], items: ShortCircuitItem[] }
@@ -14,7 +14,7 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseRest } from "../../../lib/supabase";
-import type { SimulationItem } from "./schema/SimulationItem";
+import type { SimulationItem } from "../../../src/prism-v4/schema";
 import {
 	applyPhaseADefaults,
 	buildAzureExtractFromRow,
@@ -43,7 +43,7 @@ export interface ProfileShortCircuitResult {
 }
 
 // ---------------------------------------------------------------------------
-// Profile load modifiers — deterministic, no Gemini
+// Profile load modifiers — deterministic, no LLM
 // ---------------------------------------------------------------------------
 
 const PROFILE_LOAD_MODIFIERS: Record<string, { linguistic: number; confusion: number; time: number }> = {
@@ -119,7 +119,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		});
 
 		// Step 1 — Hybrid segmentation per document (Azure layout + local rules).
-		// Gemini is NOT called here; segmentText only falls back to Gemini when
+		// LLM is NOT called here; segmentText only falls back to LLM when
 		// hybrid returns ≤1 item, which is rare for real teacher documents.
 		const rawItems: SegmentedItem[] = [];
 		let itemOffset = 0;
@@ -174,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// Phase A: additive-only defaults for newly introduced measurable fields.
 		const itemsWithDefaults: ShortCircuitItem[] = items.map(applyPhaseADefaults);
 
-		// Build per-profile adjusted items (deterministic modifiers, no Gemini).
+		// Build per-profile adjusted items (deterministic modifiers, no LLM).
 		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
 			const catalog = PROFILE_CATALOG.find((p) => p.id === profileId);
 			const mods = PROFILE_LOAD_MODIFIERS[profileId] ?? PROFILE_LOAD_MODIFIERS["average"]!;
@@ -192,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			};
 		});
 
-		return res.status(200).json({ rawItems, items: itemsWithDefaults, profiles: profileResults });
+		return res.status(200).json({ rawItems, items: itemsWithDefaults as SimulationItem[], profiles: profileResults });
 	} catch (err) {
 		console.error("[shortcircuit] ERROR:", err);
 		return res.status(500).json({

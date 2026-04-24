@@ -127,7 +127,7 @@ export type NormalizationResult = {
 /**
  * Full normalization pipeline:
  *  1. Deduplicate input concepts by lowercase
- *  2. Embed unique concepts via Gemini text-embedding
+ *  2. Embed unique concepts via LLM text-embedding
  *  3. Cluster by cosine similarity
  *  4. LLM-canonicalize each cluster
  *  5. Build a raw→canonical lookup map

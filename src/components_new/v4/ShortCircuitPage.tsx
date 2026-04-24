@@ -9,7 +9,7 @@
  *   3. Results  -- ShortCircuitGraph + SimulationExplanationPanel + Start over
  *
  * Calls POST /api/v4/simulator/shortcircuit with { sessionId, profiles }.
- * All measurables are computed locally -- no Gemini, no 429s.
+ * All measurables are computed locally -- no LLM, no 429s.
  */
 
 import { useState, useRef, useCallback } from "react";
@@ -255,7 +255,7 @@ export function ShortCircuitPage() {
 			)}
 
 			{phase === "results" && items && (
-				<div>
+				<div className="simulation-results">
 					<div className="v4-shortcircuit-results-head">
 						<div>
 							<h2 className="v4-shortcircuit-results-title">Simulation Results</h2>

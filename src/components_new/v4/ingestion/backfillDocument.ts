@@ -10,7 +10,7 @@ import {
  * - no items
  * - no sections
  *
- * This ensures rewrite, simulation, and preparedness all work.
+ * This ensures rewrite and simulation flows can load normalized items.
  *
  * Safe to call repeatedly — it only runs ingestion when needed.
  */

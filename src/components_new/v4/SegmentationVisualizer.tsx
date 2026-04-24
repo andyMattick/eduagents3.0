@@ -1,11 +1,11 @@
 /**
  * src/components_new/v4/SegmentationVisualizer.tsx
  *
- * Debug panel — shows Azure full text alongside Gemini segment boundaries.
+ * Debug panel — shows Azure full text alongside LLM segment boundaries.
  * Lets you spot segmentation drift instantly:
  *   - Missing item break  → items merged
  *   - Extra item break    → items split
- *   - Text mutation       → Gemini rewrote content (should never happen)
+ *   - Text mutation       → LLM rewrote content (should never happen)
  *
  * Usage:
  *   <SegmentationVisualizer fullText={...} segmented={[{ itemNumber, text }]} />
@@ -74,7 +74,7 @@ export function SegmentationVisualizer({ fullText, segmented }: Props) {
 					</pre>
 				</div>
 
-				{/* Right: Gemini segments */}
+				{/* Right: LLM segments */}
 				<div>
 					<div style={{
 						fontSize: "0.75rem",
@@ -84,7 +84,7 @@ export function SegmentationVisualizer({ fullText, segmented }: Props) {
 						color: "#374151",
 						marginBottom: "0.5rem",
 					}}>
-						Gemini segments
+						LLM segments
 					</div>
 					<div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "600px", overflowY: "auto" }}>
 						{segmented.map((seg, i) => (

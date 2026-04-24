@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { callGeminiMock } = vi.hoisted(() => ({
-	callGeminiMock: vi.fn(),
+const { callLlmMock } = vi.hoisted(() => ({
+	callLlmMock: vi.fn(),
 }));
 
 vi.mock("../../lib/llm", () => ({
-	callLLM: callGeminiMock,
+	callLLM: callLlmMock,
 }));
 
 import narrateProblemHandler from "../../api/v4/narrate-problem";
@@ -76,7 +76,7 @@ describe("narrate problem route", () => {
 	});
 
 	it("returns lens-filtered blocks and narrative", async () => {
-		callGeminiMock.mockResolvedValue(JSON.stringify({
+		callLlmMock.mockResolvedValue(JSON.stringify({
 			taskEssence: {
 				summary: "determine the unit rate from a proportional relationship and extend it to a new quantity",
 				evidence: "Sarah buys 3 notebooks for $7.50. How much would 5 notebooks cost at the same rate?",
@@ -117,7 +117,7 @@ describe("narrate problem route", () => {
 	});
 
 	it("falls back to semantic composition when the LLM output is malformed", async () => {
-		callGeminiMock.mockResolvedValue("not-json");
+		callLlmMock.mockResolvedValue("not-json");
 
 		const req: any = {
 			method: "POST",

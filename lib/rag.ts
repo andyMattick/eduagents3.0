@@ -1,7 +1,7 @@
 /**
  * lib/rag.ts — Server-side RAG utilities
  *
- * Chunking, embedding (Gemini), storage, hybrid retrieval,
+ * Chunking, embedding (LLM), storage, hybrid retrieval,
  * semantic filtering, ranking, context control, and structured
  * prompt building for the document memory system.
  *

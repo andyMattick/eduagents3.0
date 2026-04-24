@@ -4,8 +4,8 @@
  * Hybrid segmentation route.
  * Accepts { text } or { azureExtract } and returns { items: [{ itemNumber, text }] }.
  *
- * Uses Azure layout + local rules (no Gemini in the primary path).
- * Gemini is called only when hybrid returns <=1 item (rare fallback).
+ * Uses Azure layout + local rules (no LLM in the primary path).
+ * LLM is called only when hybrid returns <=1 item (rare fallback).
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";

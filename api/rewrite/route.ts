@@ -131,7 +131,7 @@ export async function POST(req: Request) {
   });
 
   //
-  // 6. Call your model (Gemini, OpenAI, etc.)
+  // 6. Call your model (LLM, OpenAI, etc.)
   //
   let modelResponse: { rewritten: string; usageTokens: number };
 
@@ -227,10 +227,10 @@ function buildRewritePrompt(args: {
 }
 
 //
-// Model call stub — your dev plugs in Gemini here
+// Model call stub — your dev plugs in LLM here
 //
 async function callRewriteModel(prompt: string): Promise<{ rewritten: string; usageTokens: number }> {
-  // Replace with your Gemini call
+  // Replace with your LLM call
   // Must return: { rewritten: string, usageTokens: number }
   throw new Error("callRewriteModel not implemented");
 }

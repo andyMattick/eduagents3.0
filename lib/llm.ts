@@ -15,7 +15,7 @@
  *   building LLM prompts from scratch.
  * - Use `toLLMStudentProfile` and `toLLMTeacherContext` to strip PII
  *   from structured objects before inserting them into prompts.
- * - Teacher-uploaded document text is sent to Gemini as-is; teachers
+ * - Teacher-uploaded document text is sent to LLM as-is; teachers
  *   are shown a disclosure at the time of upload.
  */
 
@@ -29,7 +29,7 @@ import { callProvider, callProviderDetailed, type LlmCallResult } from "./provid
  * Returns true if `text` contains patterns that look like PII.
  *
  * Intentionally conservative: false positives are acceptable,
- * false negatives (sending PII to Gemini) are not.
+ * false negatives (sending PII to LLM) are not.
  */
 export function looksLikePII(text: string): boolean {
   if (!text) return false;
@@ -100,7 +100,7 @@ const DEFAULT_MODEL = "llm-disabled";
 const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 /**
- * Central LLM caller.  Every route must use this instead of `callGemini`.
+ * Central LLM caller.  Every route must use this instead of `callLLM`.
  *
  * @param prompt     - The prompt to send. Must NOT contain PII.
  * @param metadata   - Optional logging context (written to console.error on failure).

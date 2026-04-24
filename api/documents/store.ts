@@ -6,7 +6,7 @@
  *
  * Requires Authorization header (Supabase JWT).
  * Extracts educational semantics, chunks the content, embeds each chunk
- * via Gemini, and stores everything in the documents + document_chunks tables.
+ * via LLM, and stores everything in the documents + document_chunks tables.
  */
 import { authenticateUser } from "../../lib/auth";
 import { storeDocument } from "../../lib/rag";

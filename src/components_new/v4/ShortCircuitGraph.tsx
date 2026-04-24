@@ -380,7 +380,7 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 			</div>
 
 			<p style={{ fontSize: "0.75rem", color: theme.subTextColor, marginTop: "0.75rem" }}>
-				{items.length} item{items.length !== 1 ? "s" : ""} — local semantic analysis (no Gemini)
+				{items.length} item{items.length !== 1 ? "s" : ""} — local semantic analysis (no LLM)
 			</p>
 
 			{/* ================================================================ */}

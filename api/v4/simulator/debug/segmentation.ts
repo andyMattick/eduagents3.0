@@ -5,7 +5,7 @@
  *   { fullText, segmented: [{ itemNumber, text }] }
  *
  * Lets the teacher UI show a side-by-side of Azure full text vs
- * the hybrid-segmenter boundaries (no Gemini required).
+ * the hybrid-segmenter boundaries (no LLM required).
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(404).json({ error: "No documents found for this session." });
 		}
 
-		// Segment each doc via hybrid segmenter (no Gemini unless fallback needed).
+		// Segment each doc via hybrid segmenter (no LLM unless fallback needed).
 		// Build both the combined full text (for visualizer left panel) and the
 		// segmented items (for visualizer right panel).
 		const fullTextParts: string[] = [];

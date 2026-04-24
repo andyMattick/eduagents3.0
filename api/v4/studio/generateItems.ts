@@ -4,7 +4,7 @@
  * Accepts a structured generation request and returns `AssessmentItem[]`.
  * Prompts are fully server-side; callers pass params, not raw prompt text.
  *
- * Falls back gracefully to placeholder items when Gemini is unavailable or
+ * Falls back gracefully to placeholder items when LLM is unavailable or
  * returns unparseable output.
  */
 

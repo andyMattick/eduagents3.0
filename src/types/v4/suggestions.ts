@@ -79,12 +79,12 @@ export interface RewritePromptInput {
 
 /**
  * Represents what was actually applied by the LLM.
- * Populated after Gemini response is parsed.
+ * Populated after LLM response is parsed.
  */
 export interface RewriteResult {
 	rewritten: string;
 	explanation?: string;
-	appliedSuggestions: string[];         // suggestions that Gemini applied
+	appliedSuggestions: string[];         // suggestions that LLM applied
 	noOpDetected: boolean;                // true if rewritten === original
 }
 

@@ -430,7 +430,7 @@ function normalizeLLMConcept(raw: string): string {
 }
 
 /**
- * Layer 3 (LLM pass): ask Gemini to tag additional concepts not covered by
+ * Layer 3 (LLM pass): ask LLM to tag additional concepts not covered by
  * the rule-based patterns. Returns array of `{ id, label }` objects.
  * Silently returns [] on failure.
  */
@@ -794,7 +794,7 @@ export async function extractConceptsFromDocument(
 		sectionHeaders?: string[];
 	},
 	options?: {
-		/** Whether to use Gemini LLM for additional concept tagging. Default: true. */
+		/** Whether to use LLM LLM for additional concept tagging. Default: true. */
 		useLLM?: boolean;
 		/** Target number of item plans. Default: 10. */
 		targetCount?: number;

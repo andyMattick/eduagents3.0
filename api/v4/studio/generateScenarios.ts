@@ -5,7 +5,7 @@
  * universal 7-item-type menu (State/Define, Interpret, Apply, Decide, Explain,
  * Evaluate, Conclude). Each question is self-contained with its own scenario.
  *
- * Falls back to the extracted items if Gemini is unavailable or parsing fails.
+ * Falls back to the extracted items if LLM is unavailable or parsing fails.
  */
 
 import type { TestItem, TestSection, TestProduct, Misconception } from "../../../src/prism-v4/schema/integration/IntentProduct";
@@ -619,7 +619,7 @@ function parseItemArray(raw: string): RawItem[] | null {
 
 /**
  * Generate step-by-step solution for a single item.
- * Returns an empty array if Gemini is unavailable or parsing fails.
+ * Returns an empty array if LLM is unavailable or parsing fails.
  */
 async function generateSolutionSteps(item: TestItem): Promise<string[]> {
 	void item;
@@ -746,7 +746,7 @@ function detectSubject(concept: string): keyof typeof SUBJECT_SCENARIOS | null {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Replace the items in a single TestSection with Gemini-generated fresh questions.
+ * Replace the items in a single TestSection with LLM-generated fresh questions.
  * Generates one standalone scenario-based question per quota slot.
  *
  * @param section  The section to enrich (items.length = quota).
@@ -875,7 +875,7 @@ export async function generateScenarioSection(
 }
 
 /**
- * Replace all sections in a TestProduct with Gemini-generated fresh questions.
+ * Replace all sections in a TestProduct with LLM-generated fresh questions.
  *
  * When `conceptQuotas` is provided (from the blueprint), the loop iterates
  * over EVERY concept quota — not just the sections that buildIntentPayload

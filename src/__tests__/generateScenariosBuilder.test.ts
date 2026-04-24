@@ -8,20 +8,20 @@
  *   - Timing model (computeItemTimeSeconds)
  *   - Prompt content verification (buildAssessmentPrompt)
  *   - JSON parser resilience (parseItemArray)
- *   - generateScenarioSection full item shape (mocked Gemini)
- *   - enrichProductWithScenarios multi-concept loop (mocked Gemini)
+ *   - generateScenarioSection full item shape (mocked LLM)
+ *   - enrichProductWithScenarios multi-concept loop (mocked LLM)
  *   - Edge cases (zero-quota, single-item, large quota, empty prompts)
  */
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // ── Hoist mock before all imports ─────────────────────────────────────────────
-const { callGeminiMock } = vi.hoisted(() => ({
-	callGeminiMock: vi.fn<() => Promise<string>>(),
+const { callLlmMock } = vi.hoisted(() => ({
+	callLlmMock: vi.fn<() => Promise<string>>(),
 }));
 
 vi.mock("../../lib/llm", () => ({
-	callLLM: callGeminiMock,
+	callLLM: callLlmMock,
 }));
 
 // Ensure stub LLM env is set for scenario enrichment tests.
@@ -30,7 +30,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-	callGeminiMock.mockReset();
+	callLlmMock.mockReset();
 });
 
 // ── Imports under test (after mock hoisting) ──────────────────────────────────
@@ -103,7 +103,7 @@ function makeProduct(sections: TestSection[]): TestProduct {
 	};
 }
 
-/** Build a well-formed Gemini JSON array response for N items. */
+/** Build a well-formed LLM JSON array response for N items. */
 function makeLLMResponse(
 	items: Array<{
 		itemType?: string;
@@ -443,9 +443,9 @@ describe("parseItemArray — JSON parser resilience", () => {
 // SECTION — generateScenarioSection: full item shape
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
+describe("generateScenarioSection — full item shape (mocked LLM)", () => {
 	it("10. Each generated item carries estimatedTimeSeconds > 0", async () => {
-		callGeminiMock.mockResolvedValue(makeLLMResponse([{}, {}, {}]));
+		callLlmMock.mockResolvedValue(makeLLMResponse([{}, {}, {}]));
 		const section = makeSection("Hypothesis Testing", 3);
 		const result = await generateScenarioSection(section, "seed-abc");
 		for (const item of result.items) {
@@ -455,7 +455,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 	});
 
 	it("Each item has a non-empty prompt", async () => {
-		callGeminiMock.mockResolvedValue(makeLLMResponse([
+		callLlmMock.mockResolvedValue(makeLLMResponse([
 			{ prompt: "A school nurse tracks vaccination rates..." },
 			{ prompt: "A retailer records transaction amounts..." },
 		]));
@@ -467,7 +467,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 	});
 
 	it("23. No empty prompts or empty answers from LLM response", async () => {
-		callGeminiMock.mockResolvedValue(makeLLMResponse([
+		callLlmMock.mockResolvedValue(makeLLMResponse([
 			{ prompt: "Scenario A", answer: "Answer A" },
 			{ prompt: "Scenario B", answer: "Answer B" },
 		]));
@@ -480,7 +480,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 	});
 
 	it("problemType is set to a valid ProblemFormat string", async () => {
-		callGeminiMock.mockResolvedValue(
+		callLlmMock.mockResolvedValue(
 			makeLLMResponse([{ problemFormat: "MC" }, { problemFormat: "SA" }]),
 		);
 		const section = makeSection("Inquiry", 2);
@@ -493,14 +493,14 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 
 	it("structuredAnswer is carried through from LLM output", async () => {
 		const sa = { correct: "C", choices: ["A. x", "B. y", "C. z", "D. w"] };
-		callGeminiMock.mockResolvedValue(makeLLMResponse([{ structuredAnswer: sa }]));
+		callLlmMock.mockResolvedValue(makeLLMResponse([{ structuredAnswer: sa }]));
 		const section = makeSection("p-value", 1);
 		const result = await generateScenarioSection(section, "seed-sa");
 		expect(result.items[0]!.structuredAnswer).toEqual(sa);
 	});
 
 	it("4. conceptIds from LLM populate primaryConcepts on the item", async () => {
-		callGeminiMock.mockResolvedValue(
+		callLlmMock.mockResolvedValue(
 			makeLLMResponse([
 				{ conceptIds: ["hypothesis_testing", "p_value"] },
 			]),
@@ -510,8 +510,8 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 		expect(result.items[0]!.primaryConcepts).toEqual(["hypothesis_testing", "p_value"]);
 	});
 
-	it("Falls back to original section when Gemini throws", async () => {
-		callGeminiMock.mockRejectedValue(new Error("Gemini unavailable"));
+	it("Falls back to original section when LLM throws", async () => {
+		callLlmMock.mockRejectedValue(new Error("LLM unavailable"));
 		const section = makeSection("Momentum", 3);
 		const result = await generateScenarioSection(section, "seed-err");
 		// Should be the original stub items unchanged
@@ -520,7 +520,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 	});
 
 	it("Falls back when LLM returns malformed JSON", async () => {
-		callGeminiMock.mockResolvedValue("not valid json {{");
+		callLlmMock.mockResolvedValue("not valid json {{");
 		const section = makeSection("Gravity", 2);
 		const result = await generateScenarioSection(section, "seed-bad");
 		expect(result.items).toHaveLength(2);
@@ -529,7 +529,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 
 	it("13 & 14. FRQ structuredAnswer carries partA/partB/partC", async () => {
 		const frqAnswer = { partA: "Define H0", partB: "Compute test stat", partC: "State decision" };
-		callGeminiMock.mockResolvedValue(
+		callLlmMock.mockResolvedValue(
 			makeLLMResponse([
 				{
 					itemType: "Explain",
@@ -548,7 +548,7 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 	});
 
 	it("20. Single-item quota still produces one valid item", async () => {
-		callGeminiMock.mockResolvedValue(makeLLMResponse([{}]));
+		callLlmMock.mockResolvedValue(makeLLMResponse([{}]));
 		const section = makeSection("Small quota", 1);
 		const result = await generateScenarioSection(section, "seed-one");
 		expect(result.items).toHaveLength(1);
@@ -560,10 +560,10 @@ describe("generateScenarioSection — full item shape (mocked Gemini)", () => {
 // SECTION — enrichProductWithScenarios: multi-concept loop
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", () => {
-	it("3. Makes one Gemini call per concept", async () => {
+describe("enrichProductWithScenarios — multi-concept loop (mocked LLM)", () => {
+	it("3. Makes one LLM call per concept", async () => {
 		// Three concepts, three batches
-		callGeminiMock
+		callLlmMock
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]))    // concept A
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]))    // concept B
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]));   // concept C
@@ -575,11 +575,11 @@ describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", ()
 		]);
 
 		await enrichProductWithScenarios(product, "seed-multi");
-		expect(callGeminiMock).toHaveBeenCalledTimes(3);
+		expect(callLlmMock).toHaveBeenCalledTimes(3);
 	});
 
 	it("3. Each section contains items tagged to its own concept", async () => {
-		callGeminiMock
+		callLlmMock
 			.mockResolvedValueOnce(makeLLMResponse([{ conceptIds: ["A"] }, { conceptIds: ["A"] }]))
 			.mockResolvedValueOnce(makeLLMResponse([{ conceptIds: ["B"] }, { conceptIds: ["B"] }]));
 
@@ -595,7 +595,7 @@ describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", ()
 	});
 
 	it("conceptQuotas drives the number of sections and items", async () => {
-		callGeminiMock
+		callLlmMock
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}, {}]))   // A gets 4
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]))        // B gets 3
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]));       // C gets 3
@@ -612,7 +612,7 @@ describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", ()
 	});
 
 	it("12. estimatedDurationMinutes is recomputed from actual item times", async () => {
-		callGeminiMock.mockResolvedValue(makeLLMResponse([{}, {}, {}]));
+		callLlmMock.mockResolvedValue(makeLLMResponse([{}, {}, {}]));
 		const product = makeProduct([makeSection("Timing Test", 3)]);
 		const original = product.estimatedDurationMinutes;
 		const result = await enrichProductWithScenarios(product, "seed-time");
@@ -625,7 +625,7 @@ describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", ()
 	});
 
 	it("22. No duplicate item IDs across all sections", async () => {
-		callGeminiMock
+		callLlmMock
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]))
 			.mockResolvedValueOnce(makeLLMResponse([{}, {}, {}]));
 
@@ -639,11 +639,11 @@ describe("enrichProductWithScenarios — multi-concept loop (mocked Gemini)", ()
 		expect(unique.size).toBe(allIds.length);
 	});
 
-	it("19. Zero-quota section produces zero items (no Gemini call)", async () => {
+	it("19. Zero-quota section produces zero items (no LLM call)", async () => {
 		const product = makeProduct([makeSection("Empty Concept", 0)]);
 		// quota = max(1, items.length) = max(1, 0) = 1 — section still gets 1 call
 		// but if conceptQuotas provides quota:0 it should be skipped
-		callGeminiMock.mockResolvedValue(makeLLMResponse([])); // empty response
+		callLlmMock.mockResolvedValue(makeLLMResponse([])); // empty response
 		const result = await enrichProductWithScenarios(product, "seed-zero", [
 			{ id: "Empty Concept", name: "Empty Concept", quota: 0 },
 		]);

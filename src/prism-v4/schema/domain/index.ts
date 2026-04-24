@@ -5,4 +5,3 @@ export * from "./Problem";
 export * from "./ProblemGroup";
 export * from "./ProblemScore";
 export * from "./Unit";
-export * from "./Preparedness";

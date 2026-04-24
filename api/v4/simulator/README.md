@@ -8,7 +8,7 @@
 ## Overview
 
 Option D Simulation 2.1 is the unified, deterministic simulation engine used
-across TeacherStudio. It replaces all Gemini-based measurables and all legacy
+across TeacherStudio. It replaces all LLM-based measurables and all legacy
 cognitive/reading/vocab metrics with a single, transparent, teacher-friendly
 metric:
 
@@ -40,7 +40,7 @@ Azure OCR (paragraphs, text blocks, reading order)
     ↓
 Hybrid segmentation (paragraph + whitespace + numbering + layout cues)
     ↓
-Local measurables (per segment — no Gemini)
+Local measurables (per segment — no LLM)
     ↓
 Shortcircuit simulation
     ↓
@@ -67,7 +67,7 @@ canonical schema in `structureMapper.ts`.
 - Numbered item patterns (`/^\d{1,3}[.)]\s/`, `/^Question\s+\d+/i`)
 - Deduplication (80-char prefix match)
 
-Gemini is only called as a fallback when hybrid returns ≤ 1 item (rare).
+LLM is only called as a fallback when hybrid returns ≤ 1 item (rare).
 
 ### 4. Local Measurables
 

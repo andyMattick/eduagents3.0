@@ -807,6 +807,39 @@
   margin-bottom: 1.5rem;
 }
 
+/* --- Simulation Results Container Isolation --- */
+
+.simulation-results {
+  background: #ffffff;
+  color: #111111;
+  padding: 1rem;
+}
+
+/* Prevent global dark mode from overriding simulation results */
+.simulation-results * {
+  color: inherit !important;
+  background: inherit !important;
+}
+
+/* Fix Recharts label contrast */
+.simulation-results text {
+  fill: #111 !important;
+}
+
+/* Fix tooltip background + text */
+.simulation-results .recharts-tooltip-wrapper,
+.simulation-results .tooltip {
+  background: #222 !important;
+  color: #fff !important;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+/* Fix hover states */
+.simulation-results .hoverable:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
 @media (max-width: 640px) {
   .v4-shortcircuit-page {
     padding: 1rem;

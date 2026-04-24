@@ -87,7 +87,7 @@ export function filterAndClassifySuggestions(
  * Validate that the rewrite request has at least one actionable suggestion.
  * 
  * Returns structured error if invalid, null if valid.
- * This is a blocking gate before API proceeds to Gemini.
+ * This is a blocking gate before API proceeds to LLM.
  */
 export function validateSuggestionSelection(
 	filter: SuggestionFilterResult
