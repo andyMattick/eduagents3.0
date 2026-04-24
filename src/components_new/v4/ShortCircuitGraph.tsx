@@ -197,7 +197,7 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 
 	// Build deterministic chart data — all continuous values normalized to 0–1
 	const detChartData = items.map((item) => ({
-		x:                 item.itemNumber,
+		x:                 item.logicalLabel ?? item.itemNumber,
 		bloomsLevel:       item.bloomsLevel,    // raw integer, for categorical band only
 		bloomsLabel:       item.bloomsLabel,    // for Bloom's tooltip
 		linguisticLoad:    Number(item.linguisticLoad.toFixed(4)),
@@ -357,7 +357,7 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 				<ResponsiveContainer width="100%" height={200}>
 					<BarChart
 						data={items.map((item) => ({
-							x: item.itemNumber,
+							x: item.logicalLabel ?? item.itemNumber,
 							level1: item.vocabCounts.level1,
 							level2: item.vocabCounts.level2,
 							level3: item.vocabCounts.level3,

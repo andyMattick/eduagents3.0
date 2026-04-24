@@ -12,7 +12,7 @@
  * All measurables are computed locally -- no LLM, no 429s.
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
@@ -34,6 +34,32 @@ const DROP_RE = /\.(pdf|doc|docx|ppt|pptx)$/i;
 
 type Phase = "upload" | "profile" | "running" | "results";
 
+type SimulationSectionView = {
+	id: string;
+	header: string;
+	instructions: string[];
+	itemNumbers: number[];
+	itemTrees: SimulationItemTree[];
+};
+
+function flattenExpandedItems(itemTrees: SimulationItemTree[]): ShortCircuitItem[] {
+	const result: ShortCircuitItem[] = [];
+	for (const tree of itemTrees) {
+		if (tree.subItems && tree.subItems.length > 0) {
+			for (const subItem of tree.subItems) {
+				result.push({ ...subItem });
+			}
+			continue;
+		}
+		result.push({ ...tree.item });
+	}
+	return result;
+}
+
+function flattenCollapsedItems(itemTrees: SimulationItemTree[]): ShortCircuitItem[] {
+	return itemTrees.map((tree) => ({ ...tree.item }));
+}
+
 export function ShortCircuitPage() {
 	const [phase, setPhase] = useState<Phase>("upload");
 	const [file, setFile] = useState<File | null>(null);
@@ -45,6 +71,8 @@ export function ShortCircuitPage() {
 	const [runError, setRunError] = useState<string | null>(null);
 	const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
 	const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
+	const [sections, setSections] = useState<SimulationSectionView[] | null>(null);
+	const [expandedGraph, setExpandedGraph] = useState(false);
 	const [profiles, setProfiles] = useState<ProfileShortCircuitResult[] | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -59,6 +87,8 @@ export function ShortCircuitPage() {
 		setRunError(null);
 		setItems(null);
 		setItemTrees(null);
+		setSections(null);
+		setExpandedGraph(false);
 		setProfiles(null);
 	}, []);
 
@@ -122,6 +152,8 @@ export function ShortCircuitPage() {
 		setRunError(null);
 		setItems(null);
 		setItemTrees(null);
+		setSections(null);
+		setExpandedGraph(false);
 		setProfiles(null);
 		try {
 			const res = await fetch("/api/v4/simulator/shortcircuit", {
@@ -135,8 +167,12 @@ export function ShortCircuitPage() {
 				setPhase("profile");
 				return;
 			}
+			const nextSections: SimulationSectionView[] = data.sections ?? [];
+			const sectionItemTrees: SimulationItemTree[] = nextSections.flatMap((section) => section.itemTrees ?? []);
+			const nextItemTrees: SimulationItemTree[] = sectionItemTrees.length > 0 ? sectionItemTrees : (data.itemTrees ?? []);
 			setItems(data.items ?? []);
-			setItemTrees(data.itemTrees ?? []);
+			setItemTrees(nextItemTrees);
+			setSections(nextSections);
 			setProfiles(data.profiles ?? []);
 			setPhase("results");
 		} catch (err) {
@@ -147,6 +183,24 @@ export function ShortCircuitPage() {
 
 	const phaseOrder: Phase[] = ["upload", "profile", "running", "results"];
 	const currentPhaseIdx = phaseOrder.indexOf(phase);
+
+	const graphItems = useMemo(() => {
+		if (!itemTrees || itemTrees.length === 0) return items ?? [];
+		return expandedGraph ? flattenExpandedItems(itemTrees) : flattenCollapsedItems(itemTrees);
+	}, [itemTrees, items, expandedGraph]);
+
+	const graphProfiles = useMemo(() => {
+		if (!profiles || profiles.length === 0) return profiles;
+		if (!itemTrees || itemTrees.length === 0) return profiles;
+		return profiles.map((profile) => {
+			const trees = profile.itemTrees ?? itemTrees;
+			const flattened = expandedGraph ? flattenExpandedItems(trees) : flattenCollapsedItems(trees);
+			return {
+				...profile,
+				items: flattened,
+			};
+		});
+	}, [profiles, itemTrees, expandedGraph]);
 
 	return (
 		<div className="v4-shortcircuit-page">
@@ -269,7 +323,7 @@ export function ShortCircuitPage() {
 						<div>
 							<h2 className="v4-shortcircuit-results-title">Simulation Results</h2>
 							<p className="v4-shortcircuit-results-meta">
-								{file?.name} · {items.length} item{items.length !== 1 ? "s" : ""} · {profiles?.length ?? 0} profile{(profiles?.length ?? 0) !== 1 ? "s" : ""}
+								{file?.name} · {graphItems.length} graphed item{graphItems.length !== 1 ? "s" : ""} · {profiles?.length ?? 0} profile{(profiles?.length ?? 0) !== 1 ? "s" : ""}
 							</p>
 						</div>
 						<button type="button" onClick={startOver} className="v4-shortcircuit-startover">
@@ -277,36 +331,65 @@ export function ShortCircuitPage() {
 						</button>
 					</div>
 					<div className="v4-shortcircuit-result-card">
+						<div className="v4-shortcircuit-graph-toggle-row">
+							<strong>Graph view:</strong>
+							<button
+								type="button"
+								className="v4-shortcircuit-graph-toggle"
+								onClick={() => setExpandedGraph((prev) => !prev)}
+							>
+								{expandedGraph ? "Collapse sub-items" : "Expand sub-items"}
+							</button>
+						</div>
+					</div>
+					<div className="v4-shortcircuit-result-card">
 						<h3 className="v4-shortcircuit-tree-title">Structured Item Tree</h3>
-						{itemTrees && itemTrees.length > 0 ? (
-							<div className="v4-shortcircuit-tree-list">
-								{itemTrees.map((tree) => (
-									<details key={`tree-${tree.item.itemNumber}`} className="v4-shortcircuit-tree-parent">
-										<summary>
-											Item {tree.item.itemNumber} · {tree.item.isMultiPartItem ? "multi-part" : tree.item.isMultipleChoice ? "multiple-choice" : "single"}
-											{tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
-											{tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
-										</summary>
-										<p className="v4-shortcircuit-tree-parent-text">{tree.item.text}</p>
-										{tree.subItems && tree.subItems.length > 0 && (
-											<ul className="v4-shortcircuit-tree-children">
-												{tree.subItems.map((sub) => (
-													<li key={`sub-${tree.item.itemNumber}-${sub.itemNumber}`}>
-														{sub.itemNumber}. {sub.text}
-													</li>
-												))}
-											</ul>
+						{sections && sections.length > 0 ? (
+							<div className="v4-shortcircuit-section-list">
+								{sections.map((section) => (
+									<div key={section.id} className="v4-shortcircuit-section">
+										<h4 className="v4-shortcircuit-section-header">=== {section.header} ===</h4>
+										{section.instructions.length > 0 && (
+											<div className="v4-shortcircuit-section-instructions">
+												<strong>Instructions:</strong>
+												<ul>
+													{section.instructions.map((instruction, idx) => (
+														<li key={`${section.id}-instruction-${idx}`}>{instruction}</li>
+													))}
+												</ul>
+											</div>
 										)}
-										{tree.distractors && tree.distractors.length > 0 && (
-											<ul className="v4-shortcircuit-tree-children">
-												{tree.distractors.map((d) => (
-													<li key={`dist-${tree.item.itemNumber}-${d.label}`}>
-														{d.label}. {d.text}
-													</li>
-												))}
-											</ul>
-										)}
-									</details>
+										<div className="v4-shortcircuit-tree-list">
+											{section.itemTrees.map((tree) => (
+												<details key={`tree-${section.id}-${tree.item.itemNumber}`} className="v4-shortcircuit-tree-parent">
+													<summary>
+														Item {tree.item.logicalLabel ?? tree.item.itemNumber} · {tree.item.isMultiPartItem ? "multi-part" : tree.item.isMultipleChoice ? "multiple-choice" : "single"}
+														{tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
+														{tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
+													</summary>
+													<p className="v4-shortcircuit-tree-parent-text">{tree.item.text}</p>
+													{tree.subItems && tree.subItems.length > 0 && (
+														<ul className="v4-shortcircuit-tree-children">
+															{tree.subItems.map((sub, subIndex) => (
+																<li key={`sub-${section.id}-${tree.item.itemNumber}-${subIndex}`}>
+																	{sub.logicalLabel ?? `${tree.item.logicalLabel ?? tree.item.itemNumber}${String.fromCharCode(97 + subIndex)}`}. {sub.text}
+																</li>
+															))}
+														</ul>
+													)}
+													{tree.distractors && tree.distractors.length > 0 && (
+														<ul className="v4-shortcircuit-tree-children">
+															{tree.distractors.map((d) => (
+																<li key={`dist-${section.id}-${tree.item.itemNumber}-${d.label}`}>
+																	{d.label}. {d.text}
+																</li>
+															))}
+														</ul>
+													)}
+												</details>
+											))}
+										</div>
+									</div>
 								))}
 							</div>
 						) : (
@@ -314,7 +397,7 @@ export function ShortCircuitPage() {
 						)}
 					</div>
 					<div className="v4-shortcircuit-result-card">
-						<ShortCircuitGraph items={items} profiles={profiles ?? undefined} />
+						<ShortCircuitGraph items={graphItems} profiles={graphProfiles ?? undefined} />
 					</div>
 					<div className="v4-shortcircuit-result-card">
 						<SimulationExplanationPanel />

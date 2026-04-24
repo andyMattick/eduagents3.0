@@ -33,4 +33,8 @@ export interface SimulationItem {
   isMultiPartItem: boolean;
   isMultipleChoice: boolean;
   distractorCount: number;
+
+  // B2/B3 numbering for graph/tree display
+  logicalNumber?: number;
+  logicalLabel?: string;
 }

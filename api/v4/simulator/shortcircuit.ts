@@ -16,6 +16,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseRest } from "../../../lib/supabase";
 import type { SimulationItem, SimulationItemTree } from "../../../src/prism-v4/schema";
 import { buildItemTree } from "../../../src/prism-v4/segmentation/buildItemTree";
+import { applySectionInstructionEffects, buildSections, type SimulationSection } from "../../../src/prism-v4/segmentation/sectioning";
 import {
 	applyPhaseADefaults,
 	buildAzureExtractFromRow,
@@ -41,6 +42,7 @@ export interface ProfileShortCircuitResult {
 	profileLabel: string;
 	color: string;
 	items: ShortCircuitItem[];
+	itemTrees?: SimulationItemTree[];
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,28 @@ interface DocumentRow {
 		content?: string;
 		nodes?: Array<{ text?: string; normalizedText?: string }>;
 	} | null;
+}
+
+function assignLogicalLabels(itemTrees: SimulationItemTree[]): SimulationItemTree[] {
+	const realItems = itemTrees.map((t) => t.item);
+	realItems.forEach((item, idx) => {
+		item.logicalNumber = idx + 1;
+	});
+
+	itemTrees.forEach((tree) => {
+		const parentLogical = tree.item.logicalNumber ?? 0;
+		if (tree.subItems && tree.subItems.length > 0) {
+			tree.subItems.forEach((sub, subIdx) => {
+				sub.logicalNumber = parentLogical;
+				sub.logicalLabel = `${parentLogical}${String.fromCharCode(97 + subIdx)}`;
+			});
+			tree.item.logicalLabel = `${parentLogical}`;
+		} else {
+			tree.item.logicalLabel = `${parentLogical}`;
+		}
+	});
+
+	return itemTrees;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +169,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			return res.status(422).json({ error: "Segmentation produced no items." });
 		}
 
-		// Step 2 — Local semantic pipeline per segment.
+		const sectioning = buildSections(rawItems.map((seg) => ({ itemNumber: seg.itemNumber, text: seg.text })));
+
+		// Step 2 — Local semantic pipeline per item block.
 		const items: ShortCircuitItem[] = [];
-		for (const seg of rawItems) {
+		for (const seg of sectioning.itemBlocks) {
 			console.log(`[shortcircuit] item ${seg.itemNumber}: running semantic pipeline (${seg.text.length} chars)`);
 			const vec = await runSemanticOnText(seg.text);
 			if (!vec) {
@@ -175,8 +201,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// Phase A: additive-only defaults for newly introduced measurable fields.
 		const itemsWithDefaults: ShortCircuitItem[] = items.map(applyPhaseADefaults);
 
-		const itemTrees: SimulationItemTree[] = itemsWithDefaults.map((item) => buildItemTree(item));
-        const itemsWithTreesApplied: ShortCircuitItem[] = itemTrees.map((tree) => tree.item);
+		const baseItemTrees: SimulationItemTree[] = itemsWithDefaults.map((item) => buildItemTree(item));
+		const instructionsByItem = new Map<number, string[]>();
+		for (const section of sectioning.sections) {
+			for (const itemNumber of section.itemNumbers) {
+				instructionsByItem.set(itemNumber, section.instructions);
+			}
+		}
+
+		const itemTrees: SimulationItemTree[] = assignLogicalLabels(baseItemTrees.map((tree) => {
+			const instructions = instructionsByItem.get(tree.item.itemNumber) ?? [];
+			const item = applySectionInstructionEffects(tree.item, instructions);
+			const subItems = tree.subItems?.map((sub) => applySectionInstructionEffects(sub, instructions));
+			return { ...tree, item, subItems };
+		}));
+		const itemsWithTreesApplied: ShortCircuitItem[] = itemTrees.map((tree) => tree.item);
+
+		const sections: Array<SimulationSection & { itemTrees: SimulationItemTree[] }> = sectioning.sections.map((section) => ({
+			...section,
+			itemTrees: itemTrees.filter((tree) => sectioning.itemToSectionId.get(tree.item.itemNumber) === section.id),
+		}));
 
 		// Build per-profile adjusted items (deterministic modifiers, no LLM).
 		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
@@ -188,11 +232,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 				confusionScore: Math.min(1, item.confusionScore * mods.confusion),
 				timeToProcessSeconds: Math.round(item.timeToProcessSeconds * mods.time),
 			}));
+			const profileItemTrees = assignLogicalLabels(profileItems
+				.map((item) => buildItemTree(item))
+				.map((tree) => {
+					const instructions = instructionsByItem.get(tree.item.itemNumber) ?? [];
+					const item = applySectionInstructionEffects(tree.item, instructions);
+					const subItems = tree.subItems?.map((sub) => applySectionInstructionEffects(sub, instructions));
+					return { ...tree, item, subItems };
+				}));
 			return {
 				profileId,
 				profileLabel: catalog?.label ?? profileId,
 				color: catalog?.color ?? "#3b82f6",
-				items: profileItems,
+				items: profileItemTrees.map((tree) => tree.item),
+				itemTrees: profileItemTrees,
 			};
 		});
 
@@ -200,6 +253,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			rawItems,
 			items: itemsWithTreesApplied as SimulationItem[],
 			itemTrees,
+			sections,
 			profiles: profileResults,
 		});
 	} catch (err) {

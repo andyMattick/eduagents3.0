@@ -819,6 +819,54 @@
   gap: 0.6rem;
 }
 
+.v4-shortcircuit-section-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.v4-shortcircuit-section {
+  border: 1px solid rgba(86, 57, 32, 0.12);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.v4-shortcircuit-section-header {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #4a3527;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.v4-shortcircuit-section-instructions {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  color: #5f4637;
+}
+
+.v4-shortcircuit-section-instructions ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.v4-shortcircuit-graph-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.v4-shortcircuit-graph-toggle {
+  border: 1px solid rgba(86, 57, 32, 0.25);
+  background: #fff;
+  color: #4a3527;
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
 .v4-shortcircuit-tree-parent {
   border: 1px solid rgba(86, 57, 32, 0.14);
   border-radius: 10px;
