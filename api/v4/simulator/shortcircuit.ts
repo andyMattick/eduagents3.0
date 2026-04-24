@@ -14,7 +14,8 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseRest } from "../../../lib/supabase";
-import type { SimulationItem } from "../../../src/prism-v4/schema";
+import type { SimulationItem, SimulationItemTree } from "../../../src/prism-v4/schema";
+import { buildItemTree } from "../../../src/prism-v4/segmentation/buildItemTree";
 import {
 	applyPhaseADefaults,
 	buildAzureExtractFromRow,
@@ -174,11 +175,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// Phase A: additive-only defaults for newly introduced measurable fields.
 		const itemsWithDefaults: ShortCircuitItem[] = items.map(applyPhaseADefaults);
 
+		const itemTrees: SimulationItemTree[] = itemsWithDefaults.map((item) => buildItemTree(item));
+        const itemsWithTreesApplied: ShortCircuitItem[] = itemTrees.map((tree) => tree.item);
+
 		// Build per-profile adjusted items (deterministic modifiers, no LLM).
 		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
 			const catalog = PROFILE_CATALOG.find((p) => p.id === profileId);
 			const mods = PROFILE_LOAD_MODIFIERS[profileId] ?? PROFILE_LOAD_MODIFIERS["average"]!;
-			const profileItems: ShortCircuitItem[] = itemsWithDefaults.map((item) => ({
+			const profileItems: ShortCircuitItem[] = itemsWithTreesApplied.map((item) => ({
 				...item,
 				linguisticLoad: Math.min(1, item.linguisticLoad * mods.linguistic),
 				confusionScore: Math.min(1, item.confusionScore * mods.confusion),
@@ -192,7 +196,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			};
 		});
 
-		return res.status(200).json({ rawItems, items: itemsWithDefaults as SimulationItem[], profiles: profileResults });
+		return res.status(200).json({
+			rawItems,
+			items: itemsWithTreesApplied as SimulationItem[],
+			itemTrees,
+			profiles: profileResults,
+		});
 	} catch (err) {
 		console.error("[shortcircuit] ERROR:", err);
 		return res.status(500).json({

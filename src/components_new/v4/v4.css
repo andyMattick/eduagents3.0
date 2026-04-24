@@ -807,6 +807,54 @@
   margin-bottom: 1.5rem;
 }
 
+.v4-shortcircuit-tree-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #1f1a17;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.v4-shortcircuit-tree-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.v4-shortcircuit-tree-parent {
+  border: 1px solid rgba(86, 57, 32, 0.14);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+  background: #fff;
+}
+
+.v4-shortcircuit-tree-parent summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #402d21;
+}
+
+.v4-shortcircuit-tree-parent-text {
+  margin: 0.55rem 0 0.35rem;
+  font-size: 0.82rem;
+  color: #5b4435;
+  white-space: pre-wrap;
+}
+
+.v4-shortcircuit-tree-children {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: #6b5040;
+}
+
+.v4-shortcircuit-tree-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
 /* --- Simulation Results Container Isolation --- */
 
 .simulation-results {

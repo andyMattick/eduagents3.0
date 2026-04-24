@@ -17,6 +17,7 @@ import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
+import type { SimulationItemTree } from "../../prism-v4/schema";
 import "./v4.css";
 
 const PROFILES = [
@@ -43,6 +44,7 @@ export function ShortCircuitPage() {
 	const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set(["average"]));
 	const [runError, setRunError] = useState<string | null>(null);
 	const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
+	const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
 	const [profiles, setProfiles] = useState<ProfileShortCircuitResult[] | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,6 +58,7 @@ export function ShortCircuitPage() {
 		setSelectedProfiles(new Set(["average"]));
 		setRunError(null);
 		setItems(null);
+		setItemTrees(null);
 		setProfiles(null);
 	}, []);
 
@@ -83,6 +86,10 @@ export function ShortCircuitPage() {
 	};
 
 	const handleUpload = async () => {
+		if (!file) {
+			setUploadError("Select a file before continuing.");
+			return;
+		}
 		setUploading(true);
 		setUploadError(null);
 		try {
@@ -114,6 +121,7 @@ export function ShortCircuitPage() {
 		setPhase("running");
 		setRunError(null);
 		setItems(null);
+		setItemTrees(null);
 		setProfiles(null);
 		try {
 			const res = await fetch("/api/v4/simulator/shortcircuit", {
@@ -128,6 +136,7 @@ export function ShortCircuitPage() {
 				return;
 			}
 			setItems(data.items ?? []);
+			setItemTrees(data.itemTrees ?? []);
 			setProfiles(data.profiles ?? []);
 			setPhase("results");
 		} catch (err) {
@@ -266,6 +275,43 @@ export function ShortCircuitPage() {
 						<button type="button" onClick={startOver} className="v4-shortcircuit-startover">
 							← Start over
 						</button>
+					</div>
+					<div className="v4-shortcircuit-result-card">
+						<h3 className="v4-shortcircuit-tree-title">Structured Item Tree</h3>
+						{itemTrees && itemTrees.length > 0 ? (
+							<div className="v4-shortcircuit-tree-list">
+								{itemTrees.map((tree) => (
+									<details key={`tree-${tree.item.itemNumber}`} className="v4-shortcircuit-tree-parent">
+										<summary>
+											Item {tree.item.itemNumber} · {tree.item.isMultiPartItem ? "multi-part" : tree.item.isMultipleChoice ? "multiple-choice" : "single"}
+											{tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
+											{tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
+										</summary>
+										<p className="v4-shortcircuit-tree-parent-text">{tree.item.text}</p>
+										{tree.subItems && tree.subItems.length > 0 && (
+											<ul className="v4-shortcircuit-tree-children">
+												{tree.subItems.map((sub) => (
+													<li key={`sub-${tree.item.itemNumber}-${sub.itemNumber}`}>
+														{sub.itemNumber}. {sub.text}
+													</li>
+												))}
+											</ul>
+										)}
+										{tree.distractors && tree.distractors.length > 0 && (
+											<ul className="v4-shortcircuit-tree-children">
+												{tree.distractors.map((d) => (
+													<li key={`dist-${tree.item.itemNumber}-${d.label}`}>
+														{d.label}. {d.text}
+													</li>
+												))}
+											</ul>
+										)}
+									</details>
+								))}
+							</div>
+						) : (
+							<p className="v4-shortcircuit-tree-empty">No item tree data returned.</p>
+						)}
 					</div>
 					<div className="v4-shortcircuit-result-card">
 						<ShortCircuitGraph items={items} profiles={profiles ?? undefined} />
