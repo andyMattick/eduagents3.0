@@ -11,7 +11,6 @@
  */
 
 import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/supabase";
-import { callGeminiDetailed } from "../../../lib/gemini";
 import { runSemanticPipeline } from "../../../src/prism-v4/semantic/pipeline/runSemanticPipeline";
 import type { AzureExtractResult, ProblemTagVector } from "../../../src/prism-v4/schema/semantic";
 import type { StudentProfile } from "../../../src/types/simulator";
@@ -845,15 +844,8 @@ export async function segmentText(
 		return hybrid;
 	}
 
-	console.warn(`[segmentText] ⚠️ hybrid ≤1 item — falling back to Gemini (${text.length} chars)`);
-	try {
-		const geminiItems = await segmentTextWithGemini(text);
-		console.log(`[segmentText] Gemini fallback returned ${geminiItems.length} item(s)`);
-		return geminiItems;
-	} catch (err) {
-		console.error("[segmentText] Gemini fallback threw — using naive fallback:", err instanceof Error ? err.message : err);
-		return hybrid.length > 0 ? hybrid : _naiveSegmentFallback(text);
-	}
+	console.warn(`[segmentText] hybrid ≤1 item — using local fallback (${text.length} chars)`);
+	return hybrid.length > 0 ? hybrid : _naiveSegmentFallback(text);
 }
 
 /**
@@ -862,56 +854,7 @@ export async function segmentText(
  * Will fall back to _naiveSegmentFallback on Gemini failure.
  */
 export async function segmentTextWithGemini(text: string): Promise<SegmentedItem[]> {
-	console.log(`[segmentTextWithGemini] sending ${Math.min(text.length, 8000)} chars to Gemini`);
-	const prompt = `You split text into items. No think. No explain. No extra words.
-Return JSON only:
-
-{ "items": [ { "itemNumber": 1, "text": "..." } ] }
-
-Rules:
-- New item starts when line begins with number + ")" or number + "." or "Question".
-- Keep item text EXACT as input. No rewrite.
-
-Text:
-${text.substring(0, 8000)}`;
-
-	try {
-		const result = await callGeminiDetailed({
-			model: "gemini-2.0-flash",
-			prompt,
-			temperature: 0,
-			maxOutputTokens: 2048,
-			maxRetries: 1,
-			metadata: {
-				route: "api/v4/simulator/shared",
-				source: "segmentTextWithGemini_fallback",
-				phase: "segmentation",
-			},
-		});
-
-		const cleaned = result.text.replace(/```(?:json)?\s*\n?/gi, "").trim();
-		const firstBrace = cleaned.indexOf("{");
-		const lastBrace  = cleaned.lastIndexOf("}");
-		if (firstBrace === -1 || lastBrace === -1) throw new Error("no JSON in segmentation response");
-		const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as { items?: unknown[] };
-		if (Array.isArray(parsed?.items) && parsed.items.length > 0) {
-			const items = (parsed.items as Array<{ itemNumber?: number; text?: string }>)
-				.map((it, i) => ({
-					itemNumber: Number(it.itemNumber ?? i + 1),
-					text: String(it.text ?? ""),
-				}))
-				.filter((it) => it.text.trim().length > 0);
-			console.log(`[segmentTextWithGemini] parsed ${items.length} item(s) from Gemini response`);
-			return items;
-		}
-		console.warn("[segmentTextWithGemini] Gemini returned items array but it was empty or malformed");
-	} catch (err) {
-		console.warn(
-			"[segmentTextWithGemini] Gemini segmentation failed — using structural fallback:",
-			err instanceof Error ? err.message : err,
-		);
-	}
-
+	console.warn("[segmentTextWithGemini] LLM segmentation is disabled — using structural fallback");
 	return _naiveSegmentFallback(text);
 }
 

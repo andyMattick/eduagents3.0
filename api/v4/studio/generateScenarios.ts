@@ -8,7 +8,6 @@
  * Falls back to the extracted items if Gemini is unavailable or parsing fails.
  */
 
-import { callGemini } from "../../../lib/gemini";
 import type { TestItem, TestSection, TestProduct, Misconception } from "../../../src/prism-v4/schema/integration/IntentProduct";
 import type { ExtractedProblemDifficulty, ExtractedProblemCognitiveDemand } from "../../../src/prism-v4/schema/semantic/ExtractedProblem";
 
@@ -623,33 +622,7 @@ function parseItemArray(raw: string): RawItem[] | null {
  * Returns an empty array if Gemini is unavailable or parsing fails.
  */
 async function generateSolutionSteps(item: TestItem): Promise<string[]> {
-	const concept = item.primaryConcepts?.[0] ?? item.concept;
-	const prompt = [
-		"You are an expert teacher explaining how to solve an assessment item.",
-		"",
-		`Item prompt:\n"${item.prompt}"`,
-		"",
-		`Concept: "${concept}"`,
-		"",
-		"Correct answer (structured):",
-		JSON.stringify(item.structuredAnswer ?? item.answerGuidance),
-		"",
-		"Write a clear, step-by-step solution a teacher could use as an answer key.",
-		"Each step must be a short sentence. Aim for 2–4 steps.",
-		"",
-		'Return JSON only: { "steps": ["Step 1...", "Step 2...", "Step 3..."] }',
-	].join("\n");
-
-	try {
-		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 512 });
-		const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-		const parsed = JSON.parse(text) as { steps?: unknown };
-		if (Array.isArray(parsed.steps)) {
-			return (parsed.steps as unknown[]).filter((s): s is string => typeof s === "string");
-		}
-	} catch {
-		// Silently degrade — steps are enrichment, not required
-	}
+	void item;
 	return [];
 }
 
@@ -661,30 +634,9 @@ async function generateMisconceptionForDistractor(
 	correctAnswer: string,
 	concept: string,
 ): Promise<{ label: string; explanation: string } | null> {
-	const prompt = [
-		"You are an expert teacher analyzing student misconceptions.",
-		"",
-		`Concept: "${concept}"`,
-		"",
-		`Correct answer: "${correctAnswer}"`,
-		"",
-		`Distractor: "${distractor}"`,
-		"",
-		"Explain why a student might choose this distractor and what misconception it reflects.",
-		"",
-		'Return JSON only: { "label": "short name of misconception", "explanation": "detailed explanation" }',
-	].join("\n");
-
-	try {
-		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.4, maxOutputTokens: 256 });
-		const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-		const parsed = JSON.parse(text) as { label?: unknown; explanation?: unknown };
-		if (typeof parsed.label === "string" && typeof parsed.explanation === "string") {
-			return { label: parsed.label, explanation: parsed.explanation };
-		}
-	} catch {
-		// Silently degrade
-	}
+	void distractor;
+	void correctAnswer;
+	void concept;
 	return null;
 }
 
@@ -840,25 +792,10 @@ export async function generateScenarioSection(
 
 	const timeBudgetHint = timeBudgetMinutes !== undefined ? `~${timeBudgetMinutes} min` : undefined;
 
-	let raw: string;
-	try {
-		const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone, subjectScenarioHint, timeBudgetHint, requiredConcepts);
-		raw = await callGemini({
-			model: "gemini-2.0-flash",
-			prompt,
-			temperature: 0.75,
-			maxOutputTokens: Math.max(1024, quota * 500),
-		});
-	} catch (err) {
-		console.warn(`[generateScenarios] Gemini unavailable for "${concept}":`, err);
-		return section;
-	}
-
-	const rawItems = parseItemArray(raw);
-	if (!rawItems || rawItems.length === 0) {
-		console.warn(`[generateScenarios] Unparseable response for "${concept}". Raw:`, raw.slice(0, 300));
-		return section;
-	}
+	const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone, subjectScenarioHint, timeBudgetHint, requiredConcepts);
+	void prompt;
+	console.warn(`[generateScenarios] LLM disabled for "${concept}"; returning extracted section.`);
+	return section;
 
 	const generatedItems: TestItem[] = rawItems.map((r, i) => {
 		const diffInt = typeof r.difficulty === "number" ? r.difficulty : 3;

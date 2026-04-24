@@ -9,8 +9,7 @@ import { NotepadProvider } from './hooks/useNotepad';
 import { ThemeProvider } from './hooks/useTheme';
 import { UserFlowProvider } from './hooks/useUserFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
-import { TeacherStudio } from './components_new/v4/TeacherStudio';
-import { PreparednessPage } from './components_new/v4/PreparednessPage';
+import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
 import './App.css';
 
@@ -18,7 +17,7 @@ console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/preparedness', '/compare', '/documents/compare']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
@@ -50,14 +49,6 @@ function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
           <span className="home-card-title">Simulate Student Experience</span>
           <span className="home-card-desc">
             Upload a document and see how each student profile will experience your material — per-item metrics, Bloom's levels, and cumulative load by profile.
-          </span>
-        </button>
-
-        <button className="home-card" onClick={() => navigate("/compare")}>
-          <span className="home-card-icon">📄</span>
-          <span className="home-card-title">Compare Documents</span>
-          <span className="home-card-desc">
-            Upload documents to run preparedness checks, alignment analysis, rewrite suggestions, and generate aligned tests.
           </span>
         </button>
       </div>
@@ -95,8 +86,7 @@ function TeacherAppContent() {
   // Derive page title for the header
   const pageTitle =
     pathname === '/sim' || pathname === '/shortcircuit' ? 'Simulate Student Experience' :
-    pathname === '/compare' || pathname === '/documents/compare' ? 'Compare Documents' :
-    pathname === '/preparedness' ? 'Student Preparedness' :
+    pathname === '/studio' ? 'Teacher Studio' :
     'Teacher Studio';
 
   return (
@@ -132,10 +122,8 @@ function TeacherAppContent() {
           ? <HomeLanding navigate={navigate} />
           : pathname === '/legacy'
           ? <LegacyDocumentCreation />
-          : pathname === '/preparedness'
-          ? <TeacherStudio />
-          : pathname === '/compare' || pathname === '/documents/compare'
-          ? <PreparednessPage />
+          : pathname === '/studio'
+          ? <TeacherStudioView />
           : pathname === '/sim' || pathname === '/shortcircuit'
           ? <ShortCircuitPage />
           : <HomeLanding navigate={navigate} />}

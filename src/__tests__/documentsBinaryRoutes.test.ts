@@ -245,11 +245,11 @@ describe("v4 documents binary routes", () => {
 		expect(analysisResponse.body.analysis.documentSimilarity.length).toBeGreaterThanOrEqual(3);
 		expect(Object.keys(analysisResponse.body.analysis.coverageSummary.perDocument)).toHaveLength(3);
 
-		const compareResponse = await request(app)
+		const mergePairResponse = await request(app)
 			.post("/api/v4/documents/intent")
-			.send({ sessionId, documentIds: documentIds.slice(0, 2), intentType: "compare-documents" });
-		expect(compareResponse.status).toBe(200);
-		expect(compareResponse.body.payload.kind).toBe("compare-documents");
+			.send({ sessionId, documentIds: documentIds.slice(0, 2), intentType: "merge-documents" });
+		expect(mergePairResponse.status).toBe(200);
+		expect(mergePairResponse.body.payload.kind).toBe("merge-documents");
 
 		const mergeResponse = await request(app)
 			.post("/api/v4/documents/intent")

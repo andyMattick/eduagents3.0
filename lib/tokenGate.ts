@@ -6,11 +6,11 @@
  *  - getDailyUsage(actorKey)    — current day's token count
  *  - checkTokenBudget(actorKey) — pre-flight check; throws TOKEN_LIMIT_REACHED
  *  - incrementTokens(...)       — post-call increment via Supabase RPC
- *  - callGeminiMetered(...)     — drop-in for callGemini that enforces + increments
+ *  - callLlmMetered(...)        — drop-in for callLLM that enforces + increments
  */
 
 import type { VercelRequest } from "@vercel/node";
-import { callGeminiDetailed, type GeminiCallMetadata, type GeminiUsageMetadata } from "./gemini";
+import { callProviderDetailed, type LlmCallMetadata, type LlmUsageMetadata } from "./provider";
 import { supabaseAdmin, supabaseRest } from "./supabase";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -129,35 +129,35 @@ export async function incrementTokens(
   }
 }
 
-// ── Metered Gemini wrapper ───────────────────────────────────────────────────
+// ── Metered provider wrapper ─────────────────────────────────────────────────
 
 export type MeteredResult = {
   text: string;
   tokensUsed: number;
-  usageMetadata?: GeminiUsageMetadata;
+  usageMetadata?: LlmUsageMetadata;
 };
 
 /**
- * Drop-in replacement for callGemini that:
+ * Drop-in replacement for callLLM that:
  *  1) checks the daily budget
- *  2) calls callGeminiDetailed (captures usage metadata)
+ *  2) calls callProviderDetailed (captures usage metadata)
  *  3) increments the daily counter
  *  4) returns the text + token count
  */
-export async function callGeminiMetered(
+export async function callLlmMetered(
   actor: { actorKey: string; userId: string | null },
   args: {
     prompt: string;
     model?: string;
     temperature?: number;
     maxOutputTokens?: number;
-    metadata?: GeminiCallMetadata;
+    metadata?: LlmCallMetadata;
   },
 ): Promise<MeteredResult> {
   await checkTokenBudget(actor.actorKey);
 
-  const result = await callGeminiDetailed({
-    model: args.model ?? "gemini-2.0-flash",
+  const result = await callProviderDetailed({
+    model: args.model ?? "llm-disabled",
     prompt: args.prompt,
     temperature: args.temperature ?? 0.3,
     maxOutputTokens: args.maxOutputTokens ?? 2000,

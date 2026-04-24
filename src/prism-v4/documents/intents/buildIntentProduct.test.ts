@@ -668,17 +668,6 @@ describe("buildIntentPayload", () => {
 		expect(test.domain).toBe("Mathematics");
 		expect(test.totalItemCount).toBe(2);
 
-		const compare = await buildIntentPayload({
-			sessionId: session.sessionId,
-			documentIds: documentIds.slice(0, 2),
-			intentType: "compare-documents",
-		}, context);
-		expect(compare.kind).toBe("compare-documents");
-		expect(compare.domain).toBe("Mathematics");
-		expect(compare.documents).toHaveLength(2);
-		expect(compare.documentSimilarity.length).toBeGreaterThan(0);
-		expect(compare.sharedConcepts).toContain("fractions");
-
 		const merge = await buildIntentPayload({
 			sessionId: session.sessionId,
 			documentIds,

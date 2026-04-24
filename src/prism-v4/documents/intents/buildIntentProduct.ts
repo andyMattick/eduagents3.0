@@ -4,7 +4,6 @@ import { cleanupProductPayload, dedupeLines, dedupeParagraphs } from "./cleanupP
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../../schema/semantic";
 import type {
 	BuiltIntentType,
-	CompareDocumentsProduct,
 	ConceptExtractionEntry,
 	CurriculumAlignmentProduct,
 	IntentPayloadByType,
@@ -99,7 +98,6 @@ const SUPPORTED_INTENTS: BuiltIntentType[] = [
 	"summarize",
 	"build-review",
 	"build-test",
-	"compare-documents",
 	"merge-documents",
 	"build-sequence",
 	"build-lesson",
@@ -108,7 +106,7 @@ const SUPPORTED_INTENTS: BuiltIntentType[] = [
 	"curriculum-alignment",
 ];
 
-const MULTI_DOCUMENT_INTENTS: BuiltIntentType[] = ["compare-documents", "merge-documents", "build-sequence", "build-unit", "build-instructional-map"];
+const MULTI_DOCUMENT_INTENTS: BuiltIntentType[] = ["merge-documents", "build-sequence", "build-unit", "build-instructional-map"];
 const SINGLE_DOCUMENT_INTENTS: BuiltIntentType[] = ["build-lesson"];
 const DIFFICULTY_SCORE: Record<"low" | "medium" | "high", number> = {
 	low: 1,
@@ -135,6 +133,123 @@ function joinList(values: string[]) {
 
 function unique<T>(values: T[]) {
 	return [...new Set(values)];
+}
+
+const GENERIC_CONCEPT_STOPWORDS = new Set([
+	"about", "after", "again", "also", "among", "because", "before", "being", "between", "both", "could", "different", "during", "each", "every", "first", "from", "have", "into", "just", "many", "more", "most", "other", "should", "some", "such", "than", "that", "their", "there", "these", "they", "this", "those", "through", "under", "using", "very", "what", "when", "where", "which", "while", "with", "would",
+]);
+
+function normalizeConceptToken(value: string) {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9\s-]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function toTitleCaseLabel(value: string) {
+	return value
+		.split(" ")
+		.filter(Boolean)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join(" ");
+}
+
+function extractDeterministicConceptsFromText(textParts: string[], maxConcepts = 12): string[] {
+	const rawText = textParts
+		.join("\n")
+		.replace(/[_*`~#>]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (!rawText) {
+		return [];
+	}
+
+	const words = rawText
+		.toLowerCase()
+		.replace(/[^a-z0-9\s-]/g, " ")
+		.split(/\s+/)
+		.map((word) => word.trim())
+		.filter((word) => word.length >= 4 && !GENERIC_CONCEPT_STOPWORDS.has(word));
+
+	const unigramCounts = new Map<string, number>();
+	for (const word of words) {
+		unigramCounts.set(word, (unigramCounts.get(word) ?? 0) + 1);
+	}
+
+	const bigramCounts = new Map<string, number>();
+	for (let index = 0; index < words.length - 1; index += 1) {
+		const left = words[index]!;
+		const right = words[index + 1]!;
+		if (left.length < 4 || right.length < 4) {
+			continue;
+		}
+		const phrase = `${left} ${right}`;
+		bigramCounts.set(phrase, (bigramCounts.get(phrase) ?? 0) + 1);
+	}
+
+	const headingCandidates = rawText
+		.split(/\n|\s{2,}/)
+		.map((line) => line.trim())
+		.filter((line) => line.length >= 6 && line.length <= 80)
+		.filter((line) => {
+			const wordCount = line.split(/\s+/).length;
+			if (wordCount < 2 || wordCount > 8) {
+				return false;
+			}
+			return /^[A-Za-z0-9\-\s]+$/.test(line);
+		})
+		.map((line) => normalizeConceptToken(line));
+
+	const scored: Array<{ concept: string; score: number }> = [];
+	for (const [phrase, count] of bigramCounts.entries()) {
+		if (count < 2) {
+			continue;
+		}
+		scored.push({ concept: phrase, score: count * 2 });
+	}
+	for (const [term, count] of unigramCounts.entries()) {
+		if (count < 2) {
+			continue;
+		}
+		scored.push({ concept: term, score: count });
+	}
+	for (const heading of headingCandidates) {
+		if (!heading) {
+			continue;
+		}
+		scored.push({ concept: heading, score: 3 });
+	}
+
+	return unique(
+		scored
+			.sort((left, right) => right.score - left.score || left.concept.localeCompare(right.concept))
+			.map((entry) => entry.concept)
+			.filter((concept) => concept.length >= 4)
+			.map((concept) => toTitleCaseLabel(concept))
+			.slice(0, maxConcepts),
+	);
+}
+
+function deriveDocumentConceptFallback(analyzed: AnalyzedDocument) {
+	const seeded = unique([
+		...analyzed.insights.concepts,
+		...analyzed.problems.flatMap((problem) => problem.concepts),
+	]);
+	if (seeded.length > 0) {
+		return seeded;
+	}
+
+	const documentText = analyzed.document.nodes
+		.map((node) => node.text?.trim() ?? "")
+		.filter(Boolean)
+		.join("\n");
+	const fragmentText = analyzed.fragments
+		.map((fragment) => getFragmentText(analyzed, fragment))
+		.filter(Boolean)
+		.join("\n");
+
+	return extractDeterministicConceptsFromText([documentText, fragmentText]);
 }
 
 function average(values: number[]) {
@@ -1191,7 +1306,7 @@ function buildEffectiveDocumentConceptMap(context: { analyzedDocuments: Analyzed
 		const unitConcepts = unique(unitEntries
 			.filter((entry) => entry.documentIds.includes(analyzed.document.id))
 			.flatMap((entry) => entry.unit.concepts));
-		byDocument.set(analyzed.document.id, unitConcepts.length > 0 ? unitConcepts : analyzed.insights.concepts);
+		byDocument.set(analyzed.document.id, unitConcepts.length > 0 ? unitConcepts : deriveDocumentConceptFallback(analyzed));
 	}
 
 	return byDocument;
@@ -1216,7 +1331,7 @@ function buildEffectiveConceptToDocumentMap(context: { analyzedDocuments: Analyz
 
 	const fallback = new Map<string, string[]>();
 	for (const analyzed of context.analyzedDocuments) {
-		for (const concept of analyzed.insights.concepts) {
+		for (const concept of deriveDocumentConceptFallback(analyzed)) {
 			fallback.set(concept, unique([...(fallback.get(concept) ?? []), analyzed.document.id]));
 		}
 	}
@@ -1948,108 +2063,6 @@ function buildTestProduct(context: BuilderContext<"build-test">): IntentPayloadB
 }
 
 
-function buildCompareMetricEntries(context: BuilderContext<"compare-documents">) {
-	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
-	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
-	const effectiveDocumentConceptMap = buildEffectiveDocumentConceptMap(context, unitEntries);
-	return context.analyzedDocuments.map((analyzed) => ({
-		documentId: analyzed.document.id,
-		sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-		problemCount: analyzed.problems.length,
-		dominantDifficulty: dominantDifficulty(analyzed),
-		averageDifficultyScore: average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
-		representations: analyzed.insights.representations,
-		instructionalDensity: analyzed.insights.instructionalDensity,
-		uniqueConcepts: (effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts).filter((concept) => (effectiveConceptToDocumentMap[concept] ?? []).length === 1),
-		sharedConcepts: (effectiveDocumentConceptMap.get(analyzed.document.id) ?? analyzed.insights.concepts).filter((concept) => (effectiveConceptToDocumentMap[concept] ?? []).length >= 2),
-	}));
-}
-
-type CompareDocsMode = "all" | "prep" | "practice";
-
-function getCompareDocsMode(options: Record<string, unknown> | undefined): CompareDocsMode {
-	const mode = options?.mode;
-	if (mode === "practice" || mode === "prep") return mode;
-	return "all";
-}
-
-/**
- * Filter a concept list to match the requested Compare-Docs mode.
- *
- * "practice" — only concepts surfaced from extracted problems (student-facing).
- * "prep"     — only concepts that are NOT exclusively tied to problems
- *              (teacher-facing instructional content).
- * "all"      — no filtering (default).
- */
-function filterConceptsByMode(
-	concepts: string[],
-	mode: CompareDocsMode,
-	analyzedDocuments: BuilderContext<"compare-documents">["analyzedDocuments"],
-): string[] {
-	if (mode === "all") return concepts;
-	const problemConcepts = new Set(
-		analyzedDocuments.flatMap((analyzed) => analyzed.problems.flatMap((problem) => problem.concepts)),
-	);
-	if (mode === "practice") {
-		return concepts.filter((concept) => problemConcepts.has(concept));
-	}
-	// prep: concepts that are not exclusively tied to problems
-	return concepts.filter((concept) => !problemConcepts.has(concept));
-}
-
-function buildCompareDocumentsProduct(context: BuilderContext<"compare-documents">): CompareDocumentsProduct {
-	const focus = getFocus(context.request.options);
-	const mode = getCompareDocsMode(context.request.options);
-	const metrics = buildCompareMetricEntries(context);
-	const allConceptEntries = Object.entries(buildEffectiveConceptToDocumentMap(context, collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames), context.collectionAnalysis))
-		.filter(([concept]) => matchesFocus([concept], focus));
-	const modeFilteredConcepts = new Set(
-		filterConceptsByMode(
-			allConceptEntries.map(([concept]) => concept),
-			mode,
-			context.analyzedDocuments,
-		),
-	);
-	const filteredOverlap = allConceptEntries
-		.filter(([concept]) => modeFilteredConcepts.has(concept))
-		.map(([concept, documentIds]) => {
-			const coverage = context.collectionAnalysis.coverageSummary.conceptCoverage?.[concept];
-			return {
-				concept,
-				documentIds,
-				overlapStrength: coverage?.overlapStrength,
-				stability: coverage?.stability,
-				gap: coverage?.gap,
-				crossDocumentAnchor: coverage?.crossDocumentAnchor,
-			};
-		});
-
-	// For practice mode, only include problem-distribution data (student-facing);
-	// for prep mode, zero out problem counts since we're comparing instructional content.
-	const problemDistributionComparison = context.analyzedDocuments.map((analyzed) => ({
-		documentId: analyzed.document.id,
-		sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-		totalProblems: mode === "prep" ? 0 : analyzed.problems.length,
-		byDifficulty: analyzed.insights.difficultyDistribution,
-	}));
-
-	return {
-		kind: "compare-documents",
-		focus,
-		domain: context.domain,
-		sharedConcepts: filteredOverlap.map((entry) => entry.concept),
-		conceptOverlap: filteredOverlap,
-		documents: metrics,
-		difficultyComparison: [...metrics].sort((left, right) => left.averageDifficultyScore - right.averageDifficultyScore || left.documentId.localeCompare(right.documentId)),
-		representationComparison: [...metrics].sort((left, right) => left.representations.length - right.representations.length || left.documentId.localeCompare(right.documentId)),
-		instructionalDensityComparison: [...metrics].sort((left, right) => right.instructionalDensity - left.instructionalDensity || left.documentId.localeCompare(right.documentId)),
-		problemDistributionComparison,
-		documentSimilarity: context.collectionAnalysis.documentSimilarity,
-		sourceAnchors: collectSourceAnchors(context.analyzedDocuments),
-		generatedAt: new Date().toISOString(),
-	};
-}
-
 function mergeProblemEntries(context: BuilderContext<"merge-documents">, focus: string | null) {
 	const merged = new Map<string, MergeDocumentsProduct["mergedProblems"][number]>();
 
@@ -2740,7 +2753,6 @@ const BUILDERS: { [K in BuiltIntentType]: (context: BuilderContext<K>) => Intent
 	"summarize": buildSummaryProduct,
 	"build-review": buildReviewProduct,
 	"build-test": buildTestProduct,
-	"compare-documents": buildCompareDocumentsProduct,
 	"merge-documents": buildMergeDocumentsProduct,
 	"build-sequence": buildSequenceProduct,
 	"build-lesson": buildLessonProduct,

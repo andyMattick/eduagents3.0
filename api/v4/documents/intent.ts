@@ -25,7 +25,7 @@ function schemaVersionForIntent(intentType: IntentRequest["intentType"]) {
 		return "wave5-v1";
 	}
 
-	return ["compare-documents", "merge-documents", "build-sequence"].includes(intentType) ? "wave4-v1" : "wave3-v1";
+	return ["merge-documents", "build-sequence"].includes(intentType) ? "wave4-v1" : "wave3-v1";
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

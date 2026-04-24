@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-import { callGeminiWithRetryWithUsage } from "../../lib/gemini/callGeminiWithRetry";
+import { callLlmWithRetryWithUsage } from "../../lib/retry/callLlmWithRetry";
 import { estimateTokens } from "../../lib/rewrite/estimateTokens";
 import { normalizeDocumentForRewrite } from "../../lib/rewrite/normalizeDocumentForRewrite";
 import { supabaseAdmin, supabaseRest } from "../../lib/supabase";
@@ -10,7 +10,7 @@ import type { DocType, RewriteRequest, RewriteSuggestion } from "../../src/types
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const REWRITE_MODEL = "gemini-2.0-flash";
+const REWRITE_MODEL = "llm-disabled";
 const MAX_PROMPT_TOKENS = 7_500;
 
 type RewriteErrorCode =
@@ -316,7 +316,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		});
 		assertPromptWithinBudget(prompt);
 
-		const llm = await callGeminiWithRetryWithUsage({
+				const llm = await callLlmWithRetryWithUsage({
 			prompt,
 			metadata: { runType: "rewrite" },
 			options: { model: REWRITE_MODEL, temperature: 0.3, maxOutputTokens: 8192 },

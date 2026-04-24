@@ -394,22 +394,22 @@ describe("v4 documents routes", () => {
 		expect(Object.keys(analysisRes.body.analysis.coverageSummary.perDocument)).toHaveLength(3);
 		expect(analysisRes.body.analysis.documentSimilarity.length).toBeGreaterThanOrEqual(3);
 
-		const compareRes = createResponse();
+		const mergePairRes = createResponse();
 		await intentHandler({
 			method: "POST",
 			body: {
 				sessionId,
 				documentIds: documentIds.slice(0, 2),
-				intentType: "compare-documents",
+				intentType: "merge-documents",
 				options: { focus: "fraction" },
 			},
-		} as any, compareRes);
+		} as any, mergePairRes);
 
-		expect(compareRes.statusCode).toBe(200);
-		expect(compareRes.body.schemaVersion).toBe("wave4-v1");
-		expect(compareRes.body.payload.kind).toBe("compare-documents");
-		expect(compareRes.body.payload.documents).toHaveLength(2);
-		expect(compareRes.body.payload.sourceAnchors).toHaveLength(2);
+		expect(mergePairRes.statusCode).toBe(200);
+		expect(mergePairRes.body.schemaVersion).toBe("wave4-v1");
+		expect(mergePairRes.body.payload.kind).toBe("merge-documents");
+		expect(mergePairRes.body.payload.mergedInsights.totalDocuments).toBe(2);
+		expect(mergePairRes.body.payload.sourceAnchors).toHaveLength(2);
 
 		const mergeRes = createResponse();
 		await intentHandler({

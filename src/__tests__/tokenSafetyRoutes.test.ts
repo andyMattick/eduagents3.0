@@ -10,8 +10,8 @@ const saveAnalyzedDocumentStoreMock = vi.hoisted(() => vi.fn());
 const analyzeRegisteredDocumentMock = vi.hoisted(() => vi.fn());
 const ingestDocumentMock = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
-const callGeminiMock = vi.hoisted(() => vi.fn());
-const callGeminiDetailedMock = vi.hoisted(() => vi.fn());
+const callProviderMock = vi.hoisted(() => vi.fn());
+const callProviderDetailedMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/supabase", () => ({
   supabaseRest: supabaseRestMock,
@@ -33,9 +33,9 @@ vi.mock("../prism-v4/ingestion/ingestDocument", () => ({
   ingestDocument: ingestDocumentMock,
 }));
 
-vi.mock("../../lib/gemini", () => ({
-  callGemini: callGeminiMock,
-  callGeminiDetailed: callGeminiDetailedMock,
+vi.mock("../../lib/provider", () => ({
+  callProvider: callProviderMock,
+  callProviderDetailed: callProviderDetailedMock,
 }));
 
 vi.mock("next/server", () => ({
@@ -49,7 +49,6 @@ vi.mock("next/server", () => ({
 }));
 
 import uploadHandler from "../../api/v4/documents/upload";
-import preparednessHandler from "../../api/v4/preparedness";
 import { POST as rewritePost } from "../../app/api/rewrite/route";
 import { createStudioSessionFromFileApi } from "../lib/teacherStudioApi";
 
@@ -81,13 +80,6 @@ function buildRewriteRequestBody() {
     selectedSuggestionIds: ["s1"],
     docType: "assignment",
   };
-}
-
-function buildPreparednessAssessmentItems(count: number) {
-  return Array.from({ length: count }, (_, index) => ({
-    itemNumber: index + 1,
-    text: `Question ${index + 1}`,
-  }));
 }
 
 describe("token safety", () => {
@@ -160,39 +152,8 @@ describe("token safety", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("preparedness question-count guard blocks model calls and token usage", async () => {
-    const req: any = {
-      method: "POST",
-      body: {
-        phase: "preparedness",
-        prep: {
-          title: "Prep",
-          rawText: [
-            "Paragraph one is intentionally verbose to satisfy the minimum ingestion length requirement for preparedness.",
-            "Paragraph two continues the same topic while remaining distinct enough to avoid duplicate ratio checks.",
-            "Paragraph three adds extra instructional wording so the paragraph counter clears the ingestion guard.",
-            "Paragraph four introduces another complete sentence block to keep the payload realistic for prep material.",
-            "Paragraph five ensures we exceed the minimum paragraph threshold before testing question-count validation.",
-          ].join("\n\n"),
-        },
-        assessment: {
-          title: "Assessment",
-          items: buildPreparednessAssessmentItems(60),
-        },
-      },
-    };
-    const res = createResponse();
-
-    await preparednessHandler(req, res);
-
-    expect(res.statusCode).toBe(400);
-    expect(String(res.body?.error ?? "")).toMatch(/question count/i);
-    expect(callGeminiMock).not.toHaveBeenCalled();
-    expect(global.fetch).not.toHaveBeenCalled();
-  });
-
   it("rewrite 500 path does not deduct tokens", async () => {
-    callGeminiDetailedMock.mockRejectedValueOnce(new Error("server error"));
+    callProviderDetailedMock.mockRejectedValueOnce(new Error("server error"));
 
     const req = new Request("http://localhost/api/rewrite", {
       method: "POST",
@@ -209,7 +170,7 @@ describe("token safety", () => {
   });
 
   it("rewrite success deducts tokens exactly once using usage metadata", async () => {
-    callGeminiDetailedMock.mockResolvedValueOnce({
+    callProviderDetailedMock.mockResolvedValueOnce({
       text: "Rewritten assignment text with actual changes.",
       usageMetadata: { totalTokenCount: 200 },
     });
@@ -235,7 +196,7 @@ describe("token safety", () => {
   });
 
   it("retry after failure only deducts on the successful attempt", async () => {
-    callGeminiDetailedMock
+    callProviderDetailedMock
       .mockRejectedValueOnce(new Error("429 rate limit"))
       .mockResolvedValueOnce({
         text: "Rewritten assignment text with actual changes.",

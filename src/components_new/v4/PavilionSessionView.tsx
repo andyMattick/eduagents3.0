@@ -35,7 +35,6 @@ const STUDIO_INTENTS: IntentType[] = [
 	"build-instructional-map",
 	"build-sequence",
 	"curriculum-alignment",
-	"compare-documents",
 	"merge-documents",
 	"extract-problems",
 	"extract-concepts",
@@ -47,7 +46,6 @@ const INTENT_CONFIG: Record<IntentType, IntentConfig> = {
 	"build-lesson": { label: "Lesson", description: "Generate a ready-to-teach lesson from the active workspace." },
 	"build-instructional-map": { label: "Instructional Map", description: "Generate the concept-and-anchor view for the current workspace." },
 	"curriculum-alignment": { label: "Curriculum Alignment", description: "Generate a standards and gap view for the current materials." },
-	"compare-documents": { label: "Compare Materials", description: "Generate a comparison across the current materials." },
 	"merge-documents": { label: "Merge Materials", description: "Generate a merged synthesis of the current materials." },
 	"build-sequence": { label: "Teaching Sequence", description: "Generate a recommended instructional order for the current materials." },
 	"build-review": { label: "Review Plan", description: "Generate a review plan for the current materials.", numericOption: { key: "maxSections", label: "Sections", defaultValue: 3 } },
@@ -124,7 +122,6 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 	const viewerData = useMemo(() => (workspace ? buildViewerData(workspace) : null), [workspace]);
 	const [activeTab, setActiveTab] = useState<"gallery" | "blueprint" | "concept-map" | "fingerprint" | "student" | "plan" | "preview" | "class" | "viewer" | "intelligence">("gallery");
 	const [selectedIntent, setSelectedIntent] = useState<IntentType>("build-test");
-	const [compareDocsMode, setCompareDocsMode] = useState<"all" | "prep" | "practice">("all");
 	const [focus, setFocus] = useState("");
 	const [numericOptionValue, setNumericOptionValue] = useState(String(getIntentConfig("build-test").numericOption?.defaultValue ?? 5));
 	const [unitId, setUnitId] = useState("");
@@ -233,10 +230,6 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 					options.unitId = unitId.trim();
 				}
 			}
-			if (selectedIntent === "compare-documents") {
-				options.mode = compareDocsMode;
-			}
-
 			const product = await onGenerateProduct({
 				intentType: selectedIntent,
 				options: Object.keys(options).length > 0 ? options : undefined,
@@ -322,16 +315,6 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 								<label className="v4-upload-field">
 									<span>{currentIntentConfig.numericOption.label}</span>
 									<input aria-label={currentIntentConfig.numericOption.label} type="number" min={1} value={numericOptionValue} onChange={(event) => setNumericOptionValue(event.target.value)} />
-								</label>
-							) : null}
-							{selectedIntent === "compare-documents" ? (
-								<label className="v4-upload-field">
-									<span>Compare</span>
-									<select aria-label="Compare mode" value={compareDocsMode} onChange={(event) => setCompareDocsMode(event.target.value as "all" | "prep" | "practice")}>
-										<option value="all">Everything</option>
-										<option value="prep">Prep Notes Only</option>
-										<option value="practice">Practice Items Only</option>
-									</select>
 								</label>
 							) : null}
 							{selectedIntent === "build-test" ? (
@@ -433,16 +416,6 @@ export function PavilionSessionView(props: PavilionSessionViewProps) {
 										<label className="v4-upload-field">
 											<span>{currentIntentConfig.numericOption.label}</span>
 											<input aria-label={currentIntentConfig.numericOption.label} type="number" min={1} value={numericOptionValue} onChange={(event) => setNumericOptionValue(event.target.value)} />
-										</label>
-									) : null}
-									{selectedIntent === "compare-documents" ? (
-										<label className="v4-upload-field">
-											<span>Compare</span>
-											<select aria-label="Compare mode" value={compareDocsMode} onChange={(event) => setCompareDocsMode(event.target.value as "all" | "prep" | "practice")}>
-												<option value="all">Everything</option>
-												<option value="prep">Prep Notes Only</option>
-												<option value="practice">Practice Items Only</option>
-											</select>
 										</label>
 									) : null}
 									{selectedIntent === "build-test" ? (

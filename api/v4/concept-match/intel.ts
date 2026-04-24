@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
-import { resolveActor, callGeminiMetered, isTokenLimitError, sendTokenLimitResponse, getDailyUsage, DAILY_TOKEN_LIMIT } from "../../../lib/tokenGate";
+import { resolveActor, callLlmMetered, isTokenLimitError, sendTokenLimitResponse, getDailyUsage, DAILY_TOKEN_LIMIT } from "../../../lib/tokenGate";
 import type {
   AssessmentItem,
   ConceptMatchIntelRequest,
@@ -302,6 +302,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") return res.status(200).json({});
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
+  return res.status(410).json({
+    error: "LLM endpoint disabled",
+    message: "Concept-match intelligence is disabled while LLM purge is active.",
+  });
+
   try {
     const body: ConceptMatchIntelRequest =
       typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -313,16 +318,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const actor = resolveActor(req);
 
     const callLLM = async (prompt: string) => {
-      const result = await callGeminiMetered(actor, {
-        prompt,
-        temperature: 0.3,
-        maxOutputTokens: 2000,
-        metadata: {
-          route: "api/v4/concept-match/intel",
-          source: "concept_match_intel",
-        },
-      });
-      return result.text;
+      void actor;
+      void prompt;
+      throw new Error("LLM provider is disabled");
     };
 
     // Phase 1: Test concept profile

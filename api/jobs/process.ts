@@ -95,7 +95,7 @@ async function executeJob(job: { type: string; input: any }): Promise<any> {
     case "azure-extract":
       return executeAzureExtract(job.input);
     case "llm-generate":
-      return executeLlmGenerate(job.input);
+      throw new Error("Job type 'llm-generate' is disabled");
     case "template-learning-aggregate":
       return executeTemplateLearningAggregate();
     default:
@@ -148,17 +148,6 @@ async function executeAzureExtract(input: {
   }
 
   throw new Error("Azure analysis timed out");
-}
-
-async function executeLlmGenerate(input: {
-  model: string;
-  prompt: string;
-  temperature?: number;
-  maxOutputTokens?: number;
-}) {
-  const { callGemini } = await import("../../lib/gemini");
-  const text = await callGemini(input);
-  return { text };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

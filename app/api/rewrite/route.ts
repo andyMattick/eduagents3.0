@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { assertBackendStartupEnv } from "../../../lib/envGuard";
-import { callGeminiDetailed } from "../../../lib/gemini";
+import { callProviderDetailed } from "../../../lib/provider";
 import { supabaseAdmin } from "../../../lib/supabase";
 
 export const runtime = "nodejs";
@@ -275,7 +275,7 @@ function buildRewritePrompt(args: {
 async function callRewriteModel(
   prompt: string
 ): Promise<{ rewritten: string; usageTokens: number }> {
-  const result = await callGeminiDetailed({
+  const result = await callProviderDetailed({
     model: "gemini-2.0-flash",
     prompt,
     temperature: 0.3,

@@ -13,7 +13,6 @@
 
 import { authenticateUser } from "../lib/auth";
 import { assertBackendStartupEnv } from "../lib/envGuard";
-import { callGemini } from "../lib/gemini";
 import {
   retrieveRelevantChunks,
   rankChunks,
@@ -101,6 +100,11 @@ export default async function handler(req: any, res: any) {
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method not allowed" });
     }
+
+    return res.status(410).json({
+      error: "LLM endpoint disabled",
+      message: "This deployment is configured for Azure Document Intelligence only.",
+    });
 
     // ✅ SAFE BODY PARSING
     let body: any = req.body;
@@ -201,13 +205,8 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // 4. Gemini call
-    let text = await callGemini({
-      model,
-      prompt: finalPrompt,
-      temperature,
-      maxOutputTokens,
-    });
+    // 4. LLM disabled
+    let text = "LLM endpoint disabled";
 
     // 5. Blueprint validation + retry (only in blueprint mode)
     let validation = null;
@@ -224,12 +223,7 @@ export default async function handler(req: any, res: any) {
 
         try {
           const correctionPrompt = buildCorrectionPrompt(text, validation, bp);
-          text = await callGemini({
-            model,
-            prompt: correctionPrompt,
-            temperature,
-            maxOutputTokens,
-          });
+          void correctionPrompt;
 
           // Re-validate after correction
           validation = validateOutput(text, bp);

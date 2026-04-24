@@ -7,7 +7,6 @@ export type BuiltIntentType =
 	| "summarize"
 	| "build-review"
 	| "build-test"
-	| "compare-documents"
 	| "merge-documents"
 	| "build-sequence"
 	| "build-lesson"
@@ -198,54 +197,6 @@ export interface TestProduct extends IntentProductMetadata {
 	estimatedDurationMinutes: number;
 	sections: TestSection[];
 	totalItemCount: number;
-	generatedAt: string;
-}
-
-export interface CompareDocumentConceptEntry {
-	concept: string;
-	documentIds: string[];
-	overlapStrength?: number;
-	stability?: number;
-	gap?: boolean;
-	crossDocumentAnchor?: boolean;
-}
-
-export interface CompareDocumentMetricEntry {
-	documentId: string;
-	sourceFileName: string;
-	problemCount: number;
-	dominantComplexityBand: ExtractedProblemDifficulty;
-	averageComplexityScore: number;
-	representations: string[];
-	instructionalDensity: number;
-	uniqueConcepts: string[];
-	sharedConcepts: string[];
-}
-
-export interface CompareDocumentsProduct extends IntentProductMetadata {
-	kind: "compare-documents";
-	focus: string | null;
-	sharedConcepts: string[];
-	conceptOverlap: CompareDocumentConceptEntry[];
-	documents: CompareDocumentMetricEntry[];
-	complexityComparison: CompareDocumentMetricEntry[];
-	representationComparison: CompareDocumentMetricEntry[];
-	instructionalDensityComparison: CompareDocumentMetricEntry[];
-	problemDistributionComparison: Array<{
-		documentId: string;
-		sourceFileName: string;
-		totalProblems: number;
-		byComplexityBand: Record<ExtractedProblemDifficulty, number>;
-	}>;
-	documentSimilarity: Array<{
-		leftDocumentId: string;
-		rightDocumentId: string;
-		score: number;
-		sharedConcepts: string[];
-		overlapStrength?: number;
-		redundancyScore?: number;
-	}>;
-	sourceAnchors: ProductSourceAnchor[];
 	generatedAt: string;
 }
 
@@ -471,7 +422,6 @@ export interface IntentPayloadByType {
 	"summarize": SummaryProduct;
 	"build-review": ReviewProduct;
 	"build-test": TestProduct;
-	"compare-documents": CompareDocumentsProduct;
 	"merge-documents": MergeDocumentsProduct;
 	"build-sequence": SequenceProduct;
 	"build-lesson": LessonProduct;

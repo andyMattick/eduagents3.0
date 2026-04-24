@@ -6,7 +6,6 @@
  * NEVER crashes — always returns valid QuerySemantics.
  */
 
-import { callGemini } from "../gemini";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -53,19 +52,8 @@ Query: `;
  * Uses LLM but normalizes aggressively. Never throws.
  */
 export async function parseQuery(query: string): Promise<QuerySemantics> {
-  try {
-    const raw = await callGemini({
-      model: "gemini-2.0-flash",
-      prompt: PARSE_PROMPT + query,
-      temperature: 0,
-      maxOutputTokens: 256,
-    });
-
-    return normalizeSemantics(raw);
-  } catch (err) {
-    console.warn("[semantic] parseQuery LLM failed, using fallback:", err);
-    return DEFAULT_SEMANTICS;
-  }
+  void query;
+  return DEFAULT_SEMANTICS;
 }
 
 // ── Normalization ───────────────────────────────────────────────────────────
@@ -159,28 +147,6 @@ export async function extractSemantics(
     misconceptions: [],
   };
 
-  try {
-    // Use first 2000 chars to keep within token budget
-    const excerpt = content.slice(0, 2000);
-
-    const raw = await callGemini({
-      model: "gemini-2.0-flash",
-      prompt: EXTRACT_PROMPT + excerpt,
-      temperature: 0,
-      maxOutputTokens: 512,
-    });
-
-    const cleaned = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-
-    return {
-      topic: normalizeTopic(parsed.topic),
-      concepts: normalizeStringArray(parsed.concepts, 10, 5),
-      relationships: normalizeStringArray(parsed.relationships, 5, 15),
-      misconceptions: normalizeStringArray(parsed.misconceptions, 3, 15),
-    };
-  } catch (err) {
-    console.warn("[semantic] extractSemantics failed, using defaults:", err);
-    return DEFAULT;
-  }
+  void content;
+  return DEFAULT;
 }

@@ -9,7 +9,6 @@
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { callGemini } from "../../../lib/gemini";
 import type { AssessmentItem, DifficultyLevel, ItemType } from "../../../src/components_new/v4/assessment/assessmentTypes";
 import { SYSTEM_PROMPT, ITEM_TYPE_GUIDELINES } from "../../../src/components_new/v4/assessment/promptLibrary";
 import { pickScenario } from "../../../src/components_new/v4/assessment/scenarioStyles";
@@ -205,36 +204,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		return res.status(400).json({ error: "Invalid JSON body" });
 	}
 
-	const prompt = `${SYSTEM_PROMPT}\n\n---\n\n${buildUserPrompt(params)}`;
-
-	try {
-		const raw = await callGemini({
-			model: "gemini-2.0-flash",
-			prompt,
-			temperature: 0.7,
-			maxOutputTokens: 4096,
-		});
-
-		const items = parseItems(raw, params);
-
-		// Enrich each item with a step count derived from the actual generated stem
-		const concept = toCanonicalConcept(params.canonical, params.conceptId);
-		const enriched = items.map((item) => ({
-			...item,
-			stepCount: computeStepCount(concept, {
-				conceptId: concept.id,
-				difficulty: item.difficulty,
-				scenarioComplexity: "medium",
-				learnerProfile: "core",
-				problemText: item.stem,
-			}),
-		}));
-
-		// Ensure we never return more items than requested
-		return res.status(200).json({ items: enriched.slice(0, params.count) });
-	} catch (err) {
-		console.error("[generate-items] Gemini or parse error:", err instanceof Error ? err.message : err);
-		// Graceful fallback — callers still get usable placeholder items
-		return res.status(200).json({ items: placeholderItems(params) });
-	}
+	void SYSTEM_PROMPT;
+	void buildUserPrompt(params);
+	const items = placeholderItems(params);
+	const concept = toCanonicalConcept(params.canonical, params.conceptId);
+	const enriched = items.map((item) => ({
+		...item,
+		stepCount: computeStepCount(concept, {
+			conceptId: concept.id,
+			difficulty: item.difficulty,
+			scenarioComplexity: "medium",
+			learnerProfile: "core",
+			problemText: item.stem,
+		}),
+	}));
+	return res.status(200).json({ items: enriched.slice(0, params.count) });
 }

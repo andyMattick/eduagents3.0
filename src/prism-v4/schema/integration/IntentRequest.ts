@@ -15,7 +15,6 @@ export type IntentType =
 	| "teacher-guide"
 	| "build-test-from-review"
 	| "build-review-from-test"
-	| "compare-documents"
 	| "merge-documents"
 	| "build-sequence"
 	| "build-unit"

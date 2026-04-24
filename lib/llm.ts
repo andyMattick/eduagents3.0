@@ -1,8 +1,8 @@
 /**
  * lib/llm.ts — LLM choke point with PII awareness
  *
- * ALL Gemini calls must go through `callLLM` rather than calling
- * `callGemini` directly.  This file:
+ * ALL provider calls must go through `callLLM` rather than calling
+ * low-level provider clients directly.  This file:
  *   1. Detects PII patterns in the prompt and logs a warning.
  *   2. Never blocks the call — teacher-uploaded documents may contain
  *      proper nouns (names, school references) by design.
@@ -19,7 +19,7 @@
  *   are shown a disclosure at the time of upload.
  */
 
-import { callGemini, callGeminiDetailed, type GeminiCallResult } from "./gemini";
+import { callProvider, callProviderDetailed, type LlmCallResult } from "./provider";
 
 // ---------------------------------------------------------------------------
 // PII detection
@@ -96,7 +96,7 @@ export function toLLMTeacherContext(ctx: Record<string, unknown>): Record<string
 // LLM choke point
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "llm-disabled";
 const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 /**
@@ -119,7 +119,7 @@ export async function callLLM({
     maxOutputTokens?: number;
   };
 }): Promise<string> {
-  return callGemini({
+  return callProvider({
     model:           options?.model           ?? DEFAULT_MODEL,
     prompt,
     temperature:     options?.temperature     ?? 0.2,
@@ -144,8 +144,8 @@ export async function callLLMWithUsage({
     temperature?: number;
     maxOutputTokens?: number;
   };
-}): Promise<GeminiCallResult> {
-  return callGeminiDetailed({
+}): Promise<LlmCallResult> {
+  return callProviderDetailed({
     model:           options?.model           ?? DEFAULT_MODEL,
     prompt,
     temperature:     options?.temperature     ?? 0.2,

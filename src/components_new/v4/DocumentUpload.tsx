@@ -56,7 +56,6 @@ const INTENT_CONFIG: Record<IntentType, IntentConfig> = {
   "build-lesson": { label: "Lesson", description: "Turn one source into a ready-to-teach lesson plan.", scope: "single" },
   "build-instructional-map": { label: "Instructional Map", description: "Show the key ideas, anchors, and relationships across documents.", scope: "multi" },
   "curriculum-alignment": { label: "Curriculum Alignment", description: "Show where your materials align, overlap, or leave gaps.", scope: "flex" },
-  "compare-documents": { label: "Compare Materials", description: "Compare overlap and differences across selected materials.", scope: "multi" },
   "merge-documents": { label: "Merge Materials", description: "Combine key ideas and questions from several documents.", scope: "multi" },
   "build-sequence": { label: "Teaching Sequence", description: "Recommend the best order for teaching across the selected documents.", scope: "multi" },
   "build-review": { label: "Review Plan", description: "Create a focused review plan from the selected materials.", scope: "flex", numericOption: { key: "maxSections", label: "Sections", defaultValue: 3 } },

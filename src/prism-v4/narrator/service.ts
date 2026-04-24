@@ -1,4 +1,3 @@
-import { callGemini } from "../../../lib/gemini";
 import type { ProblemTagVector } from "../schema/semantic";
 import { composeNarrative } from "./composeNarrative";
 import { LENS_MAP, type NarrateProblemRequest, type NarrateProblemResponse, type NarratorBlocks, type NarratorInstructionalPurpose, type NarratorLens } from "./types";
@@ -270,31 +269,8 @@ export async function narrateProblem(payload: NarrateProblemRequest): Promise<Na
 	const fallbackBlocks = buildFallbackBlocks(payload.problemText, semanticFingerprint);
 	let blocks = fallbackBlocks;
 	let narrative = composeNarrative(pickBlocksForLens(payload.lens, fallbackBlocks));
-
-	try {
-		const raw = await callGemini({
-			model: "gemini-2.0-flash",
-			prompt: buildPrompt(payload),
-			temperature: 0,
-			maxOutputTokens: 1024,
-		});
-		const parsed = parseNarratorJson(raw);
-		if (parsed) {
-			blocks = { ...fallbackBlocks, ...parsed };
-			const filteredBlocks = pickBlocksForLens(payload.lens, blocks);
-			narrative = typeof parsed.teacherVoiceNarrative === "string" && parsed.teacherVoiceNarrative.trim().length > 0
-				? parsed.teacherVoiceNarrative.trim()
-				: composeNarrative(filteredBlocks);
-			return {
-				problemId: payload.problemId,
-				lens: payload.lens,
-				blocks: filteredBlocks,
-				narrative,
-			};
-		}
-	} catch (error) {
-		console.warn("[narrator] LLM generation failed, using semantic fallback:", error);
-	}
+	void buildPrompt;
+	void parseNarratorJson;
 
 	const filteredBlocks = pickBlocksForLens(payload.lens, blocks);
 	return {

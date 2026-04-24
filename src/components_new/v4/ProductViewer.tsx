@@ -1443,9 +1443,6 @@ export function getProductTitle(product: IntentProduct) {
   if (payload.kind === "summary") {
     return "Summary";
   }
-  if (payload.kind === "compare-documents") {
-    return "Document Comparison";
-  }
   if (payload.kind === "merge-documents") {
     return "Merged Document Set";
   }
@@ -1762,17 +1759,6 @@ function renderPrintProduct(payload: IntentProductPayload, options: { showAnswer
     );
   }
 
-  if (payload.kind === "compare-documents") {
-    return (
-      <article className="v4-print-product v4-print-product-compare-documents">
-        <section className="v4-print-section">
-          <h2 className="v4-print-section-title">Shared Concepts</h2>
-          <ul className="v4-print-list">{payload.sharedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul>
-        </section>
-      </article>
-    );
-  }
-
   if (payload.kind === "merge-documents") {
     return (
       <article className="v4-print-product v4-print-product-merge-documents">
@@ -1958,10 +1944,6 @@ export function ProductViewer(props: ProductViewerProps) {
           </div>
         </div>
       );
-    }
-
-    if (payload.kind === "compare-documents") {
-      return <div className="v4-product-card"><h3>Shared Concepts</h3><ul>{payload.sharedConcepts.map((entry) => <li key={entry}>{entry}</li>)}</ul></div>;
     }
 
     if (payload.kind === "merge-documents") {

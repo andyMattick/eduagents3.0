@@ -20,8 +20,8 @@ const { callGeminiMock } = vi.hoisted(() => ({
 	callGeminiMock: vi.fn<() => Promise<string>>(),
 }));
 
-vi.mock("../../lib/gemini", () => ({
-	callGemini: callGeminiMock,
+vi.mock("../../lib/llm", () => ({
+	callLLM: callGeminiMock,
 }));
 
 // Ensure stub LLM env is set for scenario enrichment tests.

@@ -14,7 +14,6 @@
  * Every layer degrades gracefully; LLM enrichment is optional.
  */
 
-import { callGemini } from "../../../lib/gemini";
 import type { AnalyzedDocument, DocumentNode } from "../../../src/prism-v4/schema/semantic";
 import type { ProblemFormat } from "./generateScenarios";
 
@@ -439,45 +438,9 @@ async function llmTagConcepts(
 	cluster: ProblemCluster,
 	context: ExtractionContext,
 ): Promise<Array<{ id: string; label: string; bloomLevel: number }>> {
-	const titleHint = context.unitTitle ? `Unit/chapter: "${context.unitTitle}".` : "";
-	const headerHint = context.sectionHeaders.length > 0
-		? `Section: "${context.sectionHeaders.join(" > ")}".`
-		: "";
-
-	const prompt = [
-		"You are an expert curriculum analyst. Identify the distinct academic concepts tested by the following assessment problem.",
-		"",
-		titleHint,
-		headerHint,
-		"",
-		`Problem text:\n"${cluster.allText}"`,
-		"",
-		"For each concept:",
-		'- Give a concise, precise label (e.g. "Type I error", "Significance level", "P-value interpretation").',
-		"- Estimate a Bloom taxonomy level: 1=recall, 2=understand, 3=apply, 4=analyze, 5=evaluate, 6=create.",
-		"- Do NOT list vague or generic concepts like 'statistics', 'math', 'data'.",
-		"",
-		'Return JSON only: { "concepts": [{ "label": "...", "bloomLevel": 3 }, ...] }',
-		"Aim for 1–5 specific concepts. If the problem tests only one concept, return one.",
-	].filter(Boolean).join("\n");
-
-	try {
-		const raw = await callGemini({ model: "gemini-2.0-flash", prompt, temperature: 0.3, maxOutputTokens: 512 });
-		const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-		const parsed = JSON.parse(text) as { concepts?: unknown };
-		if (!Array.isArray(parsed.concepts)) return [];
-		return (parsed.concepts as unknown[])
-			.filter((c): c is { label: string; bloomLevel: number } =>
-				typeof (c as Record<string, unknown>).label === "string",
-			)
-			.map((c) => ({
-				id: normalizeLLMConcept(c.label).toLowerCase().replace(/\s+/g, "-"),
-				label: normalizeLLMConcept(c.label),
-				bloomLevel: typeof c.bloomLevel === "number" ? c.bloomLevel : 3,
-			}));
-	} catch {
-		return [];
-	}
+	void cluster;
+	void context;
+	return [];
 }
 
 interface ExtractionContext {
