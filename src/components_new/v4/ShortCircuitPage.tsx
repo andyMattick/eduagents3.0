@@ -47,17 +47,23 @@ function flattenExpandedItems(itemTrees: SimulationItemTree[]): ShortCircuitItem
 	for (const tree of itemTrees) {
 		if (tree.subItems && tree.subItems.length > 0) {
 			for (const subItem of tree.subItems) {
-				result.push({ ...subItem });
+				if (subItem.logicalLabel) {
+					result.push({ ...subItem });
+				}
 			}
 			continue;
 		}
-		result.push({ ...tree.item });
+		if (tree.item.logicalLabel) {
+			result.push({ ...tree.item });
+		}
 	}
 	return result;
 }
 
 function flattenCollapsedItems(itemTrees: SimulationItemTree[]): ShortCircuitItem[] {
-	return itemTrees.map((tree) => ({ ...tree.item }));
+	return itemTrees
+		.filter((tree) => Boolean(tree.item.logicalLabel))
+		.map((tree) => ({ ...tree.item }));
 }
 
 export function ShortCircuitPage() {
@@ -185,7 +191,7 @@ export function ShortCircuitPage() {
 	const currentPhaseIdx = phaseOrder.indexOf(phase);
 
 	const graphItems = useMemo(() => {
-		if (!itemTrees || itemTrees.length === 0) return items ?? [];
+		if (!itemTrees || itemTrees.length === 0) return (items ?? []).filter((item) => Boolean(item.logicalLabel));
 		return expandedGraph ? flattenExpandedItems(itemTrees) : flattenCollapsedItems(itemTrees);
 	}, [itemTrees, items, expandedGraph]);
 
@@ -197,7 +203,7 @@ export function ShortCircuitPage() {
 			const flattened = expandedGraph ? flattenExpandedItems(trees) : flattenCollapsedItems(trees);
 			return {
 				...profile,
-				items: flattened,
+				items: flattened.filter((item) => Boolean(item.logicalLabel)),
 			};
 		});
 	}, [profiles, itemTrees, expandedGraph]);
