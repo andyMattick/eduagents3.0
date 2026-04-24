@@ -14,6 +14,7 @@ import { hasSupabaseServiceRoleCredentials, supabaseRest } from "../../../lib/su
 import { runSemanticPipeline } from "../../../src/prism-v4/semantic/pipeline/runSemanticPipeline";
 import type { AzureExtractResult, ProblemTagVector } from "../../../src/prism-v4/schema/semantic";
 import type { StudentProfile } from "../../../src/types/simulator";
+import type { SimulationItem } from "./schema/SimulationItem";
 import { hybridSegment } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
 export type { AzureExtractLike } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
 
@@ -953,6 +954,25 @@ export interface LocalMeasurables {
 	avgSentenceLength: number;
 	/** Density of math/science symbols (0–1). */
 	symbolDensity: number;
+}
+
+// Phase A: additive-only defaults for newly introduced measurable fields.
+export function applyPhaseADefaults(item: SimulationItem): SimulationItem {
+	return {
+		...item,
+		branchingFactor: item.branchingFactor ?? 0,
+		scaffoldLevel: item.scaffoldLevel ?? 0,
+		ambiguityScore: item.ambiguityScore ?? 0,
+		planningLoad: item.planningLoad ?? 0,
+		writingMode: item.writingMode ?? "Describe",
+		expectedResponseLength: item.expectedResponseLength ?? 0,
+		conceptDensity: item.conceptDensity ?? 0,
+		reasoningSteps: item.reasoningSteps ?? 0,
+		subQuestionCount: item.subQuestionCount ?? 0,
+		isMultiPartItem: item.isMultiPartItem ?? false,
+		isMultipleChoice: item.isMultipleChoice ?? false,
+		distractorCount: item.distractorCount ?? 0,
+	};
 }
 
 /**

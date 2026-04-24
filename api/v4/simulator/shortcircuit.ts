@@ -14,7 +14,9 @@
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { supabaseRest } from "../../../lib/supabase";
+import type { SimulationItem } from "./schema/SimulationItem";
 import {
+	applyPhaseADefaults,
 	buildAzureExtractFromRow,
 	computeConfusionScore,
 	PROFILE_CATALOG,
@@ -31,25 +33,7 @@ export const maxDuration = 60;
 // Types
 // ---------------------------------------------------------------------------
 
-export interface ShortCircuitItem {
-	itemNumber: number;
-	text: string;
-	linguisticLoad: number;
-	avgVocabLevel: number;
-	avgWordLength: number;
-	vocabCounts: { level1: number; level2: number; level3: number };
-	misconceptionRisk: number;
-	distractorDensity: number;
-	steps: number;
-	wordCount: number;
-	timeToProcessSeconds: number;
-	confusionScore: number;
-	bloomsLevel: number;
-	bloomsLabel: string;
-	sentenceCount: number;
-	avgSentenceLength: number;
-	symbolDensity: number;
-}
+export type ShortCircuitItem = SimulationItem;
 
 export interface ProfileShortCircuitResult {
 	profileId: string;
@@ -187,11 +171,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			});
 		}
 
+		// Phase A: additive-only defaults for newly introduced measurable fields.
+		const itemsWithDefaults: ShortCircuitItem[] = items.map(applyPhaseADefaults);
+
 		// Build per-profile adjusted items (deterministic modifiers, no Gemini).
 		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
 			const catalog = PROFILE_CATALOG.find((p) => p.id === profileId);
 			const mods = PROFILE_LOAD_MODIFIERS[profileId] ?? PROFILE_LOAD_MODIFIERS["average"]!;
-			const profileItems: ShortCircuitItem[] = items.map((item) => ({
+			const profileItems: ShortCircuitItem[] = itemsWithDefaults.map((item) => ({
 				...item,
 				linguisticLoad: Math.min(1, item.linguisticLoad * mods.linguistic),
 				confusionScore: Math.min(1, item.confusionScore * mods.confusion),
@@ -205,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			};
 		});
 
-		return res.status(200).json({ rawItems, items, profiles: profileResults });
+		return res.status(200).json({ rawItems, items: itemsWithDefaults, profiles: profileResults });
 	} catch (err) {
 		console.error("[shortcircuit] ERROR:", err);
 		return res.status(500).json({

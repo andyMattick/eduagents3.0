@@ -46,7 +46,7 @@ function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
       <div className="home-landing-cards">
         <button className="home-card" onClick={() => navigate("/sim")}>
           <span className="home-card-icon">📊</span>
-          <span className="home-card-title">Simulate Student Experience</span>
+          <span className="home-card-title">Instructional Intelligence</span>
           <span className="home-card-desc">
             Upload a document and see how each student profile will experience your material — per-item metrics, Bloom's levels, and cumulative load by profile.
           </span>
@@ -85,7 +85,7 @@ function TeacherAppContent() {
 
   // Derive page title for the header
   const pageTitle =
-    pathname === '/sim' || pathname === '/shortcircuit' ? 'Simulate Student Experience' :
+    pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
     pathname === '/studio' ? 'Teacher Studio' :
     'Teacher Studio';
 

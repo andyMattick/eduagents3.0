@@ -17,6 +17,7 @@ import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
+import "./v4.css";
 
 const PROFILES = [
 	{ id: "average",  label: "Average Student",   color: "#3b82f6" },
@@ -139,8 +140,8 @@ export function ShortCircuitPage() {
 	const currentPhaseIdx = phaseOrder.indexOf(phase);
 
 	return (
-		<div style={{ padding: "2rem", maxWidth: "1100px", margin: "0 auto" }}>
-			<div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "2rem", fontSize: "0.8rem" }}>
+		<div className="v4-shortcircuit-page">
+			<div className="v4-shortcircuit-steps">
 				{[
 					{ key: "upload" as Phase,  label: "1. Upload" },
 					{ key: "profile" as Phase, label: "2. Profiles" },
@@ -149,10 +150,15 @@ export function ShortCircuitPage() {
 					const stepIdx = phaseOrder.indexOf(key);
 					const done = currentPhaseIdx > stepIdx;
 					const active = key === "profile" ? (phase === "profile" || phase === "running") : phase === key;
+					const stepClass = active
+						? "v4-shortcircuit-step v4-shortcircuit-step-active"
+						: done
+							? "v4-shortcircuit-step v4-shortcircuit-step-done"
+							: "v4-shortcircuit-step";
 					return (
-						<span key={key} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-							<span style={{ fontWeight: active ? 700 : done ? 500 : 400, color: active ? "#1f1a17" : done ? "#9c4d2b" : "#9ca3af" }}>{label}</span>
-							{idx < arr.length - 1 && <span style={{ color: "#d1d5db" }}>›</span>}
+						<span key={key} className="v4-shortcircuit-step-wrap">
+							<span className={stepClass}>{label}</span>
+							{idx < arr.length - 1 && <span className="v4-shortcircuit-step-sep">›</span>}
 						</span>
 					);
 				})}
@@ -250,21 +256,21 @@ export function ShortCircuitPage() {
 
 			{phase === "results" && items && (
 				<div>
-					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+					<div className="v4-shortcircuit-results-head">
 						<div>
-							<h2 style={{ margin: "0 0 0.2rem", fontSize: "1.25rem", color: "#1f1a17" }}>Simulation Results</h2>
-							<p style={{ margin: 0, fontSize: "0.8rem", color: "#6b7280" }}>
+							<h2 className="v4-shortcircuit-results-title">Simulation Results</h2>
+							<p className="v4-shortcircuit-results-meta">
 								{file?.name} · {items.length} item{items.length !== 1 ? "s" : ""} · {profiles?.length ?? 0} profile{(profiles?.length ?? 0) !== 1 ? "s" : ""}
 							</p>
 						</div>
-						<button type="button" onClick={startOver} style={{ padding: "0.4rem 1rem", border: "1px solid rgba(86,57,32,0.25)", borderRadius: "8px", fontSize: "0.82rem", background: "transparent", color: "#6b5040", cursor: "pointer" }}>
+						<button type="button" onClick={startOver} className="v4-shortcircuit-startover">
 							← Start over
 						</button>
 					</div>
-					<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "1.5rem", marginBottom: "1.5rem" }}>
+					<div className="v4-shortcircuit-result-card">
 						<ShortCircuitGraph items={items} profiles={profiles ?? undefined} />
 					</div>
-					<div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "1.5rem" }}>
+					<div className="v4-shortcircuit-result-card">
 						<SimulationExplanationPanel />
 					</div>
 				</div>

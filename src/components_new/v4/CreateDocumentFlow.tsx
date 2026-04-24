@@ -440,7 +440,7 @@ function Screen1({
 							disabled={!hasFiles || isLoading}
 							onClick={onSimulate}
 						>
-							Simulate student experience
+							Instructional Intelligence
 						</button>
 					)}
 				</div>
