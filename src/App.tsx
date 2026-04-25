@@ -11,16 +11,22 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
+import { ClassBuilderPage } from './components_new/v4/phase-c/ClassBuilderPage';
+import { ClassDetailPage } from './components_new/v4/phase-c/ClassDetailPage';
+import { SimulationResultsPage } from './components_new/v4/phase-c/SimulationResultsPage';
 import './App.css';
 
 console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/classes/new']);
 
 function isAllowedV4Path(pathname: string) {
-  return ACTIVE_V4_PATHS.has(pathname) || pathname.startsWith('/print/');
+  return ACTIVE_V4_PATHS.has(pathname)
+    || pathname.startsWith('/print/')
+    || pathname.startsWith('/classes/')
+    || pathname.startsWith('/simulations/');
 }
 
 export interface AssignmentContext {
@@ -44,6 +50,13 @@ function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
       <p className="home-landing-sub">Choose a workflow below to get started.</p>
 
       <div className="home-landing-cards">
+        <button className="home-card" onClick={() => navigate("/classes/new")}>
+          <span className="home-card-icon">🧩</span>
+          <span className="home-card-title">Class Builder</span>
+          <span className="home-card-desc">
+            Build a realistic class of synthetic students with profile overlays and class tendencies, then run document simulations.
+          </span>
+        </button>
         <button className="home-card" onClick={() => navigate("/sim")}>
           <span className="home-card-icon">📊</span>
           <span className="home-card-title">Instructional Intelligence</span>
@@ -86,8 +99,13 @@ function TeacherAppContent() {
   // Derive page title for the header
   const pageTitle =
     pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
+    pathname === '/classes/new' || pathname.startsWith('/classes/') ? 'Class Builder' :
+    pathname.startsWith('/simulations/') ? 'Simulation Results' :
     pathname === '/studio' ? 'Teacher Studio' :
     'Teacher Studio';
+
+  const classDetailMatch = pathname.match(/^\/classes\/([^/]+)$/);
+  const simulationMatch = pathname.match(/^\/simulations\/([^/]+)$/);
 
   return (
     <div className="app-container">
@@ -122,6 +140,12 @@ function TeacherAppContent() {
           ? <HomeLanding navigate={navigate} />
           : pathname === '/legacy'
           ? <LegacyDocumentCreation />
+          : pathname === '/classes/new'
+          ? <ClassBuilderPage navigate={navigate} />
+          : classDetailMatch
+          ? <ClassDetailPage classId={decodeURIComponent(classDetailMatch[1])} navigate={navigate} />
+          : simulationMatch
+          ? <SimulationResultsPage simulationId={decodeURIComponent(simulationMatch[1])} />
           : pathname === '/studio'
           ? <TeacherStudioView />
           : pathname === '/sim' || pathname === '/shortcircuit'

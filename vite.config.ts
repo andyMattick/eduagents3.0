@@ -107,6 +107,7 @@ type LocalApiRoute = {
 
 const localPrismRoutes: LocalApiRoute[] = [
   { pattern: /^\/documents\/upload$/, modulePath: '/api/v4/documents/upload.ts', readRawBody: true },
+  { pattern: /^\/documents$/, modulePath: '/api/v4/documents/index.ts' },
   { pattern: /^\/documents\/session$/, modulePath: '/api/v4/documents/session.ts' },
   { pattern: /^\/documents\/session-analysis$/, modulePath: '/api/v4/documents/session-analysis.ts' },
   {
@@ -150,10 +151,27 @@ const localPrismRoutes: LocalApiRoute[] = [
     modulePath: '/api/v4/classes/[classId]/performance.ts',
     queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
   },
+  { pattern: /^\/classes$/, modulePath: '/api/v4/classes/index.ts' },
+  {
+    pattern: /^\/classes\/([^/]+)$/,
+    modulePath: '/api/v4/classes/[classId].ts',
+    queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
+  },
+  {
+    pattern: /^\/classes\/([^/]+)\/regenerate$/,
+    modulePath: '/api/v4/classes/[classId]/regenerate.ts',
+    queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
+  },
   {
     pattern: /^\/classes\/([^/]+)\/differentiated-build$/,
     modulePath: '/api/v4/classes/[classId]/differentiated-build.ts',
     queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
+  },
+  { pattern: /^\/simulations$/, modulePath: '/api/v4/simulations/index.ts' },
+  {
+    pattern: /^\/simulations\/([^/]+)$/,
+    modulePath: '/api/v4/simulations/[simulationId].ts',
+    queryFromMatch: (match) => ({ simulationId: decodeURIComponent(match[1] ?? '') }),
   },
   { pattern: /^\/narrate-problem$/, modulePath: '/api/v4/narrate-problem.ts' },
   { pattern: /^\/teacher-feedback\/templates$/, modulePath: '/api/v4/teacher-feedback/templates.ts' },

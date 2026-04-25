@@ -2,6 +2,9 @@
 
 Teacher-intelligent, CLASS-aware assessment simulation engine.
 
+Phase C implementation contract: see PHASE_C_SPEC.md for the finalized Class Builder, synthetic student generation, trait overlays, API, schema, and migration plan.
+Phase C implementation guardrails: see PHASE_C_CODER_ADMONITIONS.md before editing Phase C modules.
+
 This service analyzes an assessment PDF, computes measurables, merges teacher inputs, applies a CLASS profile, predicts correctness, evaluates partial credit, aligns PREP vs TEST docs, generates narratives (LLM), and optionally rewrites items (LLM). It is designed to be deterministic today, ML-upgradable tomorrow, and feedback-loop ready via Supabase.
 
 ---

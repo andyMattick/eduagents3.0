@@ -16,6 +16,7 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import { listClassesApi, runSimulationApi, type PhaseCClass } from "../../lib/phaseCApi";
 import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
 import type { SimulationItemTree } from "../../prism-v4/schema";
 import "./v4.css";
@@ -95,8 +96,15 @@ export function ShortCircuitPage() {
 	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [uploading, setUploading] = useState(false);
 	const [sessionId, setSessionId] = useState<string | null>(null);
+	const [documentId, setDocumentId] = useState<string | null>(null);
 	const [selectedProfiles, setSelectedProfiles] = useState<Set<string>>(new Set(["average"]));
 	const [runError, setRunError] = useState<string | null>(null);
+	const [phaseCRunError, setPhaseCRunError] = useState<string | null>(null);
+	const [phaseCRunLoading, setPhaseCRunLoading] = useState(false);
+	const [phaseCClassLoading, setPhaseCClassLoading] = useState(false);
+	const [phaseCClasses, setPhaseCClasses] = useState<PhaseCClass[]>([]);
+	const [showClassModal, setShowClassModal] = useState(false);
+	const [selectedClassId, setSelectedClassId] = useState<string>("");
 	const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
 	const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
 	const [sections, setSections] = useState<SimulationSectionView[] | null>(null);
@@ -111,8 +119,15 @@ export function ShortCircuitPage() {
 		setUploadError(null);
 		setUploading(false);
 		setSessionId(null);
+		setDocumentId(null);
 		setSelectedProfiles(new Set(["average"]));
 		setRunError(null);
+		setPhaseCRunError(null);
+		setPhaseCRunLoading(false);
+		setPhaseCClassLoading(false);
+		setPhaseCClasses([]);
+		setShowClassModal(false);
+		setSelectedClassId("");
 		setItems(null);
 		setItemTrees(null);
 		setSections(null);
@@ -151,8 +166,9 @@ export function ShortCircuitPage() {
 		setUploading(true);
 		setUploadError(null);
 		try {
-			const { sessionId: sid } = await createStudioSessionFromFilesApi([file]);
+			const { sessionId: sid, registered } = await createStudioSessionFromFilesApi([file]);
 			setSessionId(sid);
+			setDocumentId(registered[0]?.documentId ?? null);
 			setPhase("profile");
 		} catch (err) {
 			setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
@@ -206,6 +222,45 @@ export function ShortCircuitPage() {
 		} catch (err) {
 			setRunError(err instanceof Error ? err.message : "Network error. Please try again.");
 			setPhase("profile");
+		}
+	};
+
+	const navigateTo = (path: string) => {
+		window.history.pushState({}, "", path);
+		window.dispatchEvent(new PopStateEvent("popstate"));
+	};
+
+	const openClassRunModal = async () => {
+		setPhaseCRunError(null);
+		setShowClassModal(true);
+		setPhaseCClassLoading(true);
+		try {
+			const response = await listClassesApi();
+			setPhaseCClasses(response.classes);
+			setSelectedClassId((current) => current || response.classes[0]?.id || "");
+		} catch (err) {
+			setPhaseCRunError(err instanceof Error ? err.message : "Failed to load classes.");
+		} finally {
+			setPhaseCClassLoading(false);
+		}
+	};
+
+	const handleRunPhaseC = async () => {
+		if (!selectedClassId || !documentId) {
+			setPhaseCRunError("Choose a class and ensure a document is uploaded.");
+			return;
+		}
+
+		setPhaseCRunLoading(true);
+		setPhaseCRunError(null);
+		try {
+			const output = await runSimulationApi({ classId: selectedClassId, documentId });
+			setShowClassModal(false);
+			navigateTo(`/simulations/${output.simulationId}`);
+		} catch (err) {
+			setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
+		} finally {
+			setPhaseCRunLoading(false);
 		}
 	};
 
@@ -333,6 +388,9 @@ export function ShortCircuitPage() {
 						<button type="button" onClick={startOver} style={{ padding: "0.65rem 1.25rem", background: "transparent", color: "#6b5040", border: "1px solid rgba(86,57,32,0.25)", borderRadius: "8px", fontSize: "0.9rem", cursor: "pointer" }}>
 							← Back
 						</button>
+						<button type="button" onClick={() => void openClassRunModal()} style={{ padding: "0.65rem 1.25rem", background: "#f0dfc8", color: "#4e301d", border: "1px solid rgba(86,57,32,0.2)", borderRadius: "8px", fontSize: "0.9rem", cursor: "pointer" }}>
+							Run Simulation → Choose Class
+						</button>
 						<button
 							type="button"
 							onClick={() => void handleRun()}
@@ -354,9 +412,14 @@ export function ShortCircuitPage() {
 								{file?.name} · {graphItems.length} graphed item{graphItems.length !== 1 ? "s" : ""} · {profiles?.length ?? 0} profile{(profiles?.length ?? 0) !== 1 ? "s" : ""}
 							</p>
 						</div>
-						<button type="button" onClick={startOver} className="v4-shortcircuit-startover">
-							← Start over
-						</button>
+						<div style={{ display: "flex", gap: "0.5rem" }}>
+							<button type="button" onClick={() => void openClassRunModal()} className="v4-shortcircuit-startover">
+								Run Simulation → Choose Class
+							</button>
+							<button type="button" onClick={startOver} className="v4-shortcircuit-startover">
+								← Start over
+							</button>
+						</div>
 					</div>
 					<div className="v4-shortcircuit-result-card">
 						<div className="v4-shortcircuit-graph-toggle-row">
@@ -429,6 +492,28 @@ export function ShortCircuitPage() {
 					</div>
 					<div className="v4-shortcircuit-result-card">
 						<SimulationExplanationPanel />
+					</div>
+				</div>
+			)}
+
+			{showClassModal && (
+				<div className="phasec-modal-overlay" onClick={() => setShowClassModal(false)}>
+					<div className="phasec-modal" onClick={(event) => event.stopPropagation()}>
+						<h3>Run Phase C Simulation</h3>
+						<p className="phasec-copy">Document: {file?.name ?? documentId ?? "Unknown"}</p>
+						<label>Choose class</label>
+						<select value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value)} disabled={phaseCClassLoading}>
+							{phaseCClasses.map((entry) => (
+								<option key={entry.id} value={entry.id}>{entry.name}</option>
+							))}
+						</select>
+						{phaseCRunError && <p className="phasec-error">{phaseCRunError}</p>}
+						<div className="phasec-row">
+							<button className="phasec-button-secondary" onClick={() => setShowClassModal(false)}>Cancel</button>
+							<button className="phasec-button" onClick={() => void handleRunPhaseC()} disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId}>
+								{phaseCRunLoading ? "Running..." : "Run Simulation"}
+							</button>
+						</div>
 					</div>
 				</div>
 			)}

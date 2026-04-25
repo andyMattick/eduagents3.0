@@ -320,6 +320,310 @@
   border-color: rgba(86, 57, 32, 0.35);
 }
 
+/* ============================================================
+   PHASE C PAGES
+   ============================================================ */
+
+.phasec-shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: grid;
+  gap: 1rem;
+  color: #1f1a17;
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.1), transparent 40%),
+    linear-gradient(180deg, #f7f1e8 0%, #f2e7d6 100%);
+  border-radius: 18px;
+}
+
+.phasec-shell p,
+.phasec-shell li,
+.phasec-shell span,
+.phasec-shell strong,
+.phasec-shell td,
+.phasec-shell th {
+  color: #2b1f18;
+}
+
+.phasec-head {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.phasec-head h2 {
+  margin: 0;
+  color: #2a1d16;
+  font-family: "Avenir Next Condensed", "Franklin Gothic Medium", sans-serif;
+}
+
+.phasec-kicker {
+  margin: 0;
+  color: #9c4d2b;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+}
+
+.phasec-stepper,
+.phasec-copy {
+  margin: 0;
+  color: #6b5040;
+  font-size: 0.9rem;
+}
+
+.phasec-card {
+  border: 1px solid rgba(86, 57, 32, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 251, 245, 0.92);
+  padding: 1.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.phasec-stat-card {
+  border: 1px solid rgba(86, 57, 32, 0.16);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(255, 255, 255, 0.72);
+  display: grid;
+  gap: 0.25rem;
+}
+
+.phasec-stat-label {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #86523a;
+}
+
+.phasec-stat-value {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1f1a17;
+}
+
+.phasec-kv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.phasec-kv-list li {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+}
+
+.phasec-kv-key {
+  color: #5a4030;
+}
+
+.phasec-kv-value {
+  font-weight: 700;
+}
+
+.phasec-divider {
+  border: none;
+  border-top: 1px solid rgba(86, 57, 32, 0.14);
+  margin: 0.25rem 0;
+}
+
+.phasec-card h3,
+.phasec-card h4 {
+  margin: 0;
+  color: #1f1a17;
+}
+
+.phasec-card label {
+  font-weight: 600;
+  color: #3f2a1d;
+  font-size: 0.9rem;
+}
+
+.phasec-card input,
+.phasec-card select {
+  width: 100%;
+  border: 1px solid rgba(86, 57, 32, 0.24);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  background: #fff;
+  color: #1f1a17;
+}
+
+.phasec-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.phasec-button,
+.phasec-button-secondary {
+  border-radius: 999px;
+  padding: 0.62rem 1rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.phasec-button {
+  background: linear-gradient(135deg, #bb5b35, #874122);
+  color: #fff8ef;
+}
+
+.phasec-button-secondary {
+  background: #f0dfc8;
+  color: #4e301d;
+  border-color: rgba(86, 57, 32, 0.2);
+}
+
+.phasec-check-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.phasec-grid-2,
+.phasec-grid-3,
+.phasec-grid-4 {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.phasec-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.phasec-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.phasec-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.phasec-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.phasec-tabs button {
+  border: 1px solid rgba(86, 57, 32, 0.2);
+  border-radius: 999px;
+  background: #fff;
+  color: #4e301d;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.phasec-tabs button.active {
+  background: #f0dfc8;
+  font-weight: 700;
+}
+
+.phasec-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.phasec-table th,
+.phasec-table td {
+  text-align: left;
+  padding: 0.55rem;
+  border-bottom: 1px solid rgba(86, 57, 32, 0.12);
+  font-size: 0.88rem;
+  vertical-align: top;
+}
+
+.phasec-table th {
+  color: #553828;
+  background: rgba(240, 223, 200, 0.5);
+}
+
+.phasec-table tbody tr:hover {
+  background: rgba(240, 223, 200, 0.22);
+}
+
+.phasec-curve {
+  width: 100%;
+  height: 180px;
+  border-radius: 12px;
+  border: 1px solid rgba(86, 57, 32, 0.18);
+  background: rgba(255, 255, 255, 0.66);
+  padding: 0.45rem;
+}
+
+.phasec-curve-caption {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b5040;
+}
+
+.phasec-empty {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #7a6254;
+}
+
+.phasec-link {
+  border: none;
+  background: transparent;
+  text-decoration: underline;
+  color: #9c4d2b;
+  cursor: pointer;
+  padding: 0;
+}
+
+.phasec-error {
+  color: #9a1f1f;
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.phasec-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 12, 6, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 120;
+  padding: 1rem;
+}
+
+.phasec-modal {
+  width: min(520px, 100%);
+  border-radius: 16px;
+  background: #fffaf3;
+  border: 1px solid rgba(86, 57, 32, 0.2);
+  padding: 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (max-width: 900px) {
+  .phasec-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .phasec-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .phasec-grid-2,
+  .phasec-grid-3,
+  .phasec-grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .home-card-icon {
   font-size: 1.5rem;
   line-height: 1;
@@ -367,6 +671,21 @@
 }
 [data-theme="dark"] .home-card-title { color: #f9fafb; }
 [data-theme="dark"] .home-card-desc  { color: #9ca3af; }
+
+/* Ensure Phase C pages remain readable under dark defaults. */
+@media (prefers-color-scheme: dark) {
+  .phasec-shell {
+    background:
+      radial-gradient(circle at top left, rgba(201, 93, 55, 0.12), transparent 42%),
+      linear-gradient(180deg, #f7f1e8 0%, #f2e7d6 100%);
+  }
+}
+
+[data-theme="dark"] .phasec-shell {
+  background:
+    radial-gradient(circle at top left, rgba(201, 93, 55, 0.12), transparent 42%),
+    linear-gradient(180deg, #f7f1e8 0%, #f2e7d6 100%);
+}
 
 /* ================================================================
    DARK MODE — manual toggle (data-theme="dark" on <html>)
