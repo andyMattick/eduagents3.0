@@ -137,6 +137,28 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
       difficultyScore: number;
       abilityScore: number;
       pCorrect: number;
+      linguisticLoad?: number;
+      cognitiveLoad?: number;
+      bloomLevel?: number;
+      representationLoad?: number;
+      symbolDensity?: number;
+      vocabCounts?: {
+        level1: number;
+        level2: number;
+        level3: number;
+      };
+      metadata?: {
+        linguisticLoad?: number;
+        cognitiveLoad?: number;
+        bloomLevel?: number;
+        representationLoad?: number;
+        symbolDensity?: number;
+        vocabCounts?: {
+          level1: number;
+          level2: number;
+          level3: number;
+        };
+      };
     }>;
     availableStudentIds?: string[];
   }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`);
