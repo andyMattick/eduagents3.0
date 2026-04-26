@@ -75,6 +75,30 @@ describe("phase-c item filtering", () => {
     const output = await runPhaseCSimulation({
       classId: classRecord.id,
       documentId: "doc-parent-filter",
+      items: [
+        {
+          itemId: "sub-3a",
+          itemNumber: 4,
+          logicalLabel: "3a",
+          traits: {
+            bloomLevel: 3,
+            cognitiveLoad: 0.5,
+            linguisticLoad: 0.4,
+            representationLoad: 0.4,
+          },
+        },
+        {
+          itemId: "sub-3b",
+          itemNumber: 5,
+          logicalLabel: "3b",
+          traits: {
+            bloomLevel: 5,
+            cognitiveLoad: 0.8,
+            linguisticLoad: 0.5,
+            representationLoad: 0.6,
+          },
+        },
+      ],
     });
 
     expect(output.resultCount).toBe(2);

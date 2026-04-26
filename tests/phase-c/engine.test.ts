@@ -58,6 +58,19 @@ describe("phase-c engine", () => {
     const output = await runPhaseCSimulation({
       classId: classRecord.id,
       documentId: "doc-1",
+      items: [
+        {
+          itemId: "item-1",
+          itemNumber: 1,
+          logicalLabel: "1",
+          traits: {
+            bloomLevel: 4,
+            linguisticLoad: 0.6,
+            cognitiveLoad: 0.6,
+            representationLoad: 0.4,
+          },
+        },
+      ],
     });
 
     expect(output.resultCount).toBe(20);

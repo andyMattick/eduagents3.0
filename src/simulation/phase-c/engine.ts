@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 
-import { supabaseRest } from "../../../lib/supabase";
 import { clamp, PHASE_C_CONFIG } from "./traits";
 import {
   createSimulationRun,
@@ -16,14 +15,6 @@ import type {
   SyntheticStudent,
 } from "./types";
 
-type SourceItem = {
-  id: string;
-  item_number: number;
-  stem: string;
-  answer_key?: unknown;
-  metadata?: Record<string, unknown>;
-};
-
 type PhaseBItemMeasurables = {
   itemId: string;
   itemLabel: string;
@@ -34,164 +25,6 @@ type PhaseBItemMeasurables = {
   confusionScore: number;
   timeSeconds: number;
 };
-
-function isSupabaseSchemaCacheError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  return error.message.includes("PGRST205")
-    || error.message.includes("PGRST204")
-    || error.message.includes("Could not find the table")
-    || error.message.includes("schema cache");
-}
-
-function readNumeric(metadata: Record<string, unknown> | undefined, keys: string[], fallback: number): number {
-  if (!metadata) {
-    return fallback;
-  }
-
-  for (const key of keys) {
-    const parts = key.split(".");
-    let value: unknown = metadata;
-    for (const part of parts) {
-      if (value && typeof value === "object" && part in (value as Record<string, unknown>)) {
-        value = (value as Record<string, unknown>)[part];
-      } else {
-        value = undefined;
-        break;
-      }
-    }
-
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-  }
-
-  return fallback;
-}
-
-function hasAnswerKey(value: unknown): boolean {
-  if (value === null || value === undefined) {
-    return false;
-  }
-
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (Array.isArray(value)) {
-    return value.length > 0;
-  }
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (Object.keys(record).length === 0) {
-      return false;
-    }
-
-    return Object.values(record).some((entry) => {
-      if (entry === null || entry === undefined) {
-        return false;
-      }
-      if (typeof entry === "string") {
-        return entry.trim().length > 0;
-      }
-      if (Array.isArray(entry)) {
-        return entry.length > 0;
-      }
-      if (typeof entry === "object") {
-        return Object.keys(entry as Record<string, unknown>).length > 0;
-      }
-      return true;
-    });
-  }
-
-  return true;
-}
-
-function deriveItemLabel(item: SourceItem): string {
-  const stem = (item.stem ?? "").trim();
-  const alphaNumeric = stem.match(/^(\d+\s*[a-z])[\).:\s]/i);
-  if (alphaNumeric?.[1]) {
-    const compact = alphaNumeric[1].replace(/\s+/g, "").toLowerCase();
-    return `Item ${compact}`;
-  }
-
-  const numeric = stem.match(/^(\d+)[\).:\s]/);
-  if (numeric?.[1]) {
-    return `Item ${numeric[1]}`;
-  }
-
-  return `Item ${item.item_number}`;
-}
-
-function estimateMeasurables(item: SourceItem): PhaseBItemMeasurables {
-  const cfg = PHASE_C_CONFIG.formula;
-  const text = item.stem ?? "";
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const sentenceCount = text.split(/[.!?]+/).filter((entry) => entry.trim().length > 0).length || 1;
-  const avgSentenceLength = wordCount / sentenceCount;
-
-  const linguisticLoad = clamp(
-    readNumeric(item.metadata, ["linguisticLoad", "linguistic_load", "phaseB.linguisticLoad", "phaseB.linguistic_load", "metrics.linguistic_load"], avgSentenceLength / cfg.defaultLinguisticLoadDivisor),
-    cfg.minLinguisticLoad,
-    cfg.maxLinguisticLoad,
-  );
-  const confusionScore = clamp(
-    readNumeric(item.metadata, ["confusionScore", "phaseB.confusionScore", "metrics.confusion_score"], Math.min(cfg.maxConfusionScore, avgSentenceLength / cfg.defaultConfusionSentenceDivisor)),
-    cfg.minConfusionScore,
-    cfg.maxConfusionScore,
-  );
-  const timeSeconds = Math.max(
-    0,
-    readNumeric(item.metadata, ["timeToProcessSeconds", "phaseB.timeSeconds", "metrics.time_seconds"], Math.max(cfg.defaultTimeFloorSeconds, wordCount * cfg.defaultTimePerWordSeconds)),
-  );
-  const bloomLevel = clamp(readNumeric(item.metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"], cfg.defaultBloomsLevel), cfg.minBloomsLevel, cfg.maxBloomsLevel);
-  const cognitiveLoad = clamp(readNumeric(item.metadata, ["cognitiveLoad", "cognitive_load", "phaseB.cognitiveLoad", "phaseB.cognitive_load", "metrics.cognitive_load"], linguisticLoad), cfg.minLinguisticLoad, cfg.maxLinguisticLoad);
-  const representationLoad = clamp(readNumeric(item.metadata, ["representationLoad", "representation_load", "phaseB.representationLoad", "phaseB.representation_load", "metrics.representation_load"], 1), cfg.minLinguisticLoad, cfg.maxLinguisticLoad);
-
-  return {
-    itemId: item.id,
-    itemLabel: deriveItemLabel(item),
-    linguisticLoad,
-    cognitiveLoad,
-    bloomLevel,
-    representationLoad,
-    confusionScore,
-    timeSeconds,
-  };
-}
-
-async function loadDocumentItems(documentId: string): Promise<SourceItem[]> {
-  try {
-    const rows = await supabaseRest("v4_items", {
-      method: "GET",
-      select: "id,item_number,stem,answer_key,metadata",
-      filters: {
-        document_id: `eq.${documentId}`,
-        order: "item_number.asc",
-      },
-    });
-
-    const sourceItems = (rows as SourceItem[]) ?? [];
-    const hasAnswerKeys = sourceItems.some((item) => hasAnswerKey(item.answer_key));
-
-    if (!hasAnswerKeys) {
-      return sourceItems;
-    }
-
-    return sourceItems.filter((item) => hasAnswerKey(item.answer_key));
-  } catch (error) {
-    if (!isSupabaseSchemaCacheError(error)) {
-      throw error;
-    }
-
-    const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`Phase C: failed to read v4_items; treating as missing document items. ${detail}`);
-    return [];
-  }
-}
 
 function applyPhaseCCore(student: SyntheticStudent, measurable: PhaseBItemMeasurables) {
   const cfg = PHASE_C_CONFIG.formula;
@@ -327,20 +160,11 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
   }
 
   const normalizedItems = input.items ?? [];
-  const measurables = normalizedItems.length > 0
-    ? normalizedItems.map((item) => measurableFromNormalizedItem(item))
-    : undefined;
-
-  if (measurables && measurables.length === 0) {
+  if (normalizedItems.length === 0) {
     throw new Error("No document items found for documentId");
   }
 
-  const fallbackItems = measurables ? [] : await loadDocumentItems(input.documentId);
-  if (!measurables && fallbackItems.length === 0) {
-    throw new Error("No document items found for documentId");
-  }
-
-  const measurableItems = measurables ?? fallbackItems.map((item) => estimateMeasurables(item));
+  const measurableItems = normalizedItems.map((item) => measurableFromNormalizedItem(item));
 
   const simulationRun = await createSimulationRun({
     classId: classRecord.id,

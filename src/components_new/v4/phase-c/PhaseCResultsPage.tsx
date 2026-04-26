@@ -192,7 +192,6 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
       </div>
 
       <div className="phasec-tabs">
-        <button onClick={() => navigate(`/simulations/${encodeURIComponent(simulationId)}/phase-b`)}>Phase B: Item Traits</button>
         <button className="active" onClick={() => navigate(`/simulations/${encodeURIComponent(simulationId)}/phase-c`)}>Phase C: Student Simulation</button>
       </div>
 

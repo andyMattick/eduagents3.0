@@ -13,7 +13,6 @@ import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
 import { ClassBuilderPage } from './components_new/v4/phase-c/ClassBuilderPage';
 import { ClassDetailPage } from './components_new/v4/phase-c/ClassDetailPage';
-import { PhaseBResultsPage } from './components_new/v4/phase-c/PhaseBResultsPage';
 import { PhaseCResultsPage } from './components_new/v4/phase-c/PhaseCResultsPage';
 import './App.css';
 
@@ -101,14 +100,13 @@ function TeacherAppContent() {
   const pageTitle =
     pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
     pathname === '/classes/new' || pathname.startsWith('/classes/') ? 'Class Builder' :
-    pathname.startsWith('/simulations/') && pathname.endsWith('/phase-b') ? 'Phase B Item Traits' :
     pathname.startsWith('/simulations/') && pathname.endsWith('/phase-c') ? 'Phase C Student Simulation' :
     pathname.startsWith('/simulations/') ? 'Simulation Results' :
     pathname === '/studio' ? 'Teacher Studio' :
     'Teacher Studio';
 
   const classDetailMatch = pathname.match(/^\/classes\/([^/]+)$/);
-  const simulationPhaseMatch = pathname.match(/^\/simulations\/([^/]+)\/(phase-b|phase-c)$/);
+  const simulationPhaseMatch = pathname.match(/^\/simulations\/([^/]+)\/phase-c$/);
   const simulationLegacyMatch = pathname.match(/^\/simulations\/([^/]+)$/);
 
   return (
@@ -148,12 +146,10 @@ function TeacherAppContent() {
           ? <ClassBuilderPage navigate={navigate} />
           : classDetailMatch
           ? <ClassDetailPage classId={decodeURIComponent(classDetailMatch[1])} navigate={navigate} />
-          : simulationPhaseMatch?.[2] === 'phase-b'
-          ? <PhaseBResultsPage simulationId={decodeURIComponent(simulationPhaseMatch[1])} navigate={navigate} />
-          : simulationPhaseMatch?.[2] === 'phase-c'
+          : simulationPhaseMatch
           ? <PhaseCResultsPage simulationId={decodeURIComponent(simulationPhaseMatch[1])} navigate={navigate} />
           : simulationLegacyMatch
-          ? <PhaseBResultsPage simulationId={decodeURIComponent(simulationLegacyMatch[1])} navigate={navigate} />
+          ? <PhaseCResultsPage simulationId={decodeURIComponent(simulationLegacyMatch[1])} navigate={navigate} />
           : pathname === '/studio'
           ? <TeacherStudioView />
           : pathname === '/sim' || pathname === '/shortcircuit'

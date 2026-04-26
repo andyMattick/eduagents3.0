@@ -44,6 +44,31 @@ type ItemRow = {
   metadata?: Record<string, unknown>;
 };
 
+function readMetadataString(metadata: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+  if (!metadata) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const parts = key.split(".");
+    let value: unknown = metadata;
+    for (const part of parts) {
+      if (value && typeof value === "object" && part in (value as Record<string, unknown>)) {
+        value = (value as Record<string, unknown>)[part];
+      } else {
+        value = undefined;
+        break;
+      }
+    }
+
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return undefined;
+}
+
 function hasAnswerKey(value: unknown): boolean {
   if (value === null || value === undefined) {
     return false;
@@ -96,6 +121,22 @@ function deriveItemStructure(row: ItemRow): Pick<ItemTraitSnapshot, "itemNumber"
   const itemNumber = typeof row.item_number === "number" && Number.isFinite(row.item_number)
     ? row.item_number
     : undefined;
+  const extractedProblemId = readMetadataString(row.metadata, ["extractedProblemId", "extracted_problem_id", "problemId", "problem_id"]);
+  if (extractedProblemId) {
+    const match = extractedProblemId.match(/^p?(\d+)([a-z])?$/i);
+    if (match?.[1]) {
+      const groupId = match[1];
+      const partIndex = match[2] ? letterToPartIndex(match[2]) : 0;
+      return {
+        itemNumber,
+        groupId,
+        partIndex,
+        logicalLabel: `${groupId}${match[2] ? match[2].toLowerCase() : ""}`,
+        isParent: partIndex === 0 ? !hasAnswerKey(row.answer_key) : false,
+      };
+    }
+  }
+
   const stem = (row.stem ?? "").trim();
   const hasKey = hasAnswerKey(row.answer_key);
   const alphaNumeric = stem.match(/^(\d+)\s*([a-z])[\).:\s]/i);
@@ -359,9 +400,21 @@ function studentSummary(results: SimulationResult[], itemTraits: Record<string, 
   }, {});
 
   const entries = Object.entries(byItem).map(([itemId, values]) => ({ itemId, ...values }));
-  const allParents = entries.length > 0 && entries.every((entry) => entry.isParent);
-  const adjusted = allParents ? entries.map((entry) => ({ ...entry, isParent: false })) : entries;
-  return adjusted.sort((left, right) => compareByStructure(left, right));
+  const groupsWithChildren = new Set(
+    entries
+      .filter((entry) => (entry.partIndex ?? 0) > 0)
+      .map((entry) => entry.groupId ?? String(entry.itemNumber ?? entry.logicalLabel ?? "")),
+  );
+
+  const adjusted = entries.map((entry) => {
+    const groupKey = entry.groupId ?? String(entry.itemNumber ?? entry.logicalLabel ?? "");
+    const keepAsParent = Boolean(entry.isParent) && groupsWithChildren.has(groupKey);
+    return { ...entry, isParent: keepAsParent };
+  });
+
+  const allParents = adjusted.length > 0 && adjusted.every((entry) => entry.isParent);
+  const normalizedParents = allParents ? adjusted.map((entry) => ({ ...entry, isParent: false })) : adjusted;
+  return normalizedParents.sort((left, right) => compareByStructure(left, right));
 }
 
 function phaseBSummary(results: SimulationResult[], itemTraits: Record<string, ItemTraitSnapshot>) {
@@ -410,8 +463,20 @@ function phaseBSummary(results: SimulationResult[], itemTraits: Record<string, I
   }
 
   const entries = [...byItem.values()].sort((left, right) => compareByStructure(left, right));
-  const allParents = entries.length > 0 && entries.every((entry) => entry.isParent);
-  return allParents ? entries.map((entry) => ({ ...entry, isParent: false })) : entries;
+  const groupsWithChildren = new Set(
+    entries
+      .filter((entry) => (entry.partIndex ?? 0) > 0)
+      .map((entry) => entry.groupId ?? String(entry.itemNumber ?? entry.logicalLabel ?? "")),
+  );
+
+  const adjusted = entries.map((entry) => {
+    const groupKey = entry.groupId ?? String(entry.itemNumber ?? entry.logicalLabel ?? "");
+    const keepAsParent = Boolean(entry.isParent) && groupsWithChildren.has(groupKey);
+    return { ...entry, isParent: keepAsParent };
+  });
+
+  const allParents = adjusted.length > 0 && adjusted.every((entry) => entry.isParent);
+  return allParents ? adjusted.map((entry) => ({ ...entry, isParent: false })) : adjusted;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

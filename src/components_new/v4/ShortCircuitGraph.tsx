@@ -1,7 +1,7 @@
 /**
  * src/components_new/v4/ShortCircuitGraph.tsx
  *
- * Simulation 2.1 — two-section graphing architecture.
+ * Simulation 2.1 — deterministic Phase B graphing architecture.
  *
  * SECTION 1 — Deterministic per-item graphs
  *   These show document-based item characteristics only.
@@ -10,10 +10,6 @@
  *   (deterministic), time (per item), Bloom's level, sentence count,
  *   avg sentence length, distractor density, symbol density.
  *   Plus: vocab heatmap (stacked bar).
- *
- * SECTION 2 — Profile-specific cumulative graphs
- *   One graph per metric, one line per profile.
- *   Metrics: cumulative linguistic load, cumulative confusion, cumulative time.
  *
  * All graphs are theme-aware (light / dark mode via data-theme attribute).
  */
@@ -33,7 +29,7 @@ import {
 	Cell,
 } from "recharts";
 import { useTheme } from "../../hooks/useTheme";
-import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
+import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
 
 // ---------------------------------------------------------------------------
 // Theme-aware color helpers
@@ -106,39 +102,6 @@ function bloomsColor(level: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Section 2 — Cumulative metric configs
-// ---------------------------------------------------------------------------
-
-const CUMULATIVE_METRICS = [
-	{
-		key: "linguisticLoad" as const,
-		label: "Cumulative Linguistic Load",
-		description: "How linguistic difficulty accumulates across the worksheet for each profile. A steeper slope means faster effort build-up.",
-	},
-	{
-		key: "confusionScore" as const,
-		label: "Cumulative Confusion",
-		description: "Cumulative confusion score per profile. Diverging lines show which profiles struggle disproportionately.",
-	},
-	{
-		key: "time" as const,
-		label: "Cumulative Time",
-		description: "Cumulative estimated processing time (seconds) per profile.",
-	},
-] as const;
-
-type CumulativeMetricKey = typeof CUMULATIVE_METRICS[number]["key"];
-
-function cumulativeValues(items: ShortCircuitItem[], key: "linguisticLoad" | "confusionScore" | "time"): number[] {
-	let sum = 0;
-	return items.map((item) => {
-		const v = key === "time" ? item.timeToProcessSeconds : item[key];
-		sum += v;
-		return sum;
-	});
-}
-
-// ---------------------------------------------------------------------------
 // Shared axis tick style
 // ---------------------------------------------------------------------------
 
@@ -152,10 +115,9 @@ function axisTick(textColor: string) {
 
 interface ShortCircuitGraphProps {
 	items: ShortCircuitItem[];
-	profiles?: ProfileShortCircuitResult[];
 }
 
-export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
+export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 	const theme = useChartTheme();
 
 	// Section 1 state — selected deterministic series
@@ -163,23 +125,10 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 		new Set(["linguisticLoad", "confusion"] as DeterministicKey[]),
 	);
 
-	// Section 2 state — active profiles
-	const [activeProfileIds, setActiveProfileIds] = useState<Set<string>>(
-		() => new Set(profiles?.map((p) => p.profileId) ?? []),
-	);
-
 	const toggleDet = (key: DeterministicKey) => {
 		setSelectedDet((prev) => {
 			const next = new Set(prev);
 			if (next.has(key)) { next.delete(key); } else { next.add(key); }
-			return next;
-		});
-	};
-
-	const toggleProfile = (id: string) => {
-		setActiveProfileIds((prev) => {
-			const next = new Set(prev);
-			if (next.has(id)) { next.delete(id); } else { next.add(id); }
 			return next;
 		});
 	};
@@ -383,108 +332,6 @@ export function ShortCircuitGraph({ items, profiles }: ShortCircuitGraphProps) {
 				{items.length} item{items.length !== 1 ? "s" : ""} — local semantic analysis (no LLM)
 			</p>
 
-			{/* ================================================================ */}
-			{/* SECTION 2 — Profile-specific cumulative graphs                   */}
-			{/* ================================================================ */}
-			{profiles && profiles.length > 0 && (
-				<div style={{ marginTop: "3rem", borderTop: `1px solid ${theme.borderColor}`, paddingTop: "1.5rem" }}>
-					<h2 style={{ margin: "0 0 0.2rem", fontSize: "1rem", fontWeight: 700, color: theme.headingColor }}>
-						Section 2 — Cumulative Experience by Profile
-					</h2>
-					<p style={{ margin: "0 0 0.85rem", fontSize: "0.75rem", color: theme.subTextColor }}>
-						Shows how different students experience the same document over time. One graph per metric; one line per profile.
-					</p>
-
-					{/* Profile toggles */}
-					<div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "1rem" }}>
-						{profiles.map((p) => {
-							const active = activeProfileIds.has(p.profileId);
-							return (
-								<button
-									key={p.profileId}
-									onClick={() => toggleProfile(p.profileId)}
-									style={{
-										padding: "0.25rem 0.65rem",
-										borderRadius: "6px",
-										border: `2px solid ${p.color}`,
-										background: active ? p.color : "transparent",
-										color: active ? "#fff" : p.color,
-										fontSize: "0.75rem",
-										cursor: "pointer",
-										fontWeight: active ? 600 : 400,
-										transition: "all 0.15s",
-									}}
-								>
-									{p.profileLabel}
-								</button>
-							);
-						})}
-					</div>
-
-					{/* One graph per cumulative metric */}
-					{CUMULATIVE_METRICS.map((metric) => {
-						const profilesInView = profiles.filter((p) => activeProfileIds.has(p.profileId));
-
-						const chartData = items.map((item, idx) => {
-							const obj: Record<string, number> = { x: item.itemNumber };
-							profilesInView.forEach((p) => {
-								let sum = 0;
-								for (let i = 0; i <= idx; i++) {
-									const pItem = p.items[i];
-									if (!pItem) continue;
-									if (metric.key === "time") {
-										sum += pItem.timeToProcessSeconds;
-									} else {
-										sum += pItem[metric.key];
-									}
-								}
-								obj[p.profileId] = Number(sum.toFixed(4));
-							});
-							return obj;
-						});
-
-						return (
-							<div key={metric.key} style={{ marginBottom: "2rem" }}>
-								<p style={{ fontSize: "0.85rem", fontWeight: 600, color: theme.textColor, margin: "0 0 0.2rem" }}>
-									{metric.label}
-								</p>
-								<p style={{ fontSize: "0.72rem", color: theme.subTextColor, margin: "0 0 0.4rem" }}>
-									{metric.description}
-								</p>
-								<ResponsiveContainer width="100%" height={300}>
-									<LineChart data={chartData} margin={{ top: 8, right: 24, left: 0, bottom: 8 }}>
-										<CartesianGrid strokeDasharray="3 3" stroke={theme.gridColor} />
-										<XAxis
-											dataKey="x"
-											label={{ value: "Item #", position: "insideBottom", offset: -4, fill: theme.textColor }}
-											tick={axisTick(theme.textColor)}
-										/>
-										<YAxis domain={[0, "auto"]} tick={axisTick(theme.textColor)} width={48} />
-										<RechartsTooltip
-											contentStyle={{ background: theme.bgColor, border: `1px solid ${theme.borderColor}`, color: theme.textColor }}
-											formatter={(value: number, name: string) => [value.toFixed(3), name]}
-											labelFormatter={(label) => `Item ${label}`}
-										/>
-										<Legend verticalAlign="top" />
-										{profilesInView.map((p) => (
-											<Line
-												key={p.profileId}
-												type="monotone"
-												dataKey={p.profileId}
-												name={p.profileLabel}
-												stroke={p.color}
-												strokeWidth={2.5}
-												dot={false}
-												activeDot={{ r: 4 }}
-											/>
-										))}
-									</LineChart>
-								</ResponsiveContainer>
-							</div>
-						);
-					})}
-				</div>
-			)}
 		</div>
 	);
 }

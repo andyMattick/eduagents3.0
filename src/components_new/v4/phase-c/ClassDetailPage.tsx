@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getClassDetailApi, listDocumentsApi, regenerateClassApi, runSimulationUnifiedApi, type DocumentSummary } from "../../../lib/phaseCApi";
+import { getClassDetailApi, regenerateClassApi } from "../../../lib/phaseCApi";
 
 type Props = {
   classId: string;
@@ -14,11 +14,6 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [showRunModal, setShowRunModal] = useState(false);
-
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState("");
 
   const [data, setData] = useState<Awaited<ReturnType<typeof getClassDetailApi>> | null>(null);
 
@@ -26,10 +21,8 @@ export function ClassDetailPage({ classId, navigate }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const [classData, documentData] = await Promise.all([getClassDetailApi(classId), listDocumentsApi()]);
+      const classData = await getClassDetailApi(classId);
       setData(classData);
-      setDocuments(documentData.documents ?? []);
-      setSelectedDocumentId(documentData.documents?.[0]?.documentId ?? "");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to load class");
     } finally {
@@ -73,30 +66,6 @@ export function ClassDetailPage({ classId, navigate }: Props) {
     }
   }
 
-  async function handleRunSimulation() {
-    if (!selectedDocumentId) {
-      setError("Choose a document first");
-      return;
-    }
-
-    setRunning(true);
-    setError(null);
-    try {
-      const output = await runSimulationUnifiedApi({
-        classId,
-        documentId: selectedDocumentId,
-        selectedProfileIds: [],
-        mode: "class",
-      });
-      setShowRunModal(false);
-      navigate(`/simulations/${output.simulationId}/phase-b`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Simulation run failed");
-    } finally {
-      setRunning(false);
-    }
-  }
-
   if (loading) {
     return <div className="phasec-shell"><p>Loading class...</p></div>;
   }
@@ -117,7 +86,6 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       </div>
 
       <div className="phasec-row">
-        <button className="phasec-button" onClick={() => setShowRunModal(true)}>Run Simulation on Document</button>
         <button className="phasec-button-secondary" disabled={regenerating} onClick={() => void handleRegenerate()}>
           {regenerating ? "Regenerating..." : "Regenerate students"}
         </button>
@@ -217,7 +185,7 @@ export function ClassDetailPage({ classId, navigate }: Props) {
             <ul className="phasec-kv-list">
               {(data.simulations ?? []).map((run) => (
                 <li key={run.id}>
-                  <button className="phasec-link" onClick={() => navigate(`/simulations/${run.id}`)}>{run.id}</button>
+                  <button className="phasec-link" onClick={() => navigate(`/simulations/${run.id}/phase-c`)}>{run.id}</button>
                   <span>{new Date(run.createdAt).toLocaleString()} · document {run.documentId}</span>
                 </li>
               ))}
@@ -229,26 +197,6 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       )}
 
       {error && <p className="phasec-error">{error}</p>}
-
-      {showRunModal && (
-        <div className="phasec-modal-overlay" onClick={() => setShowRunModal(false)}>
-          <div className="phasec-modal" onClick={(event) => event.stopPropagation()}>
-            <h3>Run Simulation on Document</h3>
-            <label>Choose document</label>
-            <select value={selectedDocumentId} onChange={(event) => setSelectedDocumentId(event.target.value)}>
-              {documents.map((document) => (
-                <option key={document.documentId} value={document.documentId}>{document.sourceFileName}</option>
-              ))}
-            </select>
-            <div className="phasec-row">
-              <button className="phasec-button-secondary" onClick={() => setShowRunModal(false)}>Cancel</button>
-              <button className="phasec-button" disabled={running || !selectedDocumentId} onClick={() => void handleRunSimulation()}>
-                {running ? "Running..." : "Run Simulation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

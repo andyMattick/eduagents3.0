@@ -70,10 +70,10 @@ vi.mock("../../lib/supabase", () => ({
 import { createClassWithSyntheticStudents, listSimulationResults, runPhaseCSimulation } from "../../src/simulation/phase-c";
 
 const EXPECTED_DIFFICULTY: Record<string, number> = {
-  "item-camel": 3.85,
-  "item-snake": 2.85,
-  "item-phaseb": 2.15,
-  "item-metrics": 2.55,
+  "item-camel": 2.0,
+  "item-snake": 1.8,
+  "item-phaseb": 1.6,
+  "item-metrics": 1.4,
 };
 
 describe("Phase B->C boundary (loader)", () => {
@@ -102,6 +102,52 @@ describe("Phase B->C boundary (loader)", () => {
     const output = await runPhaseCSimulation({
       classId: classRecord.id,
       documentId: "doc-meta-variants",
+      items: [
+        {
+          itemId: "item-camel",
+          itemNumber: 1,
+          logicalLabel: "1",
+          traits: {
+            bloomLevel: 6,
+            cognitiveLoad: 1,
+            linguisticLoad: 1,
+            representationLoad: 1,
+          },
+        },
+        {
+          itemId: "item-snake",
+          itemNumber: 2,
+          logicalLabel: "2",
+          traits: {
+            bloomLevel: 5,
+            cognitiveLoad: 1,
+            linguisticLoad: 1,
+            representationLoad: 1,
+          },
+        },
+        {
+          itemId: "item-phaseb",
+          itemNumber: 3,
+          logicalLabel: "3",
+          traits: {
+            bloomLevel: 4,
+            cognitiveLoad: 1,
+            linguisticLoad: 1,
+            representationLoad: 1,
+          },
+        },
+        {
+          itemId: "item-metrics",
+          itemNumber: 4,
+          logicalLabel: "4",
+          traits: {
+            bloomLevel: 3,
+            cognitiveLoad: 1,
+            linguisticLoad: 1,
+            representationLoad: 1,
+          },
+        },
+      ],
     });
 
     const results = await listSimulationResults(output.simulationRun.id);

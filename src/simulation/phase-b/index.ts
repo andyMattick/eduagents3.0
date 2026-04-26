@@ -109,10 +109,88 @@ function readNumber(source: unknown, paths: string[]): number | undefined {
   return undefined;
 }
 
+function readBoolean(source: unknown, paths: string[]): boolean | undefined {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true" || normalized === "1" || normalized === "yes") {
+        return true;
+      }
+      if (normalized === "false" || normalized === "0" || normalized === "no") {
+        return false;
+      }
+    }
+  }
+  return undefined;
+}
+
+function readString(source: unknown, paths: string[]): string | undefined {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function partIndexToSuffix(partIndex: number): string {
+  if (!Number.isFinite(partIndex) || partIndex <= 0) {
+    return "";
+  }
+  return String.fromCharCode(96 + partIndex);
+}
+
 function deriveStructure(row: ItemRow): Pick<NormalizedPhaseBItem, "itemNumber" | "groupId" | "partIndex" | "logicalLabel" | "isParent"> {
   const itemNumber = typeof row.item_number === "number" && Number.isFinite(row.item_number)
     ? row.item_number
     : undefined;
+  const metadata = row.metadata as Record<string, unknown> | undefined;
+  const metadataGroupId = readString(metadata, ["groupId", "group_id", "phaseB.groupId", "phaseB.group_id"]);
+  const metadataPartIndexRaw = readNumber(metadata, ["partIndex", "part_index", "phaseB.partIndex", "phaseB.part_index"]);
+  const metadataLogicalLabel = readString(metadata, ["logicalLabel", "logical_label", "phaseB.logicalLabel", "phaseB.logical_label"]);
+  const metadataIsParent = readBoolean(metadata, ["isParent", "is_parent", "phaseB.isParent", "phaseB.is_parent"]);
+
+  const metadataPartIndex = typeof metadataPartIndexRaw === "number" && Number.isFinite(metadataPartIndexRaw)
+    ? Math.max(0, Math.floor(metadataPartIndexRaw))
+    : undefined;
+
+  const extractedProblemId = readString(metadata, ["extractedProblemId", "extracted_problem_id", "problemId", "problem_id"]);
+  if (extractedProblemId) {
+    const extractedMatch = extractedProblemId.match(/^p?(\d+)([a-z])?$/i);
+    if (extractedMatch?.[1]) {
+      const groupId = extractedMatch[1];
+      const partIndex = extractedMatch[2] ? letterToPartIndex(extractedMatch[2]) : 0;
+      const logicalLabel = `${groupId}${partIndexToSuffix(partIndex)}`;
+      return {
+        itemNumber,
+        groupId,
+        partIndex,
+        logicalLabel,
+        isParent: metadataIsParent ?? (partIndex === 0 && !hasAnswerKey(row.answer_key)),
+      };
+    }
+  }
+
+  if (metadataGroupId || metadataLogicalLabel || metadataPartIndex !== undefined || metadataIsParent !== undefined) {
+    const groupId = metadataGroupId
+      ?? (metadataLogicalLabel ? (metadataLogicalLabel.match(/^(\d+)/)?.[1] ?? metadataLogicalLabel) : undefined)
+      ?? (typeof itemNumber === "number" ? String(itemNumber) : row.id);
+    const partIndex = metadataPartIndex ?? (metadataLogicalLabel ? letterToPartIndex(metadataLogicalLabel.slice(-1)) : 0);
+    const logicalLabel = metadataLogicalLabel ?? `${groupId}${partIndexToSuffix(partIndex)}`;
+    return {
+      itemNumber,
+      groupId,
+      partIndex,
+      logicalLabel,
+      isParent: metadataIsParent ?? !hasAnswerKey(row.answer_key),
+    };
+  }
+
   const stem = (row.stem ?? "").trim();
   const answerPresent = hasAnswerKey(row.answer_key);
   const alphaNumeric = stem.match(/^(\d+)\s*([a-z])[\).:\s]/i);
@@ -150,6 +228,41 @@ function deriveStructure(row: ItemRow): Pick<NormalizedPhaseBItem, "itemNumber" 
   };
 }
 
+function inferMultipartPartIndices(row: ItemRow): number[] {
+  const metadata = row.metadata as Record<string, unknown> | undefined;
+
+  const explicitCount = readNumber(metadata, ["subQuestionCount", "sub_question_count", "phaseB.subQuestionCount", "phaseB.sub_question_count"]);
+  if (typeof explicitCount === "number" && Number.isFinite(explicitCount) && explicitCount > 1) {
+    return Array.from({ length: Math.floor(explicitCount) }, (_, index) => index + 1);
+  }
+
+  const subItems = readPath(metadata, "subItems") ?? readPath(metadata, "sub_items") ?? readPath(metadata, "phaseB.subItems") ?? readPath(metadata, "phaseB.sub_items");
+  if (Array.isArray(subItems) && subItems.length > 1) {
+    return Array.from({ length: subItems.length }, (_, index) => index + 1);
+  }
+
+  if (row.answer_key && typeof row.answer_key === "object" && !Array.isArray(row.answer_key)) {
+    const keys = Object.keys(row.answer_key as Record<string, unknown>)
+      .map((key) => key.trim().toLowerCase())
+      .filter((key) => /^[a-z]$/.test(key))
+      .sort();
+    if (keys.length > 1) {
+      return keys.map((key) => letterToPartIndex(key));
+    }
+  }
+
+  const stem = row.stem ?? "";
+  const markers = [...stem.matchAll(/(?:\(|\b)([a-z])(?:\)|\.)/gi)]
+    .map((match) => match[1]?.toLowerCase() ?? "")
+    .filter((value) => /^[a-z]$/.test(value));
+  const unique = [...new Set(markers)].map((letter) => letterToPartIndex(letter)).filter((value) => value > 0);
+  if (unique.length > 1) {
+    return unique.sort((a, b) => a - b);
+  }
+
+  return [];
+}
+
 function estimateLinguisticLoad(stem: string): number {
   const text = stem.trim();
   const wordCount = text.split(/\s+/).filter(Boolean).length;
@@ -158,7 +271,7 @@ function estimateLinguisticLoad(stem: string): number {
   return clamp(avgSentenceLength / 20, 0, 1);
 }
 
-function toNormalizedItem(row: ItemRow): NormalizedPhaseBItem {
+function toNormalizedItems(row: ItemRow): NormalizedPhaseBItem[] {
   const structure = deriveStructure(row);
   const metadata = row.metadata as Record<string, unknown> | undefined;
   const linguisticLoad = clamp(
@@ -189,7 +302,7 @@ function toNormalizedItem(row: ItemRow): NormalizedPhaseBItem {
   const symbolDensity = readNumber(metadata, ["symbolDensity", "symbol_density", "metrics.symbol_density"]);
   const steps = readNumber(metadata, ["steps", "phaseB.steps", "metrics.steps"]);
 
-  return {
+  const baseItem: NormalizedPhaseBItem = {
     itemId: row.id,
     itemNumber: structure.itemNumber,
     groupId: structure.groupId,
@@ -206,6 +319,23 @@ function toNormalizedItem(row: ItemRow): NormalizedPhaseBItem {
       steps,
     },
   };
+
+  if (!baseItem.isParent || baseItem.partIndex > 0) {
+    return [baseItem];
+  }
+
+  const inferredParts = inferMultipartPartIndices(row);
+  if (inferredParts.length === 0) {
+    return [baseItem];
+  }
+
+  return inferredParts.map((partIndex) => ({
+    ...baseItem,
+    itemId: `${row.id}::part-${partIndex}`,
+    partIndex,
+    logicalLabel: `${baseItem.groupId}${partIndexToSuffix(partIndex)}`,
+    isParent: false,
+  }));
 }
 
 function sortNormalizedItems(items: NormalizedPhaseBItem[]): NormalizedPhaseBItem[] {
@@ -232,13 +362,21 @@ export async function normalizeItemsPhaseB(documentId: string): Promise<{ items:
     },
   }) as ItemRow[];
 
-  const normalized = (rows ?? []).map((row) => toNormalizedItem(row));
-  const withoutParents = normalized.filter((item) => !item.isParent);
+  const normalized = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const groupsWithChildren = new Set(
+    normalized
+      .filter((item) => item.partIndex > 0)
+      .map((item) => item.groupId),
+  );
+
+  // Keep standalone items (part 0 with no child parts) even when parent
+  // inference marks them as parent due to missing answer keys.
+  const withoutMultipartParents = normalized.filter((item) => !item.isParent || !groupsWithChildren.has(item.groupId));
 
   // Some ingested docs may not carry answer keys on item rows. In that case,
   // parent inference can mark every row as parent; preserve source order instead
   // of returning an empty item list.
-  const effectiveItems = withoutParents.length > 0 ? withoutParents : normalized;
+  const effectiveItems = withoutMultipartParents.length > 0 ? withoutMultipartParents : normalized;
 
   return {
     items: sortNormalizedItems(effectiveItems),

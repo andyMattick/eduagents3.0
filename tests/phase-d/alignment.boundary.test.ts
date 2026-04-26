@@ -51,6 +51,19 @@ describe("Phase C->D boundary", () => {
     const output = await runPhaseCSimulation({
       classId: classRecord.id,
       documentId: "doc-alignment-boundary",
+      items: [
+        {
+          itemId: "item-alignment-1",
+          itemNumber: 1,
+          logicalLabel: "1",
+          traits: {
+            bloomLevel: 5,
+            cognitiveLoad: 0.8,
+            linguisticLoad: 0.7,
+            representationLoad: 0.4,
+          },
+        },
+      ],
     });
 
     const results = await listSimulationResults(output.simulationRun.id);

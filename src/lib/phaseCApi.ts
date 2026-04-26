@@ -108,15 +108,6 @@ export function regenerateClassApi(classId: string, seed?: string) {
   });
 }
 
-export function runSimulationApi(input: { classId: string; documentId: string }) {
-  return runSimulationUnifiedApi({
-    classId: input.classId,
-    documentId: input.documentId,
-    mode: "class",
-    selectedProfileIds: [],
-  });
-}
-
 export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class" }) {
   return fetchJson<{
     simulationId: string;
@@ -124,6 +115,9 @@ export function runSimulationUnifiedApi(input: { classId: string; documentId: st
     documentId: string;
     createdAt: string;
     resultCount: number;
+    mode?: "class";
+    selectedProfileIds?: string[];
+    phaseCResults?: unknown;
   }>("/api/v4/simulations/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -149,7 +149,7 @@ export type RunSimulationInput = {
   classId: string;
   documentId: string;
   selectedProfileIds?: string[];
-  items?: PhaseBNormalizedItemInput[];
+  items: PhaseBNormalizedItemInput[];
 };
 
 export type SimulationView = "class" | "profile" | "student";
