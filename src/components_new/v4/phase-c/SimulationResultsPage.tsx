@@ -13,12 +13,88 @@ const PROFILE_OPTIONS = ["ELL", "SPED", "Gifted", "ADHD", "Dyslexic", "MathAnxio
 function SummaryCard({ summary }: { summary: SimulationSummary }) {
   return (
     <div className="phasec-grid-4">
-      <div><strong>Records</strong><p>{summary.totalRecords}</p></div>
-      <div><strong>Avg confusion</strong><p>{summary.averageConfusionScore.toFixed(3)}</p></div>
-      <div><strong>Avg time (s)</strong><p>{summary.averageTimeSeconds.toFixed(2)}</p></div>
-      <div><strong>Avg bloom gap</strong><p>{summary.averageBloomGap.toFixed(3)}</p></div>
+      <div className="phasec-stat-card">
+        <p className="phasec-stat-label">Records</p>
+        <p className="phasec-stat-value">{summary.totalRecords}</p>
+      </div>
+      <div className="phasec-stat-card">
+        <p className="phasec-stat-label">Avg confusion</p>
+        <p className="phasec-stat-value">{summary.averageConfusionScore.toFixed(3)}</p>
+      </div>
+      <div className="phasec-stat-card">
+        <p className="phasec-stat-label">Avg time (s)</p>
+        <p className="phasec-stat-value">{summary.averageTimeSeconds.toFixed(2)}</p>
+      </div>
+      <div className="phasec-stat-card">
+        <p className="phasec-stat-label">Avg bloom gap</p>
+        <p className="phasec-stat-value">{summary.averageBloomGap.toFixed(3)}</p>
+      </div>
     </div>
   );
+}
+
+type CurveItem = { x: number; cumulativeConfusion: number; cumulativeTime: number };
+
+function buildCurve(items: Array<{ confusionScore: number; timeSeconds: number }>): CurveItem[] {
+  let confusion = 0;
+  let time = 0;
+  return items.map((item, index) => {
+    confusion += item.confusionScore;
+    time += item.timeSeconds;
+    return {
+      x: index + 1,
+      cumulativeConfusion: confusion,
+      cumulativeTime: time,
+    };
+  });
+}
+
+function curvePath(points: Array<{ x: number; y: number }>, width: number, height: number): string {
+  if (points.length === 0) {
+    return "";
+  }
+
+  const maxX = Math.max(...points.map((point) => point.x), 1);
+  const maxY = Math.max(...points.map((point) => point.y), 1);
+  const pad = 8;
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+
+  const scaled = points.map((point) => {
+    const sx = pad + (point.x / maxX) * innerW;
+    const sy = height - pad - (point.y / maxY) * innerH;
+    return `${sx.toFixed(2)},${sy.toFixed(2)}`;
+  });
+
+  return `M${scaled.join(" L")}`;
+}
+
+function CumulativeCurve({ items }: { items: Array<{ confusionScore: number; timeSeconds: number }> }) {
+  const points = buildCurve(items);
+  const width = 640;
+  const height = 180;
+
+  const confusionPath = curvePath(points.map((point) => ({ x: point.x, y: point.cumulativeConfusion })), width, height);
+  const timePath = curvePath(points.map((point) => ({ x: point.x, y: point.cumulativeTime })), width, height);
+
+  if (points.length === 0) {
+    return <p className="phasec-empty">No student item data is available for a cumulative curve yet.</p>;
+  }
+
+  return (
+    <div>
+      <svg className="phasec-curve" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="Cumulative confusion and time curve">
+        <path d={confusionPath} fill="none" stroke="#bb5b35" strokeWidth="3" strokeLinecap="round" />
+        <path d={timePath} fill="none" stroke="#285d7a" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <p className="phasec-curve-caption">Orange: cumulative confusion. Blue: cumulative time.</p>
+    </div>
+  );
+}
+
+function formatStudentLabel(studentId: string): string {
+  const compact = studentId.slice(0, 8);
+  return `Student ${compact}`;
 }
 
 export function SimulationResultsPage({ simulationId }: Props) {
@@ -119,7 +195,7 @@ export function SimulationResultsPage({ simulationId }: Props) {
           <select value={profile} onChange={(event) => setProfile(event.target.value)}>
             {PROFILE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
-          {profileView && <SummaryCard summary={profileView.summary} />}
+          {profileView ? <SummaryCard summary={profileView.summary} /> : <p className="phasec-empty">Loading profile slice...</p>}
         </div>
       )}
 
@@ -127,9 +203,11 @@ export function SimulationResultsPage({ simulationId }: Props) {
         <div className="phasec-card">
           <label>Student</label>
           <select value={studentId} onChange={(event) => setStudentId(event.target.value)}>
-            {(studentOptions.length > 0 ? studentOptions : [studentId]).map((value) => <option key={value} value={value}>{value}</option>)}
+            {(studentOptions.length > 0 ? studentOptions : [studentId]).map((value) => <option key={value} value={value}>{formatStudentLabel(value)}</option>)}
           </select>
           {studentView && <SummaryCard summary={studentView.summary} />}
+
+          <CumulativeCurve items={items} />
 
           {items.length > 0 && (
             <table className="phasec-table">

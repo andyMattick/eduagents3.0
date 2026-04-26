@@ -20,4 +20,8 @@ export interface ExtractedProblem {
 	complexityBand: ExtractedProblemDifficulty;
 	misconceptions: string[];
 	cognitiveDemand: ExtractedProblemCognitiveDemand;
+	bloomLevel?: number;
+	cognitiveLoad?: number;
+	linguisticLoad?: number;
+	representationLoad?: number;
 }

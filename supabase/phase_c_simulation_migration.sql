@@ -54,9 +54,21 @@ create table if not exists public.simulation_results (
   confusion_score double precision not null,
   time_seconds double precision not null,
   bloom_gap double precision not null,
+  difficulty_score double precision not null default 0,
+  ability_score double precision not null default 0,
+  p_correct double precision not null default 0,
   traits_snapshot jsonb null,
   created_at timestamptz not null default now()
 );
+
+alter table public.simulation_results
+  add column if not exists difficulty_score double precision not null default 0;
+
+alter table public.simulation_results
+  add column if not exists ability_score double precision not null default 0;
+
+alter table public.simulation_results
+  add column if not exists p_correct double precision not null default 0;
 
 create index if not exists simulation_results_simulation_id_idx on public.simulation_results(simulation_id);
 create index if not exists simulation_results_student_id_idx on public.simulation_results(synthetic_student_id);

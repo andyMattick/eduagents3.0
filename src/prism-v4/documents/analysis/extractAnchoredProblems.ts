@@ -61,6 +61,47 @@ function cognitiveDemandLabel(problemText: string, bloomScores: Record<string, n
 	return "recall";
 }
 
+function clamp01(value: number): number {
+	return Math.max(0, Math.min(1, value));
+}
+
+function bloomLevelFromScores(scores: Record<string, number> | undefined): number {
+	const safe = scores ?? {};
+	const ladder: Array<{ key: string; level: number }> = [
+		{ key: "create", level: 6 },
+		{ key: "evaluate", level: 5 },
+		{ key: "analyze", level: 4 },
+		{ key: "apply", level: 3 },
+		{ key: "understand", level: 2 },
+		{ key: "remember", level: 1 },
+	];
+
+	for (const entry of ladder) {
+		if ((safe[entry.key] ?? 0) > 0) {
+			return entry.level;
+		}
+	}
+
+	return 2;
+}
+
+function representationLoadFromLabel(label: string | undefined): number {
+	const value = (label ?? "paragraph").toLowerCase();
+	if (value === "paragraph") {
+		return 0.25;
+	}
+	if (value === "equation" || value === "table") {
+		return 0.55;
+	}
+	if (value === "graph" || value === "diagram" || value === "experiment") {
+		return 0.75;
+	}
+	if (value === "map" || value === "timeline" || value === "primarysource") {
+		return 0.65;
+	}
+	return 0.5;
+}
+
 export function extractAnchoredProblems(args: {
 	document: CanonicalDocument;
 	fragments: FragmentSemanticRecord[];
@@ -80,7 +121,13 @@ export function extractAnchoredProblems(args: {
 		const extractionMode: ExtractedProblem["extractionMode"] = instructionalFragments.some((fragment) => fragment.instructionalRole === "example")
 			? "inferred"
 			: "authored";
-		const difficultyScore = Math.max(problem.multiStep, problem.abstractionLevel, linguistic.linguisticLoad[problem.problemId] ?? 0);
+		const bloomScores = bloom[problem.problemId] ?? {};
+		const representation = representations[problem.problemId] ?? "paragraph";
+		const linguisticLoad = clamp01(linguistic.linguisticLoad[problem.problemId] ?? 0.5);
+		const representationLoad = clamp01(representationLoadFromLabel(representation));
+		const cognitiveLoad = clamp01((problem.multiStep * 0.5) + (problem.abstractionLevel * 0.3) + (representationLoad * 0.2));
+		const bloomLevel = bloomLevelFromScores(bloomScores);
+		const difficultyScore = Math.max(problem.multiStep, problem.abstractionLevel, linguisticLoad);
 
 		return {
 			id: problem.problemId,
@@ -91,10 +138,14 @@ export function extractAnchoredProblems(args: {
 			extractionMode,
 			sourceSpan: problem.sourceSpan,
 			concepts: Object.keys(concepts[problem.problemId] ?? {}),
-			representations: [representations[problem.problemId] ?? "paragraph"],
+			representations: [representation],
 			difficulty: difficultyLabel(difficultyScore),
 			misconceptions: Object.keys(misconceptions[problem.problemId] ?? {}),
-			cognitiveDemand: cognitiveDemandLabel(problem.cleanedText ?? problem.rawText, bloom[problem.problemId] ?? {}),
+			cognitiveDemand: cognitiveDemandLabel(problem.cleanedText ?? problem.rawText, bloomScores),
+			bloomLevel,
+			cognitiveLoad,
+			linguisticLoad,
+			representationLoad,
 		};
 	});
 

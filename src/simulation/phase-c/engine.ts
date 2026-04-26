@@ -26,10 +26,23 @@ type PhaseBItemMeasurables = {
   itemId: string;
   itemLabel: string;
   linguisticLoad: number;
+  cognitiveLoad: number;
+  bloomLevel: number;
+  representationLoad: number;
   confusionScore: number;
   timeSeconds: number;
-  bloomsLevel: number;
 };
+
+function isSupabaseSchemaCacheError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes("PGRST205")
+    || error.message.includes("PGRST204")
+    || error.message.includes("Could not find the table")
+    || error.message.includes("schema cache");
+}
 
 function readNumeric(metadata: Record<string, unknown> | undefined, keys: string[], fallback: number): number {
   if (!metadata) {
@@ -64,7 +77,7 @@ function estimateMeasurables(item: SourceItem): PhaseBItemMeasurables {
   const avgSentenceLength = wordCount / sentenceCount;
 
   const linguisticLoad = clamp(
-    readNumeric(item.metadata, ["linguisticLoad", "phaseB.linguisticLoad", "metrics.linguistic_load"], avgSentenceLength / cfg.defaultLinguisticLoadDivisor),
+    readNumeric(item.metadata, ["linguisticLoad", "linguistic_load", "phaseB.linguisticLoad", "phaseB.linguistic_load", "metrics.linguistic_load"], avgSentenceLength / cfg.defaultLinguisticLoadDivisor),
     cfg.minLinguisticLoad,
     cfg.maxLinguisticLoad,
   );
@@ -77,36 +90,50 @@ function estimateMeasurables(item: SourceItem): PhaseBItemMeasurables {
     0,
     readNumeric(item.metadata, ["timeToProcessSeconds", "phaseB.timeSeconds", "metrics.time_seconds"], Math.max(cfg.defaultTimeFloorSeconds, wordCount * cfg.defaultTimePerWordSeconds)),
   );
-  const bloomsLevel = clamp(readNumeric(item.metadata, ["bloomsLevel", "phaseB.bloomsLevel", "metrics.blooms_level"], cfg.defaultBloomsLevel), cfg.minBloomsLevel, cfg.maxBloomsLevel);
+  const bloomLevel = clamp(readNumeric(item.metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"], cfg.defaultBloomsLevel), cfg.minBloomsLevel, cfg.maxBloomsLevel);
+  const cognitiveLoad = clamp(readNumeric(item.metadata, ["cognitiveLoad", "cognitive_load", "phaseB.cognitiveLoad", "phaseB.cognitive_load", "metrics.cognitive_load"], linguisticLoad), cfg.minLinguisticLoad, cfg.maxLinguisticLoad);
+  const representationLoad = clamp(readNumeric(item.metadata, ["representationLoad", "representation_load", "phaseB.representationLoad", "phaseB.representation_load", "metrics.representation_load"], 1), cfg.minLinguisticLoad, cfg.maxLinguisticLoad);
 
   return {
     itemId: item.id,
     itemLabel: `Item ${item.item_number}`,
     linguisticLoad,
+    cognitiveLoad,
+    bloomLevel,
+    representationLoad,
     confusionScore,
     timeSeconds,
-    bloomsLevel,
   };
 }
 
 async function loadDocumentItems(documentId: string): Promise<SourceItem[]> {
-  const rows = await supabaseRest("v4_items", {
-    method: "GET",
-    select: "id,item_number,stem,metadata",
-    filters: {
-      document_id: `eq.${documentId}`,
-      order: "item_number.asc",
-    },
-  });
+  try {
+    const rows = await supabaseRest("v4_items", {
+      method: "GET",
+      select: "id,item_number,stem,metadata",
+      filters: {
+        document_id: `eq.${documentId}`,
+        order: "item_number.asc",
+      },
+    });
 
-  return (rows as SourceItem[]) ?? [];
+    return (rows as SourceItem[]) ?? [];
+  } catch (error) {
+    if (!isSupabaseSchemaCacheError(error)) {
+      throw error;
+    }
+
+    const detail = error instanceof Error ? error.message : String(error);
+    console.warn(`Phase C: failed to read v4_items; treating as missing document items. ${detail}`);
+    return [];
+  }
 }
 
 function applyPhaseCCore(student: SyntheticStudent, measurable: PhaseBItemMeasurables) {
   const cfg = PHASE_C_CONFIG.formula;
   const readingGap = Math.max(0, measurable.linguisticLoad - student.traits.readingLevel);
   const vocabularyGap = Math.max(0, measurable.linguisticLoad - student.traits.vocabularyLevel);
-  const bloomGap = Math.max(0, measurable.bloomsLevel - student.traits.bloomMastery);
+  const bloomGap = Math.max(0, measurable.bloomLevel - student.traits.bloomMastery);
   const speedPenalty = Math.max(0, (cfg.baselineProcessingCenter - student.traits.processingSpeed) / cfg.processingPenaltyDivisor);
   const knowledgePenalty = Math.max(0, (cfg.baselineKnowledgeCenter - student.traits.backgroundKnowledge) / cfg.processingPenaltyDivisor);
 
@@ -149,6 +176,33 @@ function applyBiases(student: SyntheticStudent, confusionProfile: number, timePr
   };
 }
 
+function computeDifficultyScore(measurable: PhaseBItemMeasurables): number {
+  return (
+    0.35 * measurable.linguisticLoad
+    + 0.35 * measurable.cognitiveLoad
+    + 0.20 * measurable.bloomLevel
+    + 0.10 * measurable.representationLoad
+  );
+}
+
+function computeAbilityScore(student: SyntheticStudent): number {
+  return (
+    0.30 * student.traits.readingLevel
+    + 0.20 * student.traits.vocabularyLevel
+    + 0.20 * student.traits.backgroundKnowledge
+    + 0.15 * student.traits.processingSpeed
+    + 0.15 * student.traits.bloomMastery
+  );
+}
+
+function computeTraitBonus(student: SyntheticStudent): number {
+  return (-0.20 * student.biases.timeBias) + (-0.20 * student.biases.confusionBias);
+}
+
+function sigmoid(value: number): number {
+  return 1 / (1 + Math.exp(-value));
+}
+
 export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
   simulationRun: SimulationRun;
   resultCount: number;
@@ -180,6 +234,10 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
     for (const measurable of measurables) {
       const profileOutput = applyPhaseCCore(student, measurable);
       const biasedOutput = applyBiases(student, profileOutput.confusionProfile, profileOutput.timeProfile);
+      const difficultyScore = computeDifficultyScore(measurable);
+      const abilityScore = computeAbilityScore(student);
+      const traitBonus = computeTraitBonus(student);
+      const pCorrect = sigmoid(abilityScore + traitBonus - difficultyScore);
 
       results.push({
         id: randomUUID(),
@@ -191,7 +249,15 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
         confusionScore: biasedOutput.confusionScore,
         timeSeconds: biasedOutput.timeSeconds,
         bloomGap: profileOutput.bloomGap,
-        traitsSnapshot: student.traits,
+        difficultyScore,
+        abilityScore,
+        pCorrect,
+        traitsSnapshot: {
+          traits: student.traits,
+          profiles: student.profiles,
+          positiveTraits: student.positiveTraits,
+          biases: student.biases,
+        },
       });
     }
   }

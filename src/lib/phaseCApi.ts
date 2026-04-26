@@ -11,19 +11,13 @@ export type ClassComposition = {
   readingChallenges: PresenceLevel;
 };
 
-export type ClassTendencies = {
-  manyFastWorkers?: boolean;
-  manySlowAndCareful?: boolean;
-  manyDetailOriented?: boolean;
-  manyTestAnxious?: boolean;
-  manyMathConfident?: boolean;
-  manyStruggleReading?: boolean;
-  manyEasilyDistracted?: boolean;
-};
-
-export type ClassOverlays = {
-  composition: ClassComposition;
-  tendencies: ClassTendencies;
+export type ProfilePercentages = {
+  ell: number;
+  sped: number;
+  adhd: number;
+  dyslexia: number;
+  gifted: number;
+  attention504: number;
 };
 
 export type PhaseCClass = {
@@ -33,7 +27,6 @@ export type PhaseCClass = {
   level: ClassLevel;
   gradeBand?: "9-10" | "11-12" | "Mixed";
   schoolYear: string;
-  overlays: ClassOverlays;
   createdAt: string;
 };
 
@@ -80,11 +73,10 @@ export function listClassesApi() {
 }
 
 export function createClassApi(input: {
-  name: string;
-  level: ClassLevel;
+  className: string;
+  classLevel: ClassLevel;
   gradeBand?: "9-10" | "11-12" | "Mixed";
-  schoolYear?: string;
-  overlays: ClassOverlays;
+  profilePercentages: ProfilePercentages;
   studentCount?: number;
   seed?: string;
 }) {
@@ -136,7 +128,16 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
     simulationId: string;
     view: "class" | "profile" | "student";
     summary: SimulationSummary;
-    items?: Array<{ itemId: string; itemLabel: string; confusionScore: number; timeSeconds: number; bloomGap: number }>;
+    items?: Array<{
+      itemId: string;
+      itemLabel: string;
+      confusionScore: number;
+      timeSeconds: number;
+      bloomGap: number;
+      difficultyScore: number;
+      abilityScore: number;
+      pCorrect: number;
+    }>;
     availableStudentIds?: string[];
   }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`);
 }

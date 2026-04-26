@@ -16,9 +16,33 @@ const classesMemory = new Map<string, PhaseCClass>();
 const studentsMemory = new Map<string, SyntheticStudent[]>();
 const simulationRunsMemory = new Map<string, SimulationRun>();
 const simulationResultsMemory = new Map<string, SimulationResult[]>();
+let phaseCSupabaseDisabled = false;
 
 function canUseSupabase() {
-  return typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return !phaseCSupabaseDisabled
+    && typeof window === "undefined"
+    && Boolean(process.env.SUPABASE_URL)
+    && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+
+function isSupabaseSchemaCacheError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes("PGRST205")
+    || error.message.includes("PGRST204")
+    || error.message.includes("Could not find the table");
+}
+
+function disableSupabaseForPhaseC(reason: unknown) {
+  if (phaseCSupabaseDisabled) {
+    return;
+  }
+
+  phaseCSupabaseDisabled = true;
+  const detail = reason instanceof Error ? reason.message : String(reason);
+  console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
 }
 
 function currentSchoolYear(now = new Date()): string {
@@ -34,7 +58,6 @@ type SupabaseClassRow = {
   name: string;
   level: PhaseCClass["level"];
   grade_band: PhaseCClass["gradeBand"] | null;
-  overlays: PhaseCClass["overlays"];
   school_year: string;
   created_at: string;
 };
@@ -73,6 +96,9 @@ type SupabaseSimulationResultRow = {
   confusion_score: number;
   time_seconds: number;
   bloom_gap: number;
+  difficulty_score: number;
+  ability_score: number;
+  p_correct: number;
   traits_snapshot: SimulationResult["traitsSnapshot"] | null;
 };
 
@@ -83,7 +109,6 @@ function normalizeClassRow(item: PhaseCClass): SupabaseClassRow {
     name: item.name,
     level: item.level,
     grade_band: item.gradeBand ?? null,
-    overlays: item.overlays,
     school_year: item.schoolYear,
     created_at: item.createdAt,
   };
@@ -96,7 +121,6 @@ function hydrateClassRow(row: SupabaseClassRow): PhaseCClass {
     name: row.name,
     level: row.level,
     gradeBand: row.grade_band ?? undefined,
-    overlays: row.overlays,
     schoolYear: row.school_year,
     createdAt: row.created_at,
   };
@@ -171,6 +195,9 @@ function normalizeSimulationResult(result: SimulationResult): SupabaseSimulation
     confusion_score: result.confusionScore,
     time_seconds: result.timeSeconds,
     bloom_gap: result.bloomGap,
+    difficulty_score: result.difficultyScore,
+    ability_score: result.abilityScore,
+    p_correct: result.pCorrect,
     traits_snapshot: result.traitsSnapshot ?? null,
   };
 }
@@ -186,7 +213,36 @@ function hydrateSimulationResult(row: SupabaseSimulationResultRow): SimulationRe
     confusionScore: Number(row.confusion_score ?? 0),
     timeSeconds: Number(row.time_seconds ?? 0),
     bloomGap: Number(row.bloom_gap ?? 0),
+    difficultyScore: Number(row.difficulty_score ?? 0),
+    abilityScore: Number(row.ability_score ?? 0),
+    pCorrect: Number(row.p_correct ?? 0),
     traitsSnapshot: row.traits_snapshot ?? undefined,
+  };
+}
+
+function deriveProfilePercentagesFromStudents(students: SyntheticStudent[]): CreateClassInput["profilePercentages"] {
+  if (students.length === 0) {
+    return {
+      ell: 0,
+      sped: 0,
+      adhd: 0,
+      dyslexia: 0,
+      gifted: 0,
+      attention504: 0,
+    };
+  }
+
+  const total = students.length;
+  const ratioToPercent = (count: number) => (count / total) * 100;
+  const adhdCount = students.filter((student) => student.profiles.includes("ADHD")).length;
+
+  return {
+    ell: ratioToPercent(students.filter((student) => student.profiles.includes("ELL")).length),
+    sped: ratioToPercent(students.filter((student) => student.profiles.includes("SPED")).length),
+    adhd: ratioToPercent(adhdCount),
+    dyslexia: ratioToPercent(students.filter((student) => student.profiles.includes("Dyslexic")).length),
+    gifted: ratioToPercent(students.filter((student) => student.profiles.includes("Gifted")).length),
+    attention504: ratioToPercent(adhdCount),
   };
 }
 
@@ -198,14 +254,13 @@ export async function createClassWithSyntheticStudents(input: CreateClassInput):
     level: input.level,
     gradeBand: input.gradeBand,
     schoolYear: input.schoolYear ?? currentSchoolYear(),
-    overlays: input.overlays,
     createdAt: new Date().toISOString(),
   };
 
   const students = generateSyntheticStudents({
     classId: classRecord.id,
     classLevel: classRecord.level,
-    overlays: classRecord.overlays,
+    profilePercentages: input.profilePercentages,
     studentCount: input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed: input.seed,
   });
@@ -214,18 +269,25 @@ export async function createClassWithSyntheticStudents(input: CreateClassInput):
   studentsMemory.set(classRecord.id, students);
 
   if (canUseSupabase()) {
-    await supabaseRest("classes", {
-      method: "POST",
-      body: normalizeClassRow(classRecord),
-      prefer: "return=minimal",
-    });
-
-    if (students.length > 0) {
-      await supabaseRest("synthetic_students", {
+    try {
+      await supabaseRest("classes", {
         method: "POST",
-        body: students.map((student) => normalizeStudentRow(student)),
+        body: normalizeClassRow(classRecord),
         prefer: "return=minimal",
       });
+
+      if (students.length > 0) {
+        await supabaseRest("synthetic_students", {
+          method: "POST",
+          body: students.map((student) => normalizeStudentRow(student)),
+          prefer: "return=minimal",
+        });
+      }
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
     }
   }
 
@@ -234,16 +296,23 @@ export async function createClassWithSyntheticStudents(input: CreateClassInput):
 
 export async function listClasses(teacherId?: string): Promise<PhaseCClass[]> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("classes", {
-      method: "GET",
-      select: "id,teacher_id,name,level,grade_band,overlays,school_year,created_at",
-      filters: {
-        order: "created_at.desc",
-        ...(teacherId ? { teacher_id: `eq.${teacherId}` } : {}),
-      },
-    });
+    try {
+      const rows = await supabaseRest("classes", {
+        method: "GET",
+        select: "id,teacher_id,name,level,grade_band,school_year,created_at",
+        filters: {
+          order: "created_at.desc",
+          ...(teacherId ? { teacher_id: `eq.${teacherId}` } : {}),
+        },
+      });
 
-    return ((rows as SupabaseClassRow[]) ?? []).map((row) => hydrateClassRow(row));
+      return ((rows as SupabaseClassRow[]) ?? []).map((row) => hydrateClassRow(row));
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   const values = Array.from(classesMemory.values());
@@ -253,13 +322,20 @@ export async function listClasses(teacherId?: string): Promise<PhaseCClass[]> {
 
 export async function getClassById(classId: string): Promise<PhaseCClass | null> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("classes", {
-      method: "GET",
-      select: "id,teacher_id,name,level,grade_band,overlays,school_year,created_at",
-      filters: { id: `eq.${classId}` },
-    });
-    const row = ((rows as SupabaseClassRow[]) ?? [])[0];
-    return row ? hydrateClassRow(row) : null;
+    try {
+      const rows = await supabaseRest("classes", {
+        method: "GET",
+        select: "id,teacher_id,name,level,grade_band,school_year,created_at",
+        filters: { id: `eq.${classId}` },
+      });
+      const row = ((rows as SupabaseClassRow[]) ?? [])[0];
+      return row ? hydrateClassRow(row) : null;
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return classesMemory.get(classId) ?? null;
@@ -267,15 +343,22 @@ export async function getClassById(classId: string): Promise<PhaseCClass | null>
 
 export async function getSyntheticStudentsForClass(classId: string): Promise<SyntheticStudent[]> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("synthetic_students", {
-      method: "GET",
-      select: "id,class_id,display_name,reading_level,vocabulary_level,background_knowledge,processing_speed,bloom_mastery,math_level,writing_level,profiles,positive_traits,profile_summary_label,biases",
-      filters: {
-        class_id: `eq.${classId}`,
-        order: "display_name.asc",
-      },
-    });
-    return ((rows as SupabaseStudentRow[]) ?? []).map((row) => hydrateStudentRow(row));
+    try {
+      const rows = await supabaseRest("synthetic_students", {
+        method: "GET",
+        select: "id,class_id,display_name,reading_level,vocabulary_level,background_knowledge,processing_speed,bloom_mastery,math_level,writing_level,profiles,positive_traits,profile_summary_label,biases",
+        filters: {
+          class_id: `eq.${classId}`,
+          order: "display_name.asc",
+        },
+      });
+      return ((rows as SupabaseStudentRow[]) ?? []).map((row) => hydrateStudentRow(row));
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return [...(studentsMemory.get(classId) ?? [])];
@@ -287,10 +370,13 @@ export async function regenerateClassStudents(input: RegenerateStudentsInput): P
     throw new Error("Class not found");
   }
 
+  const existingStudents = await getSyntheticStudentsForClass(classRecord.id);
+  const profilePercentages = input.profilePercentages ?? deriveProfilePercentagesFromStudents(existingStudents);
+
   const students = generateSyntheticStudents({
     classId: classRecord.id,
     classLevel: classRecord.level,
-    overlays: classRecord.overlays,
+    profilePercentages,
     studentCount: input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed: input.seed,
   });
@@ -298,18 +384,25 @@ export async function regenerateClassStudents(input: RegenerateStudentsInput): P
   studentsMemory.set(classRecord.id, students);
 
   if (canUseSupabase()) {
-    await supabaseRest("synthetic_students", {
-      method: "DELETE",
-      filters: { class_id: `eq.${classRecord.id}` },
-      prefer: "return=minimal",
-    });
-
-    if (students.length > 0) {
+    try {
       await supabaseRest("synthetic_students", {
-        method: "POST",
-        body: students.map((student) => normalizeStudentRow(student)),
+        method: "DELETE",
+        filters: { class_id: `eq.${classRecord.id}` },
         prefer: "return=minimal",
       });
+
+      if (students.length > 0) {
+        await supabaseRest("synthetic_students", {
+          method: "POST",
+          body: students.map((student) => normalizeStudentRow(student)),
+          prefer: "return=minimal",
+        });
+      }
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
     }
   }
 
@@ -327,11 +420,18 @@ export async function createSimulationRun(input: { classId: string; documentId: 
   simulationRunsMemory.set(run.id, run);
 
   if (canUseSupabase()) {
-    await supabaseRest("simulation_runs", {
-      method: "POST",
-      body: normalizeSimulationRun(run),
-      prefer: "return=minimal",
-    });
+    try {
+      await supabaseRest("simulation_runs", {
+        method: "POST",
+        body: normalizeSimulationRun(run),
+        prefer: "return=minimal",
+      });
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return run;
@@ -341,11 +441,18 @@ export async function saveSimulationResults(simulationId: string, results: Simul
   simulationResultsMemory.set(simulationId, [...results]);
 
   if (canUseSupabase() && results.length > 0) {
-    await supabaseRest("simulation_results", {
-      method: "POST",
-      body: results.map((result) => normalizeSimulationResult(result)),
-      prefer: "return=minimal",
-    });
+    try {
+      await supabaseRest("simulation_results", {
+        method: "POST",
+        body: results.map((result) => normalizeSimulationResult(result)),
+        prefer: "return=minimal",
+      });
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return results;
@@ -353,13 +460,20 @@ export async function saveSimulationResults(simulationId: string, results: Simul
 
 export async function getSimulationRun(simulationId: string): Promise<SimulationRun | null> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("simulation_runs", {
-      method: "GET",
-      select: "id,class_id,document_id,created_at",
-      filters: { id: `eq.${simulationId}` },
-    });
-    const row = ((rows as SupabaseSimulationRunRow[]) ?? [])[0];
-    return row ? hydrateSimulationRun(row) : null;
+    try {
+      const rows = await supabaseRest("simulation_runs", {
+        method: "GET",
+        select: "id,class_id,document_id,created_at",
+        filters: { id: `eq.${simulationId}` },
+      });
+      const row = ((rows as SupabaseSimulationRunRow[]) ?? [])[0];
+      return row ? hydrateSimulationRun(row) : null;
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return simulationRunsMemory.get(simulationId) ?? null;
@@ -367,15 +481,22 @@ export async function getSimulationRun(simulationId: string): Promise<Simulation
 
 export async function listSimulationRunsForClass(classId: string): Promise<SimulationRun[]> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("simulation_runs", {
-      method: "GET",
-      select: "id,class_id,document_id,created_at",
-      filters: {
-        class_id: `eq.${classId}`,
-        order: "created_at.desc",
-      },
-    });
-    return ((rows as SupabaseSimulationRunRow[]) ?? []).map((row) => hydrateSimulationRun(row));
+    try {
+      const rows = await supabaseRest("simulation_runs", {
+        method: "GET",
+        select: "id,class_id,document_id,created_at",
+        filters: {
+          class_id: `eq.${classId}`,
+          order: "created_at.desc",
+        },
+      });
+      return ((rows as SupabaseSimulationRunRow[]) ?? []).map((row) => hydrateSimulationRun(row));
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return Array.from(simulationRunsMemory.values())
@@ -385,16 +506,23 @@ export async function listSimulationRunsForClass(classId: string): Promise<Simul
 
 export async function listSimulationResults(simulationId: string): Promise<SimulationResult[]> {
   if (canUseSupabase()) {
-    const rows = await supabaseRest("simulation_results", {
-      method: "GET",
-      select: "id,simulation_id,synthetic_student_id,item_id,item_label,linguistic_load,confusion_score,time_seconds,bloom_gap,traits_snapshot",
-      filters: {
-        simulation_id: `eq.${simulationId}`,
-        order: "item_id.asc,synthetic_student_id.asc",
-      },
-    });
+    try {
+      const rows = await supabaseRest("simulation_results", {
+        method: "GET",
+        select: "id,simulation_id,synthetic_student_id,item_id,item_label,linguistic_load,confusion_score,time_seconds,bloom_gap,difficulty_score,ability_score,p_correct,traits_snapshot",
+        filters: {
+          simulation_id: `eq.${simulationId}`,
+          order: "item_id.asc,synthetic_student_id.asc",
+        },
+      });
 
-    return ((rows as SupabaseSimulationResultRow[]) ?? []).map((row) => hydrateSimulationResult(row));
+      return ((rows as SupabaseSimulationResultRow[]) ?? []).map((row) => hydrateSimulationResult(row));
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
   }
 
   return [...(simulationResultsMemory.get(simulationId) ?? [])];

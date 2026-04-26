@@ -5,28 +5,22 @@ import { describe, expect, it } from "vitest";
 
 import { generateSyntheticStudents } from "../../src/simulation/phase-c/generator";
 import { PHASE_C_CONFIG } from "../../src/simulation/phase-c/traits";
-import type { ClassOverlays } from "../../src/simulation/phase-c/types";
+import type { ProfilePercentages } from "../../src/simulation/phase-c/types";
 
-const overlays: ClassOverlays = {
-  composition: {
-    ell: "Some",
-    sped: "A few",
-    gifted: "Some",
-    attentionChallenges: "A few",
-    readingChallenges: "A few",
-  },
-  tendencies: {
-    manyFastWorkers: true,
-    manyDetailOriented: true,
-    manyMathConfident: true,
-  },
+const profilePercentages: ProfilePercentages = {
+  ell: 20,
+  sped: 10,
+  gifted: 20,
+  adhd: 10,
+  dyslexia: 10,
+  attention504: 10,
 };
 
 function normalizedStudents(seed: string) {
   return generateSyntheticStudents({
     classId: "class-1",
     classLevel: "AP",
-    overlays,
+    profilePercentages,
     studentCount: PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed,
   }).map((student) => ({
@@ -67,7 +61,7 @@ describe("phase-c generator", () => {
     const students = generateSyntheticStudents({
       classId: "class-2",
       classLevel: "Standard",
-      overlays,
+      profilePercentages,
       studentCount: 20,
       seed: "allocation-seed",
     });

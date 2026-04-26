@@ -54,7 +54,7 @@ function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
           <span className="home-card-icon">🧩</span>
           <span className="home-card-title">Class Builder</span>
           <span className="home-card-desc">
-            Build a realistic class of synthetic students with profile overlays and class tendencies, then run document simulations.
+            Build a realistic class of synthetic students with profile overlays and randomized positive traits, then run document simulations.
           </span>
         </button>
         <button className="home-card" onClick={() => navigate("/sim")}>

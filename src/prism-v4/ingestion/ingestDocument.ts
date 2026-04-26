@@ -155,6 +155,22 @@ function extractItemsFromAnalysis(
 			difficulty:         problem.difficulty ?? "medium",
 			misconceptions:     problem.misconceptions ?? [],
 			cognitiveDemand:    problem.cognitiveDemand ?? "recall",
+			bloomLevel:         problem.bloomLevel ?? 2,
+			cognitiveLoad:      problem.cognitiveLoad ?? 0.5,
+			linguisticLoad:     problem.linguisticLoad ?? 0.5,
+			representationLoad: problem.representationLoad ?? 0.5,
+			phaseB: {
+				bloomLevel:         problem.bloomLevel ?? 2,
+				cognitiveLoad:      problem.cognitiveLoad ?? 0.5,
+				linguisticLoad:     problem.linguisticLoad ?? 0.5,
+				representationLoad: problem.representationLoad ?? 0.5,
+			},
+			metrics: {
+				bloom_level:         problem.bloomLevel ?? 2,
+				cognitive_load:      problem.cognitiveLoad ?? 0.5,
+				linguistic_load:     problem.linguisticLoad ?? 0.5,
+				representation_load: problem.representationLoad ?? 0.5,
+			},
 			sourceSpan:         problem.sourceSpan ?? null,
 		},
 		sourcePageNumbers: problem.sourceSpan

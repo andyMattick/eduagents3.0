@@ -55,12 +55,23 @@ function filterByProfileOrTrait(results: SimulationResult[], students: Synthetic
 }
 
 function studentSummary(results: SimulationResult[]) {
-  const byItem = results.reduce<Record<string, { itemLabel: string; confusionScore: number; timeSeconds: number; bloomGap: number }>>((accumulator, result) => {
+  const byItem = results.reduce<Record<string, {
+    itemLabel: string;
+    confusionScore: number;
+    timeSeconds: number;
+    bloomGap: number;
+    difficultyScore: number;
+    abilityScore: number;
+    pCorrect: number;
+  }>>((accumulator, result) => {
     accumulator[result.itemId] = {
       itemLabel: result.itemLabel,
       confusionScore: result.confusionScore,
       timeSeconds: result.timeSeconds,
       bloomGap: result.bloomGap,
+      difficultyScore: result.difficultyScore,
+      abilityScore: result.abilityScore,
+      pCorrect: result.pCorrect,
     };
     return accumulator;
   }, {});

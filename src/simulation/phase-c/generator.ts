@@ -1,32 +1,32 @@
 import {
   applyTraitDelta,
+  BASE_POSITIVE_TRAIT_PROBABILITIES,
   BASE_PRIORS,
   CLASS_LEVEL_DELTAS,
   clampTraitVector,
   computeStudentBiases,
   PHASE_C_CONFIG,
-  PRESENCE_TARGET_PERCENTAGE,
   POSITIVE_TRAIT_DELTAS,
   PROFILE_DELTAS,
 } from "./traits";
 import type {
   ClassLevel,
-  ClassOverlays,
   PositiveTraitId,
+  ProfilePercentages,
   ProfileId,
   SyntheticStudent,
   TraitVector,
 } from "./types";
 
-const TENDENCY_TRAIT_MAP: Record<string, PositiveTraitId> = {
-  manyFastWorkers: "fast_worker",
-  manySlowAndCareful: "slow_and_careful",
-  manyDetailOriented: "detail_oriented",
-  manyTestAnxious: "test_anxious",
-  manyMathConfident: "math_confident",
-  manyStruggleReading: "struggles_with_reading",
-  manyEasilyDistracted: "easily_distracted",
-};
+const POSITIVE_TRAITS: PositiveTraitId[] = [
+  "fast_worker",
+  "slow_and_careful",
+  "detail_oriented",
+  "test_anxious",
+  "math_confident",
+  "struggles_with_reading",
+  "easily_distracted",
+];
 
 function hashSeed(seed: string): number {
   let hash = 2166136261;
@@ -85,15 +85,31 @@ function buildBaseTraits(level: ClassLevel): TraitVector {
   return clampTraitVector(applyTraitDelta(BASE_PRIORS, CLASS_LEVEL_DELTAS[level]));
 }
 
-function buildProfileAllocation(overlays: ClassOverlays, studentCount: number, rng: () => number): Array<ProfileId[]> {
+function normalizePercent(value: number | undefined): number {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, parsed));
+}
+
+function buildProfileAllocation(profilePercentages: ProfilePercentages | undefined, studentCount: number, rng: () => number): Array<ProfileId[]> {
   const allocations: Array<Set<ProfileId>> = Array.from({ length: studentCount }, () => new Set<ProfileId>());
+  const normalized = {
+    ell: normalizePercent(profilePercentages?.ell),
+    sped: normalizePercent(profilePercentages?.sped),
+    gifted: normalizePercent(profilePercentages?.gifted),
+    adhd: normalizePercent(profilePercentages?.adhd),
+    dyslexia: normalizePercent(profilePercentages?.dyslexia),
+    attention504: normalizePercent(profilePercentages?.attention504),
+  };
 
   const requestedProfiles: Array<{ profileId: ProfileId; targetCount: number }> = [
-    { profileId: "ELL", targetCount: Math.round(studentCount * PRESENCE_TARGET_PERCENTAGE[overlays.composition.ell]) },
-    { profileId: "SPED", targetCount: Math.round(studentCount * PRESENCE_TARGET_PERCENTAGE[overlays.composition.sped]) },
-    { profileId: "Gifted", targetCount: Math.round(studentCount * PRESENCE_TARGET_PERCENTAGE[overlays.composition.gifted]) },
-    { profileId: "ADHD", targetCount: Math.round(studentCount * PRESENCE_TARGET_PERCENTAGE[overlays.composition.attentionChallenges]) },
-    { profileId: "Dyslexic", targetCount: Math.round(studentCount * PRESENCE_TARGET_PERCENTAGE[overlays.composition.readingChallenges]) },
+    { profileId: "ELL", targetCount: Math.round(studentCount * (normalized.ell / 100)) },
+    { profileId: "SPED", targetCount: Math.round(studentCount * (normalized.sped / 100)) },
+    { profileId: "Gifted", targetCount: Math.round(studentCount * (normalized.gifted / 100)) },
+    { profileId: "ADHD", targetCount: Math.round(studentCount * (Math.max(normalized.adhd, normalized.attention504) / 100)) },
+    { profileId: "Dyslexic", targetCount: Math.round(studentCount * (normalized.dyslexia / 100)) },
   ];
 
   for (const request of requestedProfiles) {
@@ -114,49 +130,16 @@ function buildProfileAllocation(overlays: ClassOverlays, studentCount: number, r
   return allocations.map((entry) => Array.from(entry));
 }
 
-function pickPositiveTraits(overlays: ClassOverlays, rng: () => number): PositiveTraitId[] {
-  const baselinePool: PositiveTraitId[] = [
-    "organized",
-    "persistent",
-    "collaborative",
-    "independent",
-    "question_asker",
-    "memory_strong",
-    "creative_thinker",
-    "reluctant_participant",
-    "test_calm",
-    "math_avoidant",
-    "high_background_knowledge",
-    "low_background_knowledge",
-    "impulsive",
-    "gives_up_quickly",
-    "strong_reader",
-  ];
-
-  const weightedPool = new Map<PositiveTraitId, number>();
-  for (const trait of baselinePool) {
-    weightedPool.set(trait, PHASE_C_CONFIG.basePositiveTraitProbability);
-  }
-
-  for (const [toggleKey, enabled] of Object.entries(overlays.tendencies)) {
-    if (!enabled) {
-      continue;
-    }
-    const traitId = TENDENCY_TRAIT_MAP[toggleKey];
-    if (!traitId) {
-      continue;
-    }
-    weightedPool.set(traitId, Math.max(weightedPool.get(traitId) ?? 0, PHASE_C_CONFIG.boostedPositiveTraitProbability));
-  }
-
+function pickPositiveTraits(rng: () => number): PositiveTraitId[] {
   const picks: PositiveTraitId[] = [];
   const maxPicks = rng() < 0.5 ? 1 : PHASE_C_CONFIG.maxPositiveTraitsPerStudent;
 
-  const candidates = shuffle(Array.from(weightedPool.entries()), rng);
-  for (const [traitId, chance] of candidates) {
+  const candidates = shuffle(POSITIVE_TRAITS, rng);
+  for (const traitId of candidates) {
     if (picks.length >= maxPicks) {
       break;
     }
+    const chance = BASE_POSITIVE_TRAIT_PROBABILITIES[traitId] ?? 0;
     if (rng() <= chance) {
       picks.push(traitId);
     }
@@ -170,8 +153,8 @@ function profileSummaryLabel(profiles: ProfileId[], traits: PositiveTraitId[]): 
     return "General mix";
   }
 
-  const profileText = profiles.length > 0 ? profiles.join(", ") : "No profile overlays";
-  const traitText = traits.length > 0 ? traits.join(", ") : "No highlighted tendencies";
+  const profileText = profiles.length > 0 ? profiles.join(", ") : "No assigned profiles";
+  const traitText = traits.length > 0 ? traits.join(", ") : "No highlighted traits";
   return `${profileText} | ${traitText}`;
 }
 
@@ -190,19 +173,19 @@ function addJitter(traits: TraitVector, rng: () => number): TraitVector {
 export function generateSyntheticStudents(input: {
   classId: string;
   classLevel: ClassLevel;
-  overlays: ClassOverlays;
+  profilePercentages?: ProfilePercentages;
   studentCount?: number;
   seed?: string;
 }): SyntheticStudent[] {
   const studentCount = Math.max(1, input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount);
   const rng = createRng(input.seed ?? `${input.classId}:${input.classLevel}`);
   const baseTraits = buildBaseTraits(input.classLevel);
-  const profileByStudent = buildProfileAllocation(input.overlays, studentCount, rng);
+  const profileByStudent = buildProfileAllocation(input.profilePercentages, studentCount, rng);
 
   const output: SyntheticStudent[] = [];
   for (let index = 0; index < studentCount; index += 1) {
     const profiles = profileByStudent[index] ?? [];
-    const positiveTraits = pickPositiveTraits(input.overlays, rng);
+    const positiveTraits = pickPositiveTraits(rng);
 
     let traits = { ...baseTraits };
     for (const profile of profiles) {

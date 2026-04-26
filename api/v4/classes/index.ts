@@ -1,43 +1,37 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { createClassWithSyntheticStudents, listClasses } from "../../../src/simulation/phase-c";
-import type { ClassComposition, ClassTendencies, CreateClassInput } from "../../../src/simulation/phase-c";
+import type { CreateClassInput, ProfilePercentages } from "../../../src/simulation/phase-c";
 
 export const runtime = "nodejs";
 
 function parseBody(body: unknown) {
   if (typeof body !== "string") {
-    return body as Partial<CreateClassInput>;
+    return body as Partial<{
+      className: string;
+      classLevel: CreateClassInput["level"];
+      gradeBand?: CreateClassInput["gradeBand"];
+      profilePercentages: ProfilePercentages;
+      studentCount?: number;
+      seed?: string;
+      schoolYear?: string;
+    }>;
   }
-  return JSON.parse(body) as Partial<CreateClassInput>;
+  return JSON.parse(body) as Partial<{
+    className: string;
+    classLevel: CreateClassInput["level"];
+    gradeBand?: CreateClassInput["gradeBand"];
+    profilePercentages: ProfilePercentages;
+    studentCount?: number;
+    seed?: string;
+    schoolYear?: string;
+  }>;
 }
 
 function parseTeacherId(req: VercelRequest): string | undefined {
   const value = req.headers?.["x-user-id"];
   const single = Array.isArray(value) ? value[0] : value;
   return typeof single === "string" && single.trim().length > 0 ? single.trim() : undefined;
-}
-
-function defaultComposition(input?: Partial<ClassComposition>): ClassComposition {
-  return {
-    ell: input?.ell ?? "None",
-    sped: input?.sped ?? "None",
-    gifted: input?.gifted ?? "None",
-    attentionChallenges: input?.attentionChallenges ?? "None",
-    readingChallenges: input?.readingChallenges ?? "None",
-  };
-}
-
-function defaultTendencies(input?: ClassTendencies): ClassTendencies {
-  return {
-    manyFastWorkers: Boolean(input?.manyFastWorkers),
-    manySlowAndCareful: Boolean(input?.manySlowAndCareful),
-    manyDetailOriented: Boolean(input?.manyDetailOriented),
-    manyTestAnxious: Boolean(input?.manyTestAnxious),
-    manyMathConfident: Boolean(input?.manyMathConfident),
-    manyStruggleReading: Boolean(input?.manyStruggleReading),
-    manyEasilyDistracted: Boolean(input?.manyEasilyDistracted),
-  };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -54,23 +48,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "POST") {
     try {
       const payload = parseBody(req.body ?? {});
-      if (!payload.name || !payload.level) {
-        return res.status(400).json({ error: "name and level are required" });
+      if (!payload.className || !payload.classLevel || !payload.profilePercentages) {
+        return res.status(400).json({ error: "className, classLevel, and profilePercentages are required" });
       }
 
-      const teacherId = payload.teacherId ?? parseTeacherId(req);
+      const teacherId = parseTeacherId(req);
       const result = await createClassWithSyntheticStudents({
         teacherId,
-        name: payload.name,
-        level: payload.level,
+        name: payload.className,
+        level: payload.classLevel,
         gradeBand: payload.gradeBand,
         schoolYear: payload.schoolYear,
         studentCount: payload.studentCount,
         seed: payload.seed,
-        overlays: {
-          composition: defaultComposition(payload.overlays?.composition),
-          tendencies: defaultTendencies(payload.overlays?.tendencies),
-        },
+        profilePercentages: payload.profilePercentages,
       });
 
       return res.status(201).json({

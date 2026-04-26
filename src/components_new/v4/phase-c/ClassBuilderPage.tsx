@@ -1,20 +1,12 @@
 import { useMemo, useState } from "react";
 
-import { createClassApi, type ClassLevel, type ClassOverlays, type PresenceLevel } from "../../../lib/phaseCApi";
+import { createClassApi, type ClassLevel, type ProfilePercentages } from "../../../lib/phaseCApi";
 
 type Props = {
   navigate: (path: string) => void;
 };
 
-type Step = 1 | 2 | 3 | 4;
-
-function currentSchoolYear() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const startYear = month >= 6 ? year : year - 1;
-  return `${startYear}-${startYear + 1}`;
-}
+type Step = 1 | 2 | 3;
 
 function countBy(values: string[]) {
   return values.reduce<Record<string, number>>((accumulator, value) => {
@@ -32,30 +24,14 @@ export function ClassBuilderPage({ navigate }: Props) {
   const [name, setName] = useState("");
   const [level, setLevel] = useState<ClassLevel>("AP");
   const [gradeBand, setGradeBand] = useState<"9-10" | "11-12" | "Mixed">("11-12");
-  const [schoolYear, setSchoolYear] = useState(currentSchoolYear());
 
-  const [composition, setComposition] = useState<{
-    ell: PresenceLevel;
-    sped: PresenceLevel;
-    gifted: PresenceLevel;
-    attentionChallenges: PresenceLevel;
-    readingChallenges: PresenceLevel;
-  }>({
-    ell: "None",
-    sped: "None",
-    gifted: "None",
-    attentionChallenges: "None",
-    readingChallenges: "None",
-  });
-
-  const [tendencies, setTendencies] = useState({
-    manyFastWorkers: false,
-    manySlowAndCareful: false,
-    manyDetailOriented: false,
-    manyTestAnxious: false,
-    manyMathConfident: false,
-    manyStruggleReading: false,
-    manyEasilyDistracted: false,
+  const [profilePercentages, setProfilePercentages] = useState<ProfilePercentages>({
+    ell: 0,
+    sped: 0,
+    adhd: 0,
+    dyslexia: 0,
+    gifted: 0,
+    attention504: 0,
   });
 
   const [previewStudents, setPreviewStudents] = useState<Array<{ profiles: string[]; positiveTraits: string[]; traits: { readingLevel: number; mathLevel: number; writingLevel: number } }> | null>(null);
@@ -89,21 +65,15 @@ export function ClassBuilderPage({ navigate }: Props) {
     };
   }, [previewStudents]);
 
-  const overlays: ClassOverlays = {
-    composition,
-    tendencies,
-  };
-
-  async function handleGeneratePreview() {
+  async function handleCreateClass() {
     setSubmitting(true);
     setError(null);
     try {
       const response = await createClassApi({
-        name: name.trim(),
-        level,
+        className: name.trim(),
+        classLevel: level,
         gradeBand,
-        schoolYear,
-        overlays,
+        profilePercentages,
       });
       setCreatedClassId(response.class.id);
       setPreviewStudents(response.students.map((student) => ({
@@ -115,7 +85,6 @@ export function ClassBuilderPage({ navigate }: Props) {
           writingLevel: student.traits.writingLevel,
         },
       })));
-      setStep(4);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Class generation failed");
     } finally {
@@ -130,7 +99,7 @@ export function ClassBuilderPage({ navigate }: Props) {
         <h2>Create Class</h2>
       </div>
 
-      <div className="phasec-stepper">Step {step} of 4</div>
+      <div className="phasec-stepper">Step {step} of 3</div>
 
       {step === 1 && (
         <div className="phasec-card">
@@ -152,9 +121,6 @@ export function ClassBuilderPage({ navigate }: Props) {
             <option value="Mixed">Mixed</option>
           </select>
 
-          <label>School year</label>
-          <input value={schoolYear} onChange={(event) => setSchoolYear(event.target.value)} />
-
           <div className="phasec-row">
             <button className="phasec-button-secondary" onClick={() => navigate("/")}>Cancel</button>
             <button className="phasec-button" disabled={!name.trim()} onClick={() => setStep(2)}>Next</button>
@@ -165,23 +131,30 @@ export function ClassBuilderPage({ navigate }: Props) {
       {step === 2 && (
         <div className="phasec-card">
           <h3>Class composition</h3>
-          <p className="phasec-copy">Tell us about the learner mix. We use this to generate 20 representative students.</p>
+          <p className="phasec-copy">Set estimated profile percentages for this class. Values are used to generate 20 representative students.</p>
 
           {([
-            ["ell", "English learners (ELL)"],
-            ["sped", "Students with IEP/504 (SPED)"],
-            ["gifted", "Gifted / advanced learners"],
-            ["attentionChallenges", "Attention / focus challenges"],
-            ["readingChallenges", "Reading challenges"],
+            ["ell", "ELL %"],
+            ["sped", "SPED %"],
+            ["adhd", "ADHD %"],
+            ["dyslexia", "Dyslexia %"],
+            ["gifted", "Gifted %"],
+            ["attention504", "504 / attention challenges %"],
           ] as const).map(([key, label]) => (
             <div key={key}>
               <label>{label}</label>
-              <select value={composition[key]} onChange={(event) => setComposition((prev) => ({ ...prev, [key]: event.target.value as PresenceLevel }))}>
-                <option>None</option>
-                <option>A few</option>
-                <option>Some</option>
-                <option>Many</option>
-              </select>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={profilePercentages[key]}
+                onChange={(event) => {
+                  const next = Number(event.target.value);
+                  const clamped = Number.isFinite(next) ? Math.min(100, Math.max(0, next)) : 0;
+                  setProfilePercentages((prev) => ({ ...prev, [key]: clamped }));
+                }}
+              />
             </div>
           ))}
 
@@ -194,76 +167,77 @@ export function ClassBuilderPage({ navigate }: Props) {
 
       {step === 3 && (
         <div className="phasec-card">
-          <h3>Class tendencies</h3>
-          <p className="phasec-copy">These toggles raise probability for related traits across synthetic students.</p>
+          <h3>Summary</h3>
+          <p className="phasec-copy">Review class composition and create your synthetic class.</p>
 
-          {([
-            ["manyFastWorkers", "Many students work quickly"],
-            ["manySlowAndCareful", "Many students are careful but slow"],
-            ["manyDetailOriented", "Many students are detail-oriented"],
-            ["manyTestAnxious", "Many students get anxious on tests"],
-            ["manyMathConfident", "Many students are confident in math"],
-            ["manyStruggleReading", "Many students struggle with reading"],
-            ["manyEasilyDistracted", "Many students are easily distracted"],
-          ] as const).map(([key, label]) => (
-            <label key={key} className="phasec-check-row">
-              <input
-                type="checkbox"
-                checked={Boolean(tendencies[key])}
-                onChange={(event) => setTendencies((prev) => ({ ...prev, [key]: event.target.checked }))}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
+          <div className="phasec-grid-2">
+            <div>
+              <h4>Profile breakdown (input)</h4>
+              <ul className="phasec-kv-list">
+                {Object.entries(profilePercentages).map(([label, value]) => (
+                  <li key={label}>
+                    <span className="phasec-kv-key">{label}</span>
+                    <span className="phasec-kv-value">{value}%</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4>Expected trait ranges</h4>
+              <p className="phasec-copy">Reading, math, and writing levels are generated with profile deltas plus deterministic jitter.</p>
+              <h4>Positive trait distribution</h4>
+              <p className="phasec-copy">Positive traits are assigned probabilistically per student to keep cohorts varied.</p>
+            </div>
+          </div>
 
           {error && <p className="phasec-error">{error}</p>}
 
           <div className="phasec-row">
             <button className="phasec-button-secondary" onClick={() => setStep(2)}>Back</button>
-            <button className="phasec-button" disabled={submitting} onClick={() => void handleGeneratePreview()}>
-              {submitting ? "Generating..." : "Generate class"}
+            <button className="phasec-button" disabled={submitting} onClick={() => void handleCreateClass()}>
+              {submitting ? "Creating..." : "Create Class"}
             </button>
           </div>
-        </div>
-      )}
+          {previewStudents && (
+            <>
+              <hr className="phasec-divider" />
+              <h4>Generated class preview</h4>
+              <p className="phasec-copy">{previewStudents.length} representative students generated.</p>
 
-      {step === 4 && previewStudents && (
-        <div className="phasec-card">
-          <h3>Your class: {name}</h3>
-          <p className="phasec-copy">{previewStudents.length} representative students generated.</p>
+              <div className="phasec-grid-3">
+                <div>
+                  <strong>Reading avg</strong>
+                  <p>{traitAverages.readingLevel.toFixed(2)}</p>
+                </div>
+                <div>
+                  <strong>Math avg</strong>
+                  <p>{traitAverages.mathLevel.toFixed(2)}</p>
+                </div>
+                <div>
+                  <strong>Writing avg</strong>
+                  <p>{traitAverages.writingLevel.toFixed(2)}</p>
+                </div>
+              </div>
 
-          <div className="phasec-grid-3">
-            <div>
-              <strong>Reading avg</strong>
-              <p>{traitAverages.readingLevel.toFixed(2)}</p>
-            </div>
-            <div>
-              <strong>Math avg</strong>
-              <p>{traitAverages.mathLevel.toFixed(2)}</p>
-            </div>
-            <div>
-              <strong>Writing avg</strong>
-              <p>{traitAverages.writingLevel.toFixed(2)}</p>
-            </div>
-          </div>
+              <div className="phasec-grid-2">
+                <div>
+                  <h4>Profile breakdown</h4>
+                  <ul>{Object.entries(profileBreakdown).map(([label, count]) => <li key={label}>{label}: {count}</li>)}</ul>
+                </div>
+                <div>
+                  <h4>Positive traits</h4>
+                  <ul>{Object.entries(positiveBreakdown).map(([label, count]) => <li key={label}>{label}: {count}</li>)}</ul>
+                </div>
+              </div>
 
-          <div className="phasec-grid-2">
-            <div>
-              <h4>Profile breakdown</h4>
-              <ul>{Object.entries(profileBreakdown).map(([label, count]) => <li key={label}>{label}: {count}</li>)}</ul>
-            </div>
-            <div>
-              <h4>Positive traits</h4>
-              <ul>{Object.entries(positiveBreakdown).map(([label, count]) => <li key={label}>{label}: {count}</li>)}</ul>
-            </div>
-          </div>
-
-		  <div className="phasec-row">
-			<button className="phasec-button-secondary" onClick={() => navigate("/")}>Done</button>
-			<button className="phasec-button" disabled={!createdClassId} onClick={() => createdClassId && navigate(`/classes/${createdClassId}`)}>
-				Open class
-			</button>
-		  </div>
+              <div className="phasec-row">
+                <button className="phasec-button-secondary" onClick={() => navigate("/")}>Done</button>
+                <button className="phasec-button" disabled={!createdClassId} onClick={() => createdClassId && navigate(`/classes/${createdClassId}`)}>
+                  Open class
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

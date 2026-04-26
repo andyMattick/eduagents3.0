@@ -1,8 +1,6 @@
 export type ClassLevel = "AP" | "Honors" | "Standard" | "Remedial";
 export type GradeBand = "9-10" | "11-12" | "Mixed";
 
-export type PresenceLevel = "None" | "A few" | "Some" | "Many";
-
 export type ProfileId = "ELL" | "SPED" | "Gifted" | "ADHD" | "Dyslexic" | "MathAnxious" | "TestCalm";
 export type ProfileType = ProfileId;
 
@@ -46,27 +44,13 @@ export type BiasVector = {
   timeBias: number;
 };
 
-export type ClassComposition = {
-  ell: PresenceLevel;
-  sped: PresenceLevel;
-  gifted: PresenceLevel;
-  attentionChallenges: PresenceLevel;
-  readingChallenges: PresenceLevel;
-};
-
-export type ClassTendencies = {
-  manyFastWorkers?: boolean;
-  manySlowAndCareful?: boolean;
-  manyDetailOriented?: boolean;
-  manyTestAnxious?: boolean;
-  manyMathConfident?: boolean;
-  manyStruggleReading?: boolean;
-  manyEasilyDistracted?: boolean;
-};
-
-export type ClassOverlays = {
-  composition: ClassComposition;
-  tendencies: ClassTendencies;
+export type ProfilePercentages = {
+  ell: number;
+  sped: number;
+  adhd: number;
+  dyslexia: number;
+  gifted: number;
+  attention504: number;
 };
 
 export type PhaseCClass = {
@@ -76,10 +60,16 @@ export type PhaseCClass = {
   level: ClassLevel;
   gradeBand?: GradeBand;
   schoolYear: string;
-  overlays: ClassOverlays;
   createdAt: string;
 };
-export type Class = PhaseCClass;
+
+export type Class = {
+  id: string;
+  name: string;
+  gradeBand?: GradeBand;
+  classLevel: ClassLevel;
+  profilePercentages: ProfilePercentages;
+};
 
 export type SyntheticStudent = {
   id: string;
@@ -99,6 +89,13 @@ export type SimulationRun = {
   createdAt: string;
 };
 
+export type SimulationTraitsSnapshot = {
+  traits: TraitVector;
+  profiles: ProfileId[];
+  positiveTraits: PositiveTraitId[];
+  biases: BiasVector;
+};
+
 export type SimulationResult = {
   id: string;
   simulationId: string;
@@ -109,7 +106,10 @@ export type SimulationResult = {
   confusionScore: number;
   timeSeconds: number;
   bloomGap: number;
-  traitsSnapshot?: TraitVector;
+  difficultyScore: number;
+  abilityScore: number;
+  pCorrect: number;
+  traitsSnapshot?: SimulationTraitsSnapshot;
 };
 
 export type CreateClassInput = {
@@ -118,13 +118,14 @@ export type CreateClassInput = {
   level: ClassLevel;
   gradeBand?: GradeBand;
   schoolYear?: string;
-  overlays: ClassOverlays;
+  profilePercentages: ProfilePercentages;
   studentCount?: number;
   seed?: string;
 };
 
 export type RegenerateStudentsInput = {
   classId: string;
+  profilePercentages?: ProfilePercentages;
   studentCount?: number;
   seed?: string;
 };

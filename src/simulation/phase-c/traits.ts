@@ -1,4 +1,4 @@
-import type { BiasVector, ClassLevel, PositiveTraitId, PresenceLevel, ProfileId, TraitVector } from "./types";
+import type { BiasVector, ClassLevel, PositiveTraitId, ProfileId, TraitVector } from "./types";
 
 export const PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
@@ -10,8 +10,6 @@ export const PHASE_C_CONFIG = {
   maxBiasValue: 0.25,
   maxProfilesPerStudent: 2,
   maxPositiveTraitsPerStudent: 2,
-  basePositiveTraitProbability: 0.18,
-  boostedPositiveTraitProbability: 0.5,
   formula: {
     readingGapToConfusion: 0.05,
     vocabularyGapToConfusion: 0.04,
@@ -40,11 +38,14 @@ export const PHASE_C_CONFIG = {
   },
 } as const;
 
-export const PRESENCE_TARGET_PERCENTAGE: Record<PresenceLevel, number> = {
-  None: 0,
-  "A few": 0.1,
-  Some: 0.2,
-  Many: 0.3,
+export const BASE_POSITIVE_TRAIT_PROBABILITIES: Partial<Record<PositiveTraitId, number>> = {
+  fast_worker: 0.15,
+  slow_and_careful: 0.15,
+  detail_oriented: 0.15,
+  test_anxious: 0.15,
+  math_confident: 0.15,
+  struggles_with_reading: 0.15,
+  easily_distracted: 0.15,
 };
 
 export const BASE_PRIORS: TraitVector = {

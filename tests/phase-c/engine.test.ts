@@ -28,19 +28,14 @@ vi.mock("../../lib/supabase", () => {
 
 import { createClassWithSyntheticStudents, listSimulationResults, runPhaseCSimulation } from "../../src/simulation/phase-c";
 
-function defaultOverlays() {
+function defaultProfilePercentages() {
   return {
-    composition: {
-      ell: "Some" as const,
-      sped: "A few" as const,
-      gifted: "A few" as const,
-      attentionChallenges: "A few" as const,
-      readingChallenges: "None" as const,
-    },
-    tendencies: {
-      manyFastWorkers: true,
-      manyDetailOriented: true,
-    },
+    ell: 20,
+    sped: 10,
+    gifted: 10,
+    adhd: 10,
+    dyslexia: 0,
+    attention504: 10,
   };
 }
 
@@ -55,7 +50,7 @@ describe("phase-c engine", () => {
     const { classRecord } = await createClassWithSyntheticStudents({
       name: "Period 3 - AP Statistics",
       level: "AP",
-      overlays: defaultOverlays(),
+      profilePercentages: defaultProfilePercentages(),
       studentCount: 20,
       seed: "engine-seed",
     });
@@ -73,6 +68,10 @@ describe("phase-c engine", () => {
       expect(result.confusionScore).toBeGreaterThanOrEqual(0);
       expect(result.confusionScore).toBeLessThanOrEqual(1);
       expect(result.timeSeconds).toBeGreaterThanOrEqual(0);
+      expect(result.difficultyScore).toBeGreaterThanOrEqual(0);
+      expect(result.abilityScore).toBeGreaterThanOrEqual(0);
+      expect(result.pCorrect).toBeGreaterThanOrEqual(0);
+      expect(result.pCorrect).toBeLessThanOrEqual(1);
       expect(result).not.toHaveProperty("mastery");
       expect(result).not.toHaveProperty("correctness");
       expect(result).not.toHaveProperty("misconceptions");

@@ -30,20 +30,15 @@ describe("phase-c class routes", () => {
       {
         method: "POST",
         body: {
-          name: "Period 3 - AP Statistics",
-          level: "AP",
-          overlays: {
-            composition: {
-              ell: "Some",
-              sped: "A few",
-              gifted: "Some",
-              attentionChallenges: "A few",
-              readingChallenges: "A few",
-            },
-            tendencies: {
-              manyFastWorkers: true,
-              manyDetailOriented: true,
-            },
+          className: "Period 3 - AP Statistics",
+          classLevel: "AP",
+          profilePercentages: {
+            ell: 20,
+            sped: 10,
+            gifted: 20,
+            adhd: 10,
+            dyslexia: 10,
+            attention504: 10,
           },
           seed: "api-class-seed",
         },

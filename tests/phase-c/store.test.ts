@@ -31,17 +31,13 @@ describe("phase-c store", () => {
       teacherId: "teacher-1",
       name: "Period 1",
       level: "Honors",
-      overlays: {
-        composition: {
-          ell: "A few",
-          sped: "None",
-          gifted: "Some",
-          attentionChallenges: "None",
-          readingChallenges: "A few",
-        },
-        tendencies: {
-          manyFastWorkers: true,
-        },
+      profilePercentages: {
+        ell: 10,
+        sped: 0,
+        gifted: 20,
+        adhd: 0,
+        dyslexia: 10,
+        attention504: 0,
       },
       seed: "store-seed",
     });
@@ -72,6 +68,9 @@ describe("phase-c store", () => {
         confusionScore: 0.3,
         timeSeconds: 45,
         bloomGap: 0.5,
+        difficultyScore: 2.4,
+        abilityScore: 3.1,
+        pCorrect: 0.67,
       },
     ]);
 
@@ -96,15 +95,13 @@ describe("phase-c store", () => {
       teacherId: "teacher-2",
       name: "Period 2",
       level: "Standard",
-      overlays: {
-        composition: {
-          ell: "None",
-          sped: "None",
-          gifted: "None",
-          attentionChallenges: "None",
-          readingChallenges: "None",
-        },
-        tendencies: {},
+      profilePercentages: {
+        ell: 0,
+        sped: 0,
+        gifted: 0,
+        adhd: 0,
+        dyslexia: 0,
+        attention504: 0,
       },
     });
 
