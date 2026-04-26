@@ -130,9 +130,26 @@ export type RegenerateStudentsInput = {
   seed?: string;
 };
 
+export type PhaseBNormalizedItemInput = {
+  itemId: string;
+  itemNumber?: number;
+  logicalLabel?: string;
+  traits: {
+    bloomLevel: number;
+    linguisticLoad: number;
+    cognitiveLoad: number;
+    representationLoad: number;
+    symbolDensity?: number;
+    vocabDensity?: number;
+    steps?: number;
+  };
+};
+
 export type RunSimulationInput = {
   classId: string;
   documentId: string;
+  selectedProfileIds?: string[];
+  items?: PhaseBNormalizedItemInput[];
 };
 
 export type SimulationView = "class" | "profile" | "student";

@@ -16,7 +16,7 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
-import { listClassesApi, runSimulationApi, type PhaseCClass } from "../../lib/phaseCApi";
+import { listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
 import type { ShortCircuitItem, ProfileShortCircuitResult } from "../../../api/v4/simulator/shortcircuit";
 import type { SimulationItemTree } from "../../prism-v4/schema";
 import "./v4.css";
@@ -254,9 +254,14 @@ export function ShortCircuitPage() {
 		setPhaseCRunLoading(true);
 		setPhaseCRunError(null);
 		try {
-			const output = await runSimulationApi({ classId: selectedClassId, documentId });
+			const output = await runSimulationUnifiedApi({
+				classId: selectedClassId,
+				documentId,
+				selectedProfileIds: [],
+				mode: "class",
+			});
 			setShowClassModal(false);
-			navigateTo(`/simulations/${output.simulationId}`);
+			navigateTo(`/simulations/${output.simulationId}/phase-b`);
 		} catch (err) {
 			setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
 		} finally {

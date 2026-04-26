@@ -167,7 +167,7 @@ const localPrismRoutes: LocalApiRoute[] = [
     modulePath: '/api/v4/classes/[classId]/differentiated-build.ts',
     queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
   },
-  { pattern: /^\/simulations$/, modulePath: '/api/v4/simulations/index.ts' },
+  { pattern: /^\/simulations\/run$/, modulePath: '/api/v4/simulations/run.ts' },
   {
     pattern: /^\/simulations\/([^/]+)$/,
     modulePath: '/api/v4/simulations/[simulationId].ts',

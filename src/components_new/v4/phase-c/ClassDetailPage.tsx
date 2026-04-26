@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getClassDetailApi, listDocumentsApi, regenerateClassApi, runSimulationApi, type DocumentSummary } from "../../../lib/phaseCApi";
+import { getClassDetailApi, listDocumentsApi, regenerateClassApi, runSimulationUnifiedApi, type DocumentSummary } from "../../../lib/phaseCApi";
 
 type Props = {
   classId: string;
@@ -82,9 +82,14 @@ export function ClassDetailPage({ classId, navigate }: Props) {
     setRunning(true);
     setError(null);
     try {
-      const output = await runSimulationApi({ classId, documentId: selectedDocumentId });
+      const output = await runSimulationUnifiedApi({
+        classId,
+        documentId: selectedDocumentId,
+        selectedProfileIds: [],
+        mode: "class",
+      });
       setShowRunModal(false);
-      navigate(`/simulations/${output.simulationId}`);
+      navigate(`/simulations/${output.simulationId}/phase-b`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Simulation run failed");
     } finally {

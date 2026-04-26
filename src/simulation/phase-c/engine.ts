@@ -9,6 +9,7 @@ import {
   saveSimulationResults,
 } from "./store";
 import type {
+  PhaseBNormalizedItemInput,
   RunSimulationInput,
   SimulationResult,
   SimulationRun,
@@ -19,6 +20,7 @@ type SourceItem = {
   id: string;
   item_number: number;
   stem: string;
+  answer_key?: unknown;
   metadata?: Record<string, unknown>;
 };
 
@@ -69,6 +71,61 @@ function readNumeric(metadata: Record<string, unknown> | undefined, keys: string
   return fallback;
 }
 
+function hasAnswerKey(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Object.keys(record).length === 0) {
+      return false;
+    }
+
+    return Object.values(record).some((entry) => {
+      if (entry === null || entry === undefined) {
+        return false;
+      }
+      if (typeof entry === "string") {
+        return entry.trim().length > 0;
+      }
+      if (Array.isArray(entry)) {
+        return entry.length > 0;
+      }
+      if (typeof entry === "object") {
+        return Object.keys(entry as Record<string, unknown>).length > 0;
+      }
+      return true;
+    });
+  }
+
+  return true;
+}
+
+function deriveItemLabel(item: SourceItem): string {
+  const stem = (item.stem ?? "").trim();
+  const alphaNumeric = stem.match(/^(\d+\s*[a-z])[\).:\s]/i);
+  if (alphaNumeric?.[1]) {
+    const compact = alphaNumeric[1].replace(/\s+/g, "").toLowerCase();
+    return `Item ${compact}`;
+  }
+
+  const numeric = stem.match(/^(\d+)[\).:\s]/);
+  if (numeric?.[1]) {
+    return `Item ${numeric[1]}`;
+  }
+
+  return `Item ${item.item_number}`;
+}
+
 function estimateMeasurables(item: SourceItem): PhaseBItemMeasurables {
   const cfg = PHASE_C_CONFIG.formula;
   const text = item.stem ?? "";
@@ -96,7 +153,7 @@ function estimateMeasurables(item: SourceItem): PhaseBItemMeasurables {
 
   return {
     itemId: item.id,
-    itemLabel: `Item ${item.item_number}`,
+    itemLabel: deriveItemLabel(item),
     linguisticLoad,
     cognitiveLoad,
     bloomLevel,
@@ -110,14 +167,21 @@ async function loadDocumentItems(documentId: string): Promise<SourceItem[]> {
   try {
     const rows = await supabaseRest("v4_items", {
       method: "GET",
-      select: "id,item_number,stem,metadata",
+      select: "id,item_number,stem,answer_key,metadata",
       filters: {
         document_id: `eq.${documentId}`,
         order: "item_number.asc",
       },
     });
 
-    return (rows as SourceItem[]) ?? [];
+    const sourceItems = (rows as SourceItem[]) ?? [];
+    const hasAnswerKeys = sourceItems.some((item) => hasAnswerKey(item.answer_key));
+
+    if (!hasAnswerKeys) {
+      return sourceItems;
+    }
+
+    return sourceItems.filter((item) => hasAnswerKey(item.answer_key));
   } catch (error) {
     if (!isSupabaseSchemaCacheError(error)) {
       throw error;
@@ -203,6 +267,45 @@ function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
 }
 
+function measurableFromNormalizedItem(item: PhaseBNormalizedItemInput): PhaseBItemMeasurables {
+  const label = item.logicalLabel
+    ? `Item ${item.logicalLabel}`
+    : typeof item.itemNumber === "number"
+    ? `Item ${item.itemNumber}`
+    : `Item ${item.itemId}`;
+
+  const linguisticLoad = clamp(item.traits.linguisticLoad, 0, 1);
+  const cognitiveLoad = clamp(item.traits.cognitiveLoad, 0, 1);
+  const bloomLevel = clamp(item.traits.bloomLevel, 1, 6);
+  const representationLoad = clamp(item.traits.representationLoad, 0, 1);
+  const confusionScore = clamp((linguisticLoad + cognitiveLoad + representationLoad) / 3, 0, 1);
+  const timeSeconds = Math.max(0, 30 + (45 * linguisticLoad) + (15 * representationLoad));
+
+  return {
+    itemId: item.itemId,
+    itemLabel: label,
+    linguisticLoad,
+    cognitiveLoad,
+    bloomLevel,
+    representationLoad,
+    confusionScore,
+    timeSeconds,
+  };
+}
+
+function studentMatchesProfiles(student: SyntheticStudent, selectedProfileIds: string[]): boolean {
+  if (selectedProfileIds.length === 0) {
+    return true;
+  }
+
+  const studentValues = new Set<string>([
+    ...student.profiles.map((profile) => profile.toLowerCase()),
+    ...student.positiveTraits.map((trait) => trait.toLowerCase()),
+  ]);
+
+  return selectedProfileIds.some((value) => studentValues.has(value.toLowerCase()));
+}
+
 export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
   simulationRun: SimulationRun;
   resultCount: number;
@@ -217,12 +320,27 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
     throw new Error("Synthetic students not found for class");
   }
 
-  const items = await loadDocumentItems(input.documentId);
-  if (items.length === 0) {
+  const selectedProfileIds = input.selectedProfileIds ?? [];
+  const scopedStudents = students.filter((student) => studentMatchesProfiles(student, selectedProfileIds));
+  if (scopedStudents.length === 0) {
+    throw new Error("Synthetic students not found for class");
+  }
+
+  const normalizedItems = input.items ?? [];
+  const measurables = normalizedItems.length > 0
+    ? normalizedItems.map((item) => measurableFromNormalizedItem(item))
+    : undefined;
+
+  if (measurables && measurables.length === 0) {
     throw new Error("No document items found for documentId");
   }
 
-  const measurables = items.map((item) => estimateMeasurables(item));
+  const fallbackItems = measurables ? [] : await loadDocumentItems(input.documentId);
+  if (!measurables && fallbackItems.length === 0) {
+    throw new Error("No document items found for documentId");
+  }
+
+  const measurableItems = measurables ?? fallbackItems.map((item) => estimateMeasurables(item));
 
   const simulationRun = await createSimulationRun({
     classId: classRecord.id,
@@ -230,8 +348,8 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
   });
 
   const results: SimulationResult[] = [];
-  for (const student of students) {
-    for (const measurable of measurables) {
+  for (const student of scopedStudents) {
+    for (const measurable of measurableItems) {
       const profileOutput = applyPhaseCCore(student, measurable);
       const biasedOutput = applyBiases(student, profileOutput.confusionProfile, profileOutput.timeProfile);
       const difficultyScore = computeDifficultyScore(measurable);

@@ -109,38 +109,63 @@ export function regenerateClassApi(classId: string, seed?: string) {
 }
 
 export function runSimulationApi(input: { classId: string; documentId: string }) {
+  return runSimulationUnifiedApi({
+    classId: input.classId,
+    documentId: input.documentId,
+    mode: "class",
+    selectedProfileIds: [],
+  });
+}
+
+export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class" }) {
   return fetchJson<{
     simulationId: string;
     classId: string;
     documentId: string;
     createdAt: string;
     resultCount: number;
-  }>("/api/v4/simulations", {
+  }>("/api/v4/simulations/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
 }
 
-export function getSimulationViewApi(simulationId: string, view: "class" | "profile" | "student", options?: { profile?: string; studentId?: string }) {
+export function getSimulationViewApi(simulationId: string, view: "class" | "profile" | "student" | "phase-b", options?: { profile?: string; studentId?: string }) {
   const query = new URLSearchParams({ view, ...(options?.profile ? { profile: options.profile } : {}), ...(options?.studentId ? { studentId: options.studentId } : {}) });
   return fetchJson<{
     simulationId: string;
-    view: "class" | "profile" | "student";
+    classId: string;
+    documentId: string;
+    view: "class" | "profile" | "student" | "phase-b";
     summary: SimulationSummary;
     items?: Array<{
       itemId: string;
-      itemLabel: string;
-      confusionScore: number;
-      timeSeconds: number;
-      bloomGap: number;
-      difficultyScore: number;
-      abilityScore: number;
-      pCorrect: number;
+      itemLabel?: string;
+      itemNumber?: number;
+      groupId?: string;
+      partIndex?: number;
+      logicalLabel?: string;
+      isParent?: boolean;
+      confusionScore?: number;
+      timeSeconds?: number;
+      bloomGap?: number;
+      difficultyScore?: number;
+      abilityScore?: number;
+      pCorrect?: number;
       linguisticLoad?: number;
       cognitiveLoad?: number;
       bloomLevel?: number;
       representationLoad?: number;
+      traits?: {
+        bloomLevel?: number;
+        linguisticLoad?: number;
+        cognitiveLoad?: number;
+        representationLoad?: number;
+        vocabDensity?: number;
+        symbolDensity?: number;
+        steps?: number;
+      };
       symbolDensity?: number;
       vocabCounts?: {
         level1: number;

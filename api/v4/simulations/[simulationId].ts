@@ -6,9 +6,11 @@ import {
   getSyntheticStudentsForClass,
   listSimulationResults,
 } from "../../../src/simulation/phase-c";
-import type { SimulationResult, SimulationView, SyntheticStudent } from "../../../src/simulation/phase-c";
+import type { SimulationResult, SyntheticStudent } from "../../../src/simulation/phase-c";
 
 export const runtime = "nodejs";
+
+type ApiSimulationView = "class" | "profile" | "student" | "phase-b";
 
 function resolveQuery(req: VercelRequest, key: string): string | undefined {
   const value = req.query[key];
@@ -17,6 +19,11 @@ function resolveQuery(req: VercelRequest, key: string): string | undefined {
 }
 
 type ItemTraitSnapshot = {
+  itemNumber?: number;
+  groupId?: string;
+  partIndex?: number;
+  logicalLabel?: string;
+  isParent?: boolean;
   linguisticLoad?: number;
   cognitiveLoad?: number;
   bloomLevel?: number;
@@ -28,6 +35,156 @@ type ItemTraitSnapshot = {
     level3: number;
   };
 };
+
+type ItemRow = {
+  id: string;
+  item_number?: number;
+  stem?: string;
+  answer_key?: unknown;
+  metadata?: Record<string, unknown>;
+};
+
+function hasAnswerKey(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Object.keys(record).length === 0) {
+      return false;
+    }
+
+    return Object.values(record).some((entry) => {
+      if (entry === null || entry === undefined) {
+        return false;
+      }
+      if (typeof entry === "string") {
+        return entry.trim().length > 0;
+      }
+      if (Array.isArray(entry)) {
+        return entry.length > 0;
+      }
+      if (typeof entry === "object") {
+        return Object.keys(entry as Record<string, unknown>).length > 0;
+      }
+      return true;
+    });
+  }
+
+  return true;
+}
+
+function letterToPartIndex(letter: string): number {
+  const code = letter.toLowerCase().charCodeAt(0);
+  if (code >= 97 && code <= 122) {
+    return (code - 97) + 1;
+  }
+
+  return 0;
+}
+
+function deriveItemStructure(row: ItemRow): Pick<ItemTraitSnapshot, "itemNumber" | "groupId" | "partIndex" | "logicalLabel" | "isParent"> {
+  const itemNumber = typeof row.item_number === "number" && Number.isFinite(row.item_number)
+    ? row.item_number
+    : undefined;
+  const stem = (row.stem ?? "").trim();
+  const hasKey = hasAnswerKey(row.answer_key);
+  const alphaNumeric = stem.match(/^(\d+)\s*([a-z])[\).:\s]/i);
+  if (alphaNumeric?.[1] && alphaNumeric[2]) {
+    const groupId = alphaNumeric[1];
+    const suffix = alphaNumeric[2].toLowerCase();
+    return {
+      itemNumber,
+      groupId,
+      partIndex: letterToPartIndex(suffix),
+      logicalLabel: `${groupId}${suffix}`,
+      isParent: !hasKey,
+    };
+  }
+
+  const numeric = stem.match(/^(\d+)[\).:\s]/);
+  if (numeric?.[1]) {
+    const groupId = numeric[1];
+    return {
+      itemNumber,
+      groupId,
+      partIndex: 0,
+      logicalLabel: groupId,
+      isParent: !hasKey,
+    };
+  }
+
+  const fallbackGroup = typeof itemNumber === "number" ? String(itemNumber) : row.id;
+  return {
+    itemNumber,
+    groupId: fallbackGroup,
+    partIndex: 0,
+    logicalLabel: typeof itemNumber === "number" ? String(itemNumber) : undefined,
+    isParent: !hasKey,
+  };
+}
+
+function parseStructureFromResultLabel(itemLabel: string): Pick<ItemTraitSnapshot, "groupId" | "partIndex" | "logicalLabel"> {
+  const compact = itemLabel.replace(/^Item\s+/i, "").trim();
+  const alphaNumeric = compact.match(/^(\d+)([a-z])$/i);
+  if (alphaNumeric?.[1] && alphaNumeric[2]) {
+    return {
+      groupId: alphaNumeric[1],
+      partIndex: letterToPartIndex(alphaNumeric[2]),
+      logicalLabel: `${alphaNumeric[1]}${alphaNumeric[2].toLowerCase()}`,
+    };
+  }
+
+  const numeric = compact.match(/^(\d+)$/);
+  if (numeric?.[1]) {
+    return {
+      groupId: numeric[1],
+      partIndex: 0,
+      logicalLabel: numeric[1],
+    };
+  }
+
+  return {
+    groupId: undefined,
+    partIndex: undefined,
+    logicalLabel: undefined,
+  };
+}
+
+function compareByStructure(
+  left: { groupId?: string; partIndex?: number; itemNumber?: number; logicalLabel?: string },
+  right: { groupId?: string; partIndex?: number; itemNumber?: number; logicalLabel?: string },
+): number {
+  const leftGroup = left.groupId ?? String(left.itemNumber ?? left.logicalLabel ?? "");
+  const rightGroup = right.groupId ?? String(right.itemNumber ?? right.logicalLabel ?? "");
+  const groupCompare = leftGroup.localeCompare(rightGroup, undefined, { numeric: true });
+  if (groupCompare !== 0) {
+    return groupCompare;
+  }
+
+  const leftPart = typeof left.partIndex === "number" && Number.isFinite(left.partIndex) ? left.partIndex : 0;
+  const rightPart = typeof right.partIndex === "number" && Number.isFinite(right.partIndex) ? right.partIndex : 0;
+  if (leftPart !== rightPart) {
+    return leftPart - rightPart;
+  }
+
+  const leftNumber = typeof left.itemNumber === "number" && Number.isFinite(left.itemNumber)
+    ? left.itemNumber
+    : Number.POSITIVE_INFINITY;
+  const rightNumber = typeof right.itemNumber === "number" && Number.isFinite(right.itemNumber)
+    ? right.itemNumber
+    : Number.POSITIVE_INFINITY;
+  return leftNumber - rightNumber;
+}
 
 function readNumeric(metadata: Record<string, unknown> | undefined, keys: string[]): number | undefined {
   if (!metadata) {
@@ -78,8 +235,10 @@ function readVocabCounts(metadata: Record<string, unknown> | undefined): ItemTra
   return { level1, level2, level3 };
 }
 
-function extractItemTraits(metadata: Record<string, unknown> | undefined): ItemTraitSnapshot {
+function extractItemTraits(row: ItemRow): ItemTraitSnapshot {
+  const metadata = row.metadata;
   return {
+    ...deriveItemStructure(row),
     linguisticLoad: readNumeric(metadata, ["linguisticLoad", "linguistic_load", "phaseB.linguisticLoad", "phaseB.linguistic_load", "metrics.linguistic_load"]),
     cognitiveLoad: readNumeric(metadata, ["cognitiveLoad", "cognitive_load", "phaseB.cognitiveLoad", "phaseB.cognitive_load", "metrics.cognitive_load"]),
     bloomLevel: readNumeric(metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"]),
@@ -93,14 +252,14 @@ async function loadItemTraits(documentId: string): Promise<Record<string, ItemTr
   try {
     const rows = await supabaseRest("v4_items", {
       method: "GET",
-      select: "id,metadata",
+      select: "id,item_number,stem,answer_key,metadata",
       filters: {
         document_id: `eq.${documentId}`,
       },
-    }) as Array<{ id: string; metadata?: Record<string, unknown> }>;
+    }) as ItemRow[];
 
     return rows.reduce<Record<string, ItemTraitSnapshot>>((accumulator, row) => {
-      accumulator[row.id] = extractItemTraits(row.metadata);
+      accumulator[row.id] = extractItemTraits(row);
       return accumulator;
     }, {});
   } catch {
@@ -150,6 +309,11 @@ function filterByProfileOrTrait(results: SimulationResult[], students: Synthetic
 function studentSummary(results: SimulationResult[], itemTraits: Record<string, ItemTraitSnapshot>) {
   const byItem = results.reduce<Record<string, {
     itemLabel: string;
+    itemNumber?: number;
+    groupId?: string;
+    partIndex?: number;
+    logicalLabel?: string;
+    isParent?: boolean;
     confusionScore: number;
     timeSeconds: number;
     bloomGap: number;
@@ -169,8 +333,14 @@ function studentSummary(results: SimulationResult[], itemTraits: Record<string, 
     };
   }>>((accumulator, result) => {
     const traits = itemTraits[result.itemId] ?? {};
+    const parsedStructure = parseStructureFromResultLabel(result.itemLabel);
     accumulator[result.itemId] = {
       itemLabel: result.itemLabel,
+      itemNumber: traits.itemNumber,
+      groupId: traits.groupId ?? parsedStructure.groupId,
+      partIndex: traits.partIndex ?? parsedStructure.partIndex,
+      logicalLabel: traits.logicalLabel ?? parsedStructure.logicalLabel,
+      isParent: traits.isParent,
       confusionScore: result.confusionScore,
       timeSeconds: result.timeSeconds,
       bloomGap: result.bloomGap,
@@ -178,17 +348,70 @@ function studentSummary(results: SimulationResult[], itemTraits: Record<string, 
       abilityScore: result.abilityScore,
       pCorrect: result.pCorrect,
       metadata: traits,
-      linguisticLoad: traits.linguisticLoad,
-      cognitiveLoad: traits.cognitiveLoad,
-      bloomLevel: traits.bloomLevel,
-      representationLoad: traits.representationLoad,
+      linguisticLoad: traits.linguisticLoad ?? result.linguisticLoad,
+      cognitiveLoad: traits.cognitiveLoad ?? result.linguisticLoad,
+      bloomLevel: traits.bloomLevel ?? (3 + result.bloomGap),
+      representationLoad: traits.representationLoad ?? 0.5,
       symbolDensity: traits.symbolDensity,
       vocabCounts: traits.vocabCounts,
     };
     return accumulator;
   }, {});
 
-  return Object.entries(byItem).map(([itemId, values]) => ({ itemId, ...values }));
+  const entries = Object.entries(byItem).map(([itemId, values]) => ({ itemId, ...values }));
+  const allParents = entries.length > 0 && entries.every((entry) => entry.isParent);
+  const adjusted = allParents ? entries.map((entry) => ({ ...entry, isParent: false })) : entries;
+  return adjusted.sort((left, right) => compareByStructure(left, right));
+}
+
+function phaseBSummary(results: SimulationResult[], itemTraits: Record<string, ItemTraitSnapshot>) {
+  const byItem = new Map<string, {
+    itemId: string;
+    itemNumber?: number;
+    groupId?: string;
+    partIndex?: number;
+    logicalLabel?: string;
+    isParent?: boolean;
+    traits: {
+      bloomLevel?: number;
+      linguisticLoad?: number;
+      cognitiveLoad?: number;
+      representationLoad?: number;
+      vocabDensity?: number;
+      symbolDensity?: number;
+      steps?: number;
+    };
+  }>();
+
+  for (const result of results) {
+    if (byItem.has(result.itemId)) {
+      continue;
+    }
+
+    const traits = itemTraits[result.itemId] ?? {};
+    const parsed = parseStructureFromResultLabel(result.itemLabel);
+    byItem.set(result.itemId, {
+      itemId: result.itemId,
+      itemNumber: traits.itemNumber,
+      groupId: traits.groupId ?? parsed.groupId,
+      partIndex: traits.partIndex ?? parsed.partIndex,
+      logicalLabel: traits.logicalLabel ?? parsed.logicalLabel,
+      isParent: traits.isParent,
+      traits: {
+        bloomLevel: traits.bloomLevel ?? (3 + result.bloomGap),
+        linguisticLoad: traits.linguisticLoad ?? result.linguisticLoad,
+        cognitiveLoad: traits.cognitiveLoad ?? result.linguisticLoad,
+        representationLoad: traits.representationLoad ?? 0.5,
+        vocabDensity: traits.vocabCounts ? (traits.vocabCounts.level1 + traits.vocabCounts.level2 + traits.vocabCounts.level3) : undefined,
+        symbolDensity: traits.symbolDensity,
+        steps: undefined,
+      },
+    });
+  }
+
+  const entries = [...byItem.values()].sort((left, right) => compareByStructure(left, right));
+  const allParents = entries.length > 0 && entries.every((entry) => entry.isParent);
+  return allParents ? entries.map((entry) => ({ ...entry, isParent: false })) : entries;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -201,7 +424,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "simulationId is required" });
   }
 
-  const view = (resolveQuery(req, "view") ?? "class") as SimulationView;
+  const view = (resolveQuery(req, "view") ?? "class") as ApiSimulationView;
 
   try {
     const run = await getSimulationRun(simulationId);
@@ -217,7 +440,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
 
     if (view === "class") {
-      return res.status(200).json({ simulationId, view, summary: aggregateClass(results), availableStudentIds });
+      return res.status(200).json({
+        simulationId,
+        classId: run.classId,
+        documentId: run.documentId,
+        view,
+        summary: aggregateClass(results),
+        availableStudentIds,
+      });
     }
 
     if (view === "profile") {
@@ -227,7 +457,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const scoped = filterByProfileOrTrait(results, students, profile);
-      return res.status(200).json({ simulationId, view, profile, summary: aggregateClass(scoped), availableStudentIds });
+      return res.status(200).json({
+        simulationId,
+        classId: run.classId,
+        documentId: run.documentId,
+        view,
+        profile,
+        summary: aggregateClass(scoped),
+        availableStudentIds,
+      });
     }
 
     if (view === "student") {
@@ -239,6 +477,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const scoped = results.filter((result) => result.syntheticStudentId === studentId);
       return res.status(200).json({
         simulationId,
+        classId: run.classId,
+        documentId: run.documentId,
         view,
         studentId,
         summary: aggregateClass(scoped),
@@ -247,7 +487,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    return res.status(400).json({ error: "view must be one of class, profile, or student" });
+    if (view === "phase-b") {
+      return res.status(200).json({
+        simulationId,
+        classId: run.classId,
+        documentId: run.documentId,
+        view,
+        summary: aggregateClass(results),
+        items: phaseBSummary(results, itemTraits),
+        availableStudentIds,
+      });
+    }
+
+    return res.status(400).json({ error: "view must be one of class, profile, student, or phase-b" });
   } catch (error) {
     return res.status(500).json({ error: error instanceof Error ? error.message : "Simulation lookup failed" });
   }

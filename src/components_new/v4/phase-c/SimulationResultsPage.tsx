@@ -25,6 +25,11 @@ type Tab = "class" | "profile" | "student";
 type StudentItem = {
   itemId: string;
   itemLabel: string;
+  itemNumber?: number;
+  groupId?: string;
+  partIndex?: number;
+  logicalLabel?: string;
+  isParent?: boolean;
   confusionScore: number;
   timeSeconds: number;
   bloomGap: number;
@@ -161,16 +166,128 @@ function asFiniteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function asNumberLike(value: unknown): number | undefined {
+  const direct = asFiniteNumber(value);
+  if (direct !== undefined) {
+    return direct;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+}
+
+function readPath(source: unknown, path: string): unknown {
+  if (!source || typeof source !== "object") {
+    return undefined;
+  }
+
+  const parts = path.split(".");
+  let current: unknown = source;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !(part in (current as Record<string, unknown>))) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+
+  return current;
+}
+
+function readNumberFromPaths(source: unknown, paths: string[]): number | undefined {
+  for (const path of paths) {
+    const value = asNumberLike(readPath(source, path));
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readVocabCountsFromPaths(source: unknown, paths: string[]): { level1: number; level2: number; level3: number } | undefined {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+
+    const objectValue = value as Record<string, unknown>;
+    const level1 = asNumberLike(objectValue.level1 ?? objectValue.level_1) ?? 0;
+    const level2 = asNumberLike(objectValue.level2 ?? objectValue.level_2) ?? 0;
+    const level3 = asNumberLike(objectValue.level3 ?? objectValue.level_3) ?? 0;
+    if (level1 > 0 || level2 > 0 || level3 > 0) {
+      return { level1, level2, level3 };
+    }
+  }
+
+  return undefined;
+}
+
 function normalizePhaseBTraits(item: StudentItem): NormalizedStudentItem {
-  const metadata = item.metadata;
+  const source = item as unknown as Record<string, unknown>;
   return {
     ...item,
-    linguisticLoad: asFiniteNumber(item.linguisticLoad) ?? asFiniteNumber(metadata?.linguisticLoad),
-    cognitiveLoad: asFiniteNumber(item.cognitiveLoad) ?? asFiniteNumber(metadata?.cognitiveLoad),
-    bloomLevel: asFiniteNumber(item.bloomLevel) ?? asFiniteNumber(metadata?.bloomLevel),
-    representationLoad: asFiniteNumber(item.representationLoad) ?? asFiniteNumber(metadata?.representationLoad),
-    symbolDensity: asFiniteNumber(item.symbolDensity) ?? asFiniteNumber(metadata?.symbolDensity),
-    vocabCounts: item.vocabCounts ?? metadata?.vocabCounts,
+    linguisticLoad: readNumberFromPaths(source, [
+      "linguisticLoad",
+      "linguistic_load",
+      "metadata.linguisticLoad",
+      "metadata.linguistic_load",
+      "metadata.phaseB.linguisticLoad",
+      "metadata.phaseB.linguistic_load",
+      "metadata.metrics.linguistic_load",
+    ]),
+    cognitiveLoad: readNumberFromPaths(source, [
+      "cognitiveLoad",
+      "cognitive_load",
+      "metadata.cognitiveLoad",
+      "metadata.cognitive_load",
+      "metadata.phaseB.cognitiveLoad",
+      "metadata.phaseB.cognitive_load",
+      "metadata.metrics.cognitive_load",
+    ]),
+    bloomLevel: readNumberFromPaths(source, [
+      "bloomLevel",
+      "bloom_level",
+      "bloomsLevel",
+      "blooms_level",
+      "metadata.bloomLevel",
+      "metadata.bloom_level",
+      "metadata.bloomsLevel",
+      "metadata.blooms_level",
+      "metadata.phaseB.bloomLevel",
+      "metadata.phaseB.bloom_level",
+      "metadata.phaseB.bloomsLevel",
+      "metadata.phaseB.blooms_level",
+      "metadata.metrics.bloom_level",
+      "metadata.metrics.blooms_level",
+    ]),
+    representationLoad: readNumberFromPaths(source, [
+      "representationLoad",
+      "representation_load",
+      "metadata.representationLoad",
+      "metadata.representation_load",
+      "metadata.phaseB.representationLoad",
+      "metadata.phaseB.representation_load",
+      "metadata.metrics.representation_load",
+    ]),
+    symbolDensity: readNumberFromPaths(source, [
+      "symbolDensity",
+      "symbol_density",
+      "metadata.symbolDensity",
+      "metadata.symbol_density",
+      "metadata.metrics.symbol_density",
+    ]),
+    vocabCounts: readVocabCountsFromPaths(source, [
+      "vocabCounts",
+      "vocab_counts",
+      "metadata.vocabCounts",
+      "metadata.vocab_counts",
+      "metadata.metrics.vocab_counts",
+    ]),
   };
 }
 
@@ -181,7 +298,25 @@ function hasAllPhaseBTraits(item: NormalizedStudentItem): boolean {
     && item.representationLoad !== undefined;
 }
 
+function hasAnyPhaseBTrait(item: NormalizedStudentItem): boolean {
+  return item.linguisticLoad !== undefined
+    || item.cognitiveLoad !== undefined
+    || item.bloomLevel !== undefined
+    || item.representationLoad !== undefined;
+}
+
 function parseItemNumber(item: NormalizedStudentItem, index: number): number {
+  if (typeof item.itemNumber === "number" && Number.isFinite(item.itemNumber)) {
+    return item.itemNumber;
+  }
+
+  if (item.logicalLabel) {
+    const logicalMatch = item.logicalLabel.match(/^(\d+)/);
+    if (logicalMatch?.[1]) {
+      return Number(logicalMatch[1]);
+    }
+  }
+
   const match = item.itemLabel.match(/(\d+)/);
   if (match?.[1]) {
     return Number(match[1]);
@@ -190,12 +325,50 @@ function parseItemNumber(item: NormalizedStudentItem, index: number): number {
   return index + 1;
 }
 
+type PhaseBOrderedItem = NormalizedStudentItem & {
+  displayLabel: string;
+  sortGroupId: string;
+  sortPartIndex: number;
+  sortItemNumber: number;
+};
+
+function normalizePhaseBItems(items: NormalizedStudentItem[]): PhaseBOrderedItem[] {
+  return items
+    .filter((item) => !item.isParent)
+    .map((item, index) => {
+      const itemNumber = parseItemNumber(item, index);
+      return {
+        ...item,
+        displayLabel: item.logicalLabel ?? String(itemNumber),
+        sortGroupId: item.groupId ?? String(itemNumber),
+        sortPartIndex: typeof item.partIndex === "number" && Number.isFinite(item.partIndex) ? item.partIndex : 0,
+        sortItemNumber: itemNumber,
+      };
+    });
+}
+
+function sortPhaseBItems(items: PhaseBOrderedItem[]): PhaseBOrderedItem[] {
+  return [...items].sort((a, b) => {
+    if (a.sortGroupId !== b.sortGroupId) {
+      return a.sortGroupId.localeCompare(b.sortGroupId, undefined, { numeric: true });
+    }
+
+    if (a.sortPartIndex !== b.sortPartIndex) {
+      return a.sortPartIndex - b.sortPartIndex;
+    }
+
+    return a.sortItemNumber - b.sortItemNumber;
+  });
+}
+
 function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }) {
-  const validItems = items.filter(hasAllPhaseBTraits);
+  const validItems = sortPhaseBItems(normalizePhaseBItems(items)).filter(hasAnyPhaseBTrait);
 
   const chartData = validItems.map((item, index) => ({
     itemId: item.itemId,
     itemLabel: item.itemLabel,
+    displayLabel: item.displayLabel,
+    logicalLabel: item.logicalLabel,
     itemNumber: parseItemNumber(item, index),
     bloomLevel: item.bloomLevel ?? 0,
     linguisticLoad: item.linguisticLoad ?? 0,
@@ -209,7 +382,7 @@ function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }
 
   const radarData = chartData.map((entry) => ({
       id: entry.itemId,
-      label: `Item ${entry.itemNumber}`,
+      label: `Item ${entry.displayLabel}`,
       points: [
         { trait: "Bloom", value: Math.min(1, entry.bloomLevel / 6) },
         { trait: "Linguistic", value: entry.linguisticLoad },
@@ -249,7 +422,7 @@ function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="itemNumber" label={{ value: "Item #", position: "insideBottom", offset: -4 }} />
+            <XAxis dataKey="displayLabel" label={{ value: "Item", position: "insideBottom", offset: -4 }} />
             <YAxis domain={maxY ? [0, maxY] : [0, 1]} />
             <Tooltip formatter={(value: number) => value.toFixed(3)} />
             <Bar dataKey={dataKey} fill={color} radius={[4, 4, 0, 0]} />
@@ -293,7 +466,7 @@ function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="itemNumber" label={{ value: "Item #", position: "insideBottom", offset: -4 }} />
+                <XAxis dataKey="displayLabel" label={{ value: "Item", position: "insideBottom", offset: -4 }} />
                 <YAxis domain={[0, 1]} />
                 <Tooltip formatter={(value: number) => value.toFixed(3)} />
                 <Bar dataKey="symbolDensity" fill="#ef4444" radius={[4, 4, 0, 0]} name="Symbol density" />
@@ -303,7 +476,7 @@ function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="itemNumber" label={{ value: "Item #", position: "insideBottom", offset: -4 }} />
+                <XAxis dataKey="displayLabel" label={{ value: "Item", position: "insideBottom", offset: -4 }} />
                 <YAxis />
                 <Tooltip />
                 <Legend />
@@ -390,7 +563,7 @@ export function SimulationResultsPage({ simulationId }: Props) {
 
   const items = useMemo(() => (studentView?.items ?? []) as StudentItem[], [studentView]);
   const normalizedItems = useMemo(() => items.map(normalizePhaseBTraits), [items]);
-  const showPhaseBTraits = useMemo(() => normalizedItems.some(hasAllPhaseBTraits), [normalizedItems]);
+  const showPhaseBTraits = useMemo(() => normalizedItems.some(hasAnyPhaseBTrait), [normalizedItems]);
 
   if (loading) {
     return <div className="phasec-shell"><p>Loading simulation...</p></div>;
