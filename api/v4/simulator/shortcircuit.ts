@@ -246,12 +246,109 @@ function detectMultipleChoice(text) {
 }
 
 // src/prism-v4/segmentation/extractSubItems.ts
-function extractSubItems(text) {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+var SUB_SUB_PATTERNS = [
+  /^Type\s+I(?!\s*[IVX])\b/i,
+  /^Type\s+II\b/i,
+  /^Type\s+III\b/i,
+  /^Consequence\b/i,
+  /^Reason\b/i,
+  /^Explanation\b/i,
+  /^Interpretation\b/i,
+  /^Claim\b/i,
+  /^Evidence\b/i,
+  /^(x{0,3}(?:ix|iv|v?i{0,3}))[.)]\s/i,
+  /^\([0-9]+\)\s/,
+  /^[0-9]+[.)]\s/,
+  /^\([a-z]\)\s/i,
+  /^[a-z]\.\s/i,
+  /^[•\-–—]\s+/
+];
+function matchSubSubPart(line) {
+  for (const re of SUB_SUB_PATTERNS) {
+    const m = line.match(re);
+    if (m) {
+      const matched = m[0];
+      return { label: matched.trim(), text: line.slice(matched.length).trim() };
+    }
+  }
+  return null;
+}
+function findLastAttachableSubItem(subItems) {
+  for (let i = subItems.length - 1; i >= 0; i -= 1) {
+    const candidate = subItems[i];
+    if (!candidate) {
+      continue;
+    }
+    const hasText = candidate.text.trim().length > 0;
+    const hasNested = candidate.subSubParts.some((ssp) => ssp.text.trim().length > 0);
+    if (hasText || hasNested) {
+      return candidate;
+    }
+  }
+  return null;
+}
+function extractSubItemsWithNesting(text) {
   const parentStem = getParentStem(text);
-  return lines.filter((line) => isLetteredLine(line)).filter((line) => shouldTreatAsMultipartSubItem(line, parentStem)).map((line, index) => ({
+  if (parentLooksLikeMCStem(parentStem)) {
+    return [];
+  }
+  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+$/, ""));
+  const subItems = [];
+  let currentSubItem = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (isLetteredLine(trimmed) && shouldTreatAsMultipartSubItem(trimmed, parentStem)) {
+      const letterMatch = trimmed.match(/^\(?([a-zA-Z])\)?[.)]/);
+      currentSubItem = {
+        letter: (letterMatch?.[1] ?? "").toLowerCase(),
+        text: stripLetteredPrefix(trimmed),
+        subSubParts: []
+      };
+      subItems.push(currentSubItem);
+      continue;
+    }
+    const subSubMatch = matchSubSubPart(trimmed);
+    if (subSubMatch) {
+      let targetSubItem = currentSubItem;
+      if (!targetSubItem) {
+        targetSubItem = findLastAttachableSubItem(subItems) ?? subItems[subItems.length - 1] ?? null;
+      }
+      if (targetSubItem) {
+        targetSubItem.subSubParts.push({ label: subSubMatch.label, text: subSubMatch.text });
+        currentSubItem = targetSubItem;
+        continue;
+      }
+    }
+    if (currentSubItem) {
+      const lastSubSubPart = currentSubItem.subSubParts[currentSubItem.subSubParts.length - 1];
+      if (lastSubSubPart) {
+        lastSubSubPart.text += (lastSubSubPart.text ? " " : "") + trimmed;
+      } else {
+        currentSubItem.text += (currentSubItem.text ? " " : "") + trimmed;
+      }
+    }
+  }
+  return subItems.filter((si) => si.text.trim().length > 0 || si.subSubParts.some((ssp) => ssp.text.trim().length > 0)).map((si, index) => ({
     itemNumber: index + 1,
-    text: stripLetteredPrefix(line)
+    text: si.text,
+    letter: si.letter,
+    subSubParts: si.subSubParts
+  }));
+}
+function buildSubItemFullText(subItem) {
+  if (subItem.subSubParts.length === 0) {
+    return subItem.text;
+  }
+  const nestedText = subItem.subSubParts.map((ssp) => `${ssp.label} ${ssp.text}`.trim()).join(" ");
+  return subItem.text ? `${subItem.text} ${nestedText}` : nestedText;
+}
+function extractSubItems(text) {
+  return extractSubItemsWithNesting(text).map((subItem) => ({
+    itemNumber: subItem.itemNumber,
+    text: buildSubItemFullText(subItem)
   }));
 }
 
@@ -397,8 +494,14 @@ function buildItemTree(item) {
   const writingMode = detectWritingMode(text);
   const reasoningSteps = estimateReasoningSteps(text);
   if (detectMultiPart(text)) {
-    const subItemsRaw = extractSubItems(text);
-    const subItems = subItemsRaw.map((sub) => buildSubItem(item, sub.itemNumber, sub.text));
+    const subItemsRaw = extractSubItemsWithNesting(text);
+    const subItems = subItemsRaw.map((sub) => {
+      const fullText = buildSubItemFullText(sub).trim();
+      const built = buildSubItem(item, sub.itemNumber, fullText);
+      built.letter = sub.letter;
+      built.subSubParts = sub.subSubParts;
+      return built;
+    });
     return {
       item: {
         ...item,

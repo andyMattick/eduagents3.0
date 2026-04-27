@@ -155,12 +155,27 @@ export function segmentLines(lines: string[]): SegmentedItem[] {
     }
 
     // ── Sub-subpart ───────────────────────────────────────────────────────
-    if (currentSubItem) {
-      const ssp = matchSubSubPart(line);
-      if (ssp) {
-        currentSubItem.subSubParts.push({ label: ssp.label, text: ssp.rest });
+    const ssp = matchSubSubPart(line);
+    if (ssp && currentItem) {
+      let targetSubItem = currentSubItem;
+
+      // If no active sub-item, attach to the last non-empty sub-item.
+      if (!targetSubItem) {
+        targetSubItem = [...currentItem.subItems]
+          .reverse()
+          .find((si) => si.text.trim().length > 0 || si.subSubParts.some((nested) => nested.text.trim().length > 0))
+          ?? currentItem.subItems[currentItem.subItems.length - 1]
+          ?? null;
+      }
+
+      if (targetSubItem) {
+        targetSubItem.subSubParts.push({ label: ssp.label, text: ssp.rest });
+        currentSubItem = targetSubItem;
         continue;
       }
+    }
+
+    if (currentSubItem) {
 
       // Continuation: append to deepest open slot
       const lastSsp = currentSubItem.subSubParts[currentSubItem.subSubParts.length - 1];
