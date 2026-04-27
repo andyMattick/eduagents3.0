@@ -3872,34 +3872,49 @@ function assignLogicalLabels(itemTrees) {
   });
   return itemTrees;
 }
+const VALID_PROFILES = /* @__PURE__ */ new Set([
+  "average", "adhd", "dyslexia", "ell", "gifted", "iep", "struggling"
+]);
 async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   if (req.method === "OPTIONS") {
     return res.status(200).setHeader("Access-Control-Allow-Origin", "*").setHeader("Access-Control-Allow-Methods", "POST, OPTIONS").setHeader("Access-Control-Allow-Headers", "Content-Type").end();
   }
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: { code: "method_not_allowed", message: "Method not allowed" } });
   }
-  let body = req.body;
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body);
-    } catch {
+  let body;
+  try {
+    const raw = req.body;
+    if (raw === null || raw === undefined) {
+      body = {};
+    } else if (typeof raw === "string") {
+      body = JSON.parse(raw);
+    } else if (typeof raw === "object" && !Array.isArray(raw)) {
+      body = raw;
+    } else {
+      body = {};
     }
+  } catch {
+    return res.status(400).json({ error: { code: "invalid_request", message: "Request body must be valid JSON" } });
   }
   const { sessionId, profiles: rawProfiles } = body ?? {};
-  if (!sessionId) {
-    return res.status(400).json({ error: "sessionId is required" });
+  if (!sessionId || typeof sessionId !== "string") {
+    return res.status(400).json({ error: { code: "invalid_request", message: "sessionId is required" } });
   }
-  const requestedProfiles = Array.isArray(rawProfiles) && rawProfiles.length > 0 ? rawProfiles : ["average"];
+  const profileArr = Array.isArray(rawProfiles) && rawProfiles.length > 0 ? rawProfiles : ["average"];
+  const invalidProfiles = profileArr.filter((p) => !VALID_PROFILES.has(String(p)));
+  if (invalidProfiles.length > 0) {
+    return res.status(400).json({ error: { code: "invalid_request", message: `Invalid profiles: ${invalidProfiles.join(", ")}. Allowed: ${[...VALID_PROFILES].join(", ")}` } });
+  }
+  const requestedProfiles = profileArr.map(String);
   try {
     const rows = await supabaseRest("prism_v4_documents", {
       select: "document_id,source_file_name,azure_extract,canonical_document",
       filters: { session_id: `eq.${sessionId}` }
     });
     if (!rows || rows.length === 0) {
-      return res.status(404).json({
-        error: "No documents found for this session. Upload a document first."
-      });
+      return res.status(404).json({ error: { code: "not_found", message: "No documents found for this session. Upload a document first." } });
     }
     console.log(`[shortcircuit] session=${sessionId} docs=${rows.length}`);
     rows.forEach((r, i) => {
@@ -3926,9 +3941,9 @@ async function handler(req, res) {
     if (rawItems.length === 0) {
       const fullText = rows.map(extractFullText).filter(Boolean).join("\n\n---\n\n");
       if (!fullText.trim()) {
-        return res.status(422).json({ error: "No readable text found in the stored documents." });
+        return res.status(422).json({ error: { code: "invalid_request", message: "No readable text found in the stored documents." } });
       }
-      return res.status(422).json({ error: "Segmentation produced no items." });
+      return res.status(422).json({ error: { code: "invalid_request", message: "Segmentation produced no items." } });
     }
     const sectioning = buildSections(rawItems.map((seg) => ({ itemNumber: seg.itemNumber, text: seg.text })));
     const items = [];
@@ -4006,9 +4021,7 @@ async function handler(req, res) {
     });
   } catch (err) {
     console.error("[shortcircuit] ERROR:", err);
-    return res.status(500).json({
-      error: err instanceof Error ? err.message : "Internal error"
-    });
+    return res.status(500).json({ error: { code: "internal_error", message: "Simulation failed" } });
   }
 }
 function extractFullText(row) {

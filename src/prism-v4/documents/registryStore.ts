@@ -126,6 +126,10 @@ type DocumentRow = {
 	raw_binary_base64: string | null;
 	canonical_document: RegisteredDocument["canonicalDocument"] | null;
 	azure_extract: RegisteredDocument["azureExtract"] | null;
+	/** UUID of the authenticated teacher who created the document. */
+	owner_id: string | null;
+	/** Whether the document is publicly visible to all teachers. */
+	is_public: boolean;
 };
 
 type AnalyzedDocumentRow = {
@@ -410,7 +414,7 @@ function fromSessionRow(row: SessionRow): DocumentSession {
 	};
 }
 
-function toDocumentRow(document: RegisteredDocument, sessionId: string | null): DocumentRow {
+function toDocumentRow(document: RegisteredDocument, sessionId: string | null, ownerId: string | null = null): DocumentRow {
 	return {
 		document_id: document.documentId,
 		session_id: sessionId,
@@ -420,8 +424,10 @@ function toDocumentRow(document: RegisteredDocument, sessionId: string | null): 
 		raw_binary_base64: document.rawBinary ? document.rawBinary.toString("base64") : null,
 		canonical_document: document.canonicalDocument ?? null,
 		azure_extract: document.azureExtract ?? null,
+		owner_id: ownerId,
+		is_public: false,
 	};
-	}
+}
 
 function fromDocumentRow(row: DocumentRow): RegisteredDocument {
 	return {
@@ -725,7 +731,11 @@ export async function invalidatePrismSessionSnapshot(sessionId: string | null | 
 	}
 }
 
-export async function registerDocumentsStore(entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>, sessionId: string | null = null) {
+export async function registerDocumentsStore(
+	entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>,
+	sessionId: string | null = null,
+	ownerId: string | null = null,
+) {
 	if (!canUseSupabase()) {
 		const registered = registerDocuments(entries);
 		markCollectionAnalysisStale(sessionId);
@@ -747,7 +757,7 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 
 	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "POST",
-		body: registered.map((document) => toDocumentRow(document, sessionId)),
+		body: registered.map((document) => toDocumentRow(document, sessionId, ownerId)),
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	markCollectionAnalysisStale(sessionId);

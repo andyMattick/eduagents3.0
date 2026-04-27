@@ -20,6 +20,10 @@
       "dest": "/api/v4/sessions/blueprint?sessionId=$1"
     },
     {
+      "src": "/api/v4/documents/([^/]+)/visibility",
+      "dest": "/api/v4/documents/[documentId]/visibility?documentId=$1"
+    },
+    {
       "src": "/.*",
       "dest": "/index.html"
     }

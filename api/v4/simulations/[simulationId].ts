@@ -506,18 +506,23 @@ function phaseBSummary(results, itemTraits) {
   return allParents ? adjusted.map((entry) => ({ ...entry, isParent: false })) : adjusted;
 }
 async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: { code: "method_not_allowed", message: "Method not allowed" } });
   }
   const simulationId = resolveQuery(req, "simulationId");
-  if (!simulationId) {
-    return res.status(400).json({ error: "simulationId is required" });
+  if (!simulationId || typeof simulationId !== "string") {
+    return res.status(400).json({ error: { code: "invalid_request", message: "simulationId is required" } });
   }
+  const VALID_VIEWS = new Set(["class", "profile", "student", "phase-b"]);
   const view = resolveQuery(req, "view") ?? "class";
+  if (!VALID_VIEWS.has(view)) {
+    return res.status(400).json({ error: { code: "invalid_request", message: "view must be one of class, profile, student, or phase-b" } });
+  }
   try {
     const run = await getSimulationRun(simulationId);
     if (!run) {
-      return res.status(404).json({ error: "Simulation not found" });
+      return res.status(404).json({ error: { code: "not_found", message: "Simulation not found" } });
     }
     const [results, students] = await Promise.all([
       listSimulationResults(simulationId),
@@ -538,7 +543,7 @@ async function handler(req, res) {
     if (view === "profile") {
       const profile = resolveQuery(req, "profile");
       if (!profile) {
-        return res.status(400).json({ error: "profile is required when view=profile" });
+        return res.status(400).json({ error: { code: "invalid_request", message: "profile is required when view=profile" } });
       }
       const scoped = filterByProfileOrTrait(results, students, profile);
       return res.status(200).json({
@@ -554,7 +559,7 @@ async function handler(req, res) {
     if (view === "student") {
       const studentId = resolveQuery(req, "studentId") ?? availableStudentIds[0];
       if (!studentId) {
-        return res.status(404).json({ error: "No student results found for simulation" });
+        return res.status(404).json({ error: { code: "not_found", message: "No student results found for simulation" } });
       }
       const scoped = results.filter((result) => result.syntheticStudentId === studentId);
       return res.status(200).json({
@@ -579,9 +584,10 @@ async function handler(req, res) {
         availableStudentIds
       });
     }
-    return res.status(400).json({ error: "view must be one of class, profile, student, or phase-b" });
+    return res.status(400).json({ error: { code: "invalid_request", message: "view must be one of class, profile, student, or phase-b" } });
   } catch (error) {
-    return res.status(500).json({ error: error instanceof Error ? error.message : "Simulation lookup failed" });
+    console.error("[simulation/get] error:", error instanceof Error ? error.message : error);
+    return res.status(500).json({ error: { code: "internal_error", message: "Simulation lookup failed" } });
   }
 }
 export {

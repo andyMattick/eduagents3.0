@@ -704,10 +704,22 @@ async function runPhaseCSimulation(input) {
 // api/v4/simulations/run.ts
 var runtime = "nodejs";
 function parseBody(body) {
-  if (typeof body !== "string") {
-    return body ?? {};
+  if (body === null || body === undefined) return {};
+  if (typeof body === "object" && !Array.isArray(body)) return body;
+  if (typeof body === "string") {
+    try {
+      const parsed = JSON.parse(body);
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return parsed;
+      return {};
+    } catch {
+      return null; // signals malformed JSON
+    }
   }
-  return JSON.parse(body);
+  return {};
+}
+function sendError(res, code, message, httpStatus) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  return res.status(httpStatus).json({ error: { code, message } });
 }
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -715,31 +727,44 @@ function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   setCorsHeaders(res);
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return sendError(res, "method_not_allowed", "Method not allowed", 405);
   }
   try {
     const payload = parseBody(req.body);
+    if (payload === null) {
+      return sendError(res, "invalid_request", "Request body must be valid JSON", 400);
+    }
     const mode = payload.mode ?? "class";
-    if (!payload.classId || !payload.documentId) {
-      return res.status(400).json({ error: "classId and documentId are required" });
+    if (!payload.classId || typeof payload.classId !== "string") {
+      return sendError(res, "invalid_request", "classId is required and must be a string", 400);
+    }
+    if (!payload.documentId || typeof payload.documentId !== "string") {
+      return sendError(res, "invalid_request", "documentId is required and must be a string", 400);
     }
     if (mode !== "class") {
-      return res.status(400).json({ error: "mode must be class" });
+      return sendError(res, "invalid_request", "mode must be 'class'", 400);
     }
     const phaseB = await normalizeItemsPhaseB(payload.documentId);
     if (phaseB.items.length === 0) {
-      return res.status(404).json({ error: "No document items found for documentId" });
+      return sendError(res, "not_found", "No document items found for documentId", 404);
+    }
+    // Validate item structure before simulation
+    for (const item of phaseB.items) {
+      if (!item.subItems || item.subItems.length === 0) {
+        return sendError(res, "invalid_request", `Malformed document: item ${item.itemId ?? item.itemNumber} has no subItems`, 400);
+      }
     }
     const result = await runPhaseCSimulation({
       classId: payload.classId,
       documentId: payload.documentId,
       items: phaseB.items,
-      selectedProfileIds: payload.selectedProfileIds ?? []
+      selectedProfileIds: Array.isArray(payload.selectedProfileIds) ? payload.selectedProfileIds : []
     });
     return res.status(201).json({
       simulationId: result.simulationRun.id,
@@ -748,14 +773,15 @@ async function handler(req, res) {
       createdAt: result.simulationRun.createdAt,
       resultCount: result.resultCount,
       mode,
-      selectedProfileIds: payload.selectedProfileIds ?? []
+      selectedProfileIds: Array.isArray(payload.selectedProfileIds) ? payload.selectedProfileIds : []
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Simulation run failed";
+    console.error("[simulation/run] error:", message);
     if (message === "Class not found" || message === "Synthetic students not found for class" || message === "No document items found for documentId") {
-      return res.status(404).json({ error: message });
+      return sendError(res, "not_found", message, 404);
     }
-    return res.status(500).json({ error: message });
+    return sendError(res, "internal_error", "Simulation run failed", 500);
   }
 }
 export {

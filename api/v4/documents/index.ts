@@ -51,10 +51,37 @@ async function supabaseRest(table, options = {}) {
 // api/v4/documents/index.ts
 var runtime = "nodejs";
 async function handler(req, res) {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+
   if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: { code: "method_not_allowed", message: "Method not allowed" } });
   }
+
+  const publicOnly = req.query?.public === "true";
+
   try {
+    if (publicOnly) {
+      // Metadata-only projection for public documents — never exposes canonical payloads.
+      const rows = await supabaseRest("prism_v4_documents", {
+        method: "GET",
+        select: "document_id,source_file_name,source_mime_type,created_at,is_public,owner_id",
+        filters: {
+          is_public: "eq.true",
+          order: "created_at.desc",
+          limit: "100"
+        }
+      });
+      const documents = (rows ?? []).map((row) => ({
+        documentId: row.document_id,
+        sourceFileName: row.source_file_name ?? row.document_id,
+        sourceMimeType: row.source_mime_type ?? null,
+        isPublic: row.is_public ?? false,
+        createdAt: row.created_at
+      }));
+      return res.status(200).json({ documents });
+    }
+
+    // Default: return all documents (owner filtering enforced via RLS)
     const rows = await supabaseRest("prism_v4_documents", {
       method: "GET",
       select: "document_id,source_file_name,created_at",
@@ -70,7 +97,7 @@ async function handler(req, res) {
     }));
     return res.status(200).json({ documents });
   } catch (error) {
-    return res.status(500).json({ error: error instanceof Error ? error.message : "Failed to list documents" });
+    return res.status(500).json({ error: { code: "internal_error", message: error instanceof Error ? error.message : "Failed to list documents" } });
   }
 }
 export {
