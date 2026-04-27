@@ -1,0 +1,173 @@
+import { describe, expect, it } from "vitest";
+
+import type { Problem } from "../../../schema/domain";
+import type { ProblemTagVector } from "../../../schema/semantic";
+import { applyTemplates, elaTemplates, genericTemplates, getTemplateMatches, historyTemplates, mathTemplates, scienceTemplates, statsTemplates } from "../templates";
+
+function makeProblem(overrides: Partial<Problem> & { rawText: string }, tags?: Partial<ProblemTagVector>): Problem {
+	return {
+		problemId: overrides.problemId ?? "p1",
+		rawText: overrides.rawText,
+		cleanedText: overrides.cleanedText ?? overrides.rawText,
+		sourceType: overrides.sourceType ?? "document",
+		sourceDocumentId: overrides.sourceDocumentId ?? "doc-1",
+		sourcePageNumber: overrides.sourcePageNumber ?? 1,
+		...overrides,
+		tags: tags
+			? ({
+				subject: tags.subject ?? "general",
+				domain: tags.domain ?? "general",
+				concepts: tags.concepts ?? {},
+				problemType: tags.problemType ?? {},
+				multiStep: tags.multiStep ?? 0,
+				steps: tags.steps ?? 1,
+				representation: tags.representation ?? "paragraph",
+				representationCount: tags.representationCount ?? 1,
+				linguisticLoad: tags.linguisticLoad ?? 0.2,
+				vocabularyTier: tags.vocabularyTier ?? 1,
+				sentenceComplexity: tags.sentenceComplexity ?? 0.2,
+				wordProblem: tags.wordProblem ?? 0,
+				passiveVoice: tags.passiveVoice ?? 0,
+				abstractLanguage: tags.abstractLanguage ?? 0,
+				bloom: tags.bloom ?? { remember: 0.2, understand: 0.4, apply: 0.2, analyze: 0.1, evaluate: 0.1, create: 0 },
+				difficulty: tags.difficulty ?? 0.3,
+				distractorDensity: tags.distractorDensity ?? 0,
+				abstractionLevel: tags.abstractionLevel ?? 0.2,
+				misconceptionTriggers: tags.misconceptionTriggers ?? {},
+				frustrationRisk: tags.frustrationRisk ?? 0.2,
+				engagementPotential: tags.engagementPotential ?? 0.4,
+				cognitive: tags.cognitive ?? {
+					bloom: { remember: 0.2, understand: 0.4, apply: 0.2, analyze: 0.1, evaluate: 0.1, create: 0 },
+					difficulty: 0.3,
+					linguisticLoad: 0.2,
+					abstractionLevel: 0.2,
+					multiStep: 0,
+					representationComplexity: 0.2,
+					misconceptionRisk: 0,
+				},
+			} as ProblemTagVector)
+			: overrides.tags,
+	};
+}
+
+describe("template matching", () => {
+	it("matches definition prompts with the generic starter template", () => {
+		const definitionProblem = makeProblem(
+			{ rawText: "What is photosynthesis?" },
+			{ subject: "general", domain: "general", concepts: { "general.definition": 1 } },
+		);
+
+		const matches = getTemplateMatches(definitionProblem, genericTemplates);
+
+		expect(matches[0]?.template.id).toBe("definition-basic");
+		expect(matches[0]?.passesThreshold).toBe(true);
+		expect(applyTemplates(definitionProblem, genericTemplates).bloom?.remember ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches code reasoning prompts without reclassifying them as equation-only work", () => {
+		const codeProblem = makeProblem(
+			{ rawText: "Predict the output of this code: for(let i = 0; i < 2; i++) { console.log(i); }" },
+			{ subject: "general", domain: "general", concepts: { "general.code": 1 }, representation: "paragraph" },
+		);
+
+		const matches = getTemplateMatches(codeProblem, genericTemplates);
+
+		expect(matches[0]?.template.id).toBe("code-reasoning-basic");
+		expect(matches[0]?.passesThreshold).toBe(true);
+		expect(applyTemplates(codeProblem, genericTemplates).bloom?.understand ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches math and stats starter templates", () => {
+		const mathProblem = makeProblem(
+			{ rawText: "Use the model to write an equation and solve the system." },
+			{ subject: "math", domain: "algebra", concepts: { "math.algebra": 1 } },
+		);
+		const statsProblem = makeProblem(
+			{ rawText: "Interpret the confidence interval and identify a Type I error." },
+			{ subject: "math", domain: "statistics", concepts: { "math.statistics": 1 } },
+		);
+
+		expect(applyTemplates(mathProblem, mathTemplates).bloom?.apply ?? 0).toBeGreaterThan(0);
+		expect(applyTemplates(statsProblem, statsTemplates).bloom?.analyze ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches ELA starter templates", () => {
+		const elaProblem = makeProblem(
+			{ rawText: "What is the author's purpose, and which evidence best supports your claim?" },
+			{ subject: "reading", domain: "comprehension", concepts: { "reading.comprehension": 1 } },
+		);
+
+		expect(applyTemplates(elaProblem, elaTemplates).bloom?.evaluate ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches science starter templates", () => {
+		const scienceProblem = makeProblem(
+			{ rawText: "Design an experiment, identify the control variable, and interpret the data trend." },
+			{ subject: "science", domain: "experiments", concepts: { "science.experimental_design": 1 } },
+		);
+
+		expect(applyTemplates(scienceProblem, scienceTemplates).bloom?.create ?? 0).toBeGreaterThan(0);
+	});
+
+	it("matches history starter templates", () => {
+		const historyProblem = makeProblem(
+			{ rawText: "Compare both sources and explain how the author's perspective changes the account." },
+			{ subject: "socialstudies", domain: "history", concepts: { "socialstudies.history": 1 } },
+		);
+
+		expect(applyTemplates(historyProblem, historyTemplates).bloom?.analyze ?? 0).toBeGreaterThan(0);
+	});
+
+	it("returns a bounded best-guess fallback when no strong template clears threshold", () => {
+		const weakProblem = makeProblem(
+			{ rawText: "What consequence might follow from this policy?" },
+			{ subject: "socialstudies", domain: "civics", concepts: { "socialstudies.civics": 1 } },
+		);
+
+		const matches = getTemplateMatches(weakProblem, historyTemplates);
+
+		expect(matches).toHaveLength(1);
+		expect(matches[0]?.isBestGuess).toBe(true);
+		expect(matches[0]?.confidence ?? 0).toBeLessThan(0.45);
+		expect(applyTemplates(weakProblem, historyTemplates).difficulty ?? 0).toBeLessThan(0.08);
+	});
+
+	it("uses structural flags to strengthen multi-representation templates", () => {
+		const problem = makeProblem(
+			{ rawText: "Use the graph and table to explain the data trend." },
+			{
+				subject: "science",
+				domain: "experiments",
+				concepts: { "science.experimental_design": 1 },
+				representation: "table",
+				representationCount: 2,
+				problemType: { constructedResponse: 1 },
+			},
+		);
+
+		const matches = getTemplateMatches(problem, scienceTemplates);
+
+		expect(matches[0]?.template.id).toBe("multi-representation-synthesis");
+		expect(matches[0]?.passesThreshold).toBe(true);
+	});
+
+	it("prefers strong explicit matches over weaker fallback guesses", () => {
+		const strongProblem = makeProblem(
+			{ rawText: "Read the passage and infer what the author implies." },
+			{
+				subject: "reading",
+				domain: "inference",
+				concepts: { "reading.inference": 1 },
+				representation: "primarySource",
+				representationCount: 1,
+				problemType: { constructedResponse: 1 },
+			},
+		);
+
+		const matches = getTemplateMatches(strongProblem, elaTemplates);
+
+		expect(matches.length).toBeGreaterThan(0);
+		expect(matches.every((match) => match.isBestGuess === false)).toBe(true);
+		expect(matches[0]?.confidence ?? 0).toBeGreaterThanOrEqual(matches[matches.length - 1]?.confidence ?? 0);
+	});
+});

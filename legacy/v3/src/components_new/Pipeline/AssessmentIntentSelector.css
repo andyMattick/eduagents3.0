@@ -1,0 +1,318 @@
+.intent-selector {
+  background:
+    radial-gradient(120% 180% at 0% 0%, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0) 45%),
+    radial-gradient(120% 180% at 100% 100%, rgba(14, 165, 233, 0.08) 0%, rgba(14, 165, 233, 0) 42%),
+    var(--surface-elevated, #f9fafb);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 1.15rem;
+  margin-bottom: 1rem;
+  animation: selector-fade-up 320ms ease-out both;
+}
+
+.intent-selector__title {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary, #111827);
+}
+
+.intent-selector__subtitle {
+  margin: 0.3rem 0 0.85rem;
+  font-size: 0.88rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.intent-selector__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.intent-option {
+  position: relative;
+  text-align: left;
+  border: 1px solid var(--border-color, #dbe1ea);
+  border-radius: 10px;
+  background: var(--surface-primary, #ffffff);
+  color: var(--text-primary, #111827);
+  padding: 0.75rem 0.85rem 0.75rem 2.65rem;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  animation: selector-card-in 360ms ease-out both;
+}
+
+.intent-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--adp-accent, #6366f1);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.intent-option__title {
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+  font-size: 0.93rem;
+}
+
+.intent-option__icon {
+  position: absolute;
+  left: 0.82rem;
+  top: 0.78rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.16), rgba(99, 102, 241, 0.05));
+  color: var(--adp-accent, #6366f1);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.22);
+}
+
+.intent-option__description {
+  font-size: 0.83rem;
+  color: var(--text-secondary, #6b7280);
+  line-height: 1.4;
+}
+
+.workflow-panel {
+  background: var(--surface-elevated, #f9fafb);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  max-width: 700px;
+  animation: selector-fade-up 280ms ease-out both;
+}
+
+.workflow-panel__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-primary, #111827);
+}
+
+.workflow-panel__title-mark {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #22c55e, #0ea5e9);
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.12);
+}
+
+.workflow-panel__description {
+  margin: 0.35rem 0 0.8rem;
+  color: var(--text-secondary, #6b7280);
+  font-size: 0.88rem;
+}
+
+.workflow-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.workflow-input {
+  width: 100%;
+  padding: 0.54rem 0.62rem;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 8px;
+  background: var(--surface-primary, #ffffff);
+  color: var(--text-primary, #111827);
+  font-size: 0.88rem;
+}
+
+.workflow-input:focus {
+  border-color: var(--adp-accent, #6366f1);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.13);
+  outline: none;
+}
+
+.workflow-actions {
+  margin-top: 0.7rem;
+  display: flex;
+  gap: 0.55rem;
+}
+
+.workflow-error {
+  margin: 0.6rem 0 0;
+  color: #b91c1c;
+  font-size: 0.84rem;
+}
+
+.workflow-result-preview {
+  margin-top: 0.85rem;
+  padding: 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: var(--surface-primary, #ffffff);
+  font-size: 0.78rem;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.workflow-tabs {
+  margin-top: 0.95rem;
+}
+
+.workflow-tabs__list {
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.workflow-tabs__tab {
+  border: 1px solid var(--border-color, #d1d5db);
+  background: var(--surface-primary, #ffffff);
+  color: var(--text-secondary, #6b7280);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.workflow-tabs__tab.is-active {
+  border-color: var(--adp-accent, #6366f1);
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--text-primary, #111827);
+  font-weight: 600;
+}
+
+.workflow-tabs__panel {
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  padding-top: 0.6rem;
+}
+
+.workflow-result-card {
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: var(--surface-primary, #ffffff);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.workflow-result-head {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+  margin-bottom: 0.55rem;
+}
+
+.workflow-result-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+}
+
+.workflow-result-metrics div {
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 0.45rem 0.5rem;
+  background: var(--surface-elevated, #f9fafb);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.workflow-result-metrics span {
+  font-size: 0.72rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.workflow-result-metrics strong {
+  font-size: 0.82rem;
+  color: var(--text-primary, #111827);
+}
+
+.workflow-result-section {
+  margin-top: 0.65rem;
+}
+
+.workflow-smart-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.workflow-smart-insight {
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.06), rgba(99, 102, 241, 0));
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.workflow-smart-insight span {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #6b7280);
+}
+
+.workflow-smart-insight strong {
+  font-size: 0.8rem;
+  color: var(--text-primary, #111827);
+}
+
+.workflow-result-section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  color: var(--text-primary, #111827);
+}
+
+.workflow-result-section p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #4b5563);
+}
+
+@keyframes selector-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes selector-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 900px) {
+  .intent-selector__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-result-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-smart-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intent-selector,
+  .intent-option,
+  .workflow-panel {
+    animation: none;
+  }
+
+  .intent-option {
+    transition: none;
+  }
+}

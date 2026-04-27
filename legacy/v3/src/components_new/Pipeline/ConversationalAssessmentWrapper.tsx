@@ -1,0 +1,643 @@
+// src/components_new/Pipeline/ConversationalAssessmentWrapper.tsx
+import { useState, useCallback, useEffect } from "react";
+import { ConversationalAssessment, ConversationalIntent } from "./ConversationalAssessment";
+import type { StepId } from "./ConversationalAssessment";
+import { TraceViewer } from "./TraceViewer";
+import { AssessmentViewer } from "./AssessmentViewer";
+import { PromptEngineerPanel } from "./PromptEngineerPanel";
+import { TeacherFeedbackPanel } from "./TeacherFeedbackPanel";
+import { convertMinimalToUAR } from "../../pipeline/orchestrator/convertMinimalToUAR";
+import { generateAssessment } from "@/config/aiConfig";
+import { runPromptEngineer, type PromptEngineerResult } from "../../pipeline/agents/promptEngineer";
+import { runFeasibilityPrecheck } from "../../pipeline/agents/architect/feasibilityPrecheck";
+import type { FeasibilityReport } from "../../pipeline/agents/architect/feasibility";
+import { evaluateTopicRefinement, type TopicRefinementResult } from "../../pipeline/agents/architect/topicRefiner";
+import { runTeacherRewrite } from "../../pipeline/agents/rewriter/teacherRewrite";
+import { SCRIBE } from "../../pipeline/agents/scribe/SCRIBE";
+import type { MinimalTeacherIntent } from "../../pipeline/contracts";
+import { getDailyUsage, DailyUsage, FREE_DAILY_LIMIT } from "@/services/usageService";
+import type { TeacherProfile } from "@/types/teacherProfile";
+import { loadOrDefaultTeacherProfile, saveTeacherProfile } from "@/services_new/teacherProfileService";
+import { listTemplates } from "@/services_new/pipelineClient";
+import type { TemplateOption } from "@/components_new/templates";
+import {
+  AssessmentIntentSelector,
+  AnalyzeDocumentPanel,
+  CompareDocumentsPanel,
+  LearnerReviewAssessmentPanel,
+  DocumentViewPanel,
+} from "./AssessmentIntentSelector";
+import { DifferentiatedAssessmentPanel } from "./DifferentiatedAssessment";
+import type { OrchestratorIntent } from "../../pipeline/orchestrator";
+
+interface ConversationalAssessmentWrapperProps {
+  userId: string | null;
+  onResult: (result: unknown) => void;
+  /** Soft defaults pre-filled on a fresh form (e.g. most-used course / grade). */
+  defaultAnswers?: Partial<Record<StepId, string>>;
+  builderTemplateToApply?: TemplateOption | null;
+}
+
+function getEstimateMessage(seconds: number): string {
+  if (seconds < 90) return "Estimated time: ~1 minute";
+  if (seconds <= 150) return "This run may take longer than usual.";
+  if (seconds <= 240) return "This run may take 2-4 minutes.";
+  return "Consider narrowing the topic or reducing question count.";
+}
+
+function getTitle(result: any): string {
+  const uar = result?.blueprint?.uar ?? result?.uar;
+  return uar?.lessonName || uar?.unitName || uar?.topic || "Assessment";
+}
+
+function getSubtitle(result: any): string | undefined {
+  const uar = result?.blueprint?.uar ?? result?.uar;
+  if (!uar) return undefined;
+  const parts: string[] = [];
+  if (uar.course) parts.push(uar.course);
+  if (uar.gradeLevels?.length) {
+    const grades = (uar.gradeLevels as string[]).join(", ");
+    parts.push(`Grade ${grades}`);
+  }
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
+export function ConversationalAssessmentWrapper({
+  userId,
+  onResult,
+  defaultAnswers,
+  builderTemplateToApply,
+}: ConversationalAssessmentWrapperProps) {
+  const [selectedIntent, setSelectedIntent] = useState<OrchestratorIntent | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<any | null>(null);
+  const [usage, setUsage] = useState<DailyUsage | null>(null);
+  const [limitError, setLimitError] = useState<string | null>(null);
+  const [partialItems, setPartialItems] = useState<any[]>([]);
+  const [myTemplates, setMyTemplates] = useState<TemplateOption[]>([]);
+  const [selectedBuilderTemplate, setSelectedBuilderTemplate] = useState<TemplateOption | null>(null);
+
+  // ── Prompt Engineer state ──────────────────────────────────────────────
+  const [pendingIntent, setPendingIntent] = useState<ConversationalIntent | null>(null);
+  const [peResult, setPeResult] = useState<PromptEngineerResult | null>(null);
+  const [pendingEstimatedSeconds, setPendingEstimatedSeconds] = useState<number | null>(null);
+  const [preflightFeasibility, setPreflightFeasibility] = useState<FeasibilityReport | null>(null);
+  const [topicRefinement, setTopicRefinement] = useState<TopicRefinementResult | null>(null);
+
+  // ── Post-Builder teacher feedback state ────────────────────────────────
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+
+  // ── Form restore state (populated when teacher clicks "← Edit Inputs") ──
+  const [formInitialAnswers, setFormInitialAnswers] = useState<Partial<Record<StepId, string>> | null>(null);
+  const [resetCounter, setResetCounter] = useState(0);
+  const [forceBlank, setForceBlank] = useState(false);
+
+
+  const safeUserId = userId ?? "00000000-0000-0000-0000-000000000000";
+
+  // ── Teacher profile (course defaults) ─────────────────────────────────────
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null);
+
+  useEffect(() => {
+    if (safeUserId === "00000000-0000-0000-0000-000000000000") return;
+    loadOrDefaultTeacherProfile(safeUserId)
+      .then(setTeacherProfile)
+      .catch(() => {/* silently skip — profile is optional */});
+  }, [safeUserId]);
+
+  const handleUpdateDefaults = useCallback(async (updated: TeacherProfile) => {
+    setTeacherProfile(updated);
+    await saveTeacherProfile(updated).catch(e =>
+      console.warn("[Profile] save failed:", e)
+    );
+  }, []);
+
+  // Load (or refresh) daily usage
+  const refreshUsage = useCallback(async () => {
+    const u = await getDailyUsage(safeUserId);
+    setUsage(u);
+    return u;
+  }, [safeUserId]);
+
+  useEffect(() => { refreshUsage(); }, [refreshUsage]);
+
+  useEffect(() => {
+    if (safeUserId === "00000000-0000-0000-0000-000000000000") return;
+    listTemplates(safeUserId)
+      .then((payload) => {
+        setMyTemplates(
+          (payload.teacher ?? []).map((template: any) => ({
+            id: String(template.id),
+            label: String(template.label ?? template.id),
+          }))
+        );
+      })
+      .catch(() => setMyTemplates([]));
+  }, [safeUserId]);
+
+  useEffect(() => {
+    if (!builderTemplateToApply) return;
+    setSelectedBuilderTemplate(builderTemplateToApply);
+  }, [builderTemplateToApply]);
+
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+
+  const showingCreateFlow = selectedIntent === "create";
+  const showingGeneratedCreateResult = showingCreateFlow && !!result;
+
+  // ── Prompt Engineer: intercepts intent before pipeline ─────────────────
+  const handleConversationComplete = useCallback(
+    (intent: ConversationalIntent) => {
+      setLimitError(null);
+      setPipelineError(null);
+      setFormInitialAnswers(null); // clear restore state when teacher completes a fresh form
+      const validation = runPromptEngineer(intent);
+      const preflight = runFeasibilityPrecheck({
+        topic: intent.topic || intent.unitName || "",
+        additionalDetails: intent.additionalDetails,
+        assessmentType: intent.assessmentType,
+        studentLevel: intent.studentLevel,
+        timeMinutes: intent.time ?? 10,
+        questionFormat: intent.questionFormat,
+        bloomPreference: intent.bloomPreference,
+        gradeLevels: intent.gradeLevels,
+      });
+      const refinement = evaluateTopicRefinement(
+        intent.topic || intent.unitName || "",
+        intent.course || "general",
+        validation.estimatedCreationSeconds,
+        undefined
+      );
+      setPendingIntent(intent);
+      setPeResult(validation);
+      setPreflightFeasibility(preflight);
+      setTopicRefinement(refinement.needsRefinement ? refinement : null);
+    },
+    []
+  );
+
+  // ── Called when teacher clicks "Edit Inputs" in Prompt Engineer panel ──
+  const handleEditInputs = useCallback(() => {
+    // Restore the teacher's previous answers so they land on the last step
+    // and can use ← Back to navigate to any specific field to fix.
+    if (pendingIntent) {
+      const restored: Partial<Record<StepId, string>> = {
+        gradeLevels:        pendingIntent.gradeLevels.join(", "),
+        course:             pendingIntent.course,
+        topic:              pendingIntent.topic || pendingIntent.unitName || "",
+        subtopics:          pendingIntent.subtopics ?? "",
+        assessmentType:     pendingIntent.assessmentType,
+        questionFormat:      pendingIntent.questionFormat ?? "",
+        multiPartQuestions:  pendingIntent.multiPartQuestions ?? "",
+        standards:           pendingIntent.standards ?? "",
+        stateCode:           pendingIntent.stateCode ?? "",
+        arithmeticOperation: pendingIntent.arithmeticOperation ?? "",
+        arithmeticRange:     pendingIntent.arithmeticRange ?? "",
+        passageSource:       pendingIntent.passageSource ?? "",
+        passageText:         pendingIntent.passageText ?? "",
+        studentLevel:        pendingIntent.studentLevel,
+        additionalDetails:  pendingIntent.additionalDetails ?? "",
+      };
+      setFormInitialAnswers(restored);
+    }
+    setPendingIntent(null);
+    setPeResult(null);
+    setPreflightFeasibility(null);
+    setTopicRefinement(null);
+  }, [pendingIntent]);
+
+  // ── Actually dispatch the pipeline (after Prompt Engineer OK) ──────────
+  const handleProceed = useCallback(
+    async () => {
+      if (!pendingIntent) return;
+      setLimitError(null);
+      setPipelineError(null);
+      // Stash estimated time before clearing the panel so loading card can display it
+      setPendingEstimatedSeconds(peResult?.estimatedCreationSeconds ?? null);
+      setPeResult(null); // hide the panel
+      setTopicRefinement(null);
+      try {
+        setIsLoading(true);
+        setResult(null);
+        setPartialItems([]);
+
+        // Gate: re-check usage right before calling the pipeline
+        const currentUsage = await refreshUsage();
+        if (!currentUsage.canGenerate) {
+          setLimitError(
+            `You've used all ${FREE_DAILY_LIMIT} free assessments for today. Come back tomorrow, or upgrade for unlimited access.`
+          );
+          return;
+        }
+
+        const minimalIntent: MinimalTeacherIntent = {
+          ...pendingIntent,
+          assessmentType: pendingIntent.assessmentType as MinimalTeacherIntent["assessmentType"],
+          time: pendingIntent.time ?? 10,
+          questionFormat: pendingIntent.questionFormat ?? null,
+          bloomPreference: pendingIntent.bloomPreference ?? null,
+          sectionStructure: pendingIntent.sectionStructure ?? null,
+          standards: pendingIntent.standards ?? null,
+          stateCode: pendingIntent.stateCode ?? null,
+          multiPartQuestions: pendingIntent.multiPartQuestions ?? null,
+          arithmeticOperation: (pendingIntent.arithmeticOperation ?? null) as MinimalTeacherIntent["arithmeticOperation"],
+          arithmeticRange: (() => {
+            const raw = pendingIntent.arithmeticRange;
+            if (!raw) return null;
+            const m = raw.trim().match(/(\d+)\s*[-–,to ]+\s*(\d+)/);
+            if (!m) return null;
+            const a = Number(m[1]), b = Number(m[2]);
+            return { min: Math.min(a, b), max: Math.max(a, b) };
+          })(),
+          additionalDetails: `${pendingIntent.additionalDetails ?? ""}${selectedBuilderTemplate ? `\n\nPreferred teacher template: ${selectedBuilderTemplate.label} (id: ${selectedBuilderTemplate.id}).` : ""}`,
+        };
+
+        const uar = {
+          ...convertMinimalToUAR(minimalIntent),
+          userId: safeUserId,
+        };
+
+        const data = await generateAssessment(uar, (items) => setPartialItems([...items]));
+        setResult(data);
+        onResult(data);
+        setPendingIntent(null);
+
+        // Refresh counter after a successful run
+        await refreshUsage();
+      } catch (err: any) {
+        const msg: string =
+          err?.message ?? "An unexpected error occurred. Please try again.";
+        console.error("[Pipeline] Error:", err);
+        setPipelineError(msg);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [pendingIntent, safeUserId, onResult, refreshUsage, selectedBuilderTemplate]
+  );
+
+  // ── Post-Builder teacher feedback → targeted rewrite ───────────────────
+  const handleTeacherFeedback = useCallback(
+    async (comments: string) => {
+      if (!result?.finalAssessment || !comments.trim()) return;
+      setRewriteError(null);
+      setIsRewriting(true);
+      try {
+        const rewritten = await runTeacherRewrite({
+          finalAssessment: result.finalAssessment,
+          teacherComments: comments,
+          blueprint: result.blueprint,
+        });
+
+        // Persist the teacher-revised version as a new version under the same template.
+        // previousVersionId chains it to the AI-generated version that preceded it.
+        const uar = result.blueprint?.uar ?? result.uar ?? {};
+        const domain = ((uar.course ?? "general") as string).toLowerCase();
+        let updatedScribe = result.scribe;
+        try {
+          updatedScribe = await SCRIBE.saveAssessmentVersion({
+            userId: safeUserId,
+            uar,
+            domain,
+            finalAssessment: rewritten,
+            blueprint: result.blueprint ?? {},
+            qualityScore: undefined,
+            tokenUsage: null,
+            previousVersionId: result.scribe?.versionId ?? null,
+            templateId: result.scribe?.templateId ?? null,
+          });
+        } catch (saveErr: any) {
+          // Non-fatal — still show the rewritten assessment even if save fails.
+          console.error("[TeacherRewrite] SCRIBE save failed:", saveErr?.message);
+        }
+
+        // Merge rewritten assessment + updated scribe ref back into result.
+        // Assigning a new id triggers the learner review panel to reset its
+        // local review state so teachers don't see stale results from before
+        // the rewrite. The panel will prompt them to run review again.
+        const rewrittenWithNewId = {
+          ...rewritten,
+          id: `${rewritten.id}-r${Date.now()}`,
+        };
+        setResult((prev: any) => ({
+          ...prev,
+          finalAssessment: rewrittenWithNewId,
+          teacherRewriteApplied: true,
+          scribe: updatedScribe,
+        }));
+      } catch (err: any) {
+        console.error("[TeacherRewrite] Error:", err);
+        setRewriteError(err?.message ?? "Rewrite failed. Please try again.");
+      } finally {
+        setIsRewriting(false);
+      }
+    },
+    [result, safeUserId]
+  );
+
+  return (
+    <div className="pipeline-surface">
+
+      {/* Daily usage indicator — always visible so teachers can see usage after generating */}
+      {usage && (
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          marginBottom: "1rem",
+          fontSize: "0.82rem",
+          color: usage.canGenerate
+            ? (usage.remaining <= 1 ? "#b45309" : "var(--text-secondary, #6b7280)")
+            : "#dc2626",
+        }}>
+          {[...Array(usage.limit)].map((_, i) => (
+            <span
+              key={i}
+              style={{
+                width: "10px",
+                height: "10px",
+                borderRadius: "50%",
+                display: "inline-block",
+                background: i < (usage.limit - usage.remaining)
+                  ? "#d1d5db"
+                  : (usage.canGenerate ? "#4f46e5" : "#dc2626"),
+                border: "1.5px solid",
+                borderColor: i < (usage.limit - usage.remaining) ? "#d1d5db" : (usage.canGenerate ? "#4f46e5" : "#dc2626"),
+              }}
+            />
+          ))}
+          <span>
+            {usage.canGenerate
+              ? `${usage.remaining} of ${usage.limit} free assessment${usage.limit !== 1 ? "s" : ""} remaining today`
+              : "Daily limit reached — come back tomorrow or upgrade"}
+          </span>
+        </div>
+      )}
+
+      {/* Limit error */}
+      {limitError && (
+        <div style={{
+          background: "#fef2f2",
+          border: "1px solid #fca5a5",
+          color: "#7f1d1d",
+          borderRadius: "8px",
+          padding: "1rem 1.25rem",
+          marginBottom: "1rem",
+          fontSize: "0.9rem",
+        }}>
+          🚫 {limitError}
+        </div>
+      )}
+
+      {/* Pipeline error — shown whenever the pipeline throws */}
+      {pipelineError && (
+        <div style={{
+          background: "#fff7ed",
+          border: "1px solid #fdba74",
+          color: "#7c2d12",
+          borderRadius: "8px",
+          padding: "1rem 1.25rem",
+          marginBottom: "1rem",
+          fontSize: "0.9rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "1rem",
+        }}>
+          <span>⚠️ <strong>Generation failed:</strong> {pipelineError}</span>
+          <button
+            onClick={() => setPipelineError(null)}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1rem", lineHeight: 1, flexShrink: 0 }}
+            aria-label="Dismiss error"
+          >✕</button>
+        </div>
+      )}
+
+      {/* While the pipeline is running, show a clean generation status card */}
+      {!result && !limitError && isLoading ? (
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "1.25rem",
+          padding: "3rem 2rem",
+          borderRadius: "12px",
+          background: "var(--bg-secondary, #f8f8f8)",
+          border: "1px solid var(--border, #e0e0e0)",
+          textAlign: "center",
+          minHeight: "220px",
+        }}>
+          <div style={{ fontSize: "2.5rem", lineHeight: 1 }}>🚀</div>
+          <div>
+            <p style={{ margin: "0 0 0.35rem", fontWeight: 700, fontSize: "1.1rem", color: "var(--fg, #111)" }}>
+              Generating your assessment…
+            </p>
+            {pendingEstimatedSeconds != null && pendingEstimatedSeconds > 0 && (
+              <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--text-secondary, #555)" }}>
+                {getEstimateMessage(pendingEstimatedSeconds)}
+              </p>
+            )}
+          </div>
+          <div style={{
+            width: "48px",
+            height: "48px",
+            border: "4px solid var(--border, #e0e0e0)",
+            borderTopColor: "var(--accent-color, #4f46e5)",
+            borderRadius: "50%",
+            animation: "spin 0.9s linear infinite",
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          {partialItems.length > 0 && (
+            <div style={{
+              width: "100%",
+              maxWidth: "520px",
+              textAlign: "left",
+              borderTop: "1px solid var(--border, #e0e0e0)",
+              paddingTop: "0.75rem",
+            }}>
+              <p style={{ margin: "0 0 0.5rem", fontSize: "0.8rem", color: "var(--text-secondary, #555)", fontWeight: 600 }}>
+                {partialItems.length} question{partialItems.length !== 1 ? "s" : ""} ready…
+              </p>
+              <ol style={{ margin: 0, paddingLeft: "1.25rem", listStyle: "decimal" }}>
+                {partialItems.slice(0, 5).map((item: any, i: number) => (
+                  <li key={item.slotId ?? i} style={{ fontSize: "0.8rem", color: "var(--fg, #333)", marginBottom: "0.25rem", lineHeight: 1.4 }}>
+                    <span style={{ opacity: 0.6, marginRight: "0.3rem", fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                      {item.questionType}
+                    </span>
+                    {(item.prompt ?? "").slice(0, 80)}{(item.prompt ?? "").length > 80 ? "…" : ""}
+                  </li>
+                ))}
+                {partialItems.length > 5 && (
+                  <li style={{ fontSize: "0.8rem", color: "var(--text-secondary, #666)", listStyle: "none", marginTop: "0.2rem" }}>
+                    +{partialItems.length - 5} more…
+                  </li>
+                )}
+              </ol>
+            </div>
+          )}
+        </div>
+      ) : !result && !limitError && !peResult ? (
+        <>
+          {!selectedIntent && (
+            <AssessmentIntentSelector onSelect={setSelectedIntent} />
+          )}
+
+          {selectedIntent && !showingCreateFlow && (
+            <button
+              type="button"
+              onClick={() => setSelectedIntent(null)}
+              className="ca-btn-ghost"
+              style={{ marginBottom: "0.75rem" }}
+            >
+              ← Choose a different workflow
+            </button>
+          )}
+
+          {selectedIntent === "create" && (
+            <>
+              <div style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: "10px",
+                padding: "0.8rem",
+                marginBottom: "0.75rem",
+                background: "#fcfcfd",
+              }}>
+                <div style={{ fontWeight: 700, marginBottom: "0.4rem" }}>My Templates</div>
+                {myTemplates.length === 0 ? (
+                  <div style={{ fontSize: "0.85rem", color: "#6b7280" }}>
+                    No saved templates yet. Create one in Templates - New Template.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.45rem" }}>
+                    {myTemplates.map((template) => {
+                      const isSelected = selectedBuilderTemplate?.id === template.id;
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          className={`ca-chip${isSelected ? " ca-chip--selected" : ""}`}
+                          onClick={() => setSelectedBuilderTemplate(template)}
+                        >
+                          {template.label}
+                        </button>
+                      );
+                    })}
+                    {selectedBuilderTemplate && (
+                      <button type="button" className="ca-btn-ghost" onClick={() => setSelectedBuilderTemplate(null)}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedIntent(null)}
+                className="ca-btn-ghost"
+                style={{ marginBottom: "0.75rem" }}
+              >
+                ← Choose a different workflow
+              </button>
+              <ConversationalAssessment
+                key={formInitialAnswers ? JSON.stringify(formInitialAnswers) : `fresh-${resetCounter}`}
+                onComplete={handleConversationComplete}
+                isLoading={isLoading}
+                disabled={usage !== null && !usage.canGenerate}
+                initialAnswers={formInitialAnswers ?? undefined}
+                defaultAnswers={formInitialAnswers ? undefined : defaultAnswers}
+                teacherProfile={teacherProfile}
+                onUpdateDefaults={handleUpdateDefaults}
+                forceBlank={forceBlank}
+                onReset={() => { setFormInitialAnswers(null); setForceBlank(true); setResetCounter(c => c + 1); }}
+              />
+            </>
+          )}
+
+          {selectedIntent === "analyze" && <AnalyzeDocumentPanel />}
+          {selectedIntent === "compare" && <CompareDocumentsPanel />}
+          {selectedIntent === "test" && <LearnerReviewAssessmentPanel />}
+          {selectedIntent === "differentiate" && <DifferentiatedAssessmentPanel />}
+          {(selectedIntent === "summary" || selectedIntent === "concepts" || selectedIntent === "difficulty" || selectedIntent === "raw") && (
+            <DocumentViewPanel initialIntent={selectedIntent} />
+          )}
+        </>
+      ) : !result && !peResult && limitError ? null : !result && peResult ? (
+        /* Input Review validation panel — shown before pipeline fires */
+        <PromptEngineerPanel
+          result={peResult}
+          feasibility={preflightFeasibility ?? undefined}
+          topicRefinement={topicRefinement ?? undefined}
+          onProceed={handleProceed}
+          onEdit={handleEditInputs}
+          onOverride={handleProceed}
+        />
+      ) : (
+        <button
+          onClick={() => {
+            setResult(null);
+            setLimitError(null);
+            setPipelineError(null);
+            setPeResult(null);
+            setPendingIntent(null);
+            setRewriteError(null);
+            setIsLoading(false);
+            setPendingEstimatedSeconds(null);
+            setFormInitialAnswers(null);
+            setSelectedIntent(null);
+            refreshUsage();
+          }}
+          style={{ marginBottom: "1rem", cursor: "pointer" }}
+        >
+          ← Back to Intent Selector
+        </button>
+      )}
+
+      {showingGeneratedCreateResult && (
+        <div style={{ marginTop: "1rem" }}>
+          {result.finalAssessment ? (
+            <>
+              <AssessmentViewer
+                assessment={result.finalAssessment}
+                title={getTitle(result)}
+                subtitle={getSubtitle(result)}
+                uar={result.blueprint?.uar ?? result.uar}
+                philosopherNotes={result.philosopherWrite?.philosopherNotes}
+                philosopherAnalysis={result.philosopherWrite?.analysis}
+                teacherFeedback={result.philosopherWrite?.teacherFeedback}
+                reliability={result.scribe?.reliability}
+                blueprintWarnings={result.blueprint?.warnings}
+                pacingSeconds={teacherProfile?.pacingDefaults?.questionTypeSeconds}
+              />
+
+              {/* Post-Builder Teacher Feedback Panel */}
+              <TeacherFeedbackPanel
+                onSubmit={handleTeacherFeedback}
+                isLoading={isRewriting}
+                error={rewriteError}
+                wasRewritten={result.teacherRewriteApplied ?? false}
+              />
+            </>
+          ) : (
+            <pre className="json-preview" style={{ padding: "1rem" }}>
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          )}
+
+          {result.trace && (
+            <details className="trace-collapsible" style={{ marginTop: "2rem" }}>
+              <summary className="trace-collapsible-summary">
+                Pipeline debug trace
+              </summary>
+              <div style={{ marginTop: "0.75rem" }}>
+                <TraceViewer trace={result.trace} />
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

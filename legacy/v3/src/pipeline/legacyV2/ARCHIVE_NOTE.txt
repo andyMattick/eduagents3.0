@@ -1,0 +1,18 @@
+legacyV2 archive
+
+This directory contains archived pipeline code that is no longer part of the active V3 execution path.
+
+Policy:
+- Files here are preserved for history and reference.
+- The active legacy scanner excludes this directory from reachability and mutation checks.
+- Do not import from legacyV2 into the active pipeline.
+- If a file must be reactivated, move it back into the active tree and let CI validate it there.
+
+Archive date:
+- 2026-03-11
+
+Archive scope:
+- Mirrored moves from src/pipeline/** for unreachable or deprecated code paths.
+
+CI note:
+- scripts/report-legacy-patterns.mjs scans src/pipeline/** but skips src/pipeline/legacyV2/**.

@@ -1,0 +1,83 @@
+{
+  "concepts": [
+    {
+      "id": "bio.photosynthesis",
+      "label": "Photosynthesis",
+      "subject": "biology",
+      "prerequisites": [],
+      "misconceptions": ["bio.photosynthesis_only_in_light"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "bio.light_reactions",
+      "label": "Light reactions",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "bio.calvin_cycle",
+      "label": "Calvin cycle",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis", "bio.light_reactions"],
+      "typicalStepRange": [4, 6]
+    },
+    {
+      "id": "bio.chloroplast",
+      "label": "Chloroplast",
+      "subject": "biology",
+      "prerequisites": ["bio.photosynthesis"],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "bio.cellular_respiration",
+      "label": "Cellular Respiration",
+      "subject": "biology",
+      "prerequisites": [],
+      "misconceptions": ["bio.respiration_is_breathing"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "bio.glycolysis",
+      "label": "Glycolysis",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration"],
+      "typicalStepRange": [4, 6]
+    },
+    {
+      "id": "bio.atp_synthesis",
+      "label": "ATP synthesis",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration", "bio.glycolysis"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "bio.krebs_cycle",
+      "label": "Krebs cycle",
+      "subject": "biology",
+      "prerequisites": ["bio.cellular_respiration", "bio.glycolysis"],
+      "typicalStepRange": [5, 7]
+    },
+    {
+      "id": "bio.ecosystem",
+      "label": "Ecosystem",
+      "subject": "biology",
+      "prerequisites": [],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "bio.food_chain",
+      "label": "Food chain",
+      "subject": "biology",
+      "prerequisites": ["bio.ecosystem"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "bio.energy_flow",
+      "label": "Energy flow",
+      "subject": "biology",
+      "prerequisites": ["bio.ecosystem", "bio.food_chain"],
+      "typicalStepRange": [4, 6]
+    }
+  ]
+}

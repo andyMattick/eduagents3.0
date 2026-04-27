@@ -174,6 +174,44 @@ CREATE POLICY "tg: own rows update"
 
 
 -- ────────────────────────────────────────────────────────────
+-- 5b. ASSESSMENT_FINGERPRINTS / UNIT_FINGERPRINTS
+--     Derived teacher-feedback fingerprints used by the v4
+--     assessment runtime and pavilion surfaces.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.assessment_fingerprints (
+  assessment_id    text        PRIMARY KEY,
+  teacher_id       text        NOT NULL,
+  unit_id          text,
+  concept_profiles jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  flow_profile     jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  item_count       integer     NOT NULL DEFAULT 0,
+  source_type      text        NOT NULL,
+  last_updated     timestamptz NOT NULL DEFAULT now(),
+  version          integer     NOT NULL DEFAULT 1
+);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_fingerprints_teacher
+  ON public.assessment_fingerprints (teacher_id, last_updated DESC);
+
+CREATE INDEX IF NOT EXISTS idx_assessment_fingerprints_unit
+  ON public.assessment_fingerprints (teacher_id, unit_id);
+
+CREATE TABLE IF NOT EXISTS public.unit_fingerprints (
+  teacher_id                   text        NOT NULL,
+  unit_id                      text        NOT NULL,
+  concept_profiles             jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  flow_profile                 jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  derived_from_assessment_ids  jsonb       NOT NULL DEFAULT '[]'::jsonb,
+  last_updated                 timestamptz NOT NULL DEFAULT now(),
+  version                      integer     NOT NULL DEFAULT 1,
+  PRIMARY KEY (teacher_id, unit_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_unit_fingerprints_teacher
+  ON public.unit_fingerprints (teacher_id, last_updated DESC);
+
+
+-- ────────────────────────────────────────────────────────────
 -- 6. HELPER FUNCTION
 --    Auto-creates the teachers row from auth metadata whenever
 --    a new user confirms their email or signs up without
@@ -367,3 +405,238 @@ CREATE POLICY "pr: own rows insert"
 CREATE POLICY "pr: own rows select"
   ON public.pipeline_reports FOR SELECT
   USING (user_id = auth.uid());
+
+-- ────────────────────────────────────────────────────────────
+-- 11. TEACHER TEMPLATES
+--     Stores teacher-authored derived templates keyed by
+--     (path, teacher_id) and loaded by the template registry.
+-- ────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.teacher_templates (
+  path        text        NOT NULL,
+  teacher_id  uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  data        jsonb       NOT NULL,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT teacher_templates_pkey PRIMARY KEY (path, teacher_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_templates_teacher_id
+  ON public.teacher_templates (teacher_id);
+
+ALTER TABLE public.teacher_templates ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "teacher_templates: own rows select"
+  ON public.teacher_templates FOR SELECT
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows insert"
+  ON public.teacher_templates FOR INSERT
+  WITH CHECK (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows update"
+  ON public.teacher_templates FOR UPDATE
+  USING (auth.uid() = teacher_id);
+
+CREATE POLICY "teacher_templates: own rows delete"
+  ON public.teacher_templates FOR DELETE
+  USING (auth.uid() = teacher_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 11B. TEACHER ACTION EVENTS
+--      Append-only teacher corrections used to aggregate
+--      template learning signals.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.teacher_action_events (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  teacher_id  uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  problem_id  text        NOT NULL,
+  action_type text        NOT NULL,
+  old_value   jsonb,
+  new_value   jsonb,
+  context     jsonb,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_problem
+  ON public.teacher_action_events (problem_id);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_teacher
+  ON public.teacher_action_events (teacher_id);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_action_events_action
+  ON public.teacher_action_events (action_type);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 11C. TEMPLATE LEARNING RECORDS
+--      Aggregated weekly drift-aware learning signals keyed by
+--      template id.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.template_learning_records (
+  template_id                   text        PRIMARY KEY,
+  strong_matches                integer     NOT NULL DEFAULT 0,
+  weak_matches                  integer     NOT NULL DEFAULT 0,
+  teacher_overrides             integer     NOT NULL DEFAULT 0,
+  expected_steps_corrections    integer     NOT NULL DEFAULT 0,
+  drift_score                   double precision NOT NULL DEFAULT 0,
+  last_updated                  timestamptz NOT NULL DEFAULT now()
+);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 12. JOBS
+--     Async job queue for long-running pipeline operations.
+--     Status lifecycle: pending → running → succeeded | failed
+--     The UI creates a job, polls for status, and reads output
+--     once succeeded.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.jobs (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  type        text        NOT NULL,
+  status      text        NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending','running','succeeded','failed')),
+  input       jsonb       NOT NULL DEFAULT '{}',
+  output      jsonb,
+  error       text,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_user_status
+  ON public.jobs (user_id, status, created_at DESC);
+
+ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "jobs: own rows select"
+  ON public.jobs FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "jobs: own rows insert"
+  ON public.jobs FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "jobs: own rows update"
+  ON public.jobs FOR UPDATE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 13. DOCUMENTS
+--     Stores extracted document text for reuse across pipeline
+--     runs (document memory).  Linked to the owning teacher.
+-- ────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.documents (
+  id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  title       text,
+  content     text        NOT NULL,
+  content_hash text,
+  metadata    jsonb       NOT NULL DEFAULT '{}',
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_user_hash
+  ON public.documents (user_id, content_hash)
+  WHERE content_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_documents_user
+  ON public.documents (user_id, created_at DESC);
+
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "documents: own rows select"
+  ON public.documents FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows insert"
+  ON public.documents FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows update"
+  ON public.documents FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "documents: own rows delete"
+  ON public.documents FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 14. DOCUMENT_CHUNKS
+--     Chunked + embedded text for vector search (RAG).
+--     embedding column stored as a vector(768) for pgvector
+--     compatibility — enable the extension first:
+--       CREATE EXTENSION IF NOT EXISTS vector;
+-- ────────────────────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE IF NOT EXISTS public.document_chunks (
+  id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  document_id   uuid        NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  user_id       uuid        NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
+  content       text        NOT NULL,
+  embedding     vector(768),
+  metadata      jsonb       NOT NULL DEFAULT '{}',
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document
+  ON public.document_chunks (document_id);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_user
+  ON public.document_chunks (user_id);
+
+ALTER TABLE public.document_chunks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chunks: own rows select"
+  ON public.document_chunks FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "chunks: own rows insert"
+  ON public.document_chunks FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "chunks: own rows delete"
+  ON public.document_chunks FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- ────────────────────────────────────────────────────────────
+-- 15. MATCH_CHUNKS — pgvector cosine similarity search
+--     Called via Supabase RPC: supabase.rpc('match_chunks', { ... })
+--     Returns the top N most similar chunks for a given user.
+-- ────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.match_chunks(
+  query_embedding vector(768),
+  p_user_id uuid,
+  match_count int DEFAULT 5,
+  similarity_threshold float DEFAULT 0.3
+)
+RETURNS TABLE (
+  id uuid,
+  document_id uuid,
+  content text,
+  similarity float
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    dc.id,
+    dc.document_id,
+    dc.content,
+    1 - (dc.embedding <=> query_embedding) AS similarity
+  FROM public.document_chunks dc
+  WHERE dc.user_id = p_user_id
+    AND dc.embedding IS NOT NULL
+    AND (dc.embedding <=> query_embedding) < (1 - similarity_threshold)
+  ORDER BY dc.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;

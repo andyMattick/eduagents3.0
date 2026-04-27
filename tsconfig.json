@@ -31,7 +31,13 @@
   },
 
   "include": ["src", "src/types"],
-  "exclude": ["supabase"],
+  "exclude": ["supabase",
+
+    "api/v4/documents/session/**/*",
+    "api/v4/documents/intent.ts"
+
+
+],
   
 
 

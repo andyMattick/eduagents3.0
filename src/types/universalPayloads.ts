@@ -101,7 +101,7 @@ export interface UniversalProblem {
 }
 
 // ============================================================================
-// 6. ASTRONAUT - Student profile/persona
+// 6. LEARNER PROFILE - Review profile
 // ============================================================================
 
 export interface ProfileTraits {
@@ -111,7 +111,7 @@ export interface ProfileTraits {
   confidence: number; // 0-1, e.g., 0.68
 }
 
-export interface Astronaut {
+export interface LearnerProfile {
   studentId: string; // e.g., "student_adhd_001"
   personaName: string; // e.g., "Alex (ADHD Profile)"
 
@@ -130,7 +130,7 @@ export interface Astronaut {
 
 export type TestType = 'multiple_choice' | 'short_answer' | 'free_response' | 'essay' | 'calculation';
 
-export interface StudentProblemInput {
+export interface LearnerProblemInput {
   studentId: string;
   problemId: string;
   testType: TestType;
@@ -143,7 +143,7 @@ export interface StudentProblemInput {
   similarityToPrevious: number;
   noveltyScore: number;
 
-  // Student characteristics (from Astronaut)
+  // Learner characteristics (from learner profile)
   narrativeTags: string[];
   overlays: string[];
 
@@ -171,7 +171,7 @@ export interface BloomMismatch {
   mismatchSeverity: MismatchSeverity;
 }
 
-export interface StudentProblemOutput {
+export interface LearnerProblemOutput {
   studentId: string;
   problemId: string;
 
@@ -207,7 +207,7 @@ export interface FatigueTrajectory {
 // 10. STUDENT ASSIGNMENT SIMULATION - Aggregated results
 // ============================================================================
 
-export interface StudentAssignmentSimulation {
+export interface LearnerAssignmentReview {
   studentId: string;
   personaName: string;
 
@@ -215,7 +215,7 @@ export interface StudentAssignmentSimulation {
   estimatedScore: number;
   estimatedGrade: string; // A, B, C, D, F
 
-  problemResults: StudentProblemOutput[];
+  problemResults: LearnerProblemOutput[];
 
   engagement: EngagementTrajectory;
   fatigue: FatigueTrajectory;
@@ -237,10 +237,10 @@ export interface ClassCompletionSummary {
   topConfusionPoints: string[];
 }
 
-export interface AssignmentSimulationBatch {
+export interface AssignmentReviewBatch {
   assignmentId: string;
   timestamp: string;
-  studentSimulations: StudentAssignmentSimulation[];
+  learnerReviews: LearnerAssignmentReview[];
   classSummary: ClassCompletionSummary;
 }
 
@@ -300,16 +300,16 @@ export function validateProblemInvariants(
 // 13. BATCH PAYLOADS FOR API OPERATIONS
 // ============================================================================
 
-export interface SimulateStudentsPayload {
+export interface BuildLearnerReviewPayload {
   problems: UniversalProblem[];
-  astronauts: Astronaut[];
+  learnerProfiles: LearnerProfile[];
   assignmentId: string;
   timestamp: string;
 }
 
-export interface SimulateStudentsResponse {
+export interface LearnerReviewResponse {
   batchId: string;
-  simulations: StudentAssignmentSimulation[];
+  reviews: LearnerAssignmentReview[];
   classSummary: ClassCompletionSummary;
   processedAt: string;
 }

@@ -1,0 +1,267 @@
+/**
+ * Core types for local learner-review modeling.
+ *
+ * Asteroids = tagged problems with pedagogical metadata.
+ * Learner profiles = review personas with learning traits and accessibility needs.
+ * LearnerProblemInput = a modeled learner interaction with a problem.
+ */
+
+type BloomLevel = "Remember" | "Understand" | "Apply" | "Analyze" | "Evaluate" | "Create";
+
+/**
+ * Asteroid: A problem decomposed into discrete components with pedagogical metadata
+ * Represents a single question or problem from the assignment
+ */
+export interface Asteroid {
+  /** Unique identifier for this problem */
+  ProblemId: string;
+
+  /** Original problem text */
+  ProblemText: string;
+
+  /** Length in words or step count */
+  ProblemLength: number;
+
+  /** Whether this is a multipart question (multiple sub-questions) */
+  MultiPart: boolean;
+
+  /** Bloom's taxonomy level: what cognitive level is required? */
+  BloomLevel: BloomLevel;
+
+  /** 0.0-1.0: sentence complexity, word rarity, technical jargon density */
+  LinguisticComplexity: number;
+
+  /** 0.0-1.0: cosine similarity to previous problems in the assignment */
+  SimilarityToPrevious: number;
+
+  /** 0.0-1.0: novelty = 1 - similarity (how unique is this problem?) */
+  NoveltyScore: number;
+
+  /** 0.0-1.0: prior knowledge - whether this concept appears in source materials */
+  /** high = covered in source, low = new or absent from source, affects scaffolding */
+  PriorKnowledge?: number;
+
+  /** Whether this problem includes formulas, hints, or guiding instructions */
+  HasTips?: boolean;
+
+  /** Position in the assignment (1-indexed) */
+  SequenceIndex?: number;
+
+  /** Type of response expected */
+  TestType?: 'multiple_choice' | 'short_answer' | 'free_response' | 'essay' | 'calculation';
+
+  /** Subject area (e.g., "math", "reading", "science") */
+  Subject?: string;
+
+  /** Estimated time to solve in seconds */
+  EstimatedTimeSeconds?: number;
+
+  /** 1-5 complexity rating (independent of linguistic complexity; combines cognitive load + skill level) */
+  ComplexityLevel?: 1 | 2 | 3 | 4 | 5;
+
+  /** 0.0-1.0: how much procedural knowledge (vs conceptual) does solving require? */
+  ProceduralWeight?: number;
+
+  /** Number of logical reasoning steps required to solve (estimate) */
+  ReasoningStepsRequired?: number;
+
+  /** Reference to parent section if this problem is part of a section */
+  SectionId?: string;
+
+  /** If this problem is a subpart of another, reference to parent problem ID */
+  ParentProblemId?: string;
+
+  /** Topics/concepts covered by this problem */
+  Topics?: string[];
+
+  /** Source context - if problem was generated from source, which concepts/sections? */
+  SourceContext?: {
+    /** Name of the concept from source material */
+    sourceConcept?: string;
+    /** Section or page reference from source */
+    sourceReference?: string;
+    /** How the problem was derived from source (paraphrased, exact, novel) */
+    derivationType?: 'exact-match' | 'paraphrased' | 'novel';
+  };
+}
+
+/**
+ * LearnerProfile: A review persona with learning traits, accessibility needs, and performance characteristics.
+ */
+export interface LearnerProfile {
+  /** Unique student identifier */
+  StudentId: string;
+
+  /** Descriptive name/persona (e.g., "Focused Learner", "Visual Learner") */
+  PersonaName: string;
+
+  /** Accessibility overlays (learning disabilities, health conditions) */
+  Overlays: string[]; // e.g., ["adhd", "dyslexic", "fatigue_sensitive"]
+
+  /** Narrative learning characteristics */
+  NarrativeTags: string[]; // e.g., ["focused", "curious", "visual-learner", "collaborative"]
+
+  /** Quantified profile traits (0.0-1.0 scale) */
+  ProfileTraits: {
+    /** 0.0-1.0: ability to decode and comprehend written text */
+    ReadingLevel: number;
+
+    /** 0.0-1.0: fluency with mathematical operations and reasoning */
+    MathFluency: number;
+
+    /** 0.0-1.0: ability to sustain focus over time */
+    AttentionSpan: number;
+
+    /** 0.0-1.0: self-assurance in academic tasks */
+    Confidence: number;
+  };
+
+  /** Grade level (e.g., "6-8", "9-12") for context */
+  GradeLevel?: string;
+
+  /** Whether this is a predefined accessibility profile */
+  IsAccessibilityProfile?: boolean;
+}
+
+/**
+ * LearnerProblemInput: Models a single learner interaction with a single problem.
+ * Generated for every (Learner, Problem) pair in local review mode.
+ */
+export interface LearnerProblemInput {
+  /** Reference to the learner profile */
+  StudentId: string;
+
+  /** Reference to the problem (Asteroid) */
+  ProblemId: string;
+
+  /** Type of response being evaluated */
+  TestType: 'multiple_choice' | 'short_answer' | 'free_response' | 'essay' | 'calculation';
+
+  /** Problem characteristics (from Asteroid) */
+  ProblemLength: number;
+  MultiPart: boolean;
+  BloomLevel: string;
+  LinguisticComplexity: number;
+  SimilarityToPrevious: number;
+  NoveltyScore: number;
+
+  /** Learner characteristics (from the learner profile) */
+  NarrativeTags: string[];
+  Overlays: string[];
+
+  /** Interaction review metrics */
+
+  /** 0.0-1.0: likelihood student will perceive themselves as successful on this problem */
+  PerceivedSuccess: number;
+
+  /** Whether the student answered correctly (null if not yet answered) */
+  ActualCorrect?: boolean;
+
+  /** Estimated time student will spend on this problem (seconds) */
+  TimeOnTask: number;
+
+  /** >1.0 = student feels rushed, <1.0 = student feels relaxed */
+  TimePressureIndex: number;
+
+  /** 0.0-1.0: cumulative mental fatigue from prior problems */
+  FatigueIndex: number;
+
+  /** Count of confusion signals triggered (high novelty, Bloom mismatch, complexity) */
+  ConfusionSignals: number;
+
+  /** 0.0-1.0: likelihood student remains engaged with this problem */
+  EngagementScore: number;
+}
+
+/**
+ * LearnerProblemOutput: Results from modeling a learner-problem interaction.
+ */
+export interface LearnerProblemOutput {
+  studentId: string;
+  problemId: string;
+
+  /** Simulation results */
+  timeToCompleteSeconds: number;
+  percentageSuccessful: number;
+  confusionLevel: 'low' | 'medium' | 'high';
+  engagementLevel: 'low' | 'medium' | 'high';
+
+  /** Feedback for this specific interaction */
+  feedback: string;
+  suggestions?: string[];
+
+  /** Bloom-level specific insights */
+  bloomMismatch?: {
+    studentCapability: BloomLevel;
+    problemDemands: BloomLevel;
+    mismatchSeverity: 'none' | 'mild' | 'severe';
+  };
+}
+
+/**
+ * LearnerAssignmentReview: Aggregated results for one learner across the entire assignment.
+ */
+export interface LearnerAssignmentReview {
+  studentId: string;
+  personaName: string;
+
+  /** Overall performance estimate */
+  totalTimeMinutes: number;
+  estimatedScore: number; // 0-100
+  estimatedGrade: 'A' | 'B' | 'C' | 'D' | 'F' | 'Incomplete';
+
+  /** Per-problem results */
+  problemResults: LearnerProblemOutput[];
+
+  /** Engagement trajectory */
+  engagement: {
+    initial: number;
+    atMidpoint: number;
+    final: number;
+    trend: 'improving' | 'declining' | 'stable';
+  };
+
+  /** Fatigue trajectory */
+  fatigue: {
+    initial: number;
+    peak: number;
+    final: number;
+  };
+
+  /** Which problems caused confusion */
+  confusionPoints: string[]; // problem IDs
+
+  /** At-risk indicators */
+  atRisk: boolean;
+  riskFactors?: string[];
+
+  /** Where the student checked out (if at all) */
+  checkedOutAt?: string; // problem ID
+}
+
+/**
+ * AssignmentReviewResults: Complete local learner-review results for an assignment.
+ */
+export interface AssignmentReviewResults {
+  assignmentId: string;
+  timestamp: string;
+
+  /** All problems in the assignment */
+  asteroids: Asteroid[];
+
+  /** All learner profiles reviewed */
+  learnerProfiles: LearnerProfile[];
+
+  /** Per-learner results */
+  learnerResults: LearnerAssignmentReview[];
+
+  /** Aggregated analytics */
+  aggregatedAnalytics: {
+    averageTimeMinutes: number;
+    averageScore: number;
+    completionRate: number; // % of students expected to finish
+    bloomCoverage: Record<BloomLevel, number>; // % coverage per level
+    commonConfusionPoints: string[]; // Most problematic problem IDs
+    atRiskStudentCount: number;
+  };
+}

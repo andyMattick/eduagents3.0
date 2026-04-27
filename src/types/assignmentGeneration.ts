@@ -5,7 +5,7 @@
  * and generates optimized assignments based on instructional intent
  */
 
-import { BloomLevel } from '../agents/analysis/types';
+type BloomLevel = "Remember" | "Understand" | "Apply" | "Analyze" | "Evaluate" | "Create";
 import { Asteroid } from './simulation';
 
 // ============================================================================

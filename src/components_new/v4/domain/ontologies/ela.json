@@ -1,0 +1,81 @@
+{
+  "concepts": [
+    {
+      "id": "ela.narrative_structure",
+      "label": "Narrative structure",
+      "subject": "ela",
+      "prerequisites": [],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "ela.plot",
+      "label": "Plot",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "ela.conflict",
+      "label": "Conflict",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure", "ela.plot"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "ela.point_of_view",
+      "label": "Point of view",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "ela.figurative_language",
+      "label": "Figurative language",
+      "subject": "ela",
+      "prerequisites": [],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "ela.metaphor",
+      "label": "Metaphor",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "ela.simile",
+      "label": "Simile",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"],
+      "typicalStepRange": [2, 4]
+    },
+    {
+      "id": "ela.symbolism",
+      "label": "Symbolism",
+      "subject": "ela",
+      "prerequisites": ["ela.figurative_language"],
+      "typicalStepRange": [3, 5]
+    },
+    {
+      "id": "ela.theme",
+      "label": "Theme",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure", "ela.figurative_language"],
+      "typicalStepRange": [4, 6]
+    },
+    {
+      "id": "ela.motif",
+      "label": "Motif",
+      "subject": "ela",
+      "prerequisites": ["ela.theme"],
+      "typicalStepRange": [4, 6]
+    },
+    {
+      "id": "ela.characterization",
+      "label": "Characterization",
+      "subject": "ela",
+      "prerequisites": ["ela.narrative_structure"],
+      "typicalStepRange": [3, 5]
+    }
+  ]
+}

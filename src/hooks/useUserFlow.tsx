@@ -1,5 +1,11 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { UnifiedAssessmentResponse } from "@/pipeline/contracts";
+
+interface UnifiedAssessmentResponse {
+  assignmentId?: string;
+  title?: string;
+  sections?: unknown[];
+  [key: string]: unknown;
+}
 
 /** Inline type — original SectionBuilder module was removed during restructuring */
 export interface CustomSection {
@@ -14,6 +20,7 @@ export type UserGoal = 'create' | 'analyze';
 export type BloomLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface GeneratedProblem {
+  
   id: string;
   sectionId?: string;
   problemText: string;

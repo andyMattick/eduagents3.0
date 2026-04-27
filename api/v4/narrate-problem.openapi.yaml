@@ -1,0 +1,71 @@
+openapi: 3.0.0
+info:
+  title: V4 Problem Narrator API
+  version: 1.0.0
+
+paths:
+  /api/v4/narrate-problem:
+    post:
+      summary: Generate teacher-voice narrative for a problem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NarrateProblemRequest"
+      responses:
+        "200":
+          description: Successful narrative generation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NarrateProblemResponse"
+
+components:
+  schemas:
+    NarrateProblemRequest:
+      type: object
+      properties:
+        problemId:
+          type: string
+        problemText:
+          type: string
+        semanticFingerprint:
+          type: object
+        lens:
+          type: string
+          enum:
+            - what-is-this-asking
+            - cognitive-steps
+            - where-students-struggle
+            - representations-involved
+            - how-to-scaffold
+            - how-to-enrich
+            - instructional-purpose
+            - lesson-fit
+            - explain-to-student
+            - misconceptions
+        gradeLevel:
+          type: string
+        subject:
+          type: string
+      required:
+        - problemText
+        - semanticFingerprint
+        - lens
+
+    NarrateProblemResponse:
+      type: object
+      properties:
+        problemId:
+          type: string
+        lens:
+          type: string
+        blocks:
+          type: object
+        narrative:
+          type: string
+      required:
+        - lens
+        - blocks
+        - narrative

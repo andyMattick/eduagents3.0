@@ -7,7 +7,7 @@
  */
 
 import jsPDF from "jspdf";
-import type { FinalAssessment, FinalAssessmentItem } from "@/pipeline/agents/builder/FinalAssessment";
+import type { FinalAssessment, FinalAssessmentItem } from "../pipeline/agents/builder/FinalAssessment";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
 import { saveAs } from "file-saver";
 
@@ -54,10 +54,14 @@ const LINE_H = 6.5;      // mm between text lines
 
 function renderSectionHeader(
   doc: jsPDF,
-  type: string,
+  type: string | undefined | null,
   sectionNumber: number,
   y: number
 ): number {
+  if (!type || type === "undefined") {
+    console.warn(`[PDF] Section ${sectionNumber} has undefined questionType; skipping header`);
+    return y;
+  }
   y = guardSpace(doc, y, 16);
 
   const title = `SECTION ${toRoman(sectionNumber)} — ${formatTypeLabel(type)}`;
@@ -84,13 +88,15 @@ function renderSectionHeader(
   return y;
 }
 
-function formatTypeLabel(type: string): string {
+function formatTypeLabel(type: string | undefined | null): string {
+  if (!type || type === "undefined") return "Untitled";
   if (QUESTION_TYPE_LABELS[type]) return QUESTION_TYPE_LABELS[type];
 
   // fallback: camelCase → Title Case
-  return type
+  return String(type)
     .replace(/([A-Z])/g, " $1")
-    .replace(/^./, s => s.toUpperCase());
+    .replace(/^./, s => s.toUpperCase())
+    .trim();
 }
 
 function toRoman(num: number): string {

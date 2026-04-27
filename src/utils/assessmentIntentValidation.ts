@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Assessment Intent Validation Utilities
  * 

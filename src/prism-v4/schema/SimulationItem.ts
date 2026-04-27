@@ -1,0 +1,40 @@
+export interface SimulationItem {
+  // Core text
+  itemNumber: number;
+  text: string;
+
+  // Existing measurables
+  linguisticLoad: number;
+  avgVocabLevel: number;
+  avgWordLength: number;
+  vocabCounts: { level1: number; level2: number; level3: number };
+  misconceptionRisk: number;
+  distractorDensity: number;
+  steps: number;
+  wordCount: number;
+  timeToProcessSeconds: number;
+  confusionScore: number;
+  bloomsLevel: number;
+  bloomsLabel: string;
+  sentenceCount: number;
+  avgSentenceLength: number;
+  symbolDensity: number;
+
+  // Phase A fields (defaulted in applyPhaseADefaults)
+  branchingFactor: number;
+  scaffoldLevel: number;
+  ambiguityScore: number;
+  planningLoad: number;
+  writingMode: string;
+  expectedResponseLength: number;
+  conceptDensity: number;
+  reasoningSteps: number;
+  subQuestionCount: number;
+  isMultiPartItem: boolean;
+  isMultipleChoice: boolean;
+  distractorCount: number;
+
+  // B2/B3 numbering for graph/tree display
+  logicalNumber?: number;
+  logicalLabel?: string;
+}

@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "scanDate": "2026-03-11T21:55:05Z",
+    "version": "1.2",
+    "description": "Static analysis heatmap for the active eduagents3.0 pipeline after legacyV2 archival and strict CI enforcement",
+    "scope": "src/pipeline/** (excluding src/pipeline/legacyV2/**)"
+  },
+
+  "summary": {
+    "totalFindings": 0,
+    "categories": {
+      "A_legacyWriterFields": 0,
+      "B_legacyInferenceLogic": 0,
+      "C_legacyBlueprintCoupling": 0,
+      "D_legacyItemShapes": 0,
+      "E_unusedFiles": 0
+    },
+    "riskLevel": "low",
+    "keyInsight": "The active V3 pipeline is clean. Legacy schema access, slot mutations, and unreachable code have been removed from the active tree or archived under legacyV2, and strict CI now enforces regression prevention."
+  },
+
+  "findings": {
+    "categoryA_legacyWriterFields": {
+      "description": "Writer metadata fields appearing outside governed metadata context in the active pipeline",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "No direct slot-field mutation patterns or stray writer-field governance issues remain in the active pipeline. Historical implementations were archived where appropriate.",
+      "locations": []
+    },
+
+    "categoryB_legacyInferenceLogic": {
+      "description": "Legacy inference functions (guess, infer, fallback, defaultDifficulty, determineQuestionType, etc.) in the active pipeline",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "No legacy inference logic detected in active execution paths.",
+      "locations": []
+    },
+
+    "categoryC_legacyBlueprintCoupling": {
+      "description": "References to blueprint.* outside approved orchestration boundaries",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "Blueprint coupling is properly isolated in the active V3 flow.",
+      "locations": []
+    },
+
+    "categoryD_legacyItemShapes": {
+      "description": "Direct prompt|answer|options|passage field usage outside accessor-governed normalization",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "The active pipeline is fully accessor-driven. Item reads are normalized through itemNormalizer accessors, and shape mutation is no longer scattered across agents.",
+      "locations": []
+    },
+
+    "categoryE_unusedFiles": {
+      "description": "Files in the active src/pipeline tree not reachable from real pipeline entry points or external imports",
+      "severity": "low",
+      "count": 0,
+      "status": "CLEAR",
+      "note": "Reachability analysis is implemented. Previously unreachable files were mirrored into src/pipeline/legacyV2/, which is intentionally excluded from active scanning.",
+      "locations": []
+    }
+  },
+
+  "refactoringPriority": [
+    {
+      "priority": 1,
+      "category": "E_unusedFiles",
+      "file": "src/pipeline/legacyV2/**",
+      "reason": "Preserve archive boundaries and prevent accidental reactivation of historical code",
+      "effort": "low",
+      "estimatedDaysToFix": 0.5
+    },
+    {
+      "priority": 2,
+      "category": "D_legacyItemShapes",
+      "file": "scripts/report-legacy-patterns.mjs",
+      "reason": "Keep strict CI enforcement active so flat-field and mutation regressions fail immediately",
+      "effort": "low",
+      "estimatedDaysToFix": 0.5
+    },
+    {
+      "priority": 3,
+      "category": "NEXT_PHASE",
+      "file": "src/pipeline/**",
+      "reason": "Proceed to multi-part implementation on top of the now-clean, schema-agnostic pipeline",
+      "effort": "medium",
+      "estimatedDaysToFix": 2
+    }
+  ],
+
+  "cleanCodePaths": {
+    "writer": {
+      "status": "CLEAN",
+      "note": "Writer reads normalized item accessors and stays isolated from blueprint coupling"
+    },
+    "orchestrator": {
+      "status": "CLEAN",
+      "note": "Active orchestration path no longer carries duplicate legacy normalization concerns"
+    },
+    "pluginEngine": {
+      "status": "CLEAN",
+      "note": "Active plugin-engine path is clean; unreachable legacy plugin components were archived under legacyV2"
+    }
+  },
+
+  "nextSteps": [
+    "1. Keep npm run legacy:report:strict active in CI as a hard guard",
+    "2. Treat src/pipeline/legacyV2/ as archive-only and do not import from it into active code",
+    "3. Proceed with multi-part item implementation on the clean accessor-driven pipeline",
+    "4. Periodically review legacyV2 for possible long-term deletion or external archival if history is no longer needed"
+  ]
+}
