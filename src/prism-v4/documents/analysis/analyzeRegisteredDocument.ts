@@ -39,8 +39,29 @@ export async function analyzeRegisteredDocument(args: {
 	if (!canonicalDocument && !azureExtract && args.rawBinary) {
 		if (args.sourceMimeType.includes("pdf")) {
 			const rawAzure = await runAzureExtraction(args.rawBinary, "application/pdf");
-			azureExtract = cleanAzureExtract(mapAzureToCanonical(normalizeAzureLayout(rawAzure), args.sourceFileName));
+			const normalizedAzure = normalizeAzureLayout(rawAzure);
+			console.log("[ingestion][normalize]", {
+				documentId: args.documentId,
+				sourceFileName: args.sourceFileName,
+				normalizedPages: normalizedAzure.pages.length,
+				normalizedParagraphs: normalizedAzure.paragraphs.length,
+				normalizedTables: normalizedAzure.tables.length,
+				readingOrderEntries: normalizedAzure.readingOrder.length,
+			});
+			azureExtract = cleanAzureExtract(mapAzureToCanonical(normalizedAzure, args.sourceFileName));
+			console.log("[ingestion][canonical-azure-extract]", {
+				documentId: args.documentId,
+				azurePages: azureExtract.pages.length,
+				azureParagraphs: azureExtract.paragraphs?.length ?? 0,
+				azureTables: azureExtract.tables?.length ?? 0,
+				readingOrderEntries: azureExtract.readingOrder?.length ?? 0,
+			});
 			canonicalDocument = canonicalizeAzureExtract(args.documentId, azureExtract);
+			console.log("[ingestion][canonical-document]", {
+				documentId: args.documentId,
+				surfaces: canonicalDocument.surfaces.length,
+				nodes: canonicalDocument.nodes.length,
+			});
 		} else if (args.sourceMimeType.includes("presentationml")) {
 			canonicalDocument = await parsePptxToCanonicalDocument(args.documentId, args.sourceFileName, args.sourceMimeType, args.rawBinary);
 			azureExtract = canonicalDocumentToAzureExtract(canonicalDocument);

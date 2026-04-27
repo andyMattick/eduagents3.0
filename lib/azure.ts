@@ -41,6 +41,8 @@ function getEnvValue(...keys: string[]) {
 export function getAzureConfig() {
   const endpoint = getEnvValue("AZURE_DOCUMENT_ENDPOINT", "AZURE_FORM_RECOGNIZER_ENDPOINT");
   const key = getEnvValue("AZURE_DOCUMENT_KEY", "AZURE_FORM_RECOGNIZER_KEY");
+  const model = getEnvValue("AZURE_DOCUMENT_MODEL", "AZURE_FORM_RECOGNIZER_MODEL") ?? "prebuilt-read";
+  const pages = getEnvValue("AZURE_DOCUMENT_PAGES", "AZURE_FORM_RECOGNIZER_PAGES") ?? "1-";
 
   if (!endpoint || !key) {
     throw new Error(
@@ -51,11 +53,17 @@ export function getAzureConfig() {
   const clean = normalizeEndpoint(endpoint);
   console.log("[azure] normalized endpoint:", clean);
 
-  return { endpoint: clean, key };
+  return { endpoint: clean, key, model, pages };
 }
 
-export function azureAnalyzeUrl(endpoint: string): string {
-  return `${endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`;
+export function azureAnalyzeUrl(endpoint: string, model: string, pages?: string): string {
+  const selectedModel = model?.trim() || "prebuilt-read";
+  const url = new URL(`${endpoint}/documentintelligence/documentModels/${selectedModel}:analyze`);
+  url.searchParams.set("api-version", "2024-11-30");
+  if (pages && pages.trim().length > 0) {
+    url.searchParams.set("pages", pages.trim());
+  }
+  return url.toString();
 }
 
 export async function analyzeAzureDocument(
@@ -63,11 +71,14 @@ export async function analyzeAzureDocument(
   mimeType = "application/pdf",
 ): Promise<AzureAnalyzeResult> {
   const config = getAzureConfig();
-  const analyzeUrl = azureAnalyzeUrl(config.endpoint);
+  const analyzeUrl = azureAnalyzeUrl(config.endpoint, config.model, config.pages);
+  const fallbackAnalyzeUrl = azureAnalyzeUrl(config.endpoint, config.model);
 
   console.log("[azure] URL:", analyzeUrl);
+  console.log("[azure] model:", config.model);
+  console.log("[azure] pages policy:", config.pages || "<none>");
 
-  const submitRes = await fetch(analyzeUrl, {
+  let submitRes = await fetch(analyzeUrl, {
     method: "POST",
     headers: {
       "Ocp-Apim-Subscription-Key": config.key,
@@ -75,6 +86,27 @@ export async function analyzeAzureDocument(
     },
     body: new Uint8Array(fileBuffer),
   });
+
+  if (submitRes.status !== 202 && config.pages) {
+    const firstAttemptError = await submitRes.text();
+    const normalizedError = firstAttemptError.toLowerCase();
+    const shouldFallback = normalizedError.includes("pages") || normalizedError.includes("query") || normalizedError.includes("invalid");
+    if (shouldFallback) {
+      console.warn("[azure] pages parameter rejected; retrying without pages query", {
+        status: submitRes.status,
+      });
+      submitRes = await fetch(fallbackAnalyzeUrl, {
+        method: "POST",
+        headers: {
+          "Ocp-Apim-Subscription-Key": config.key,
+          "Content-Type": mimeType,
+        },
+        body: new Uint8Array(fileBuffer),
+      });
+    } else {
+      throw new Error(`Azure rejected the document (${submitRes.status}): ${firstAttemptError}`);
+    }
+  }
 
   if (submitRes.status !== 202) {
     const errText = await submitRes.text();

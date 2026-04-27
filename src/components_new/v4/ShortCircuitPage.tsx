@@ -10,6 +10,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
+import { StudentSummaryTable } from "./StudentSummaryTable";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
 import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
@@ -42,8 +43,93 @@ type StudentResultRow = {
   abilityScore?: number;
 };
 
+type VerificationItemType = "mc" | "free_response" | "multipart_parent" | "multipart_child" | "other" | "ignore";
+
+type VerificationItem = {
+  id: string;
+  itemNumber: number | null;
+  logicalLabel: string;
+  groupId: number;
+  isParent: boolean;
+  partIndex: number;
+  text: string;
+  type: VerificationItemType;
+  confidence: number;
+};
+
+const MC_STEM_PHRASES = [
+  "which of the following",
+  "what is",
+  "which statement",
+  "which choice",
+  "which option",
+  "the correct answer",
+  "is closest to",
+  "is approximately",
+  "is most likely",
+  "is least likely",
+  "best describes",
+  "best explains",
+  "best represents",
+  "would most likely",
+  "would least likely",
+  "the value of",
+  "the result of",
+  "the effect of",
+  "the outcome of",
+  "the purpose of",
+  "the main idea",
+  "the central idea",
+  "the author most likely",
+  "the passage suggests",
+  "the graph shows",
+  "the table shows",
+  "the figure shows",
+] as const;
+
 function toNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function parentLooksLikeMCStem(parentText: string): boolean {
+  const text = parentText.toLowerCase();
+  return MC_STEM_PHRASES.some((phrase) => text.includes(phrase));
+}
+
+function inferVerificationType(item: ShortCircuitItem): VerificationItemType {
+  if (item.isMultiPartItem) {
+    return "multipart_parent";
+  }
+  if (item.logicalLabel && /\d+[a-z]$/i.test(item.logicalLabel)) {
+    return "multipart_child";
+  }
+  if (item.isMultipleChoice || parentLooksLikeMCStem(item.text ?? "")) {
+    return "mc";
+  }
+  return "free_response";
+}
+
+function computeVerificationConfidence(item: VerificationItem): number {
+  let score = 1;
+  if (!item.itemNumber) {
+    score -= 0.2;
+  }
+  if (item.text.split(/\s+/).length < 3) {
+    score -= 0.2;
+  }
+  if (item.type === "other") {
+    score -= 0.1;
+  }
+  return Math.max(0, Math.min(1, score));
+}
+
+function computeDocumentConfidence(items: VerificationItem[]): number {
+  const active = items.filter((item) => item.type !== "ignore");
+  if (active.length === 0) {
+    return 0;
+  }
+  const total = active.reduce((sum, item) => sum + item.confidence, 0);
+  return total / active.length;
 }
 
 export function extractParentStem(text: string): string {
@@ -95,6 +181,7 @@ function flattenCollapsedItems(itemTrees: SimulationItemTree[]): ShortCircuitIte
 export function ShortCircuitPage() {
   const [phase, setPhase] = useState<Phase>("upload");
   const [file, setFile] = useState<File | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -106,6 +193,7 @@ export function ShortCircuitPage() {
   const [phaseCClassLoading, setPhaseCClassLoading] = useState(false);
   const [phaseCClasses, setPhaseCClasses] = useState<PhaseCClass[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [phaseCSimulationId, setPhaseCSimulationId] = useState<string | null>(null);
   const [phaseCClassView, setPhaseCClassView] = useState<PhaseCView | null>(null);
   const [phaseCStudentView, setPhaseCStudentView] = useState<PhaseCView | null>(null);
@@ -113,12 +201,19 @@ export function ShortCircuitPage() {
   const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
   const [sections, setSections] = useState<SimulationSectionView[] | null>(null);
+  const [phaseBDocumentConfidence, setPhaseBDocumentConfidence] = useState<number | null>(null);
   const [expandedGraph, setExpandedGraph] = useState(false);
+  const [verificationItems, setVerificationItems] = useState<VerificationItem[]>([]);
+  const [verificationDismissed, setVerificationDismissed] = useState(false);
+  const [structureSaving, setStructureSaving] = useState(false);
+  const [structureSaveError, setStructureSaveError] = useState<string | null>(null);
+  const [structureSaveMessage, setStructureSaveMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
     setPhase("upload");
     setFile(null);
+    setSessionId(null);
     setDragging(false);
     setUploadError(null);
     setUploading(false);
@@ -130,6 +225,7 @@ export function ShortCircuitPage() {
     setPhaseCClassLoading(false);
     setPhaseCClasses([]);
     setSelectedClassId("");
+    setSelectedStudentId("");
     setPhaseCSimulationId(null);
     setPhaseCClassView(null);
     setPhaseCStudentView(null);
@@ -137,7 +233,13 @@ export function ShortCircuitPage() {
     setItems(null);
     setItemTrees(null);
     setSections(null);
+    setPhaseBDocumentConfidence(null);
     setExpandedGraph(false);
+    setVerificationItems([]);
+    setVerificationDismissed(false);
+    setStructureSaving(false);
+    setStructureSaveError(null);
+    setStructureSaveMessage(null);
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -172,12 +274,13 @@ export function ShortCircuitPage() {
     setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
   };
 
-  const runPhaseB = useCallback(async (nextSessionId: string) => {
+  const runPhaseB = useCallback(async (nextSessionId: string): Promise<boolean> => {
     setPhase("running");
     setRunError(null);
     setItems(null);
     setItemTrees(null);
     setSections(null);
+    setPhaseBDocumentConfidence(null);
     setExpandedGraph(false);
 
     try {
@@ -190,20 +293,26 @@ export function ShortCircuitPage() {
       if (!res.ok) {
         setRunError(data.error ?? "Simulation failed.");
         setPhase("upload");
-        return;
+        return false;
       }
 
       const nextSections: SimulationSectionView[] = data.sections ?? [];
       const sectionItemTrees: SimulationItemTree[] = nextSections.flatMap((section) => section.itemTrees ?? []);
       const nextItemTrees: SimulationItemTree[] = sectionItemTrees.length > 0 ? sectionItemTrees : (data.itemTrees ?? []);
+      const nextConfidence = typeof data.documentConfidence === "number" && Number.isFinite(data.documentConfidence)
+        ? Math.max(0, Math.min(1, data.documentConfidence))
+        : null;
 
       setItems(data.items ?? []);
       setItemTrees(nextItemTrees);
       setSections(nextSections);
+      setPhaseBDocumentConfidence(nextConfidence);
       setPhase("results");
+      return true;
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Network error. Please try again.");
       setPhase("upload");
+      return false;
     }
   }, []);
 
@@ -217,6 +326,7 @@ export function ShortCircuitPage() {
     setUploadError(null);
     try {
       const { sessionId, registered } = await createStudioSessionFromFilesApi([file]);
+      setSessionId(sessionId);
       const nextDocumentId = registered[0]?.documentId ?? null;
       setDocumentId(nextDocumentId);
       await runPhaseB(sessionId);
@@ -270,22 +380,34 @@ export function ShortCircuitPage() {
       });
 
       setPhaseCSimulationId(output.simulationId);
+      setSelectedStudentId("");
 
       const classView = await getSimulationViewApi(output.simulationId, "class");
       setPhaseCClassView(classView);
-
-      const firstStudentId = classView.availableStudentIds?.[0];
-      const studentView = await getSimulationViewApi(
-        output.simulationId,
-        "student",
-        firstStudentId ? { studentId: firstStudentId } : undefined,
-      );
-      setPhaseCStudentView(studentView);
+      setPhaseCStudentView(null);
     } catch (err) {
       setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
     } finally {
       setPhaseCRunLoading(false);
     }
+  };
+
+  const handleStudentChange = async (studentId: string) => {
+    setSelectedStudentId(studentId);
+
+    if (!phaseCSimulationId) {
+      return;
+    }
+
+    if (!studentId) {
+      setPhaseCStudentView(null);
+      const classView = await getSimulationViewApi(phaseCSimulationId, "class");
+      setPhaseCClassView(classView);
+      return;
+    }
+
+    const studentView = await getSimulationViewApi(phaseCSimulationId, "student", { studentId });
+    setPhaseCStudentView(studentView);
   };
 
   const phaseOrder: Phase[] = ["upload", "running", "results"];
@@ -298,16 +420,178 @@ export function ShortCircuitPage() {
     return expandedGraph ? flattenExpandedItems(itemTrees) : flattenCollapsedItems(itemTrees);
   }, [itemTrees, items, expandedGraph]);
 
+  useEffect(() => {
+    const nextItems: VerificationItem[] = graphItems.map((item, index) => {
+      const verification: VerificationItem = {
+        id: String(item.logicalLabel ?? item.itemNumber ?? `item-${index}`),
+        itemNumber: typeof item.itemNumber === "number" ? item.itemNumber : null,
+        logicalLabel: String(item.logicalLabel ?? item.itemNumber ?? index + 1),
+        groupId: typeof item.logicalNumber === "number" ? item.logicalNumber : (typeof item.itemNumber === "number" ? item.itemNumber : index + 1),
+        isParent: !/\d+[a-z]$/i.test(String(item.logicalLabel ?? "")),
+        partIndex: /\d+[a-z]$/i.test(String(item.logicalLabel ?? "")) ? 1 : 0,
+        text: item.text ?? "",
+        type: inferVerificationType(item),
+        confidence: 1,
+      };
+      return {
+        ...verification,
+        confidence: computeVerificationConfidence(verification),
+      };
+    });
+
+    setVerificationItems(nextItems);
+    setVerificationDismissed(false);
+    setStructureSaveError(null);
+    setStructureSaveMessage(null);
+  }, [graphItems]);
+
   const phaseCItems = useMemo(() => {
     return (phaseCStudentView?.items ?? []) as StudentResultRow[];
   }, [phaseCStudentView]);
+
+  const derivedDocumentConfidence = useMemo(() => {
+    return computeDocumentConfidence(verificationItems);
+  }, [verificationItems]);
+
+  const documentConfidence = useMemo(() => {
+    if (typeof phaseBDocumentConfidence === "number" && Number.isFinite(phaseBDocumentConfidence)) {
+      return phaseBDocumentConfidence;
+    }
+    return derivedDocumentConfidence;
+  }, [phaseBDocumentConfidence, derivedDocumentConfidence]);
+
+  const shouldShowQuickCheck = !verificationDismissed
+    && (documentConfidence < 0.85
+      || verificationItems.length === 0
+      || (verificationItems.length < 3 && ((file?.size ?? 0) > 120_000)));
+
+  const updateVerificationType = (id: string, nextType: VerificationItemType) => {
+    setVerificationItems((current) => current.map((item) => {
+      if (item.id !== id) {
+        return item;
+      }
+      const next = { ...item, type: nextType };
+      return { ...next, confidence: computeVerificationConfidence(next) };
+    }));
+  };
+
+  const deleteVerificationItem = (id: string) => {
+    setVerificationItems((current) => current.filter((item) => item.id !== id));
+  };
+
+  const mergeWithPrevious = (index: number) => {
+    if (index <= 0) {
+      return;
+    }
+    setVerificationItems((current) => {
+      const next = [...current];
+      const target = next[index];
+      const previous = next[index - 1];
+      if (!target || !previous) {
+        return current;
+      }
+      const merged = {
+        ...previous,
+        text: `${previous.text} ${target.text}`.trim(),
+      };
+      merged.confidence = computeVerificationConfidence(merged);
+      next[index - 1] = merged;
+      next.splice(index, 1);
+      return next;
+    });
+  };
+
+  const splitItemAtFirstSentence = (index: number) => {
+    setVerificationItems((current) => {
+      const target = current[index];
+      if (!target) {
+        return current;
+      }
+
+      const splitMatch = target.text.match(/^(.+?[.!?])\s+(.+)$/);
+      if (!splitMatch) {
+        return current;
+      }
+
+      const first = splitMatch[1].trim();
+      const second = splitMatch[2].trim();
+
+      const firstItem = { ...target, text: first };
+      const secondItem = {
+        ...target,
+        id: `${target.id}-split`,
+        logicalLabel: `${target.logicalLabel}-2`,
+        text: second,
+      };
+
+      firstItem.confidence = computeVerificationConfidence(firstItem);
+      secondItem.confidence = computeVerificationConfidence(secondItem);
+
+      return [
+        ...current.slice(0, index),
+        firstItem,
+        secondItem,
+        ...current.slice(index + 1),
+      ];
+    });
+  };
+
+  const saveStructureEdits = async () => {
+    if (!documentId) {
+      return;
+    }
+    setStructureSaving(true);
+    setStructureSaveError(null);
+    setStructureSaveMessage(null);
+    try {
+      const res = await fetch(`/api/v4/documents/${encodeURIComponent(documentId)}/structure`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: verificationItems.map((item) => ({
+            id: item.id,
+            itemNumber: item.itemNumber,
+            logicalLabel: item.logicalLabel,
+            groupId: item.groupId,
+            isParent: item.isParent,
+            partIndex: item.partIndex,
+            text: item.text,
+            type: item.type,
+            confidence: item.confidence,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({ error: "Failed to save structure" }));
+        throw new Error(typeof payload?.error === "string" ? payload.error : "Failed to save structure");
+      }
+
+      const canReload = Boolean(sessionId);
+      if (canReload) {
+        const ok = await runPhaseB(sessionId as string);
+        if (!ok) {
+          throw new Error("Structure saved, but reload failed. Please retry analysis.");
+        }
+        setVerificationDismissed(false);
+        setStructureSaveMessage("Structure saved and reloaded.");
+      } else {
+        setStructureSaveMessage("Structure saved.");
+        setVerificationDismissed(true);
+      }
+    } catch (err) {
+      setStructureSaveError(err instanceof Error ? err.message : "Failed to save structure");
+    } finally {
+      setStructureSaving(false);
+    }
+  };
 
   return (
     <div className="v4-shortcircuit-page">
       <div className="v4-shortcircuit-steps">
         {[
           { key: "upload" as Phase, label: "1. Upload" },
-          { key: "results" as Phase, label: "2. Phase B + Phase C" },
+          { key: "results" as Phase, label: "2. Analyze" },
         ].map(({ key, label }, idx, arr) => {
           const stepIdx = phaseOrder.indexOf(key);
           const done = currentPhaseIdx > stepIdx;
@@ -330,7 +614,7 @@ export function ShortCircuitPage() {
         <div style={{ background: "rgba(255,251,245,0.9)", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "20px", padding: "2rem", maxWidth: "560px" }}>
           <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem", color: "#1f1a17" }}>Upload your document</h2>
           <p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1.25rem" }}>
-            PDF, Word, or PowerPoint. Upload and this page runs Phase B immediately.
+            Documents must be in PDF format.
           </p>
           <div
             onDragOver={handleDragOver}
@@ -378,7 +662,7 @@ export function ShortCircuitPage() {
             disabled={!file || uploading}
             style={{ padding: "0.65rem 1.5rem", background: !file || uploading ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading ? "not-allowed" : "pointer", width: "100%" }}
           >
-            {uploading ? "Uploading and analyzing..." : "Run Phase B"}
+            {uploading ? "Uploading and analyzing..." : "Run Analysis"}
           </button>
         </div>
       )}
@@ -480,6 +764,66 @@ export function ShortCircuitPage() {
             )}
           </div>
 
+          {shouldShowQuickCheck && (
+            <div className="v4-shortcircuit-result-card">
+              <h3 className="v4-shortcircuit-tree-title">Quick Document Check</h3>
+              <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
+                We detected {verificationItems.length} questions in this document. Does this look right?
+              </p>
+              <p className="phasec-copy" style={{ marginTop: 0 }}>
+                Document confidence: {documentConfidence.toFixed(3)}
+              </p>
+
+              {verificationItems.length === 0 ? (
+                <p className="phasec-copy">No parsed items detected.</p>
+              ) : (
+                <div style={{ display: "grid", gap: "0.6rem" }}>
+                  {verificationItems.map((item, index) => (
+                    <div key={item.id} style={{ border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.6rem" }}>
+                      <p style={{ margin: "0 0 0.4rem", fontWeight: 600 }}>
+                        Item {item.logicalLabel} · {item.text.slice(0, 80)}{item.text.length > 80 ? "..." : ""}
+                      </p>
+                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+                        <select
+                          value={item.type}
+                          onChange={(event) => updateVerificationType(item.id, event.target.value as VerificationItemType)}
+                        >
+                          <option value="mc">MC</option>
+                          <option value="free_response">Free-response</option>
+                          <option value="multipart_parent">Multi-part parent</option>
+                          <option value="multipart_child">Multi-part child</option>
+                          <option value="other">Other</option>
+                          <option value="ignore">Ignore</option>
+                        </select>
+                        <button type="button" className="phasec-button-secondary" onClick={() => mergeWithPrevious(index)} disabled={index === 0}>
+                          Merge with previous
+                        </button>
+                        <button type="button" className="phasec-button-secondary" onClick={() => splitItemAtFirstSentence(index)}>
+                          Split here
+                        </button>
+                        <button type="button" className="phasec-button-secondary" onClick={() => deleteVerificationItem(item.id)}>
+                          Delete item
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {structureSaveError && <p className="phasec-error">{structureSaveError}</p>}
+              {structureSaveMessage && <p className="phasec-copy">{structureSaveMessage}</p>}
+
+              <div className="phasec-row" style={{ marginTop: "0.75rem" }}>
+                <button className="phasec-button-secondary" onClick={() => setVerificationDismissed(true)}>
+                  Looks good
+                </button>
+                <button className="phasec-button" onClick={() => void saveStructureEdits()} disabled={structureSaving || !documentId}>
+                  {structureSaving ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="v4-shortcircuit-result-card">
             <ShortCircuitGraph items={graphItems} />
           </div>
@@ -546,6 +890,29 @@ export function ShortCircuitPage() {
                     <p className="phasec-stat-value">{phaseCClassView.summary.averageBloomGap.toFixed(3)}</p>
                   </div>
                 </div>
+
+                <StudentSummaryTable
+                  simulationId={phaseCSimulationId}
+                  studentIds={phaseCClassView.availableStudentIds ?? []}
+                />
+
+                {(phaseCClassView.availableStudentIds?.length ?? 0) > 0 && (
+                  <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>View:</label>
+                    <select
+                      id="phasec-student-select"
+                      value={selectedStudentId}
+                      onChange={(event) => {
+                        void handleStudentChange(event.target.value);
+                      }}
+                    >
+                      <option value="">Class summary</option>
+                      {(phaseCClassView.availableStudentIds ?? []).map((id) => (
+                        <option key={id} value={id}>{id}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
 

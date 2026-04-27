@@ -41,7 +41,7 @@ async function extractDirect(file: File): Promise<AzureExtractResult> {
 
   // Submit document
   const analyzeUrl =
-    `${cleanEndpoint}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`;
+    `${cleanEndpoint}/documentintelligence/documentModels/prebuilt-read:analyze?api-version=2024-11-30&pages=1-`;
 
   const submitRes = await fetch(analyzeUrl, {
     method: "POST",

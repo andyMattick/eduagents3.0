@@ -28,6 +28,22 @@ export interface HybridSegmentItem {
 	text: string;
 }
 
+export interface HybridSegmentationDiagnostics {
+	answerKeyDetected: boolean;
+	answerKeyLinesRemoved: number;
+	pageFurnitureLinesRemoved: number;
+	dedupedItems: number;
+	rawItemCount: number;
+	finalItemCount: number;
+}
+
+const ANSWER_KEY_HEADING_RE = /^\s*(?:#+\s*)?answer\s*key\b[:\-]?\s*$/i;
+const ANSWER_KEY_ENTRY_RE = /^\s*\d{1,3}\.\s*([A-E])\s*(?:[\).,:;\-]?\s*)?$/i;
+const PAGE_FOOTER_PATTERNS = [
+	/^\s*page\s+\d+\s*$/i,
+	/^\s*spring exam review\s+page\s+\d+\s*$/i,
+] as const;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -37,14 +53,32 @@ export interface HybridSegmentItem {
  * local rules. Returns an empty array only when the extract is completely empty.
  */
 export function hybridSegment(azure: AzureExtractLike): HybridSegmentItem[] {
+	return hybridSegmentWithDiagnostics(azure).items;
+}
+
+export function hybridSegmentWithDiagnostics(azure: AzureExtractLike): {
+	items: HybridSegmentItem[];
+	diagnostics: HybridSegmentationDiagnostics;
+} {
 	const blocks = collectBlocks(azure);
 	console.log(`[hybridSegment] source: ${azure.paragraphs?.length ? `paragraphs(${azure.paragraphs.length})` : azure.pages?.length ? `pages(${azure.pages.length})` : "content"} → ${blocks.length} block(s)`);
 	if (blocks.length === 0) {
 		console.warn("[hybridSegment] no text blocks found in azure extract");
-		return [];
+		return {
+			items: [],
+			diagnostics: {
+				answerKeyDetected: false,
+				answerKeyLinesRemoved: 0,
+				pageFurnitureLinesRemoved: 0,
+				dedupedItems: 0,
+				rawItemCount: 0,
+				finalItemCount: 0,
+			},
+		};
 	}
 
-	const rawItems = applyBoundaryRules(blocks);
+	const boundary = applyBoundaryRules(blocks);
+	const rawItems = boundary.items;
 	console.log(`[hybridSegment] boundary rules → ${rawItems.length} raw item(s)`);
 
 	const before_dedup = rawItems.length;
@@ -53,7 +87,17 @@ export function hybridSegment(azure: AzureExtractLike): HybridSegmentItem[] {
 		console.log(`[hybridSegment] dedup+filter removed ${before_dedup - result.length} fragment(s)`);
 	}
 	console.log(`[hybridSegment] final: ${result.length} item(s)`);
-	return result;
+	return {
+		items: result,
+		diagnostics: {
+			answerKeyDetected: boundary.answerKeyDetected,
+			answerKeyLinesRemoved: boundary.answerKeyLinesRemoved,
+			pageFurnitureLinesRemoved: boundary.pageFurnitureLinesRemoved,
+			dedupedItems: Math.max(0, before_dedup - result.length),
+			rawItemCount: rawItems.length,
+			finalItemCount: result.length,
+		},
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +139,10 @@ function normalizeWhitespace(s: string): string {
 	return s.replace(/[ \t]+/g, " ").trim();
 }
 
+function isPageFurnitureLine(line: string): boolean {
+	return PAGE_FOOTER_PATTERNS.some((pattern) => pattern.test(line));
+}
+
 // ---------------------------------------------------------------------------
 // Step 2 — boundary rules → items
 // ---------------------------------------------------------------------------
@@ -124,10 +172,20 @@ function isSoftBoundary(line: string): boolean {
 	return line.trim() === "";
 }
 
-function applyBoundaryRules(blocks: string[]): HybridSegmentItem[] {
+function applyBoundaryRules(blocks: string[]): {
+	items: HybridSegmentItem[];
+	answerKeyDetected: boolean;
+	answerKeyLinesRemoved: number;
+	pageFurnitureLinesRemoved: number;
+} {
 	const items: HybridSegmentItem[] = [];
 	let buffer: string[] = [];
 	let itemNumber = 1;
+	let inAnswerKeyRegion = false;
+	let answerKeyDetected = false;
+	let pendingAnswerKeyEntries: string[] = [];
+	let answerKeyLinesRemoved = 0;
+	let pageFurnitureLinesRemoved = 0;
 
 	const flush = () => {
 		const t = buffer.join("\n").trim();
@@ -137,24 +195,81 @@ function applyBoundaryRules(blocks: string[]): HybridSegmentItem[] {
 		buffer = [];
 	};
 
+	const applySegmentationRules = (line: string) => {
+		if (isHardBoundary(line)) {
+			flush();
+			buffer = [line];
+		} else if (isSoftBoundary(line)) {
+			flush();
+			// Blank line — don't seed next buffer with it
+		} else {
+			buffer.push(line);
+		}
+	};
+
 	for (const block of blocks) {
 		const lines = block.split("\n");
 
-		for (const line of lines) {
-			if (isHardBoundary(line)) {
-				flush();
-				buffer = [line];
-			} else if (isSoftBoundary(line)) {
-				flush();
-				// Blank line — don't seed next buffer with it
-			} else {
-				buffer.push(line);
+		for (const rawLine of lines) {
+			const line = normalizeWhitespace(rawLine);
+
+			if (!line) {
+				continue;
 			}
+
+			if (isPageFurnitureLine(line)) {
+				pageFurnitureLinesRemoved += 1;
+				continue;
+			}
+
+			if (inAnswerKeyRegion) {
+				answerKeyLinesRemoved += 1;
+				continue;
+			}
+
+			if (ANSWER_KEY_HEADING_RE.test(line)) {
+				inAnswerKeyRegion = true;
+				answerKeyDetected = true;
+				answerKeyLinesRemoved += 1;
+				pendingAnswerKeyEntries = [];
+				continue;
+			}
+
+			if (ANSWER_KEY_ENTRY_RE.test(line)) {
+				pendingAnswerKeyEntries.push(line);
+				if (pendingAnswerKeyEntries.length >= 3) {
+					inAnswerKeyRegion = true;
+					answerKeyDetected = true;
+					answerKeyLinesRemoved += pendingAnswerKeyEntries.length;
+					pendingAnswerKeyEntries = [];
+				}
+				continue;
+			}
+
+			if (pendingAnswerKeyEntries.length > 0) {
+				for (const pendingLine of pendingAnswerKeyEntries) {
+					applySegmentationRules(pendingLine);
+				}
+				pendingAnswerKeyEntries = [];
+			}
+
+			applySegmentationRules(line);
+		}
+	}
+
+	if (!inAnswerKeyRegion && pendingAnswerKeyEntries.length > 0) {
+		for (const pendingLine of pendingAnswerKeyEntries) {
+			applySegmentationRules(pendingLine);
 		}
 	}
 
 	flush();
-	return items;
+	return {
+		items,
+		answerKeyDetected,
+		answerKeyLinesRemoved,
+		pageFurnitureLinesRemoved,
+	};
 }
 
 // ---------------------------------------------------------------------------

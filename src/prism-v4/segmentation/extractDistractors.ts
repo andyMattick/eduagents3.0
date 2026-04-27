@@ -1,11 +1,18 @@
-export function extractDistractors(text: string): Array<{ label: string; text: string }> {
-  const lines = text.split(/\r?\n/);
+import { extractOptionsFromText, optionDedupeKey } from "./optionParsing";
 
-  return lines
-    .filter((line) => /^[A-D][\.)]\s+/.test(line.trim()))
-    .map((line) => {
-      const label = line.trim()[0] ?? "";
-      const cleaned = line.replace(/^[A-D][\.)]\s*/i, "").trim();
-      return { label, text: cleaned };
-    });
+export function extractDistractors(text: string): Array<{ label: string; text: string }> {
+  const seen = new Set<string>();
+  const options: Array<{ label: string; text: string }> = [];
+
+  for (const parsed of extractOptionsFromText(text)) {
+    const key = optionDedupeKey(parsed);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    options.push({ label: parsed.label, text: parsed.text });
+  }
+
+  return options;
 }
