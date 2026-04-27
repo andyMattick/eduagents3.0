@@ -754,10 +754,15 @@ async function handler(req, res) {
     if (phaseB.items.length === 0) {
       return sendError(res, "not_found", "No document items found for documentId", 404);
     }
-    // Validate item structure before simulation
+    // Validate normalized Phase B structure before simulation.
     for (const item of phaseB.items) {
-      if (!item.subItems || item.subItems.length === 0) {
-        return sendError(res, "invalid_request", `Malformed document: item ${item.itemId ?? item.itemNumber} has no subItems`, 400);
+      if (!item.itemId || !item.groupId || !item.logicalLabel || !item.traits) {
+        return sendError(
+          res,
+          "invalid_request",
+          `Malformed document: item ${item.itemId ?? item.itemNumber ?? "unknown"} is missing required phase-b fields`,
+          400
+        );
       }
     }
     const result = await runPhaseCSimulation({
