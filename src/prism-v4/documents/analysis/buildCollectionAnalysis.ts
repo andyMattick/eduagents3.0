@@ -97,7 +97,7 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 			representations: analyzed.insights.representations,
 			dominantDifficulty: dominantDifficulty(analyzed.insights.difficultyDistribution),
 			averageConceptScore: documentConcepts.length === 0 ? 0 : round(average(documentConcepts.map((concept) => concept.score))),
-		} satisfies DocumentCollectionAnalysis["coverageSummary"]["perDocument"][string]];
+		}];
 	}));
 
 	for (const analyzed of analyzedDocuments) {

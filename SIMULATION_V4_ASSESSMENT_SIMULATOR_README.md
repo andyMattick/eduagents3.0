@@ -1158,3 +1158,115 @@ Regression slice for ingestion and document pipeline changes:
 ```bash
 npm test -- --run src/__tests__/pipelineRegression.test.ts
 ```
+
+---
+
+## 10. Post-Phase C Roadmap (D-G)
+
+Current implementation status is foundational A-C. The roadmap below defines the next functional layers without changing the deterministic guarantees already established.
+
+### 10.1 Phase D - Interpretation Layer
+
+Phase D converts simulation outputs into structured interpretation at student, class, item, and document levels.
+
+Scope:
+
+1. Student-level interpretation
+2. Class-level interpretation
+3. Item-level interpretation
+4. Document-level interpretation
+
+Expected output:
+
+1. Structured interpretation object persisted with each simulation run
+
+Candidate storage:
+
+1. `v4_interpretation_documents`
+2. `v4_interpretation_items`
+3. `v4_interpretation_students`
+4. `v4_interpretation_profiles`
+
+Candidate endpoints:
+
+1. `GET /simulation/:id/interpretation`
+2. `POST /simulation/:id/interpretation/recompute`
+
+### 10.2 Phase E - Recommendation Layer
+
+Phase E transforms interpretation into actionable recommendations for students, classes, and documents.
+
+Scope:
+
+1. Student recommendations
+2. Class recommendations
+3. Document recommendations
+
+Expected output:
+
+1. Structured recommendation object consumable by teacher-facing UI
+
+Candidate storage:
+
+1. `v4_recommendations_students`
+2. `v4_recommendations_classes`
+3. `v4_recommendations_documents`
+
+Candidate endpoints:
+
+1. `GET /simulation/:id/recommendations`
+2. `POST /simulation/:id/recommendations/recompute`
+
+### 10.3 Phase F - Teacher Narrative Experience
+
+Phase F adds explainability and narrative UX on top of deterministic outputs from Phases D and E.
+
+Scope:
+
+1. Narrative summaries
+2. Profile comparison views
+3. Growth dashboards
+4. Actionable next-step surfaces
+
+Candidate UI components:
+
+1. `NarrativeSummary`
+2. `ProfileComparison`
+3. `GrowthDashboard`
+4. `MisconceptionMap`
+5. `PacingCurve`
+
+Candidate endpoint:
+
+1. `GET /simulation/:id/narrative`
+
+### 10.4 Phase G - Adaptive Calibration Loop
+
+Phase G introduces a controlled prediction-vs-reality calibration loop for continual improvement.
+
+Scope:
+
+1. Compare predicted vs observed correctness, confusion, and time
+2. Update student ability vectors
+3. Update item difficulty curves
+4. Update trait contribution weights
+
+Candidate storage:
+
+1. `v4_student_ability_vectors`
+2. `v4_item_difficulty_curves`
+3. `v4_trait_weights`
+
+Candidate endpoint:
+
+1. `POST /simulation/:id/calibrate`
+
+---
+
+## 11. Implementation Notes for D-G
+
+1. Preserve deterministic A-C behavior as baseline contracts.
+2. Add new layers as additive modules and tables.
+3. Keep Phase C static and feed-forward; D+ should read C outputs, not rewrite C artifacts.
+4. Gate each phase with feature flags and independent recompute endpoints.
+5. Require regression coverage for ingestion, segmentation, and class simulation outputs before enabling D+ in production.

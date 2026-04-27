@@ -1,67 +1,746 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+"use strict";
+/* Bundled by esbuild — do not edit */
 
-import { normalizeItemsPhaseB } from "../../../src/simulation/phase-b";
-import { runPhaseCSimulation } from "../../../src/simulation/phase-c";
-
-export const runtime = "nodejs";
-
-type RunMode = "class";
-
-type UnifiedRunPayload = {
-  classId?: string;
-  documentId?: string;
-  selectedProfileIds?: string[];
-  mode?: RunMode;
-};
-
-function parseBody(body: unknown): UnifiedRunPayload {
-  if (typeof body !== "string") {
-    return (body ?? {}) as UnifiedRunPayload;
+// lib/supabase.ts
+function supabaseAdmin() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY (or SUPABASE_SERVICE_ROLE_KEY) must be set");
   }
-  return JSON.parse(body) as UnifiedRunPayload;
+  return { url, key };
+}
+async function supabaseRest(table, options = {}) {
+  const { url, key } = supabaseAdmin();
+  const {
+    method = "GET",
+    select,
+    filters = {},
+    body,
+    prefer
+  } = options;
+  const reqUrl = new URL(`${url}/rest/v1/${table}`);
+  if (select)
+    reqUrl.searchParams.set("select", select);
+  for (const [k, v] of Object.entries(filters)) {
+    reqUrl.searchParams.set(k, v);
+  }
+  const headers = {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json"
+  };
+  if (prefer)
+    headers["Prefer"] = prefer;
+  const res = await fetch(reqUrl.toString(), {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : void 0
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
+  }
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return res.json();
+  }
+  return null;
 }
 
-function setCorsHeaders(res: VercelResponse) {
+// src/simulation/phase-b/index.ts
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+function hasAnswerKey(value) {
+  if (value === null || value === void 0) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    const record = value;
+    if (Object.keys(record).length === 0) {
+      return false;
+    }
+    return Object.values(record).some((entry) => {
+      if (entry === null || entry === void 0) {
+        return false;
+      }
+      if (typeof entry === "string") {
+        return entry.trim().length > 0;
+      }
+      if (Array.isArray(entry)) {
+        return entry.length > 0;
+      }
+      if (typeof entry === "object") {
+        return Object.keys(entry).length > 0;
+      }
+      return true;
+    });
+  }
+  return true;
+}
+function letterToPartIndex(letter) {
+  const code = letter.toLowerCase().charCodeAt(0);
+  if (code >= 97 && code <= 122) {
+    return code - 97 + 1;
+  }
+  return 0;
+}
+function readPath(source, path) {
+  if (!source || typeof source !== "object") {
+    return void 0;
+  }
+  const parts = path.split(".");
+  let current = source;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !(part in current)) {
+      return void 0;
+    }
+    current = current[part];
+  }
+  return current;
+}
+function readNumber(source, paths) {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string") {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return void 0;
+}
+function readBoolean(source, paths) {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true" || normalized === "1" || normalized === "yes") {
+        return true;
+      }
+      if (normalized === "false" || normalized === "0" || normalized === "no") {
+        return false;
+      }
+    }
+  }
+  return void 0;
+}
+function readString(source, paths) {
+  for (const path of paths) {
+    const value = readPath(source, path);
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return void 0;
+}
+function partIndexToSuffix(partIndex) {
+  if (!Number.isFinite(partIndex) || partIndex <= 0) {
+    return "";
+  }
+  return String.fromCharCode(96 + partIndex);
+}
+var PARENT_ITEM_REGEX = /^\s*\d+[\.)]\s+/;
+var LETTERED_CANDIDATE_REGEX = /^\s*\(?([a-zA-Z])\)?[\.)]\s+/;
+var VERB_REGEX = /\b(identify|determine|interpret|explain|calculate|find|solve|justify|evaluate|compare|describe|choose|select|compute|state|write|graph|prove|show)\b/i;
+function isSubItemLine(line, parentText) {
+  const text = line.trim();
+  const withoutLabel = text.replace(LETTERED_CANDIDATE_REGEX, "").trim();
+  const wordCount = withoutLabel.split(/\s+/).filter(Boolean).length;
+  if (VERB_REGEX.test(withoutLabel)) {
+    return true;
+  }
+  if (wordCount > 8) {
+    return true;
+  }
+  if (wordCount <= 8 && !VERB_REGEX.test(withoutLabel)) {
+    if (/[?]/.test(parentText)) {
+      return false;
+    }
+    if (VERB_REGEX.test(parentText)) {
+      return false;
+    }
+  }
+  return true;
+}
+function deriveStructure(row) {
+  const itemNumber = typeof row.item_number === "number" && Number.isFinite(row.item_number) ? row.item_number : void 0;
+  const metadata = row.metadata;
+  const metadataGroupId = readString(metadata, ["groupId", "group_id", "phaseB.groupId", "phaseB.group_id"]);
+  const metadataPartIndexRaw = readNumber(metadata, ["partIndex", "part_index", "phaseB.partIndex", "phaseB.part_index"]);
+  const metadataLogicalLabel = readString(metadata, ["logicalLabel", "logical_label", "phaseB.logicalLabel", "phaseB.logical_label"]);
+  const metadataIsParent = readBoolean(metadata, ["isParent", "is_parent", "phaseB.isParent", "phaseB.is_parent"]);
+  const metadataPartIndex = typeof metadataPartIndexRaw === "number" && Number.isFinite(metadataPartIndexRaw) ? Math.max(0, Math.floor(metadataPartIndexRaw)) : void 0;
+  const extractedProblemId = readString(metadata, ["extractedProblemId", "extracted_problem_id", "problemId", "problem_id"]);
+  if (extractedProblemId) {
+    const extractedMatch = extractedProblemId.match(/^p?(\d+)([a-z])?$/i);
+    if (extractedMatch?.[1]) {
+      const groupId = extractedMatch[1];
+      const partIndex = extractedMatch[2] ? letterToPartIndex(extractedMatch[2]) : 0;
+      const logicalLabel = `${groupId}${partIndexToSuffix(partIndex)}`;
+      return {
+        itemNumber,
+        groupId,
+        partIndex,
+        logicalLabel,
+        isParent: metadataIsParent ?? (partIndex === 0 && !hasAnswerKey(row.answer_key))
+      };
+    }
+  }
+  if (metadataGroupId || metadataLogicalLabel || metadataPartIndex !== void 0 || metadataIsParent !== void 0) {
+    const groupId = metadataGroupId ?? (metadataLogicalLabel ? metadataLogicalLabel.match(/^(\d+)/)?.[1] ?? metadataLogicalLabel : void 0) ?? (typeof itemNumber === "number" ? String(itemNumber) : row.id);
+    const partIndex = metadataPartIndex ?? (metadataLogicalLabel ? letterToPartIndex(metadataLogicalLabel.slice(-1)) : 0);
+    const logicalLabel = metadataLogicalLabel ?? `${groupId}${partIndexToSuffix(partIndex)}`;
+    return {
+      itemNumber,
+      groupId,
+      partIndex,
+      logicalLabel,
+      isParent: metadataIsParent ?? !hasAnswerKey(row.answer_key)
+    };
+  }
+  const stem = (row.stem ?? "").trim();
+  const answerPresent = hasAnswerKey(row.answer_key);
+  const alphaNumeric = stem.match(/^(\d+)\s*([a-z])[\).:\s]/i);
+  if (alphaNumeric?.[1] && alphaNumeric[2]) {
+    const groupId = alphaNumeric[1];
+    const suffix = alphaNumeric[2].toLowerCase();
+    return {
+      itemNumber,
+      groupId,
+      partIndex: letterToPartIndex(suffix),
+      logicalLabel: `${groupId}${suffix}`,
+      isParent: !answerPresent
+    };
+  }
+  const numeric = stem.match(/^(\d+)[\).:\s]/);
+  if (numeric?.[1]) {
+    const groupId = numeric[1];
+    return {
+      itemNumber,
+      groupId,
+      partIndex: 0,
+      logicalLabel: groupId,
+      isParent: !answerPresent
+    };
+  }
+  const fallback = typeof itemNumber === "number" ? String(itemNumber) : row.id;
+  return {
+    itemNumber,
+    groupId: fallback,
+    partIndex: 0,
+    logicalLabel: fallback,
+    isParent: !answerPresent
+  };
+}
+function inferMultipartPartIndices(row) {
+  const metadata = row.metadata;
+  const explicitCount = readNumber(metadata, ["subQuestionCount", "sub_question_count", "phaseB.subQuestionCount", "phaseB.sub_question_count"]);
+  if (typeof explicitCount === "number" && Number.isFinite(explicitCount) && explicitCount > 1) {
+    return Array.from({ length: Math.floor(explicitCount) }, (_, index) => index + 1);
+  }
+  const subItems = readPath(metadata, "subItems") ?? readPath(metadata, "sub_items") ?? readPath(metadata, "phaseB.subItems") ?? readPath(metadata, "phaseB.sub_items");
+  if (Array.isArray(subItems) && subItems.length > 1) {
+    return Array.from({ length: subItems.length }, (_, index) => index + 1);
+  }
+  if (row.answer_key && typeof row.answer_key === "object" && !Array.isArray(row.answer_key)) {
+    const keys = Object.keys(row.answer_key).map((key) => key.trim().toLowerCase()).filter((key) => /^[a-z]$/.test(key)).sort();
+    if (keys.length > 1) {
+      return keys.map((key) => letterToPartIndex(key));
+    }
+  }
+  const stem = row.stem ?? "";
+  const lines = stem.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  const parentLine = lines.find((line) => PARENT_ITEM_REGEX.test(line)) ?? lines[0] ?? "";
+  const subItemCandidates = lines.filter((line) => LETTERED_CANDIDATE_REGEX.test(line));
+  if (subItemCandidates.length > 0) {
+    let subItemCount = 0;
+    for (const candidate of subItemCandidates) {
+      if (isSubItemLine(candidate, parentLine)) {
+        subItemCount += 1;
+      }
+    }
+    if (subItemCount > 0) {
+      return Array.from({ length: subItemCount }, (_, index) => index + 1);
+    }
+    return [];
+  }
+  const markers = [...stem.matchAll(/(?:\(|\b)([a-z])(?:\)|\.)/gi)].map((match) => match[1]?.toLowerCase() ?? "").filter((value) => /^[a-z]$/.test(value));
+  const unique = [...new Set(markers)].map((letter) => letterToPartIndex(letter)).filter((value) => value > 0);
+  if (unique.length > 1) {
+    return unique.sort((a, b) => a - b);
+  }
+  return [];
+}
+function estimateLinguisticLoad(stem) {
+  const text = stem.trim();
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const sentenceCount = text.split(/[.!?]+/).filter((entry) => entry.trim().length > 0).length || 1;
+  const avgSentenceLength = wordCount / sentenceCount;
+  return clamp(avgSentenceLength / 20, 0, 1);
+}
+function toNormalizedItems(row) {
+  const structure = deriveStructure(row);
+  const metadata = row.metadata;
+  const linguisticLoad = clamp(readNumber(metadata, ["linguisticLoad", "linguistic_load", "phaseB.linguisticLoad", "phaseB.linguistic_load", "metrics.linguistic_load"]) ?? estimateLinguisticLoad(row.stem ?? ""), 0, 1);
+  const cognitiveLoad = clamp(readNumber(metadata, ["cognitiveLoad", "cognitive_load", "phaseB.cognitiveLoad", "phaseB.cognitive_load", "metrics.cognitive_load"]) ?? linguisticLoad, 0, 1);
+  const representationLoad = clamp(readNumber(metadata, ["representationLoad", "representation_load", "phaseB.representationLoad", "phaseB.representation_load", "metrics.representation_load"]) ?? 0.5, 0, 1);
+  const bloomLevel = clamp(readNumber(metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"]) ?? 3, 1, 6);
+  const vocabLevel1 = readNumber(metadata, ["vocabCounts.level1", "vocab_counts.level1", "metrics.vocab_counts.level1", "metrics.vocabCounts.level1"]) ?? 0;
+  const vocabLevel2 = readNumber(metadata, ["vocabCounts.level2", "vocab_counts.level2", "metrics.vocab_counts.level2", "metrics.vocabCounts.level2"]) ?? 0;
+  const vocabLevel3 = readNumber(metadata, ["vocabCounts.level3", "vocab_counts.level3", "metrics.vocab_counts.level3", "metrics.vocabCounts.level3"]) ?? 0;
+  const vocabDensity = vocabLevel1 + vocabLevel2 + vocabLevel3;
+  const symbolDensity = readNumber(metadata, ["symbolDensity", "symbol_density", "metrics.symbol_density"]);
+  const steps = readNumber(metadata, ["steps", "phaseB.steps", "metrics.steps"]);
+  const baseItem = {
+    itemId: row.id,
+    itemNumber: structure.itemNumber,
+    groupId: structure.groupId,
+    partIndex: structure.partIndex,
+    logicalLabel: structure.logicalLabel,
+    isParent: structure.isParent,
+    traits: {
+      bloomLevel,
+      linguisticLoad,
+      cognitiveLoad,
+      representationLoad,
+      vocabDensity: vocabDensity > 0 ? vocabDensity : void 0,
+      symbolDensity,
+      steps
+    }
+  };
+  if (!baseItem.isParent || baseItem.partIndex > 0) {
+    return [baseItem];
+  }
+  const inferredParts = inferMultipartPartIndices(row);
+  if (inferredParts.length === 0) {
+    return [baseItem];
+  }
+  return inferredParts.map((partIndex) => ({
+    ...baseItem,
+    itemId: `${row.id}::part-${partIndex}`,
+    partIndex,
+    logicalLabel: `${baseItem.groupId}${partIndexToSuffix(partIndex)}`,
+    isParent: false
+  }));
+}
+function sortNormalizedItems(items) {
+  return [...items].sort((a, b) => {
+    if (a.groupId !== b.groupId) {
+      return a.groupId.localeCompare(b.groupId, void 0, { numeric: true });
+    }
+    if (a.partIndex !== b.partIndex) {
+      return a.partIndex - b.partIndex;
+    }
+    const aNumber = a.itemNumber ?? Number.POSITIVE_INFINITY;
+    const bNumber = b.itemNumber ?? Number.POSITIVE_INFINITY;
+    return aNumber - bNumber;
+  });
+}
+async function normalizeItemsPhaseB(documentId) {
+  const rows = await supabaseRest("v4_items", {
+    method: "GET",
+    select: "id,item_number,stem,answer_key,metadata",
+    filters: {
+      document_id: `eq.${documentId}`,
+      order: "item_number.asc"
+    }
+  });
+  const normalized = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const groupsWithChildren = new Set(normalized.filter((item) => item.partIndex > 0).map((item) => item.groupId));
+  const withoutMultipartParents = normalized.filter((item) => !item.isParent || !groupsWithChildren.has(item.groupId));
+  const effectiveItems = withoutMultipartParents.length > 0 ? withoutMultipartParents : normalized;
+  return {
+    items: sortNormalizedItems(effectiveItems)
+  };
+}
+
+// src/simulation/phase-c/traits.ts
+var PHASE_C_CONFIG = {
+  defaultSyntheticStudentCount: 20,
+  minTraitValue: 1,
+  maxTraitValue: 5,
+  jitterMean: 0,
+  jitterStdev: 0.3,
+  minBiasValue: -0.25,
+  maxBiasValue: 0.25,
+  maxProfilesPerStudent: 2,
+  maxPositiveTraitsPerStudent: 2,
+  formula: {
+    readingGapToConfusion: 0.05,
+    vocabularyGapToConfusion: 0.04,
+    bloomGapToConfusion: 0.06,
+    speedPenaltyToConfusion: 0.05,
+    knowledgePenaltyToConfusion: 0.03,
+    readingGapToTime: 0.08,
+    vocabularyGapToTime: 0.07,
+    bloomGapToTime: 0.12,
+    speedPenaltyToTime: 0.1,
+    knowledgePenaltyToTime: 0.06,
+    defaultLinguisticLoadDivisor: 8,
+    defaultConfusionSentenceDivisor: 20,
+    defaultTimePerWordSeconds: 2.2,
+    defaultTimeFloorSeconds: 20,
+    defaultBloomsLevel: 3,
+    minLinguisticLoad: 0,
+    maxLinguisticLoad: 5,
+    minConfusionScore: 0,
+    maxConfusionScore: 1,
+    minBloomsLevel: 1,
+    maxBloomsLevel: 6,
+    baselineProcessingCenter: 3,
+    baselineKnowledgeCenter: 3,
+    processingPenaltyDivisor: 2
+  }
+};
+function clamp2(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+// src/simulation/phase-c/store.ts
+import { randomUUID } from "crypto";
+var classesMemory = /* @__PURE__ */ new Map();
+var studentsMemory = /* @__PURE__ */ new Map();
+var simulationRunsMemory = /* @__PURE__ */ new Map();
+var simulationResultsMemory = /* @__PURE__ */ new Map();
+var phaseCSupabaseDisabled = false;
+function canUseSupabase() {
+  return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+function isSupabaseSchemaCacheError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("PGRST205") || error.message.includes("PGRST204") || error.message.includes("Could not find the table");
+}
+function disableSupabaseForPhaseC(reason) {
+  if (phaseCSupabaseDisabled) {
+    return;
+  }
+  phaseCSupabaseDisabled = true;
+  const detail = reason instanceof Error ? reason.message : String(reason);
+  console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
+}
+function hydrateClassRow(row) {
+  return {
+    id: row.id,
+    teacherId: row.teacher_id ?? void 0,
+    name: row.name,
+    level: row.level,
+    gradeBand: row.grade_band ?? void 0,
+    schoolYear: row.school_year,
+    createdAt: row.created_at
+  };
+}
+function hydrateStudentRow(row) {
+  return {
+    id: row.id,
+    classId: row.class_id,
+    displayName: row.display_name,
+    traits: {
+      readingLevel: Number(row.reading_level ?? 3),
+      vocabularyLevel: Number(row.vocabulary_level ?? 3),
+      backgroundKnowledge: Number(row.background_knowledge ?? 3),
+      processingSpeed: Number(row.processing_speed ?? 3),
+      bloomMastery: Number(row.bloom_mastery ?? 3),
+      mathLevel: Number(row.math_level ?? 3),
+      writingLevel: Number(row.writing_level ?? 3)
+    },
+    profiles: row.profiles ?? [],
+    positiveTraits: row.positive_traits ?? [],
+    profileSummaryLabel: row.profile_summary_label,
+    biases: row.biases ?? { confusionBias: 0, timeBias: 0 }
+  };
+}
+function normalizeSimulationRun(run) {
+  return {
+    id: run.id,
+    class_id: run.classId,
+    document_id: run.documentId,
+    created_at: run.createdAt
+  };
+}
+function normalizeSimulationResult(result) {
+  return {
+    id: result.id,
+    simulation_id: result.simulationId,
+    synthetic_student_id: result.syntheticStudentId,
+    item_id: result.itemId,
+    item_label: result.itemLabel,
+    linguistic_load: result.linguisticLoad,
+    confusion_score: result.confusionScore,
+    time_seconds: result.timeSeconds,
+    bloom_gap: result.bloomGap,
+    difficulty_score: result.difficultyScore,
+    ability_score: result.abilityScore,
+    p_correct: result.pCorrect,
+    traits_snapshot: result.traitsSnapshot ?? null
+  };
+}
+async function getClassById(classId) {
+  if (canUseSupabase()) {
+    try {
+      const rows = await supabaseRest("classes", {
+        method: "GET",
+        select: "id,teacher_id,name,level,grade_band,school_year,created_at",
+        filters: { id: `eq.${classId}` }
+      });
+      const row = (rows ?? [])[0];
+      return row ? hydrateClassRow(row) : null;
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+  return classesMemory.get(classId) ?? null;
+}
+async function getSyntheticStudentsForClass(classId) {
+  if (canUseSupabase()) {
+    try {
+      const rows = await supabaseRest("synthetic_students", {
+        method: "GET",
+        select: "id,class_id,display_name,reading_level,vocabulary_level,background_knowledge,processing_speed,bloom_mastery,math_level,writing_level,profiles,positive_traits,profile_summary_label,biases",
+        filters: {
+          class_id: `eq.${classId}`,
+          order: "display_name.asc"
+        }
+      });
+      return (rows ?? []).map((row) => hydrateStudentRow(row));
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+  return [...studentsMemory.get(classId) ?? []];
+}
+async function createSimulationRun(input) {
+  const run = {
+    id: randomUUID(),
+    classId: input.classId,
+    documentId: input.documentId,
+    createdAt: new Date().toISOString()
+  };
+  simulationRunsMemory.set(run.id, run);
+  if (canUseSupabase()) {
+    try {
+      await supabaseRest("simulation_runs", {
+        method: "POST",
+        body: normalizeSimulationRun(run),
+        prefer: "return=minimal"
+      });
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+  return run;
+}
+async function saveSimulationResults(simulationId, results) {
+  simulationResultsMemory.set(simulationId, [...results]);
+  if (canUseSupabase() && results.length > 0) {
+    try {
+      await supabaseRest("simulation_results", {
+        method: "POST",
+        body: results.map((result) => normalizeSimulationResult(result)),
+        prefer: "return=minimal"
+      });
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+  return results;
+}
+
+// src/simulation/phase-c/engine.ts
+import { randomUUID as randomUUID2 } from "crypto";
+function applyPhaseCCore(student, measurable) {
+  const cfg = PHASE_C_CONFIG.formula;
+  const readingGap = Math.max(0, measurable.linguisticLoad - student.traits.readingLevel);
+  const vocabularyGap = Math.max(0, measurable.linguisticLoad - student.traits.vocabularyLevel);
+  const bloomGap = Math.max(0, measurable.bloomLevel - student.traits.bloomMastery);
+  const speedPenalty = Math.max(0, (cfg.baselineProcessingCenter - student.traits.processingSpeed) / cfg.processingPenaltyDivisor);
+  const knowledgePenalty = Math.max(0, (cfg.baselineKnowledgeCenter - student.traits.backgroundKnowledge) / cfg.processingPenaltyDivisor);
+  const confusionProfile = clamp2(measurable.confusionScore + cfg.readingGapToConfusion * readingGap + cfg.vocabularyGapToConfusion * vocabularyGap + cfg.bloomGapToConfusion * bloomGap + cfg.speedPenaltyToConfusion * speedPenalty + cfg.knowledgePenaltyToConfusion * knowledgePenalty, cfg.minConfusionScore, cfg.maxConfusionScore);
+  const timeProfile = Math.max(0, measurable.timeSeconds * (1 + cfg.readingGapToTime * readingGap + cfg.vocabularyGapToTime * vocabularyGap + cfg.bloomGapToTime * bloomGap + cfg.speedPenaltyToTime * speedPenalty + cfg.knowledgePenaltyToTime * knowledgePenalty));
+  return {
+    bloomGap,
+    confusionProfile,
+    timeProfile
+  };
+}
+function applyBiases(student, confusionProfile, timeProfile) {
+  const confusionScore = clamp2(confusionProfile * (1 + student.biases.confusionBias), 0, 1);
+  const timeSeconds = Math.max(timeProfile * (1 + student.biases.timeBias), 0);
+  return {
+    confusionScore,
+    timeSeconds
+  };
+}
+function computeDifficultyScore(measurable) {
+  return 0.35 * measurable.linguisticLoad + 0.35 * measurable.cognitiveLoad + 0.2 * measurable.bloomLevel + 0.1 * measurable.representationLoad;
+}
+function computeAbilityScore(student) {
+  return 0.3 * student.traits.readingLevel + 0.2 * student.traits.vocabularyLevel + 0.2 * student.traits.backgroundKnowledge + 0.15 * student.traits.processingSpeed + 0.15 * student.traits.bloomMastery;
+}
+function computeTraitBonus(student) {
+  return -0.2 * student.biases.timeBias + -0.2 * student.biases.confusionBias;
+}
+function sigmoid(value) {
+  return 1 / (1 + Math.exp(-value));
+}
+function measurableFromNormalizedItem(item) {
+  const label = item.logicalLabel ? `Item ${item.logicalLabel}` : typeof item.itemNumber === "number" ? `Item ${item.itemNumber}` : `Item ${item.itemId}`;
+  const linguisticLoad = clamp2(item.traits.linguisticLoad, 0, 1);
+  const cognitiveLoad = clamp2(item.traits.cognitiveLoad, 0, 1);
+  const bloomLevel = clamp2(item.traits.bloomLevel, 1, 6);
+  const representationLoad = clamp2(item.traits.representationLoad, 0, 1);
+  const confusionScore = clamp2((linguisticLoad + cognitiveLoad + representationLoad) / 3, 0, 1);
+  const timeSeconds = Math.max(0, 30 + 45 * linguisticLoad + 15 * representationLoad);
+  return {
+    itemId: item.itemId,
+    itemLabel: label,
+    linguisticLoad,
+    cognitiveLoad,
+    bloomLevel,
+    representationLoad,
+    confusionScore,
+    timeSeconds
+  };
+}
+function studentMatchesProfiles(student, selectedProfileIds) {
+  if (selectedProfileIds.length === 0) {
+    return true;
+  }
+  const studentValues = /* @__PURE__ */ new Set([
+    ...student.profiles.map((profile) => profile.toLowerCase()),
+    ...student.positiveTraits.map((trait) => trait.toLowerCase())
+  ]);
+  return selectedProfileIds.some((value) => studentValues.has(value.toLowerCase()));
+}
+async function runPhaseCSimulation(input) {
+  const classRecord = await getClassById(input.classId);
+  if (!classRecord) {
+    throw new Error("Class not found");
+  }
+  const students = await getSyntheticStudentsForClass(classRecord.id);
+  if (students.length === 0) {
+    throw new Error("Synthetic students not found for class");
+  }
+  const selectedProfileIds = input.selectedProfileIds ?? [];
+  const scopedStudents = students.filter((student) => studentMatchesProfiles(student, selectedProfileIds));
+  if (scopedStudents.length === 0) {
+    throw new Error("Synthetic students not found for class");
+  }
+  const normalizedItems = input.items ?? [];
+  if (normalizedItems.length === 0) {
+    throw new Error("No document items found for documentId");
+  }
+  const measurableItems = normalizedItems.map((item) => measurableFromNormalizedItem(item));
+  const simulationRun = await createSimulationRun({
+    classId: classRecord.id,
+    documentId: input.documentId
+  });
+  const results = [];
+  for (const student of scopedStudents) {
+    for (const measurable of measurableItems) {
+      const profileOutput = applyPhaseCCore(student, measurable);
+      const biasedOutput = applyBiases(student, profileOutput.confusionProfile, profileOutput.timeProfile);
+      const difficultyScore = computeDifficultyScore(measurable);
+      const abilityScore = computeAbilityScore(student);
+      const traitBonus = computeTraitBonus(student);
+      const pCorrect = sigmoid(abilityScore + traitBonus - difficultyScore);
+      results.push({
+        id: randomUUID2(),
+        simulationId: simulationRun.id,
+        syntheticStudentId: student.id,
+        itemId: measurable.itemId,
+        itemLabel: measurable.itemLabel,
+        linguisticLoad: measurable.linguisticLoad,
+        confusionScore: biasedOutput.confusionScore,
+        timeSeconds: biasedOutput.timeSeconds,
+        bloomGap: profileOutput.bloomGap,
+        difficultyScore,
+        abilityScore,
+        pCorrect,
+        traitsSnapshot: {
+          traits: student.traits,
+          profiles: student.profiles,
+          positiveTraits: student.positiveTraits,
+          biases: student.biases
+        }
+      });
+    }
+  }
+  await saveSimulationResults(simulationRun.id, results);
+  return {
+    simulationRun,
+    resultCount: results.length
+  };
+}
+
+// api/v4/simulations/run.ts
+var runtime = "nodejs";
+function parseBody(body) {
+  if (typeof body !== "string") {
+    return body ?? {};
+  }
+  return JSON.parse(body);
+}
+function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handler(req, res) {
   setCorsHeaders(res);
-
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
-
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
-
   try {
     const payload = parseBody(req.body);
     const mode = payload.mode ?? "class";
-
     if (!payload.classId || !payload.documentId) {
       return res.status(400).json({ error: "classId and documentId are required" });
     }
-
     if (mode !== "class") {
       return res.status(400).json({ error: "mode must be class" });
     }
-
     const phaseB = await normalizeItemsPhaseB(payload.documentId);
     if (phaseB.items.length === 0) {
       return res.status(404).json({ error: "No document items found for documentId" });
     }
-
     const result = await runPhaseCSimulation({
       classId: payload.classId,
       documentId: payload.documentId,
       items: phaseB.items,
-      selectedProfileIds: payload.selectedProfileIds ?? [],
+      selectedProfileIds: payload.selectedProfileIds ?? []
     });
-
     return res.status(201).json({
       simulationId: result.simulationRun.id,
       classId: result.simulationRun.classId,
@@ -69,17 +748,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdAt: result.simulationRun.createdAt,
       resultCount: result.resultCount,
       mode,
-      selectedProfileIds: payload.selectedProfileIds ?? [],
+      selectedProfileIds: payload.selectedProfileIds ?? []
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Simulation run failed";
-    if (
-      message === "Class not found"
-      || message === "Synthetic students not found for class"
-      || message === "No document items found for documentId"
-    ) {
+    if (message === "Class not found" || message === "Synthetic students not found for class" || message === "No document items found for documentId") {
       return res.status(404).json({ error: message });
     }
     return res.status(500).json({ error: message });
   }
 }
+export {
+  handler as default,
+  runtime
+};
