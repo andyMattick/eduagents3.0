@@ -1,5 +1,11 @@
+import { extractOptionsFromText } from "./optionParsing";
+
 export function detectMultipleChoice(text: string): boolean {
-  const lines = text.split(/\r?\n/);
-  const choiceLines = lines.filter((line) => /^[A-D][\.)]\s+/.test(line.trim()));
-  return choiceLines.length >= 3;
+  const labels = new Set<string>();
+
+  for (const parsed of extractOptionsFromText(text)) {
+    labels.add(parsed.label);
+  }
+
+  return labels.size >= 3;
 }

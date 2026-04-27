@@ -23,8 +23,9 @@ import {
 	computeConfusionScore,
 	PROFILE_CATALOG,
 	runSemanticOnText,
-	segmentText,
+	segmentTextWithDiagnostics,
 	vectorToMeasurables,
+	type SegmentationDiagnostics,
 	type SegmentedItem,
 } from "./shared";
 
@@ -69,6 +70,39 @@ interface DocumentRow {
 		content?: string;
 		nodes?: Array<{ text?: string; normalizedText?: string }>;
 	} | null;
+}
+
+function clamp01(value: number): number {
+	return Math.max(0, Math.min(1, value));
+}
+
+function computeDocumentConfidence(diagnosticsList: SegmentationDiagnostics[]): number {
+	if (diagnosticsList.length === 0) {
+		return 1;
+	}
+
+	let total = 0;
+	for (const diagnostics of diagnosticsList) {
+		let score = 1;
+		if (diagnostics.answerKeyDetected) {
+			score -= 0.22;
+		}
+		if (diagnostics.answerKeyLinesRemoved > 0) {
+			score -= Math.min(0.18, diagnostics.answerKeyLinesRemoved * 0.02);
+		}
+		if (diagnostics.pageFurnitureLinesRemoved > 0) {
+			score -= Math.min(0.15, diagnostics.pageFurnitureLinesRemoved * 0.03);
+		}
+		if (diagnostics.dedupedItems > 0) {
+			score -= Math.min(0.1, diagnostics.dedupedItems * 0.02);
+		}
+		if (diagnostics.fallbackUsed) {
+			score -= 0.15;
+		}
+		total += clamp01(score);
+	}
+
+	return clamp01(total / diagnosticsList.length);
 }
 
 function assignLogicalLabels(itemTrees: SimulationItemTree[]): SimulationItemTree[] {
@@ -147,10 +181,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		// LLM is NOT called here; segmentText only falls back to LLM when
 		// hybrid returns ≤1 item, which is rare for real teacher documents.
 		const rawItems: SegmentedItem[] = [];
+		const segmentationDiagnostics: SegmentationDiagnostics[] = [];
 		let itemOffset = 0;
 		for (const row of rows) {
 			const azure = buildAzureExtractFromRow(row);
-			const docItems = await segmentText(azure);
+			const segmented = await segmentTextWithDiagnostics(azure);
+			const docItems = segmented.items;
+			segmentationDiagnostics.push(segmented.diagnostics);
 			console.log(`[shortcircuit] doc=${row.document_id} → ${docItems.length} segment(s)`);
 			for (const item of docItems) {
 				rawItems.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
@@ -221,6 +258,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 			...section,
 			itemTrees: itemTrees.filter((tree) => sectioning.itemToSectionId.get(tree.item.itemNumber) === section.id),
 		}));
+		const documentConfidence = computeDocumentConfidence(segmentationDiagnostics);
 
 		// Build per-profile adjusted items (deterministic modifiers, no LLM).
 		const profileResults: ProfileShortCircuitResult[] = requestedProfiles.map((profileId) => {
@@ -251,6 +289,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 		return res.status(200).json({
 			rawItems,
+			documentConfidence,
 			items: itemsWithTreesApplied as SimulationItem[],
 			itemTrees,
 			sections,

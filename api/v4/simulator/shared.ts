@@ -15,7 +15,7 @@ import { runSemanticPipeline } from "../../../src/prism-v4/semantic/pipeline/run
 import type { SimulationItem } from "../../../src/prism-v4/schema";
 import type { AzureExtractResult, ProblemTagVector } from "../../../src/prism-v4/schema/semantic";
 import type { StudentProfile } from "../../../src/types/simulator";
-import { hybridSegment } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
+import { hybridSegmentWithDiagnostics } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
 export type { AzureExtractLike } from "../../../src/prism-v4/semantic/segment/hybridSegmenter";
 
 let warnedMissingServiceRoleForV4Writes = false;
@@ -812,6 +812,16 @@ export interface SegmentedItem {
 	text: string;
 }
 
+export interface SegmentationDiagnostics {
+	answerKeyDetected: boolean;
+	answerKeyLinesRemoved: number;
+	pageFurnitureLinesRemoved: number;
+	dedupedItems: number;
+	rawItemCount: number;
+	finalItemCount: number;
+	fallbackUsed: boolean;
+}
+
 /**
  * Primary segmentation entry point — hybrid Azure-layout + local-rules.
  * LLM is called ONLY as a last-resort fallback when hybrid returns ≤1 item
@@ -822,17 +832,31 @@ export interface SegmentedItem {
 export async function segmentText(
 	azure: { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> },
 ): Promise<SegmentedItem[]> {
+	const result = await segmentTextWithDiagnostics(azure);
+	return result.items;
+}
+
+export async function segmentTextWithDiagnostics(
+	azure: { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string; pageNumber?: number }> },
+): Promise<{ items: SegmentedItem[]; diagnostics: SegmentationDiagnostics }> {
 	const paras = azure.paragraphs?.length ?? 0;
 	const pages = azure.pages?.length ?? 0;
 	const chars = azure.content?.length ?? 0;
 	console.log(`[segmentText] input: paragraphs=${paras}, pages=${pages}, content=${chars} chars`);
 
-	const hybrid = hybridSegment(azure);
+	const hybridResult = hybridSegmentWithDiagnostics(azure);
+	const hybrid = hybridResult.items;
 	console.log(`[segmentText] hybrid result: ${hybrid.length} item(s)`);
 
 	if (hybrid.length > 1) {
 		console.log("[segmentText] ✅ hybrid path — no LLM call");
-		return hybrid;
+		return {
+			items: hybrid,
+			diagnostics: {
+				...hybridResult.diagnostics,
+				fallbackUsed: false,
+			},
+		};
 	}
 
 	// Hybrid returned ≤1 item — fall back to LLM (optional, quota-limited path)
@@ -842,11 +866,23 @@ export async function segmentText(
 
 	if (!text.trim()) {
 		console.warn("[segmentText] no text available for LLM fallback — returning empty");
-		return hybrid;
+		return {
+			items: hybrid,
+			diagnostics: {
+				...hybridResult.diagnostics,
+				fallbackUsed: false,
+			},
+		};
 	}
 
 	console.warn(`[segmentText] hybrid ≤1 item — using local fallback (${text.length} chars)`);
-	return hybrid.length > 0 ? hybrid : _naiveSegmentFallback(text);
+	return {
+		items: hybrid.length > 0 ? hybrid : _naiveSegmentFallback(text),
+		diagnostics: {
+			...hybridResult.diagnostics,
+			fallbackUsed: true,
+		},
+	};
 }
 
 /**

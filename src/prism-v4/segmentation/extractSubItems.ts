@@ -1,10 +1,14 @@
+import { getParentStem, isLetteredLine, shouldTreatAsMultipartSubItem, stripLetteredPrefix } from "./subItemHeuristics";
+
 export function extractSubItems(text: string): Array<{ itemNumber: number; text: string }> {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const parentStem = getParentStem(text);
 
   return lines
-    .filter((line) => /^[a-h]\)/i.test(line.trim()))
+    .filter((line) => isLetteredLine(line))
+    .filter((line) => shouldTreatAsMultipartSubItem(line, parentStem))
     .map((line, index) => ({
       itemNumber: index + 1,
-      text: line.replace(/^[a-h]\)\s*/i, "").trim(),
+      text: stripLetteredPrefix(line),
     }));
 }

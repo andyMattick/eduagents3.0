@@ -145,6 +145,35 @@ function partIndexToSuffix(partIndex: number): string {
   return String.fromCharCode(96 + partIndex);
 }
 
+const PARENT_ITEM_REGEX = /^\s*\d+[\.)]\s+/;
+const LETTERED_CANDIDATE_REGEX = /^\s*\(?([a-zA-Z])\)?[\.)]\s+/;
+const VERB_REGEX = /\b(identify|determine|interpret|explain|calculate|find|solve|justify|evaluate|compare|describe|choose|select|compute|state|write|graph|prove|show)\b/i;
+
+function isSubItemLine(line: string, parentText: string): boolean {
+  const text = line.trim();
+  const withoutLabel = text.replace(LETTERED_CANDIDATE_REGEX, "").trim();
+  const wordCount = withoutLabel.split(/\s+/).filter(Boolean).length;
+
+  if (VERB_REGEX.test(withoutLabel)) {
+    return true;
+  }
+
+  if (wordCount > 8) {
+    return true;
+  }
+
+  if (wordCount <= 8 && !VERB_REGEX.test(withoutLabel)) {
+    if (/[?]/.test(parentText)) {
+      return false;
+    }
+    if (VERB_REGEX.test(parentText)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function deriveStructure(row: ItemRow): Pick<NormalizedPhaseBItem, "itemNumber" | "groupId" | "partIndex" | "logicalLabel" | "isParent"> {
   const itemNumber = typeof row.item_number === "number" && Number.isFinite(row.item_number)
     ? row.item_number
@@ -252,6 +281,29 @@ function inferMultipartPartIndices(row: ItemRow): number[] {
   }
 
   const stem = row.stem ?? "";
+  const lines = stem
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const parentLine = lines.find((line) => PARENT_ITEM_REGEX.test(line)) ?? lines[0] ?? "";
+  const subItemCandidates = lines.filter((line) => LETTERED_CANDIDATE_REGEX.test(line));
+
+  if (subItemCandidates.length > 0) {
+    let subItemCount = 0;
+    for (const candidate of subItemCandidates) {
+      if (isSubItemLine(candidate, parentLine)) {
+        subItemCount += 1;
+      }
+    }
+
+    if (subItemCount > 0) {
+      return Array.from({ length: subItemCount }, (_, index) => index + 1);
+    }
+
+    return [];
+  }
+
   const markers = [...stem.matchAll(/(?:\(|\b)([a-z])(?:\)|\.)/gi)]
     .map((match) => match[1]?.toLowerCase() ?? "")
     .filter((value) => /^[a-z]$/.test(value));

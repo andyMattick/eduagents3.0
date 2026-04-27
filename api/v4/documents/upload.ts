@@ -98,6 +98,24 @@ function parseBody(body: unknown) {
 	};
 }
 
+function inspectPdfBuffer(buffer: Buffer): {
+	startsWithPdfHeader: boolean;
+	hasEofMarker: boolean;
+	trailingBytesAfterEof: number | null;
+} {
+	const header = buffer.subarray(0, Math.min(buffer.length, 8)).toString("latin1");
+	const startsWithPdfHeader = header.startsWith("%PDF-");
+	const raw = buffer.toString("latin1");
+	const eofIndex = raw.lastIndexOf("%%EOF");
+	const hasEofMarker = eofIndex >= 0;
+	const trailingBytesAfterEof = hasEofMarker ? Math.max(0, buffer.length - (eofIndex + 5)) : null;
+	return {
+		startsWithPdfHeader,
+		hasEofMarker,
+		trailingBytesAfterEof,
+	};
+}
+
 function getClientIp(req: VercelRequest): string {
 	const forwarded = req.headers["x-forwarded-for"];
 	const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
@@ -263,6 +281,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 		}
 			catch (err) {
 			return res.status(400).json({ error: "Failed to read request body as binary data." });
+		}
+		if (normalizedContentType.includes("pdf")) {
+			const pdfInspection = inspectPdfBuffer(buffer);
+			console.log("[upload][binary][pdf]", {
+				fileName,
+				mimeType: normalizedContentType,
+				byteLength: buffer.length,
+				startsWithPdfHeader: pdfInspection.startsWithPdfHeader,
+				hasEofMarker: pdfInspection.hasEofMarker,
+				trailingBytesAfterEof: pdfInspection.trailingBytesAfterEof,
+			});
+		} else {
+			console.log("[upload][binary]", {
+				fileName,
+				mimeType: normalizedContentType,
+				byteLength: buffer.length,
+			});
 		}
 		const [registered] = await registerDocumentsStore([{ sourceFileName: fileName, sourceMimeType: normalizedContentType, rawBinary: buffer }], resolvedSessionId ?? null);
 		const session = resolvedSessionId
