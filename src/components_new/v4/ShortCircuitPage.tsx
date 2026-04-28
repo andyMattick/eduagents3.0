@@ -285,7 +285,14 @@ export function ShortCircuitPage() {
     setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
   };
 
-  const runPhaseB = useCallback(async (nextSessionId: string): Promise<boolean> => {
+  const runPhaseB = useCallback(async ({ nextSessionId, nextDocumentId }: { nextSessionId?: string | null; nextDocumentId?: string | null }): Promise<boolean> => {
+    const hasSession = typeof nextSessionId === "string" && nextSessionId.length > 0;
+    const hasDocument = typeof nextDocumentId === "string" && nextDocumentId.length > 0;
+    if (!hasSession && !hasDocument) {
+      setRunError("A session or document is required to run analysis.");
+      return false;
+    }
+
     setPhase("running");
     setRunError(null);
     setItems(null);
@@ -298,7 +305,11 @@ export function ShortCircuitPage() {
       const res = await fetch("/api/v4/simulator/shortcircuit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: nextSessionId, profiles: ["average"] }),
+        body: JSON.stringify({
+          ...(hasSession ? { sessionId: nextSessionId } : {}),
+          ...(hasDocument ? { documentId: nextDocumentId } : {}),
+          profiles: ["average"],
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -342,7 +353,7 @@ export function ShortCircuitPage() {
       setDocumentId(nextDocumentId);
       setIsPublicDocument(false);
       setVisibilityError(null);
-      await runPhaseB(sessionId);
+      await runPhaseB({ nextSessionId: sessionId, nextDocumentId });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
@@ -350,7 +361,7 @@ export function ShortCircuitPage() {
     }
   };
 
-  const handleSelectSharedDocument = useCallback((doc: PublicDocument) => {
+  const handleSelectSharedDocument = useCallback(async (doc: PublicDocument) => {
     setFile(new File([], doc.sourceFileName, { type: doc.sourceMimeType ?? "application/pdf" }));
     setSessionId(null);
     setDocumentId(doc.documentId);
@@ -358,14 +369,9 @@ export function ShortCircuitPage() {
     setVisibilityError(null);
     setRunError(null);
     setUploadError(null);
-    setPhase("results");
-    setItems([]);
-    setItemTrees([]);
-    setSections([]);
-    setPhaseBDocumentConfidence(null);
-    setExpandedGraph(false);
     setShowPublicPicker(false);
-  }, []);
+    await runPhaseB({ nextDocumentId: doc.documentId, nextSessionId: null });
+  }, [runPhaseB]);
 
   const toggleDocumentVisibility = useCallback(async () => {
     if (!documentId || visibilitySaving) {
@@ -632,7 +638,7 @@ export function ShortCircuitPage() {
 
       const canReload = Boolean(sessionId);
       if (canReload) {
-        const ok = await runPhaseB(sessionId as string);
+        const ok = await runPhaseB({ nextSessionId: sessionId as string, nextDocumentId: documentId });
         if (!ok) {
           throw new Error("Structure saved, but reload failed. Please retry analysis.");
         }

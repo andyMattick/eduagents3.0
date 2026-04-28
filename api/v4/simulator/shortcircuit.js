@@ -3901,9 +3901,11 @@ async function handler(req, res) {
   } catch {
     return res.status(400).json({ error: { code: "invalid_request", message: "Request body must be valid JSON" } });
   }
-  const { sessionId, profiles: rawProfiles } = body ?? {};
-  if (!sessionId || typeof sessionId !== "string") {
-    return res.status(400).json({ error: { code: "invalid_request", message: "sessionId is required" } });
+  const { sessionId, documentId, profiles: rawProfiles } = body ?? {};
+  const hasSessionId = typeof sessionId === "string" && sessionId.trim().length > 0;
+  const hasDocumentId = typeof documentId === "string" && documentId.trim().length > 0;
+  if (!hasSessionId && !hasDocumentId) {
+    return res.status(400).json({ error: { code: "invalid_request", message: "sessionId or documentId is required" } });
   }
   const profileArr = Array.isArray(rawProfiles) && rawProfiles.length > 0 ? rawProfiles : ["average"];
   const invalidProfiles = profileArr.filter((p) => !VALID_PROFILES.has(String(p)));
@@ -3912,14 +3914,22 @@ async function handler(req, res) {
   }
   const requestedProfiles = profileArr.map(String);
   try {
+    const filters = hasSessionId ? { session_id: `eq.${sessionId}` } : { document_id: `eq.${documentId}` };
     const rows = await supabaseRest("prism_v4_documents", {
       select: "document_id,source_file_name,azure_extract,canonical_document",
-      filters: { session_id: `eq.${sessionId}` }
+      filters
     });
     if (!rows || rows.length === 0) {
-      return res.status(404).json({ error: { code: "not_found", message: "No documents found for this session. Upload a document first." } });
+      return res.status(404).json({
+        error: {
+          code: "not_found",
+          message: hasSessionId
+            ? "No documents found for this session. Upload a document first."
+            : "No document found for this documentId."
+        }
+      });
     }
-    console.log(`[shortcircuit] session=${sessionId} docs=${rows.length}`);
+    console.log(`[shortcircuit] ${hasSessionId ? `session=${sessionId}` : `documentId=${documentId}`} docs=${rows.length}`);
     rows.forEach((r, i) => {
       const paras = r.azure_extract?.paragraphs?.length ?? 0;
       const pages = r.azure_extract?.pages?.length ?? 0;
