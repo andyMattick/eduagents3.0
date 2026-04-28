@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 import { normalizeDocumentForRewrite } from "../../lib/rewrite/normalizeDocumentForRewrite";
 
 //
@@ -39,7 +37,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json(
+    return Response.json(
       { code: "INVALID_JSON", message: "Invalid JSON body." },
       { status: 400 }
     );
@@ -51,7 +49,7 @@ export async function POST(req: Request) {
   // 1. Validate docType
   //
   if (docType && !["assignment", "assessment", "mixed"].includes(docType)) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "INVALID_DOC_TYPE",
         message: "Rewrite only supports assignment, assessment, or mixed documents."
@@ -64,7 +62,7 @@ export async function POST(req: Request) {
   // 2. Validate original text
   //
   if (!original || !original.trim()) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "MISSING_ORIGINAL",
         message: "Original document text is required for rewrite."
@@ -77,7 +75,7 @@ export async function POST(req: Request) {
   // 3. Validate selected suggestions
   //
   if (!selectedSuggestionIds || selectedSuggestionIds.length === 0) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "NO_SUGGESTIONS_SELECTED",
         message: "Select at least one suggestion before rewriting."
@@ -92,7 +90,7 @@ export async function POST(req: Request) {
   for (const id of selectedSuggestionIds) {
     const s = suggestionMap.get(id);
     if (!s) {
-      return NextResponse.json(
+      return Response.json(
         {
           code: "INVALID_SELECTED_SUGGESTION_ID",
           message: `Selected suggestion id '${id}' not found.`
@@ -109,7 +107,7 @@ export async function POST(req: Request) {
   const actionable = selectedSuggestions.filter(s => s.actionable !== false);
 
   if (actionable.length === 0) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "NO_ACTIONABLE_SUGGESTIONS",
         message: "Selected suggestions cannot be applied automatically."
@@ -138,7 +136,7 @@ export async function POST(req: Request) {
   try {
     modelResponse = await callRewriteModel(prompt);
   } catch (err) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "MODEL_ERROR",
         message: "Rewrite model failed to generate output."
@@ -153,7 +151,7 @@ export async function POST(req: Request) {
   // 7. No-op guard
   //
   if (rewritten.trim() === original.trim()) {
-    return NextResponse.json(
+    return Response.json(
       {
         code: "NO_CHANGES",
         message: "Rewrite produced no changes. Check suggestions and try again."
@@ -186,7 +184,7 @@ export async function POST(req: Request) {
     nonAppliedSuggestionIds
   };
 
-  return NextResponse.json(response, { status: 200 });
+  return Response.json(response, { status: 200 });
 }
 
 //
