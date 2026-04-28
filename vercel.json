@@ -24,6 +24,10 @@
       "dest": "/api/v4/documents/[documentId]/visibility?documentId=$1"
     },
     {
+      "src": "/api/v4/simulations/([^/]+)",
+      "dest": "/api/v4/simulations/[simulationId]?simulationId=$1"
+    },
+    {
       "src": "/.*",
       "dest": "/index.html"
     }

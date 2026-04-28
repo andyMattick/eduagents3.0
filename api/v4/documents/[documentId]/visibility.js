@@ -74,13 +74,17 @@ async function handler(req, res) {
     if (!doc) {
       return res.status(404).json({ error: { code: "not_found", message: "Document not found" } });
     }
-    if (doc.owner_id !== callerId) {
+    if (doc.owner_id !== null && doc.owner_id !== callerId) {
       return res.status(403).json({ error: { code: "forbidden", message: "You do not own this document" } });
     }
+    // If unowned, claim it while updating visibility
+    const patch = doc.owner_id === null
+      ? { is_public: isPublic, owner_id: callerId }
+      : { is_public: isPublic };
     await supabaseRest("prism_v4_documents", {
       method: "PATCH",
       filters: { document_id: `eq.${documentId}` },
-      body: { is_public: isPublic },
+      body: patch,
       prefer: "return=minimal"
     });
     return res.status(200).json({ documentId, isPublic });

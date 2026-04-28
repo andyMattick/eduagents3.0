@@ -11797,7 +11797,7 @@ function fromSessionRow(row) {
     updatedAt: row.updated_at
   };
 }
-function toDocumentRow(document, sessionId) {
+function toDocumentRow(document, sessionId, ownerId = null) {
   return {
     document_id: document.documentId,
     session_id: sessionId,
@@ -11806,7 +11806,9 @@ function toDocumentRow(document, sessionId) {
     created_at: document.createdAt,
     raw_binary_base64: document.rawBinary ? document.rawBinary.toString("base64") : null,
     canonical_document: document.canonicalDocument ?? null,
-    azure_extract: document.azureExtract ?? null
+    azure_extract: document.azureExtract ?? null,
+    owner_id: ownerId,
+    is_public: false
   };
 }
 async function updateDocumentSessionIds(sessionId, documentIds) {
