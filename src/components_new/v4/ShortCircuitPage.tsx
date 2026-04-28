@@ -11,7 +11,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { StudentSummaryTable } from "./StudentSummaryTable";
-import { DocumentPicker } from "./DocumentPicker";
+import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
@@ -349,6 +349,23 @@ export function ShortCircuitPage() {
       setUploading(false);
     }
   };
+
+  const handleSelectSharedDocument = useCallback((doc: PublicDocument) => {
+    setFile(new File([], doc.sourceFileName, { type: doc.sourceMimeType ?? "application/pdf" }));
+    setSessionId(null);
+    setDocumentId(doc.documentId);
+    setIsPublicDocument(true);
+    setVisibilityError(null);
+    setRunError(null);
+    setUploadError(null);
+    setPhase("results");
+    setItems([]);
+    setItemTrees([]);
+    setSections([]);
+    setPhaseBDocumentConfidence(null);
+    setExpandedGraph(false);
+    setShowPublicPicker(false);
+  }, []);
 
   const toggleDocumentVisibility = useCallback(async () => {
     if (!documentId || visibilitySaving) {
@@ -692,7 +709,7 @@ export function ShortCircuitPage() {
                 <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem", color: "rgba(86,57,32,0.4)" }}>^</div>
                 <p style={{ margin: 0, fontWeight: 600, color: "#1f1a17" }}>Drop your file here</p>
                 <p style={{ margin: "0.35rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  or click to browse -- PDF, Word, PowerPoint accepted
+                  or click to browse -- PDF accepted
                 </p>
               </>
             )}
@@ -724,7 +741,10 @@ export function ShortCircuitPage() {
 
           {showPublicPicker && (
             <div style={{ marginTop: "0.8rem" }}>
-              <DocumentPicker onClose={() => setShowPublicPicker(false)} />
+              <DocumentPicker
+                onClose={() => setShowPublicPicker(false)}
+                onSelectDocument={handleSelectSharedDocument}
+              />
             </div>
           )}
         </div>
@@ -795,7 +815,10 @@ export function ShortCircuitPage() {
             )}
             {showPublicPicker && (
               <div style={{ marginTop: "0.8rem" }}>
-                <DocumentPicker onClose={() => setShowPublicPicker(false)} />
+                <DocumentPicker
+                  onClose={() => setShowPublicPicker(false)}
+                  onSelectDocument={handleSelectSharedDocument}
+                />
               </div>
             )}
           </div>

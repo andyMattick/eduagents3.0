@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-interface PublicDocument {
+export interface PublicDocument {
   documentId: string;
   sourceFileName: string;
   sourceMimeType: string | null;
@@ -10,13 +10,14 @@ interface PublicDocument {
 
 interface DocumentPickerProps {
   onClose: () => void;
+  onSelectDocument?: (document: PublicDocument) => void;
 }
 
 /**
  * DocumentPicker — browse publicly shared teacher materials.
  * Displays metadata only; never exposes canonical document payloads.
  */
-export function DocumentPicker({ onClose }: DocumentPickerProps) {
+export function DocumentPicker({ onClose, onSelectDocument }: DocumentPickerProps) {
   const [docs, setDocs] = useState<PublicDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -98,10 +99,22 @@ export function DocumentPicker({ onClose }: DocumentPickerProps) {
         <ul className="v4-document-list" aria-label="Public documents">
           {docs.map((doc) => (
             <li key={doc.documentId} className="v4-document-card v4-document-card--public" style={cardStyle}>
-              <div>
-                <strong>{doc.sourceFileName}</strong>
-                {doc.sourceMimeType && (
-                  <span className="v4-document-mime"> · {doc.sourceMimeType}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "start", flexWrap: "wrap" }}>
+                <div>
+                  <strong>{doc.sourceFileName}</strong>
+                  {doc.sourceMimeType && (
+                    <span className="v4-document-mime"> · {doc.sourceMimeType}</span>
+                  )}
+                </div>
+                {onSelectDocument && (
+                  <button
+                    type="button"
+                    className="v4-button v4-button-secondary"
+                    onClick={() => onSelectDocument(doc)}
+                    aria-label={`Use ${doc.sourceFileName}`}
+                  >
+                    Use document
+                  </button>
                 )}
               </div>
               <p className="v4-body-copy" style={{ fontSize: "0.75rem", color: "var(--v4-muted, #6b7280)" }}>

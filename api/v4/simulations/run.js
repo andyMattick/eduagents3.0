@@ -293,13 +293,38 @@ function estimateLinguisticLoad(stem) {
   const avgSentenceLength = wordCount / sentenceCount;
   return clamp(avgSentenceLength / 20, 0, 1);
 }
+var BLOOMS_KEYWORDS = {
+  create: ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+  evaluate: ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+  analyze: ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+  apply: ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out", "find"],
+  understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate", "state", "name"],
+  remember: ["identify", "list", "define", "recall", "label", "match", "select", "recognize", "repeat", "choose", "underline", "point", "circle", "highlight"]
+};
+function inferBloomLevelFromText(text) {
+  const lower = (text ?? "").toLowerCase();
+  const hit = (keywords) => keywords.some((keyword) => lower.includes(keyword));
+  if (hit(BLOOMS_KEYWORDS.create))
+    return 6;
+  if (hit(BLOOMS_KEYWORDS.evaluate))
+    return 5;
+  if (hit(BLOOMS_KEYWORDS.analyze))
+    return 4;
+  if (hit(BLOOMS_KEYWORDS.apply))
+    return 3;
+  if (hit(BLOOMS_KEYWORDS.understand))
+    return 2;
+  if (hit(BLOOMS_KEYWORDS.remember))
+    return 1;
+  return 3;
+}
 function toNormalizedItems(row) {
   const structure = deriveStructure(row);
   const metadata = row.metadata;
   const linguisticLoad = clamp(readNumber(metadata, ["linguisticLoad", "linguistic_load", "phaseB.linguisticLoad", "phaseB.linguistic_load", "metrics.linguistic_load"]) ?? estimateLinguisticLoad(row.stem ?? ""), 0, 1);
   const cognitiveLoad = clamp(readNumber(metadata, ["cognitiveLoad", "cognitive_load", "phaseB.cognitiveLoad", "phaseB.cognitive_load", "metrics.cognitive_load"]) ?? linguisticLoad, 0, 1);
   const representationLoad = clamp(readNumber(metadata, ["representationLoad", "representation_load", "phaseB.representationLoad", "phaseB.representation_load", "metrics.representation_load"]) ?? 0.5, 0, 1);
-  const bloomLevel = clamp(readNumber(metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"]) ?? 3, 1, 6);
+  const bloomLevel = clamp(readNumber(metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"]) ?? inferBloomLevelFromText(row.stem ?? ""), 1, 6);
   const vocabLevel1 = readNumber(metadata, ["vocabCounts.level1", "vocab_counts.level1", "metrics.vocab_counts.level1", "metrics.vocabCounts.level1"]) ?? 0;
   const vocabLevel2 = readNumber(metadata, ["vocabCounts.level2", "vocab_counts.level2", "metrics.vocab_counts.level2", "metrics.vocabCounts.level2"]) ?? 0;
   const vocabLevel3 = readNumber(metadata, ["vocabCounts.level3", "vocab_counts.level3", "metrics.vocab_counts.level3", "metrics.vocabCounts.level3"]) ?? 0;
@@ -355,24 +380,28 @@ function isSyntheticPartItem(item) {
   return item.partIndex > 0 && item.itemId.includes("::part-");
 }
 function dedupeNormalizedItems(items) {
-  const byGroupPart = /* @__PURE__ */ new Map();
+  const byItemId = /* @__PURE__ */ new Map();
   for (const item of items) {
-    if (item.partIndex <= 0) {
-      const parentKey = `${item.groupId}::0::${item.itemId}`;
-      byGroupPart.set(parentKey, item);
-      continue;
-    }
-    const key = `${item.groupId}::${item.partIndex}`;
-    const existing = byGroupPart.get(key);
-    if (!existing) {
-      byGroupPart.set(key, item);
-      continue;
-    }
-    if (isSyntheticPartItem(existing) && !isSyntheticPartItem(item)) {
-      byGroupPart.set(key, item);
-    }
+    byItemId.set(item.itemId, item);
   }
-  return [...byGroupPart.values()];
+  const uniqueById = [...byItemId.values()];
+  const byGroupPart = /* @__PURE__ */ new Map();
+  for (const item of uniqueById) {
+    const key = `${item.groupId}::${item.partIndex}`;
+    const bucket = byGroupPart.get(key) ?? [];
+    bucket.push(item);
+    byGroupPart.set(key, bucket);
+  }
+  const deduped = [];
+  for (const bucket of byGroupPart.values()) {
+    const hasReal = bucket.some((entry) => !isSyntheticPartItem(entry));
+    if (!hasReal) {
+      deduped.push(...bucket);
+      continue;
+    }
+    deduped.push(...bucket.filter((entry) => !isSyntheticPartItem(entry)));
+  }
+  return sortNormalizedItems(deduped);
 }
 async function normalizeItemsPhaseB(documentId) {
   const rows = await supabaseRest("v4_items", {
@@ -596,7 +625,7 @@ function applyPhaseCCore(student, measurable) {
   const cfg = PHASE_C_CONFIG.formula;
   const readingGap = Math.max(0, measurable.linguisticLoad - student.traits.readingLevel);
   const vocabularyGap = Math.max(0, measurable.linguisticLoad - student.traits.vocabularyLevel);
-  const bloomGap = Math.max(0, measurable.bloomLevel - student.traits.bloomMastery);
+  const bloomGap = Math.abs(measurable.bloomLevel - student.traits.bloomMastery);
   const speedPenalty = Math.max(0, (cfg.baselineProcessingCenter - student.traits.processingSpeed) / cfg.processingPenaltyDivisor);
   const knowledgePenalty = Math.max(0, (cfg.baselineKnowledgeCenter - student.traits.backgroundKnowledge) / cfg.processingPenaltyDivisor);
   const confusionProfile = clamp2(measurable.confusionScore + cfg.readingGapToConfusion * readingGap + cfg.vocabularyGapToConfusion * vocabularyGap + cfg.bloomGapToConfusion * bloomGap + cfg.speedPenaltyToConfusion * speedPenalty + cfg.knowledgePenaltyToConfusion * knowledgePenalty, cfg.minConfusionScore, cfg.maxConfusionScore);
