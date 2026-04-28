@@ -292,7 +292,7 @@ function buildProblemGroups(
 				text: problem.text,
 				concepts: uniqueStrings(problem.concepts),
 				representations: uniqueStrings(problem.representations),
-				difficulty: problem.difficulty,
+				difficulty: problem.complexityBand,
 				cognitiveDemand: problem.cognitiveDemand,
 				sourceSpan: problem.sourceSpan,
 				anchors: problem.anchors.map((anchor) => ({
@@ -316,7 +316,7 @@ function buildProblemGroups(
 					primaryConcepts: uniqueStrings(problem.concepts).slice(0, 4),
 					representations: uniqueStrings(problem.representations),
 					misconceptions: uniqueStrings(problem.misconceptions),
-					difficulty: problem.difficulty,
+					difficulty: problem.complexityBand,
 					cognitiveDemand: problem.cognitiveDemand,
 					problems: [problemEntry],
 					previewItems: [],
@@ -453,7 +453,7 @@ function buildScoredConcepts(
 	return conceptNames.map((concept) => {
 		const coverageEntry = coverage?.[concept];
 		const fallbackEntry = fallback.get(concept);
-		const documentIds = uniqueStrings(coverageEntry?.documentIds ?? [...(fallbackEntry?.documentIds ?? new Set<string>())] ?? conceptToDocumentMap[concept] ?? []);
+		const documentIds = uniqueStrings(coverageEntry?.documentIds ?? (fallbackEntry?.documentIds ? [...fallbackEntry.documentIds] : (conceptToDocumentMap[concept] ?? [])));
 		const sourceFileNames = uniqueStrings(documentIds.map((documentId) => documentNameById.get(documentId)));
 		const previewMatches = previewByConcept.get(concept) ?? [];
 		const previewGroups = uniqueStrings(previewMatches.map((item) => item.groupId));

@@ -83,7 +83,7 @@ function makeSection(concept: string, itemCount: number): TestSection {
 			concept,
 			sourceDocumentId: "doc-1",
 			sourceFileName: "test.pdf",
-			difficulty: "medium" as const,
+			complexityBand: "medium" as const,
 			cognitiveDemand: "procedural" as const,
 			answerGuidance: "stub",
 		})),

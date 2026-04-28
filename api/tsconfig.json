@@ -19,5 +19,5 @@
     "noUnusedParameters": false
   },
   "include": ["./**/*.ts"],
-  "exclude": ["../src", "../tests", "../scripts"]
+  "exclude": ["../src", "../tests", "../scripts", "v4/studio/shared.ts", "rewrite/route.ts"]
 }

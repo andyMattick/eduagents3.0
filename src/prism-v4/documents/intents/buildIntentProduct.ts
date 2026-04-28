@@ -812,7 +812,7 @@ function buildFingerprintSequencePlan(context: BuilderContext<"build-test">, pro
 	}));
 }
 
-function inferTargetDifficulty(level: BloomLevel, index: number, requestedCount: number): TestItem["difficulty"] {
+function inferTargetDifficulty(level: BloomLevel, index: number, requestedCount: number): TestItem["complexityBand"] {
 	const progress = requestedCount <= 1 ? 1 : index / Math.max(1, requestedCount - 1);
 	const bloomWeight = Math.max(0, compareBloomLevels(level, "remember")) / 5;
 	const composite = (progress + bloomWeight) / 2;
@@ -825,8 +825,8 @@ function inferTargetDifficulty(level: BloomLevel, index: number, requestedCount:
 	return "low";
 }
 
-function shapeSelectedDifficulty(item: TestItem, targetDifficulty: TestItem["difficulty"]) {
-	return item.difficulty === targetDifficulty ? item : { ...item, difficulty: targetDifficulty };
+function shapeSelectedDifficulty(item: TestItem, targetDifficulty: TestItem["complexityBand"]) {
+	return item.complexityBand === targetDifficulty ? item : { ...item, complexityBand: targetDifficulty };
 }
 
 function modePreferenceRank(preferredModes: ItemMode[], item: TestItem) {
@@ -872,7 +872,7 @@ function selectBestFingerprintCandidate(args: {
 	preferredModes: ItemMode[];
 	preferredScenarios: ReturnType<typeof getPreferredScenarioPatterns>;
 	targetBloom: BloomLevel;
-	targetDifficulty: TestItem["difficulty"];
+	targetDifficulty: TestItem["complexityBand"];
 	misconceptionKeys?: string[];
 }) {
 	let bestIndex = -1;
@@ -885,7 +885,7 @@ function selectBestFingerprintCandidate(args: {
 			modePreferenceRank(args.preferredModes, item),
 			scenarioPreferenceRank(args.preferredScenarios, item),
 			misconceptionMatchRank(args.misconceptionKeys ?? [], item),
-			Math.abs(DIFFICULTY_SCORE[item.difficulty] - DIFFICULTY_SCORE[args.targetDifficulty]),
+			Math.abs(DIFFICULTY_SCORE[item.complexityBand] - DIFFICULTY_SCORE[args.targetDifficulty]),
 			inferAssessmentPromptStage(item.prompt),
 			item.prompt,
 		];
@@ -1190,7 +1190,7 @@ function buildFallbackTestSections(context: BuilderContext<"build-test">, focus:
 			primaryConcepts: [concept],
 			sourceDocumentId,
 			sourceFileName,
-			difficulty: "medium",
+			complexityBand: "medium",
 			cognitiveDemand: context.domain === "Mathematics" ? "procedural" : "conceptual",
 			answerGuidance: `Look for accurate reasoning about ${teacherFacingConceptLabel(concept)} and a concrete supporting example.`,
 		});
@@ -1294,7 +1294,7 @@ function collectInstructionalUnitEntries(units: InstructionalUnit[], analyzedDoc
 			primaryConcepts,
 			groupId: primaryProblem?.problemGroupId,
 			sourceSpan: primaryProblem?.sourceSpan,
-			difficultyBand: toDifficultyBand(unit.difficulty),
+			difficultyBand: toDifficultyBand(unit.contentComplexity),
 		};
 	});
 }
@@ -1404,7 +1404,7 @@ function collectSourceAnchors(analyzedDocuments: AnalyzedDocument[]): ProductSou
 
 function dominantDifficulty(analyzed: AnalyzedDocument) {
 	return (["high", "medium", "low"] as const).reduce((winner, candidate) => {
-		if (analyzed.insights.difficultyDistribution[candidate] > analyzed.insights.difficultyDistribution[winner]) {
+		if (analyzed.insights.complexityDistribution[candidate] > analyzed.insights.complexityDistribution[winner]) {
 			return candidate;
 		}
 		return winner;
@@ -1424,7 +1424,7 @@ function buildProblemEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 				text: problem.text,
 				concepts: problem.concepts,
 				representations: problem.representations,
-				difficulty: problem.difficulty,
+				complexityBand: problem.complexityBand,
 				cognitiveDemand: problem.cognitiveDemand,
 				misconceptions: problem.misconceptions,
 				anchorNodeIds: problem.anchors.map((anchor) => anchor.nodeId),
@@ -1506,7 +1506,7 @@ function buildConceptEntries(context: { analyzedDocuments: AnalyzedDocument[]; s
 				documentIds: unique([...(existing?.documentIds ?? []), analyzed.document.id]),
 				sourceFileNames: unique([...(existing?.sourceFileNames ?? []), context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName]),
 				representations: unique([...(existing?.representations ?? []), ...matchingProblems.flatMap((problem) => problem.representations)]),
-				difficulties: unique([...(existing?.difficulties ?? []), ...matchingProblems.map((problem) => problem.difficulty)]),
+				difficulties: unique([...(existing?.difficulties ?? []), ...matchingProblems.map((problem) => problem.complexityBand)]),
 				sampleProblemTexts: unique([...(existing?.sampleProblemTexts ?? []), ...matchingProblems.map((problem) => problem.text)]).slice(0, 3),
 			});
 		}
@@ -1733,7 +1733,7 @@ function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test
 			skills: [problem.cognitiveDemand, "problem-stem", "question"],
 			learningTargets: [],
 			misconceptions: problem.misconceptions,
-			difficulty: problem.difficulty === "high" ? 1 : problem.difficulty === "medium" ? 0.5 : 0.2,
+			contentComplexity: problem.complexityBand === "high" ? 1 : problem.complexityBand === "medium" ? 0.5 : 0.2,
 			linguisticLoad: 0.5,
 			sourceSections: [],
 			confidence: 1,
@@ -1751,7 +1751,7 @@ function buildProblemBackedAssessmentEntries(context: BuilderContext<"build-test
 		primaryConcepts: inferCanonicalTeacherConcepts(problem.concepts, [problem.text]),
 		groupId: problem.problemGroupId,
 		sourceSpan: problem.sourceSpan,
-		difficultyBand: problem.difficulty,
+		difficultyBand: problem.complexityBand,
 	}));
 }
 
@@ -1863,7 +1863,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 				sourceDocumentId: primaryEntry.primaryDocumentId,
 				sourceFileName: primaryEntry.primarySourceFileName,
 				sourceSpan: primaryEntry.sourceSpan,
-				difficulty: primaryEntry.difficultyBand,
+				complexityBand: primaryEntry.difficultyBand,
 				cognitiveDemand: inferUnitCognitiveDemand(primaryEntry),
 				answerGuidance: sortedEntries.some((e) => e.unit.learningTargets.length > 0)
 					? `Look for evidence that the student can ${joinList(unique(sortedEntries.flatMap((e) => e.unit.learningTargets))).toLowerCase()}.`
@@ -1890,7 +1890,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					sourceDocumentId: unitEntry.primaryDocumentId,
 					sourceFileName: unitEntry.primarySourceFileName,
 					sourceSpan: unitEntry.sourceSpan,
-					difficulty: unitEntry.difficultyBand,
+					complexityBand: unitEntry.difficultyBand,
 					cognitiveDemand: inferUnitCognitiveDemand(unitEntry),
 					answerGuidance: unitEntry.unit.learningTargets.length > 0
 						? `Look for evidence that the student can ${joinList(unitEntry.unit.learningTargets).toLowerCase()}.`
@@ -1917,7 +1917,7 @@ function chooseTestItems(context: BuilderContext<"build-test">, focus: string | 
 					primaryConcepts: [concept],
 					sourceDocumentId: sourceDocument,
 					sourceFileName,
-					difficulty: "medium",
+					complexityBand: "medium",
 					cognitiveDemand: "conceptual",
 					answerGuidance: `Look for accurate reasoning about ${conceptLeafLabel(concept)} and a valid application example.`,
 					misconceptionTriggers: [],
@@ -2086,7 +2086,7 @@ function mergeProblemEntries(context: BuilderContext<"merge-documents">, focus: 
 					text: problem.text,
 					concepts: problem.concepts,
 					representations: problem.representations,
-					difficulty: problem.difficulty,
+					complexityBand: problem.complexityBand,
 					sourceDocumentIds: [problem.documentId],
 					sourceFileNames: [sourceFileName],
 					sourceAnchors: [sourceAnchor],
@@ -2188,10 +2188,10 @@ function buildSequenceProduct(context: BuilderContext<"build-sequence">): Sequen
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
-		const leftDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
-			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
-		const rightDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.difficulty * 3))
-			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const leftDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand]));
+		const rightDifficulty = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand]));
 		if (leftDifficulty !== rightDifficulty) {
 			return leftDifficulty - rightDifficulty;
 		}
@@ -2550,7 +2550,7 @@ function buildLessonProduct(context: BuilderContext<"build-lesson">): LessonProd
 			documentIds: [analyzed.document.id],
 		})),
 		scaffolds: curatedScaffolds.length > 0 ? curatedScaffolds : [{ concept: titleCaseConcept(joinCoreConcepts(1)), level: "medium", strategy: "Model the first problem together before releasing to independent work.", documentIds: [analyzed.document.id] }],
-		extensions: problemEntries.filter((problem) => problem.difficulty === "high").map((problem) => `Extend with: ${problem.text}`).slice(0, 2),
+		extensions: problemEntries.filter((problem) => problem.complexityBand === "high").map((problem) => `Extend with: ${problem.text}`).slice(0, 2),
 		teacherNotes: curatedTeacherNotes.length > 0 ? curatedTeacherNotes : [`Use ${sourceFileName} as the core source and emphasize ${joinList(analyzed.insights.concepts.slice(0, 2)) || "the central concepts"}.`],
 		sourceAnchors: collectSourceAnchors([analyzed]),
 		generatedAt: new Date().toISOString(),
@@ -2562,10 +2562,10 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 	const unitEntries = collectInstructionalUnitEntries(context.instructionalUnits, context.analyzedDocuments, context.sourceFileNames);
 	const effectiveConceptToDocumentMap = buildEffectiveConceptToDocumentMap(context, unitEntries, context.collectionAnalysis);
 	const orderedDocuments = [...context.analyzedDocuments].sort((left, right) => {
-		const leftScore = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.difficulty * 3))
-			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
-		const rightScore = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.difficulty * 3))
-			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty]));
+		const leftScore = average(unitEntries.filter((entry) => entry.documentIds.includes(left.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+			|| average(left.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand]));
+		const rightScore = average(unitEntries.filter((entry) => entry.documentIds.includes(right.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+			|| average(right.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand]));
 		return leftScore - rightScore || left.document.id.localeCompare(right.document.id);
 	});
 	const lessonSequence = orderedDocuments.map((analyzed, index) => {
@@ -2605,11 +2605,11 @@ function buildUnitProduct(context: BuilderContext<"build-unit">): UnitProduct {
 		title: focus ? `Unit Builder: ${focus}` : `Unit Builder: ${context.analyzedDocuments.length} Documents`,
 		lessonSequence,
 		conceptMap,
-		difficultyCurve: orderedDocuments.map((analyzed) => ({
+		complexityCurve: orderedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			averageDifficultyScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.difficulty * 3))
-				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
+			averageComplexityScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand])),
 		})),
 		representationCurve: orderedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
@@ -2673,11 +2673,11 @@ function buildInstructionalMapProduct(context: BuilderContext<"build-instruction
 			nodes: misconceptionBuckets.map((entry) => entry.node),
 			edges: buildGraphEdgesFromBuckets(misconceptionBuckets),
 		},
-		difficultyCurve: context.analyzedDocuments.map((analyzed) => ({
+		complexityCurve: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,
 			sourceFileName: context.sourceFileNames[analyzed.document.id] ?? analyzed.document.sourceFileName,
-			averageDifficultyScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.difficulty * 3))
-				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
+			averageComplexityScore: average(unitEntries.filter((entry) => entry.documentIds.includes(analyzed.document.id)).map((entry) => entry.unit.contentComplexity * 3))
+				|| average(analyzed.problems.map((problem) => DIFFICULTY_SCORE[problem.complexityBand])),
 		})),
 		documentConceptAlignment: context.analyzedDocuments.map((analyzed) => ({
 			documentId: analyzed.document.id,

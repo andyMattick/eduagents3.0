@@ -227,7 +227,7 @@ export function buildDocumentInsights(
     documentConceptDetails: conceptDetails.length > 0 ? conceptDetails : undefined,
     documentConcepts: Object.keys(conceptTotals).length > 0 ? conceptTotals : undefined,
     documentStandards: Object.keys(standardTotals).length > 0 ? standardTotals : undefined,
-    overallDifficulty: Number(difficultyScore.toFixed(2)),
+    overallContentComplexity: Number(difficultyScore.toFixed(2)),
     overallLinguisticLoad: Number(linguisticLoad.toFixed(2)),
     conceptGraph,
     semantics: {

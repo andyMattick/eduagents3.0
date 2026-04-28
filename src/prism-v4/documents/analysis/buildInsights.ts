@@ -25,7 +25,7 @@ export function buildAnalyzedDocumentInsights(args: {
 	const conceptStats = new Map<string, MutableConceptStats>();
 	const representations = new Set<string>();
 	const misconceptionThemes = new Set<string>();
-	const difficultyDistribution: DocumentInsights["difficultyDistribution"] = {
+	const complexityDistribution: DocumentInsights["complexityDistribution"] = {
 		low: 0,
 		medium: 0,
 		high: 0,
@@ -154,7 +154,7 @@ export function buildAnalyzedDocumentInsights(args: {
 		for (const misconception of problem.misconceptions) {
 			misconceptionThemes.add(misconception);
 		}
-		difficultyDistribution[problem.difficulty] += 1;
+		complexityDistribution[problem.complexityBand] += 1;
 	}
 
 	for (const fragment of args.fragments) {
@@ -207,7 +207,7 @@ export function buildAnalyzedDocumentInsights(args: {
 		scoredConcepts,
 		conceptFrequencies,
 		representations: [...representations],
-		difficultyDistribution,
+		complexityDistribution,
 		misconceptionThemes: [...misconceptionThemes],
 		instructionalDensity: args.fragments.length === 0 ? 0 : Number((instructionalCount / args.fragments.length).toFixed(2)),
 		problemCount: args.problems.length,

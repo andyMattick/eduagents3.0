@@ -2,11 +2,11 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 import { buildInstructionalBuilderPlan, buildInstructionalPreview, resolveInstructionalAssessmentRuntime } from "../../../src/prism-v4/session";
 import { getDocumentSessionStore, listIntentProductsForSessionStore, loadPrismSessionContextCached } from "../../../src/prism-v4/documents/registryStore";
+import type { TestProduct } from "../../../src/prism-v4/schema/integration/IntentProduct";
 import {
 	buildAssessmentFingerprint,
 	getAssessmentFingerprint,
 	saveAssessmentFingerprint,
-	type TestProduct,
 } from "../../../src/prism-v4/teacherFeedback";
 import {
 	buildAssessmentFingerprintFromBlueprint,

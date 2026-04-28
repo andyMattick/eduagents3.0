@@ -137,7 +137,7 @@ describe("teacher feedback routes", () => {
 						concept: "Hypothesis Testing",
 						sourceDocumentIds: ["doc-1"],
 						items: [
-							{ itemId: "item-1", prompt: "State the null hypothesis.", concept: "Hypothesis Testing", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "State it." },
+							{ itemId: "item-1", prompt: "State the null hypothesis.", concept: "Hypothesis Testing", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", complexityBand: "medium", cognitiveDemand: "conceptual", answerGuidance: "State it." },
 						],
 					},
 				],
@@ -186,7 +186,7 @@ describe("teacher feedback routes", () => {
 							concept: "Decimal Operations",
 							sourceDocumentIds: ["doc-1"],
 							items: [
-								{ itemId: "item-1", prompt: "Compare 0.4 and 0.35.", concept: "Decimal Operations", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", difficulty: "medium", cognitiveDemand: "conceptual", answerGuidance: "Use place value." },
+								{ itemId: "item-1", prompt: "Compare 0.4 and 0.35.", concept: "Decimal Operations", sourceDocumentId: "doc-1", sourceFileName: "quiz.pdf", complexityBand: "medium", cognitiveDemand: "conceptual", answerGuidance: "Use place value." },
 							],
 						},
 					],

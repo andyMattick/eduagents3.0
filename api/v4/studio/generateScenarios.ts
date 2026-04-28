@@ -795,6 +795,8 @@ export async function generateScenarioSection(
 	const prompt = buildAssessmentPrompt(concept, itemTypes, quota, domain, relatedConcepts, forcedFormat, scenarioStyle, frqTemplate, teacherTone, subjectScenarioHint, timeBudgetHint, requiredConcepts);
 	void prompt;
 	console.warn(`[generateScenarios] LLM disabled for "${concept}"; returning extracted section.`);
+	// eslint-disable-next-line no-unreachable
+	const rawItems: any[] = [];
 	return section;
 
 	const generatedItems: TestItem[] = rawItems.map((r, i) => {
@@ -823,8 +825,8 @@ export async function generateScenarioSection(
 			primaryConcepts: r.conceptIds && r.conceptIds.length > 0 ? r.conceptIds : [concept],
 			sourceDocumentId,
 			sourceFileName,
-			difficulty: mapDifficulty(biasedDiff),
-			difficultyScore: biasedDiff,
+			complexityBand: mapDifficulty(biasedDiff),
+			complexityScore: biasedDiff,
 			cognitiveDemand: mapCognitiveDemand(r.itemType),
 			answerGuidance: r.answer.trim(),
 			structuredAnswer: r.structuredAnswer ?? r.answer.trim(),
@@ -844,9 +846,10 @@ export async function generateScenarioSection(
 
 	// Allowed-format guard: drop any item whose problemType falls outside the teacher's
 	// explicit allowed list (handles cases where the LLM returned a valid-but-disallowed format).
+	const allowedFormatsGuard = allowedFormats;
 	const formatGuardedItems =
-		allowedFormats && allowedFormats.length > 0 && !forcedFormat
-			? validItems.filter((item) => allowedFormats.includes(item.problemType as ProblemFormat))
+		allowedFormatsGuard && allowedFormatsGuard.length > 0 && !forcedFormat
+			? validItems.filter((item) => allowedFormatsGuard!.includes(item.problemType as ProblemFormat))
 			: validItems;
 	if (formatGuardedItems.length < validItems.length) {
 		console.warn(
@@ -977,7 +980,7 @@ export async function enrichProductWithScenarios(
 					concept,
 					sourceDocumentId: sourceDocumentIds[0] ?? "generated",
 					sourceFileName,
-					difficulty: "medium" as const,
+					complexityBand: "medium" as const,
 					cognitiveDemand: "procedural" as const,
 					answerGuidance: "",
 				})),
