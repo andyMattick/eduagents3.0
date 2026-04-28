@@ -153,6 +153,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 	const nextFileMap: Record<string, File> = {};
 	const originalTextMap: Record<string, string> = {};
 	let sessionId: string | null = null;
+	const authHeaders = userId ? { "x-user-id": userId, "x-auth-user-id": userId } : {};
 
 	for (const file of selectedFiles) {
 		const buffer = await file.arrayBuffer();
@@ -161,7 +162,7 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 			headers: {
 				"Content-Type": file.type || "application/octet-stream",
 				"x-file-name": file.name,
-				...(userId ? { "x-user-id": userId } : {}),
+				...authHeaders,
 				...(sessionId ? { "x-session-id": sessionId } : {}),
 			},
 			body: buffer,
@@ -185,13 +186,14 @@ export async function createStudioSessionFromFilesApi(selectedFiles: File[], use
 
 export async function createStudioSessionFromFileApi(file: File, userId?: string) {
 	const buffer = await file.arrayBuffer();
+	const authHeaders = userId ? { "x-user-id": userId, "x-auth-user-id": userId } : {};
 	const uploadPayload: UploadDocumentResponse = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
 		method: "POST",
 		headers: {
 			"Content-Type": file.type || "application/octet-stream",
 			"x-file-name": file.name,
 			"x-force-new-session": "true",
-			...(userId ? { "x-user-id": userId } : {}),
+			...authHeaders,
 		},
 		body: buffer,
 	});

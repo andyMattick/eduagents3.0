@@ -915,3 +915,16 @@
   h1 { font-size: 1.25rem; }
   h2 { font-size: 1.1rem; }
 }
+/* Fix text contrast inside the document picker */
+.v4-document-picker {
+  color: #1a1a1a; /* dark text for light background */
+}
+
+.dark .v4-document-picker {
+  color: #f5f5f5; /* light text for dark background */
+}
+
+/* Ensure body copy inherits the corrected color */
+.v4-document-picker .v4-body-copy {
+  color: inherit;
+}

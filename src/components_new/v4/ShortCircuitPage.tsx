@@ -336,7 +336,7 @@ export function ShortCircuitPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const { sessionId, registered } = await createStudioSessionFromFilesApi([file]);
+      const { sessionId, registered } = await createStudioSessionFromFilesApi([file], user?.id);
       setSessionId(sessionId);
       const nextDocumentId = registered[0]?.documentId ?? null;
       setDocumentId(nextDocumentId);

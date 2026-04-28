@@ -21,6 +21,7 @@ import {
 	type ItemRewriteIntent,
 	type RegisteredDocumentSummary,
 } from "../lib/teacherStudioApi";
+import { useAuth } from "../components_new/Auth/useAuth";
 
 function guessDocumentRole(file: File): DocumentRole {
 	const lowerName = file.name.toLowerCase();
@@ -67,6 +68,7 @@ type TeacherStudioState = {
 };
 
 export function useTeacherStudioRun() {
+	const { user } = useAuth();
 	const [state, setState] = useState<TeacherStudioState>({
 		session: null,
 		analysis: null,
@@ -119,7 +121,7 @@ export function useTeacherStudioRun() {
 
 		setState((current) => ({ ...current, isLoading: true, error: null }));
 		try {
-			const { sessionId, registered, nextFileMap } = await createStudioSessionFromFilesApi(selectedFiles);
+			const { sessionId, registered, nextFileMap } = await createStudioSessionFromFilesApi(selectedFiles, user?.id);
 			const documentRoles = Object.fromEntries(registered.map((entry) => {
 				const file = nextFileMap[entry.documentId];
 				const role = file ? guessDocumentRole(file) : "unknown";
