@@ -21,6 +21,32 @@ export function DocumentPicker({ onClose }: DocumentPickerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  const shellStyle = {
+    marginTop: "1rem",
+    padding: "1.25rem",
+    borderRadius: "18px",
+    border: "1px solid rgba(86, 57, 32, 0.14)",
+    background: "rgba(255, 251, 245, 0.96)",
+    color: "#1f1a17",
+  } as const;
+
+  const headerStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: "0.75rem",
+    marginBottom: "1rem",
+  } as const;
+
+  const cardStyle = {
+    borderRadius: "18px",
+    border: "1px solid rgba(86, 57, 32, 0.12)",
+    background: "rgba(255, 255, 255, 0.76)",
+    color: "#1f1a17",
+    padding: "1rem",
+  } as const;
+
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
@@ -52,9 +78,9 @@ export function DocumentPicker({ onClose }: DocumentPickerProps) {
   }, []);
 
   return (
-    <div className="v4-document-picker" role="dialog" aria-label="Shared teacher materials">
-      <div className="v4-document-picker-header">
-        <h3>Shared teacher materials</h3>
+    <div className="v4-document-picker" role="dialog" aria-label="Shared teacher materials" style={shellStyle}>
+      <div className="v4-document-picker-header" style={headerStyle}>
+        <h3 style={{ margin: 0, color: "#1f1a17" }}>Shared teacher materials</h3>
         <button type="button" className="v4-button v4-button-secondary" onClick={onClose}>
           Close
         </button>
@@ -71,7 +97,7 @@ export function DocumentPicker({ onClose }: DocumentPickerProps) {
       {!isLoading && !fetchError && docs.length > 0 && (
         <ul className="v4-document-list" aria-label="Public documents">
           {docs.map((doc) => (
-            <li key={doc.documentId} className="v4-document-card v4-document-card--public">
+            <li key={doc.documentId} className="v4-document-card v4-document-card--public" style={cardStyle}>
               <div>
                 <strong>{doc.sourceFileName}</strong>
                 {doc.sourceMimeType && (

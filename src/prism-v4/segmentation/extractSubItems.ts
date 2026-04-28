@@ -1,5 +1,46 @@
 import { segmentText } from "./segmentLines";
+import { generateItemId } from "./generateItemId";
 import { getParentStem, parentLooksLikeMCStem } from "./subItemHeuristics";
+
+type ExtractedSubItem = {
+  itemNumber: number;
+  text: string;
+  letter: string;
+  partIndex: number;
+  groupId: string;
+  logicalLabel: string;
+  itemId: string;
+  subSubParts: { label: string; text: string }[];
+};
+
+function partIndexFromLetter(letter: string): number {
+  const normalized = letter.trim().toLowerCase();
+  if (!/^[a-z]$/.test(normalized)) {
+    return 0;
+  }
+  return normalized.charCodeAt(0) - 96;
+}
+
+function extractStableSubItems(text: string): ExtractedSubItem[] {
+  const items = segmentText(text);
+  if (items.length === 0) return [];
+
+  const parent = items[0]!;
+  const groupId = parent.id.trim() || "unlabeled";
+
+  return parent.subItems
+    .filter((si) => si.text.trim().length > 0 || si.subSubParts.some((ssp) => ssp.text.trim().length > 0))
+    .map((si, index) => ({
+      itemNumber: index + 1,
+      text: buildSubItemFullText(si),
+      letter: si.letter,
+      partIndex: partIndexFromLetter(si.letter),
+      groupId,
+      logicalLabel: `${groupId}${si.letter}`,
+      itemId: generateItemId(groupId, si.letter),
+      subSubParts: si.subSubParts,
+    }));
+}
 
 /**
  * Extract flat sub-items from a multi-line item text.
@@ -10,7 +51,7 @@ import { getParentStem, parentLooksLikeMCStem } from "./subItemHeuristics";
  * sub-items from the first segmented item; otherwise we treat the whole
  * block as a single un-numbered parent and return its sub-items.
  */
-export function extractSubItems(text: string): Array<{ itemNumber: number; text: string }> {
+export function extractSubItems(text: string): Array<{ itemNumber: number; text: string; logicalLabel: string; itemId: string }> {
   // Guard: if parent looks like an MC stem, delegate to legacy path to
   // avoid treating answer choices as sub-items.
   const parentStem = getParentStem(text);
@@ -18,25 +59,12 @@ export function extractSubItems(text: string): Array<{ itemNumber: number; text:
     return [];
   }
 
-  const items = segmentText(text);
-
-  let subItems: { letter: string; text: string; subSubParts: { label: string; text: string }[] }[];
-
-  if (items.length > 0) {
-    // Use sub-items from the first parsed parent block.
-    subItems = items[0].subItems;
-  } else {
-    return [];
-  }
-
-  return subItems
-    .filter((si) => si.text.trim().length > 0 || si.subSubParts.some((ssp) => ssp.text.trim().length > 0))
-    .map((si, index) => ({
-      itemNumber: index + 1,
-      // Include sub-subpart text appended to the sub-item text so that
-      // downstream metric computation sees the full item body.
-      text: buildSubItemFullText(si),
-    }));
+  return extractStableSubItems(text).map((sub) => ({
+    itemNumber: sub.itemNumber,
+    text: sub.text,
+    logicalLabel: sub.logicalLabel,
+    itemId: sub.itemId,
+  }));
 }
 
 function buildSubItemFullText(si: { text: string; subSubParts: { label: string; text: string }[] }): string {
@@ -55,6 +83,10 @@ export function extractSubItemsWithNesting(text: string): Array<{
   itemNumber: number;
   text: string;
   letter: string;
+  partIndex: number;
+  groupId: string;
+  logicalLabel: string;
+  itemId: string;
   subSubParts: Array<{ label: string; text: string }>;
 }> {
   const parentStem = getParentStem(text);
@@ -62,15 +94,14 @@ export function extractSubItemsWithNesting(text: string): Array<{
     return [];
   }
 
-  const items = segmentText(text);
-  if (items.length === 0) return [];
-
-  return items[0].subItems
-    .filter((si) => si.text.trim().length > 0 || si.subSubParts.some((ssp) => ssp.text.trim().length > 0))
-    .map((si, index) => ({
-      itemNumber: index + 1,
-      text: si.text,
-      letter: si.letter,
-      subSubParts: si.subSubParts,
-    }));
+  return extractStableSubItems(text).map((sub) => ({
+    itemNumber: sub.itemNumber,
+    text: sub.text,
+    letter: sub.letter,
+    partIndex: sub.partIndex,
+    groupId: sub.groupId,
+    logicalLabel: sub.logicalLabel,
+    itemId: sub.itemId,
+    subSubParts: sub.subSubParts,
+  }));
 }

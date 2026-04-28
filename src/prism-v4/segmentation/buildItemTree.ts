@@ -140,19 +140,35 @@ function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<Simul
   };
 }
 
-function buildSubItem(parent: SimulationItem, itemNumber: number, text: string): SimulationSubItem {
-  const subMetrics = computeSubItemMetrics(parent, text);
+function buildSubItem(
+  parent: SimulationItem,
+  args: {
+    itemNumber: number;
+    text: string;
+    logicalLabel: string;
+    groupId: string;
+    partIndex: number;
+    itemId: string;
+  }
+): SimulationSubItem {
+  const subMetrics = computeSubItemMetrics(parent, args.text);
+  const logicalNumber = parent.logicalNumber ?? parent.itemNumber;
 
   return {
     ...parent,
     ...subMetrics,
-    itemNumber,
-    text,
+    itemNumber: parent.itemNumber,
+    logicalNumber,
+    logicalLabel: args.logicalLabel,
+    text: args.text,
     isMultiPartItem: false,
     isMultipleChoice: false,
     subQuestionCount: 0,
     distractorCount: 0,
     branchingFactor: 0,
+    itemId: args.itemId,
+    groupId: args.groupId,
+    partIndex: args.partIndex,
   };
 }
 
@@ -164,12 +180,14 @@ export function buildItemTree(item: SimulationItem): SimulationItemTree {
   if (detectMultiPart(text)) {
     const subItemsRaw = extractSubItemsWithNesting(text);
     const subItems: SimulationSubItem[] = subItemsRaw.map((sub) => {
-      // For metric computation, use the full body text (sub-item + sub-subpart prose).
-      const fullText = sub.text
-        + (sub.subSubParts.length > 0
-          ? " " + sub.subSubParts.map((ssp) => `${ssp.label} ${ssp.text}`).join(" ")
-          : "");
-      const built = buildSubItem(item, sub.itemNumber, fullText.trim());
+      const built = buildSubItem(item, {
+        itemNumber: sub.itemNumber,
+        text: sub.text.trim(),
+        logicalLabel: sub.logicalLabel,
+        groupId: sub.groupId,
+        partIndex: sub.partIndex,
+        itemId: sub.itemId,
+      });
       // Attach structured nesting data as metadata without breaking SimulationItem shape.
       built.letter = sub.letter;
       built.subSubParts = sub.subSubParts;

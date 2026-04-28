@@ -72,6 +72,7 @@ describe("buildItemTree multiparts", () => {
     subItems.forEach((sub) => {
       expect(sub.text.trim().length).toBeGreaterThan(0);
     });
+    expect(subItems.map((sub) => sub.logicalLabel)).toEqual(["3a", "3f"]);
   });
 
   it("handles continuation lines appended to sub-item text", () => {
@@ -157,5 +158,22 @@ describe("buildItemTree multiparts", () => {
     const distinctLinguistic = new Set(subItems.map((sub) => sub.linguisticLoad.toFixed(4)));
     expect(distinctConfusion.size).toBeGreaterThan(1);
     expect(distinctLinguistic.size).toBeGreaterThan(1);
+  });
+
+  it("preserves stable multipart ids and logical labels instead of reindexing letters", () => {
+    const parentText = [
+      "1. Complete all parts.",
+      "a) Identify the trend.",
+      "b) Explain the trend.",
+      "e)",
+      "f) Justify your conclusion.",
+    ].join("\n");
+
+    const tree = buildItemTree(makeParentItem(parentText));
+    const subItems = tree.subItems ?? [];
+
+    expect(subItems.map((sub) => sub.itemId)).toEqual(["item-1a", "item-1b", "item-1f"]);
+    expect(subItems.map((sub) => sub.logicalLabel)).toEqual(["1a", "1b", "1f"]);
+    expect(subItems.map((sub) => sub.partIndex)).toEqual([1, 2, 6]);
   });
 });

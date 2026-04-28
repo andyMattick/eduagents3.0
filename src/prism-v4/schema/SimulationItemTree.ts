@@ -6,6 +6,12 @@ export interface SubSubPartEntry {
 }
 
 export interface SimulationSubItem extends SimulationItem {
+  /** Stable identifier for a sub-item, e.g. item-1a. */
+  itemId?: string;
+  /** Multipart group identifier, usually the parent item number. */
+  groupId?: string;
+  /** Stable per-group part index where a=1, b=2, etc. */
+  partIndex?: number;
   /**
    * Single letter identifier for this sub-item ("a", "b", ..., "f").
    * Present when produced by the hierarchical line walker.
