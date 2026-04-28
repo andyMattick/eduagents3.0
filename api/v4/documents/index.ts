@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/documents/index.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,22 +47,16 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// api/v4/documents/index.ts
 var runtime = "nodejs";
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
-
   if (req.method !== "GET") {
     return res.status(405).json({ error: { code: "method_not_allowed", message: "Method not allowed" } });
   }
-
   const publicOnly = req.query?.public === "true";
-
   try {
     if (publicOnly) {
-      // Metadata-only projection for public documents — never exposes canonical payloads.
-      const rows = await supabaseRest("prism_v4_documents", {
+      const rows2 = await supabaseRest("prism_v4_documents", {
         method: "GET",
         select: "document_id,source_file_name,source_mime_type,created_at,is_public,owner_id",
         filters: {
@@ -71,17 +65,15 @@ async function handler(req, res) {
           limit: "100"
         }
       });
-      const documents = (rows ?? []).map((row) => ({
+      const documents2 = (rows2 ?? []).map((row) => ({
         documentId: row.document_id,
         sourceFileName: row.source_file_name ?? row.document_id,
         sourceMimeType: row.source_mime_type ?? null,
         isPublic: row.is_public ?? false,
         createdAt: row.created_at
       }));
-      return res.status(200).json({ documents });
+      return res.status(200).json({ documents: documents2 });
     }
-
-    // Default: return all documents (owner filtering enforced via RLS)
     const rows = await supabaseRest("prism_v4_documents", {
       method: "GET",
       select: "document_id,source_file_name,created_at",

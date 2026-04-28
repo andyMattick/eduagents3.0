@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/auth.ts
+// api/documents/health.ts
 async function authenticateUser(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) {
     return { error: "Missing or malformed Authorization header.", status: 401 };
@@ -28,8 +28,6 @@ async function authenticateUser(authHeader) {
     return { error: "Auth verification failed.", status: 500 };
   }
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -38,8 +36,6 @@ function supabaseAdmin() {
   }
   return { url, key };
 }
-
-// api/documents/health.ts
 var runtime = "nodejs";
 var config = { maxDuration: 60 };
 function parseErrorText(errorText) {

@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/usage/today.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +47,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// api/v4/usage/today.ts
 var runtime = "nodejs";
 var DAILY_TOKEN_LIMIT = 25e3;
 function getClientIp(req) {

@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/simulations/[simulationId].ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +47,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/simulation/phase-c/store.ts
 var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
 var simulationResultsMemory = /* @__PURE__ */ new Map();
@@ -176,8 +174,6 @@ async function listSimulationResults(simulationId) {
   }
   return [...simulationResultsMemory.get(simulationId) ?? []];
 }
-
-// api/v4/simulations/[simulationId].ts
 var runtime = "nodejs";
 function resolveQuery(req, key) {
   const value = req.query[key];
@@ -514,7 +510,7 @@ async function handler(req, res) {
   if (!simulationId || typeof simulationId !== "string") {
     return res.status(400).json({ error: { code: "invalid_request", message: "simulationId is required" } });
   }
-  const VALID_VIEWS = new Set(["class", "profile", "student", "phase-b"]);
+  const VALID_VIEWS = /* @__PURE__ */ new Set(["class", "profile", "student", "phase-b"]);
   const view = resolveQuery(req, "view") ?? "class";
   if (!VALID_VIEWS.has(view)) {
     return res.status(400).json({ error: { code: "invalid_request", message: "view must be one of class, profile, student, or phase-b" } });

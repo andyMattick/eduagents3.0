@@ -1,11 +1,5 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
   get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
 }) : x)(function(x) {
@@ -13,10 +7,32 @@ var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require
     return require.apply(this, arguments);
   throw new Error('Dynamic require of "' + x + '" is not supported');
 });
+
+// api/v4/documents/upload.ts
+var __require2 = /* @__PURE__ */ ((x) => typeof __require !== "undefined" ? __require : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof __require !== "undefined" ? __require : a)[b]
+}) : x)(function(x) {
+  if (typeof __require !== "undefined")
+    return __require.apply(this, arguments);
+  throw new Error('Dynamic require of "' + x + '" is not supported');
+});
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __require22 = /* @__PURE__ */ ((x) => typeof __require2 !== "undefined" ? __require2 : typeof Proxy !== "undefined" ? new Proxy(x, {
+  get: (a, b) => (typeof __require2 !== "undefined" ? __require2 : a)[b]
+}) : x)(function(x) {
+  if (typeof __require2 !== "undefined")
+    return __require2.apply(this, arguments);
+  throw new Error('Dynamic require of "' + x + '" is not supported');
+});
 var __esm = (fn, res) => function __init() {
   return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
 };
-var __commonJS = (cb, mod) => function __require2() {
+var __commonJS = (cb, mod) => function __require222() {
   return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
 };
 var __export = (target, all) => {
@@ -32,8 +48,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// lib/supabase.ts
 var supabase_exports = {};
 __export(supabase_exports, {
   hasSupabaseServiceRoleCredentials: () => hasSupabaseServiceRoleCredentials,
@@ -98,8 +112,6 @@ var init_supabase = __esm({
     "use strict";
   }
 });
-
-// node_modules/process-nextick-args/index.js
 var require_process_nextick_args = __commonJS({
   "node_modules/process-nextick-args/index.js"(exports, module) {
     "use strict";
@@ -143,8 +155,6 @@ var require_process_nextick_args = __commonJS({
     }
   }
 });
-
-// node_modules/isarray/index.js
 var require_isarray = __commonJS({
   "node_modules/isarray/index.js"(exports, module) {
     var toString = {}.toString;
@@ -153,18 +163,14 @@ var require_isarray = __commonJS({
     };
   }
 });
-
-// node_modules/readable-stream/lib/internal/streams/stream.js
 var require_stream = __commonJS({
   "node_modules/readable-stream/lib/internal/streams/stream.js"(exports, module) {
-    module.exports = __require("stream");
+    module.exports = __require22("stream");
   }
 });
-
-// node_modules/readable-stream/node_modules/safe-buffer/index.js
 var require_safe_buffer = __commonJS({
   "node_modules/readable-stream/node_modules/safe-buffer/index.js"(exports, module) {
-    var buffer = __require("buffer");
+    var buffer = __require22("buffer");
     var Buffer2 = buffer.Buffer;
     function copyProps(src, dst) {
       for (var key in src) {
@@ -217,8 +223,6 @@ var require_safe_buffer = __commonJS({
     };
   }
 });
-
-// node_modules/core-util-is/lib/util.js
 var require_util = __commonJS({
   "node_modules/core-util-is/lib/util.js"(exports) {
     function isArray(arg) {
@@ -280,14 +284,12 @@ var require_util = __commonJS({
       return arg === null || typeof arg === "boolean" || typeof arg === "number" || typeof arg === "string" || typeof arg === "symbol" || typeof arg === "undefined";
     }
     exports.isPrimitive = isPrimitive;
-    exports.isBuffer = __require("buffer").Buffer.isBuffer;
+    exports.isBuffer = __require22("buffer").Buffer.isBuffer;
     function objectToString(o) {
       return Object.prototype.toString.call(o);
     }
   }
 });
-
-// node_modules/inherits/inherits_browser.js
 var require_inherits_browser = __commonJS({
   "node_modules/inherits/inherits_browser.js"(exports, module) {
     if (typeof Object.create === "function") {
@@ -318,12 +320,10 @@ var require_inherits_browser = __commonJS({
     }
   }
 });
-
-// node_modules/inherits/inherits.js
 var require_inherits = __commonJS({
   "node_modules/inherits/inherits.js"(exports, module) {
     try {
-      util = __require("util");
+      util = __require22("util");
       if (typeof util.inherits !== "function")
         throw "";
       module.exports = util.inherits;
@@ -333,8 +333,6 @@ var require_inherits = __commonJS({
     var util;
   }
 });
-
-// node_modules/readable-stream/lib/internal/streams/BufferList.js
 var require_BufferList = __commonJS({
   "node_modules/readable-stream/lib/internal/streams/BufferList.js"(exports, module) {
     "use strict";
@@ -344,7 +342,7 @@ var require_BufferList = __commonJS({
       }
     }
     var Buffer2 = require_safe_buffer().Buffer;
-    var util = __require("util");
+    var util = __require22("util");
     function copyBuffer(src, target, offset) {
       src.copy(target, offset);
     }
@@ -419,8 +417,6 @@ var require_BufferList = __commonJS({
     }
   }
 });
-
-// node_modules/readable-stream/lib/internal/streams/destroy.js
 var require_destroy = __commonJS({
   "node_modules/readable-stream/lib/internal/streams/destroy.js"(exports, module) {
     "use strict";
@@ -488,15 +484,11 @@ var require_destroy = __commonJS({
     };
   }
 });
-
-// node_modules/util-deprecate/node.js
 var require_node = __commonJS({
   "node_modules/util-deprecate/node.js"(exports, module) {
-    module.exports = __require("util").deprecate;
+    module.exports = __require22("util").deprecate;
   }
 });
-
-// node_modules/readable-stream/lib/_stream_writable.js
 var require_stream_writable = __commonJS({
   "node_modules/readable-stream/lib/_stream_writable.js"(exports, module) {
     "use strict";
@@ -960,8 +952,6 @@ var require_stream_writable = __commonJS({
     };
   }
 });
-
-// node_modules/readable-stream/lib/_stream_duplex.js
 var require_stream_duplex = __commonJS({
   "node_modules/readable-stream/lib/_stream_duplex.js"(exports, module) {
     "use strict";
@@ -1040,11 +1030,9 @@ var require_stream_duplex = __commonJS({
     };
   }
 });
-
-// node_modules/string_decoder/node_modules/safe-buffer/index.js
 var require_safe_buffer2 = __commonJS({
   "node_modules/string_decoder/node_modules/safe-buffer/index.js"(exports, module) {
-    var buffer = __require("buffer");
+    var buffer = __require22("buffer");
     var Buffer2 = buffer.Buffer;
     function copyProps(src, dst) {
       for (var key in src) {
@@ -1097,8 +1085,6 @@ var require_safe_buffer2 = __commonJS({
     };
   }
 });
-
-// node_modules/string_decoder/lib/string_decoder.js
 var require_string_decoder = __commonJS({
   "node_modules/string_decoder/lib/string_decoder.js"(exports) {
     "use strict";
@@ -1357,8 +1343,6 @@ var require_string_decoder = __commonJS({
     }
   }
 });
-
-// node_modules/readable-stream/lib/_stream_readable.js
 var require_stream_readable = __commonJS({
   "node_modules/readable-stream/lib/_stream_readable.js"(exports, module) {
     "use strict";
@@ -1367,7 +1351,7 @@ var require_stream_readable = __commonJS({
     var isArray = require_isarray();
     var Duplex;
     Readable.ReadableState = ReadableState;
-    var EE = __require("events").EventEmitter;
+    var EE = __require22("events").EventEmitter;
     var EElistenerCount = function(emitter, type) {
       return emitter.listeners(type).length;
     };
@@ -1383,7 +1367,7 @@ var require_stream_readable = __commonJS({
     }
     var util = Object.create(require_util());
     util.inherits = require_inherits();
-    var debugUtil = __require("util");
+    var debugUtil = __require22("util");
     var debug = void 0;
     if (debugUtil && debugUtil.debuglog) {
       debug = debugUtil.debuglog("stream");
@@ -2112,8 +2096,6 @@ var require_stream_readable = __commonJS({
     }
   }
 });
-
-// node_modules/readable-stream/lib/_stream_transform.js
 var require_stream_transform = __commonJS({
   "node_modules/readable-stream/lib/_stream_transform.js"(exports, module) {
     "use strict";
@@ -2219,8 +2201,6 @@ var require_stream_transform = __commonJS({
     }
   }
 });
-
-// node_modules/readable-stream/lib/_stream_passthrough.js
 var require_stream_passthrough = __commonJS({
   "node_modules/readable-stream/lib/_stream_passthrough.js"(exports, module) {
     "use strict";
@@ -2239,11 +2219,9 @@ var require_stream_passthrough = __commonJS({
     };
   }
 });
-
-// node_modules/readable-stream/readable.js
 var require_readable = __commonJS({
   "node_modules/readable-stream/readable.js"(exports, module) {
-    var Stream = __require("stream");
+    var Stream = __require22("stream");
     if (process.env.READABLE_STREAM === "disable" && Stream) {
       module.exports = Stream;
       exports = module.exports = Stream.Readable;
@@ -2264,8 +2242,6 @@ var require_readable = __commonJS({
     }
   }
 });
-
-// node_modules/jszip/lib/support.js
 var require_support = __commonJS({
   "node_modules/jszip/lib/support.js"(exports) {
     "use strict";
@@ -2304,8 +2280,6 @@ var require_support = __commonJS({
     }
   }
 });
-
-// node_modules/jszip/lib/base64.js
 var require_base64 = __commonJS({
   "node_modules/jszip/lib/base64.js"(exports) {
     "use strict";
@@ -2381,8 +2355,6 @@ var require_base64 = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/nodejsUtils.js
 var require_nodejsUtils = __commonJS({
   "node_modules/jszip/lib/nodejsUtils.js"(exports, module) {
     "use strict";
@@ -2416,8 +2388,6 @@ var require_nodejsUtils = __commonJS({
     };
   }
 });
-
-// node_modules/immediate/lib/index.js
 var require_lib = __commonJS({
   "node_modules/immediate/lib/index.js"(exports, module) {
     "use strict";
@@ -2490,8 +2460,6 @@ var require_lib = __commonJS({
     }
   }
 });
-
-// node_modules/lie/lib/index.js
 var require_lib2 = __commonJS({
   "node_modules/lie/lib/index.js"(exports, module) {
     "use strict";
@@ -2760,8 +2728,6 @@ var require_lib2 = __commonJS({
     }
   }
 });
-
-// node_modules/jszip/lib/external.js
 var require_external = __commonJS({
   "node_modules/jszip/lib/external.js"(exports, module) {
     "use strict";
@@ -2776,8 +2742,6 @@ var require_external = __commonJS({
     };
   }
 });
-
-// node_modules/setimmediate/setImmediate.js
 var require_setImmediate = __commonJS({
   "node_modules/setimmediate/setImmediate.js"(exports) {
     (function(global2, undefined2) {
@@ -2924,8 +2888,6 @@ var require_setImmediate = __commonJS({
     })(typeof self === "undefined" ? typeof global === "undefined" ? exports : global : self);
   }
 });
-
-// node_modules/jszip/lib/utils.js
 var require_utils = __commonJS({
   "node_modules/jszip/lib/utils.js"(exports) {
     "use strict";
@@ -3225,8 +3187,6 @@ var require_utils = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/stream/GenericWorker.js
 var require_GenericWorker = __commonJS({
   "node_modules/jszip/lib/stream/GenericWorker.js"(exports, module) {
     "use strict";
@@ -3380,8 +3340,6 @@ var require_GenericWorker = __commonJS({
     module.exports = GenericWorker;
   }
 });
-
-// node_modules/jszip/lib/utf8.js
 var require_utf8 = __commonJS({
   "node_modules/jszip/lib/utf8.js"(exports) {
     "use strict";
@@ -3570,8 +3528,6 @@ var require_utf8 = __commonJS({
     exports.Utf8EncodeWorker = Utf8EncodeWorker;
   }
 });
-
-// node_modules/jszip/lib/stream/ConvertWorker.js
 var require_ConvertWorker = __commonJS({
   "node_modules/jszip/lib/stream/ConvertWorker.js"(exports, module) {
     "use strict";
@@ -3591,8 +3547,6 @@ var require_ConvertWorker = __commonJS({
     module.exports = ConvertWorker;
   }
 });
-
-// node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js
 var require_NodejsStreamOutputAdapter = __commonJS({
   "node_modules/jszip/lib/nodejs/NodejsStreamOutputAdapter.js"(exports, module) {
     "use strict";
@@ -3622,8 +3576,6 @@ var require_NodejsStreamOutputAdapter = __commonJS({
     module.exports = NodejsStreamOutputAdapter;
   }
 });
-
-// node_modules/jszip/lib/stream/StreamHelper.js
 var require_StreamHelper = __commonJS({
   "node_modules/jszip/lib/stream/StreamHelper.js"(exports, module) {
     "use strict";
@@ -3757,8 +3709,6 @@ var require_StreamHelper = __commonJS({
     module.exports = StreamHelper;
   }
 });
-
-// node_modules/jszip/lib/defaults.js
 var require_defaults = __commonJS({
   "node_modules/jszip/lib/defaults.js"(exports) {
     "use strict";
@@ -3774,8 +3724,6 @@ var require_defaults = __commonJS({
     exports.dosPermissions = null;
   }
 });
-
-// node_modules/jszip/lib/stream/DataWorker.js
 var require_DataWorker = __commonJS({
   "node_modules/jszip/lib/stream/DataWorker.js"(exports, module) {
     "use strict";
@@ -3862,8 +3810,6 @@ var require_DataWorker = __commonJS({
     module.exports = DataWorker;
   }
 });
-
-// node_modules/jszip/lib/crc32.js
 var require_crc32 = __commonJS({
   "node_modules/jszip/lib/crc32.js"(exports, module) {
     "use strict";
@@ -3909,8 +3855,6 @@ var require_crc32 = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/stream/Crc32Probe.js
 var require_Crc32Probe = __commonJS({
   "node_modules/jszip/lib/stream/Crc32Probe.js"(exports, module) {
     "use strict";
@@ -3929,8 +3873,6 @@ var require_Crc32Probe = __commonJS({
     module.exports = Crc32Probe;
   }
 });
-
-// node_modules/jszip/lib/stream/DataLengthProbe.js
 var require_DataLengthProbe = __commonJS({
   "node_modules/jszip/lib/stream/DataLengthProbe.js"(exports, module) {
     "use strict";
@@ -3952,8 +3894,6 @@ var require_DataLengthProbe = __commonJS({
     module.exports = DataLengthProbe;
   }
 });
-
-// node_modules/jszip/lib/compressedObject.js
 var require_compressedObject = __commonJS({
   "node_modules/jszip/lib/compressedObject.js"(exports, module) {
     "use strict";
@@ -3989,8 +3929,6 @@ var require_compressedObject = __commonJS({
     module.exports = CompressedObject;
   }
 });
-
-// node_modules/jszip/lib/zipObject.js
 var require_zipObject = __commonJS({
   "node_modules/jszip/lib/zipObject.js"(exports, module) {
     "use strict";
@@ -4077,8 +4015,6 @@ var require_zipObject = __commonJS({
     module.exports = ZipObject;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/utils/common.js
 var require_common = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/utils/common.js"(exports) {
     "use strict";
@@ -4166,8 +4102,6 @@ var require_common = __commonJS({
     exports.setTyped(TYPED_OK);
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/trees.js
 var require_trees = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/trees.js"(exports) {
     "use strict";
@@ -4769,8 +4703,6 @@ var require_trees = __commonJS({
     exports._tr_align = _tr_align;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/adler32.js
 var require_adler32 = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/adler32.js"(exports, module) {
     "use strict";
@@ -4791,8 +4723,6 @@ var require_adler32 = __commonJS({
     module.exports = adler32;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/crc32.js
 var require_crc322 = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/crc32.js"(exports, module) {
     "use strict";
@@ -4819,8 +4749,6 @@ var require_crc322 = __commonJS({
     module.exports = crc32;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/messages.js
 var require_messages = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/messages.js"(exports, module) {
     "use strict";
@@ -4837,8 +4765,6 @@ var require_messages = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/deflate.js
 var require_deflate = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/deflate.js"(exports) {
     "use strict";
@@ -5872,8 +5798,6 @@ var require_deflate = __commonJS({
     exports.deflateInfo = "pako deflate (from Nodeca project)";
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/utils/strings.js
 var require_strings = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/utils/strings.js"(exports) {
     "use strict";
@@ -6014,8 +5938,6 @@ var require_strings = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/zstream.js
 var require_zstream = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/zstream.js"(exports, module) {
     "use strict";
@@ -6036,8 +5958,6 @@ var require_zstream = __commonJS({
     module.exports = ZStream;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/deflate.js
 var require_deflate2 = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/deflate.js"(exports) {
     "use strict";
@@ -6191,8 +6111,6 @@ var require_deflate2 = __commonJS({
     exports.gzip = gzip;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/inffast.js
 var require_inffast = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/inffast.js"(exports, module) {
     "use strict";
@@ -6420,8 +6338,6 @@ var require_inffast = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/inftrees.js
 var require_inftrees = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/inftrees.js"(exports, module) {
     "use strict";
@@ -6732,8 +6648,6 @@ var require_inftrees = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/inflate.js
 var require_inflate = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/inflate.js"(exports) {
     "use strict";
@@ -7933,8 +7847,6 @@ var require_inflate = __commonJS({
     exports.inflateInfo = "pako inflate (from Nodeca project)";
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/constants.js
 var require_constants = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/constants.js"(exports, module) {
     "use strict";
@@ -7969,8 +7881,6 @@ var require_constants = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/zlib/gzheader.js
 var require_gzheader = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/zlib/gzheader.js"(exports, module) {
     "use strict";
@@ -7989,8 +7899,6 @@ var require_gzheader = __commonJS({
     module.exports = GZheader;
   }
 });
-
-// node_modules/jszip/node_modules/pako/lib/inflate.js
 var require_inflate2 = __commonJS({
   "node_modules/jszip/node_modules/pako/lib/inflate.js"(exports) {
     "use strict";
@@ -8161,8 +8069,6 @@ var require_inflate2 = __commonJS({
     exports.ungzip = inflate;
   }
 });
-
-// node_modules/jszip/node_modules/pako/index.js
 var require_pako = __commonJS({
   "node_modules/jszip/node_modules/pako/index.js"(exports, module) {
     "use strict";
@@ -8175,8 +8081,6 @@ var require_pako = __commonJS({
     module.exports = pako;
   }
 });
-
-// node_modules/jszip/lib/flate.js
 var require_flate = __commonJS({
   "node_modules/jszip/lib/flate.js"(exports) {
     "use strict";
@@ -8233,8 +8137,6 @@ var require_flate = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/compressions.js
 var require_compressions = __commonJS({
   "node_modules/jszip/lib/compressions.js"(exports) {
     "use strict";
@@ -8251,8 +8153,6 @@ var require_compressions = __commonJS({
     exports.DEFLATE = require_flate();
   }
 });
-
-// node_modules/jszip/lib/signature.js
 var require_signature = __commonJS({
   "node_modules/jszip/lib/signature.js"(exports) {
     "use strict";
@@ -8264,8 +8164,6 @@ var require_signature = __commonJS({
     exports.DATA_DESCRIPTOR = "PK\x07\b";
   }
 });
-
-// node_modules/jszip/lib/generate/ZipFileWorker.js
 var require_ZipFileWorker = __commonJS({
   "node_modules/jszip/lib/generate/ZipFileWorker.js"(exports, module) {
     "use strict";
@@ -8517,8 +8415,6 @@ var require_ZipFileWorker = __commonJS({
     module.exports = ZipFileWorker;
   }
 });
-
-// node_modules/jszip/lib/generate/index.js
 var require_generate = __commonJS({
   "node_modules/jszip/lib/generate/index.js"(exports) {
     "use strict";
@@ -8558,8 +8454,6 @@ var require_generate = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js
 var require_NodejsStreamInputAdapter = __commonJS({
   "node_modules/jszip/lib/nodejs/NodejsStreamInputAdapter.js"(exports, module) {
     "use strict";
@@ -8617,8 +8511,6 @@ var require_NodejsStreamInputAdapter = __commonJS({
     module.exports = NodejsStreamInputAdapter;
   }
 });
-
-// node_modules/jszip/lib/object.js
 var require_object = __commonJS({
   "node_modules/jszip/lib/object.js"(exports, module) {
     "use strict";
@@ -8837,8 +8729,6 @@ var require_object = __commonJS({
     module.exports = out;
   }
 });
-
-// node_modules/jszip/lib/reader/DataReader.js
 var require_DataReader = __commonJS({
   "node_modules/jszip/lib/reader/DataReader.js"(exports, module) {
     "use strict";
@@ -8893,8 +8783,6 @@ var require_DataReader = __commonJS({
     module.exports = DataReader;
   }
 });
-
-// node_modules/jszip/lib/reader/ArrayReader.js
 var require_ArrayReader = __commonJS({
   "node_modules/jszip/lib/reader/ArrayReader.js"(exports, module) {
     "use strict";
@@ -8935,8 +8823,6 @@ var require_ArrayReader = __commonJS({
     module.exports = ArrayReader;
   }
 });
-
-// node_modules/jszip/lib/reader/StringReader.js
 var require_StringReader = __commonJS({
   "node_modules/jszip/lib/reader/StringReader.js"(exports, module) {
     "use strict";
@@ -8965,8 +8851,6 @@ var require_StringReader = __commonJS({
     module.exports = StringReader;
   }
 });
-
-// node_modules/jszip/lib/reader/Uint8ArrayReader.js
 var require_Uint8ArrayReader = __commonJS({
   "node_modules/jszip/lib/reader/Uint8ArrayReader.js"(exports, module) {
     "use strict";
@@ -8988,8 +8872,6 @@ var require_Uint8ArrayReader = __commonJS({
     module.exports = Uint8ArrayReader;
   }
 });
-
-// node_modules/jszip/lib/reader/NodeBufferReader.js
 var require_NodeBufferReader = __commonJS({
   "node_modules/jszip/lib/reader/NodeBufferReader.js"(exports, module) {
     "use strict";
@@ -9008,8 +8890,6 @@ var require_NodeBufferReader = __commonJS({
     module.exports = NodeBufferReader;
   }
 });
-
-// node_modules/jszip/lib/reader/readerFor.js
 var require_readerFor = __commonJS({
   "node_modules/jszip/lib/reader/readerFor.js"(exports, module) {
     "use strict";
@@ -9035,8 +8915,6 @@ var require_readerFor = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/zipEntry.js
 var require_zipEntry = __commonJS({
   "node_modules/jszip/lib/zipEntry.js"(exports, module) {
     "use strict";
@@ -9215,8 +9093,6 @@ var require_zipEntry = __commonJS({
     module.exports = ZipEntry;
   }
 });
-
-// node_modules/jszip/lib/zipEntries.js
 var require_zipEntries = __commonJS({
   "node_modules/jszip/lib/zipEntries.js"(exports, module) {
     "use strict";
@@ -9377,8 +9253,6 @@ var require_zipEntries = __commonJS({
     module.exports = ZipEntries;
   }
 });
-
-// node_modules/jszip/lib/load.js
 var require_load = __commonJS({
   "node_modules/jszip/lib/load.js"(exports, module) {
     "use strict";
@@ -9456,8 +9330,6 @@ var require_load = __commonJS({
     };
   }
 });
-
-// node_modules/jszip/lib/index.js
 var require_lib3 = __commonJS({
   "node_modules/jszip/lib/index.js"(exports, module) {
     "use strict";
@@ -9493,8 +9365,6 @@ var require_lib3 = __commonJS({
     module.exports = JSZip2;
   }
 });
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -9533,8 +9403,6 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// lib/envGuard.ts
 function hasValue(source, key) {
   const value = source[key];
   return Boolean(value && value.trim().length > 0);
@@ -9566,16 +9434,10 @@ function assertBackendStartupEnv(requiredKeys, scope) {
   }
   assertRequiredEnvKeys(requiredKeys, process.env, scope);
 }
-
-// api/v4/documents/upload.ts
 init_supabase();
-
-// src/prism-v4/ingestion/normalize/textCleaner.ts
 function cleanText(raw) {
   return raw.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
-
-// src/prism-v4/ingestion/azure/azureNormalizer.ts
 function normalizeAzureLayout(rawAzure) {
   const azure = rawAzure ?? {};
   const pages = (azure.pages ?? []).map((page) => ({
@@ -9606,8 +9468,6 @@ function normalizeAzureLayout(rawAzure) {
     readingOrder
   };
 }
-
-// src/prism-v4/ingestion/normalize/structureMapper.ts
 function mapAzureToCanonical(normalized, fileName) {
   return {
     fileName,
@@ -9634,8 +9494,6 @@ function mapAzureToCanonical(normalized, fileName) {
     readingOrder: [...normalized.readingOrder]
   };
 }
-
-// lib/azure.ts
 function normalizeEndpoint(raw) {
   let s = raw.trim().replace(/\.{2,}/g, "").replace(/^https:\/(?!\/)/, "https://").replace(/\/+$/, "");
   if (!/^https?:\/\//.test(s)) {
@@ -9735,8 +9593,6 @@ async function analyzeAzureDocument(fileBuffer, mimeType = "application/pdf") {
   }
   throw new Error("Azure analysis timed out after polling");
 }
-
-// src/prism-v4/ingestion/azure/azureClient.ts
 var MAX_ATTEMPTS = 3;
 var INITIAL_BACKOFF_MS = 500;
 async function delay(ms) {
@@ -9758,8 +9614,6 @@ async function callAzureLayoutModel(fileBuffer, mimeType = "application/pdf") {
   const message = lastError instanceof Error ? lastError.message : "Unknown Azure error";
   throw new Error(`Azure layout extraction failed after ${MAX_ATTEMPTS} attempts: ${message}`);
 }
-
-// src/prism-v4/ingestion/azure/azureExtractor.ts
 var MAX_RETRIES = 3;
 var BASE_DELAY_MS = 500;
 function delay2(ms) {
@@ -9824,8 +9678,6 @@ async function runAzureExtraction(fileBuffer, mimeType = "application/pdf") {
     }
   }
 }
-
-// src/prism-v4/documents/contentHash.ts
 function sortObjectKeys(value) {
   if (Array.isArray(value)) {
     return value.map((entry) => sortObjectKeys(entry));
@@ -9902,8 +9754,6 @@ function withPreferredContentHash(doc) {
     contentHash: getPreferredContentHash(doc) ?? void 0
   };
 }
-
-// src/prism-v4/semantic/utils/textUtils.ts
 var STOP_WORDS = /* @__PURE__ */ new Set([
   "a",
   "an",
@@ -9955,8 +9805,6 @@ function countSyllables(word) {
   const matches = withoutTrailingE.match(/[aeiouy]+/g);
   return Math.max(1, matches ? matches.length : 1);
 }
-
-// src/prism-v4/semantic/utils/conceptUtils.ts
 var DATE_OR_TIME_PATTERN = /\b(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/gi;
 var LEADING_TRAILING_PUNCTUATION = /^[^a-z0-9]+|[^a-z0-9]+$/gi;
 var SCORE_WEIGHTS = {
@@ -10097,8 +9945,6 @@ function scoreConceptMetadata(input) {
     crossDocumentRecurrence
   };
 }
-
-// src/prism-v4/documents/analysis/buildInsights.ts
 function buildAnalyzedDocumentInsights(args) {
   const conceptFrequencies = {};
   const conceptStats = /* @__PURE__ */ new Map();
@@ -10266,8 +10112,6 @@ function buildAnalyzedDocumentInsights(args) {
     explanationCount: args.fragments.filter((fragment) => fragment.instructionalRole === "explanation").length
   };
 }
-
-// src/prism-v4/documents/analysis/validateCanonicalDocument.ts
 function validateCanonicalDocument(document) {
   const seenNodeIds = /* @__PURE__ */ new Set();
   const surfaceIds = new Set(document.surfaces.map((surface) => surface.id));
@@ -10291,8 +10135,6 @@ function validateCanonicalDocument(document) {
   }
   return document;
 }
-
-// src/prism-v4/documents/analysis/canonicalize.ts
 function createNodeId(documentId, index) {
   return `${documentId}-node-${index}`;
 }
@@ -10433,8 +10275,6 @@ function canonicalDocumentToAzureExtract(document) {
     readingOrder: paragraphs.map((paragraph) => paragraph.text)
   };
 }
-
-// src/prism-v4/documents/analysis/classifyFragments.ts
 function unique(values) {
   return [...new Set(values)];
 }
@@ -10762,8 +10602,6 @@ function classifyFragments(document) {
     };
   });
 }
-
-// src/prism-v4/semantic/extract/classifyParagraphBlocks.ts
 var DATE_OR_TIME_PATTERN2 = /\b(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/gi;
 var PAGE_PATTERN = /^\s*(?:page\s+)?\d+(?:\s+of\s+\d+)?\s*$/i;
 var METADATA_PATTERN = /^(?:name|date|teacher|class|period|student)\b/i;
@@ -10845,8 +10683,6 @@ function classifyParagraphBlocks(azureExtract) {
     };
   });
 }
-
-// src/prism-v4/semantic/extract/extractProblem.ts
 var INLINE_SUBPART_BOUNDARY = /\s+(?=(?:\d+[a-z][.)]|\([a-z]\)|[a-z][.)]|\d+[a-z])\s+)/i;
 function looksLikeProblemBoundary(text) {
   return /^(?:\d+[.)\]]|q\s*\d+[.)\]]|question\s*\d+[:.]|[A-Z][.)])\s+/i.test(text);
@@ -11151,13 +10987,9 @@ function extractProblems(azureExtract) {
   }
   return problems;
 }
-
-// src/prism-v4/semantic/utils/heuristics.ts
 function clamp01(value) {
   return Math.max(0, Math.min(1, value));
 }
-
-// src/prism-v4/semantic/utils/representationCues.ts
 function hasAnyMatch(text, patterns) {
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -11245,8 +11077,6 @@ function detectRepresentationSignals(args) {
     cues
   };
 }
-
-// src/prism-v4/semantic/extract/extractProblemMetadata.ts
 var DIRECTIVE_PATTERNS = [
   /\bsolve\b/gi,
   /\bexplain\b/gi,
@@ -11306,8 +11136,6 @@ function extractProblemMetadata(problems, tablesByProblemId) {
     };
   });
 }
-
-// src/prism-v4/semantic/tag/tagBloom.ts
 function tagBloom(problems) {
   const result = {};
   for (const p of problems) {
@@ -11340,8 +11168,6 @@ function tagBloom(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagConcepts.ts
 var CONCEPT_RULES = [
   { terms: ["hypothesis", "null", "alternative", "significance"], tag: "math.statistics.hypothesis-testing" },
   { terms: ["p-value", "alpha", "parameter", "statistic"], tag: "math.statistics.decision-rules" },
@@ -11394,8 +11220,6 @@ function tagConcepts(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagLinguisticLoad.ts
 function tagLinguisticLoad(problems) {
   const linguisticLoad = {};
   const vocabularyTier = {};
@@ -11426,8 +11250,6 @@ function tagLinguisticLoad(problems) {
     abstractLanguage
   };
 }
-
-// src/prism-v4/semantic/tag/tagMisconceptionTriggers.ts
 function tagMisconceptionTriggers(problems) {
   const result = {};
   for (const p of problems) {
@@ -11449,8 +11271,6 @@ function tagMisconceptionTriggers(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagRepresentation.ts
 function tagRepresentation(problems) {
   const result = {};
   for (const p of problems) {
@@ -11481,8 +11301,6 @@ function tagRepresentation(problems) {
   }
   return result;
 }
-
-// src/prism-v4/documents/analysis/extractAnchoredProblems.ts
 function anchorsForProblem(problem, document) {
   const targetText = normalizeWhitespace(problem.cleanedText ?? problem.rawText);
   const matchingNodes = document.nodes.filter((node) => {
@@ -11603,8 +11421,6 @@ function extractAnchoredProblems(args) {
   });
   return { extractedProblems, sourceProblems: problems };
 }
-
-// src/prism-v4/documents/analysis/parseOfficeDocuments.ts
 var import_jszip = __toESM(require_lib3());
 function stripXmlTags(value) {
   return normalizeWhitespace(value.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
@@ -11709,8 +11525,6 @@ async function parsePptxToCanonicalDocument(documentId, fileName, mimeType, file
     createdAt: new Date().toISOString()
   });
 }
-
-// src/prism-v4/documents/analysis/analyzeRegisteredDocument.ts
 function cleanAzureExtract(extract) {
   return {
     ...extract,
@@ -11792,8 +11606,6 @@ async function analyzeRegisteredDocument(args) {
     contentHashV2
   });
 }
-
-// src/prism-v4/documents/registry.ts
 var documents = /* @__PURE__ */ new Map();
 var analyzedDocuments = /* @__PURE__ */ new Map();
 var sessions = /* @__PURE__ */ new Map();
@@ -11871,14 +11683,8 @@ function addDocumentToSession(sessionId, documentId) {
     createdAt: session.createdAt
   });
 }
-
-// src/prism-v4/documents/registryStore.ts
 init_supabase();
-
-// src/prism-v4/teacherFeedback/store.ts
 init_supabase();
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
@@ -11899,15 +11705,9 @@ function toRuntimeTemplate(template) {
     minConfidence: template.patternConfig.minConfidence
   };
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
-
-// src/prism-v4/semantic/learning/learningService.ts
 init_supabase();
 var ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
-
-// src/prism-v4/documents/registryStore.ts
 var SESSIONS_TABLE = "prism_v4_sessions";
 var DOCUMENTS_TABLE = "prism_v4_documents";
 var ANALYZED_DOCUMENTS_TABLE = "prism_v4_analyzed_documents";
@@ -12210,8 +12010,6 @@ async function saveAnalyzedDocumentStore(analyzedDocument, sessionId, options = 
   }
   return normalized;
 }
-
-// src/prism-v4/ingestion/segment/sectionSegmenter.ts
 function getParagraphs(canonical) {
   if (canonical.paragraphs && canonical.paragraphs.length > 0) {
     return canonical.paragraphs;
@@ -12265,11 +12063,7 @@ function segmentSections(canonical) {
   }
   return sections;
 }
-
-// api/v4/simulator/shared.ts
 init_supabase();
-
-// src/prism-v4/semantic/cognitive/templates/index.ts
 var runtimeTemplates = loadSeededTemplates().map(toRuntimeTemplate);
 var genericOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "generic");
 var mathOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "math");
@@ -12282,8 +12076,6 @@ var statsTemplates = [...genericOnlyTemplates, ...statsOnlyTemplates];
 var elaTemplates = [...genericOnlyTemplates, ...elaOnlyTemplates];
 var scienceTemplates = [...genericOnlyTemplates, ...scienceOnlyTemplates];
 var historyTemplates = [...genericOnlyTemplates, ...historyOnlyTemplates];
-
-// api/v4/simulator/shared.ts
 var warnedMissingServiceRoleForV4Writes = false;
 var v4ItemsTableSupported = true;
 var v4SectionsTableSupported = true;
@@ -12443,8 +12235,6 @@ async function setDocType(documentId, docType) {
     console.warn("[setDocType] non-fatal:", err instanceof Error ? err.message : err);
   }
 }
-
-// src/prism-v4/ingestion/classifyDocType.ts
 function classifyDocType(text) {
   if (!text || text.trim().length === 0)
     return "notes";
@@ -12476,8 +12266,6 @@ function classifyDocType(text) {
     return "problem";
   return "notes";
 }
-
-// src/prism-v4/ingestion/ingestDocument.ts
 async function ingestDocument(input) {
   const { documentId, analyzedDocument, azureExtract, rawText } = input;
   let text = rawText ?? "";
@@ -12571,8 +12359,6 @@ function extractSectionsFromAnalysis(_doc, azureExtract, rawText, _documentId) {
     metadata: {}
   }));
 }
-
-// api/v4/documents/upload.ts
 var runtime = "nodejs";
 var config = {
   api: {

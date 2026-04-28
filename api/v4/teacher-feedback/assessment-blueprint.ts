@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/v4/teacher-feedback/assessment-blueprint.ts
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -18,8 +20,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -58,8 +58,6 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// src/prism-v4/teacherFeedback/fingerprints.ts
 var BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 var ITEM_MODE_TO_BLOOM = {
   identify: "remember",
@@ -584,8 +582,6 @@ function explainFingerprintAlignment(args) {
     flowReason
   };
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -631,20 +627,12 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
-
-// src/prism-v4/semantic/learning/learningService.ts
 var ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
-
-// src/prism-v4/teacherFeedback/store.ts
 var assessmentFingerprintMemory = /* @__PURE__ */ new Map();
 var unitFingerprintMemory = /* @__PURE__ */ new Map();
 var teacherFingerprintMemory = /* @__PURE__ */ new Map();
@@ -960,8 +948,6 @@ async function explainAssessmentFingerprintAlignment(assessmentId) {
     unitFingerprint
   });
 }
-
-// api/v4/teacher-feedback/assessment-blueprint.ts
 var runtime = "nodejs";
 var CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/rewrite/report-bad.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +47,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// api/rewrite/report-bad.ts
 var runtime = "nodejs";
 function getSingleHeaderValue(header) {
   if (Array.isArray(header))

@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/azure.ts
+// api/azure-token.ts
 function normalizeEndpoint(raw) {
   let s = raw.trim().replace(/\.{2,}/g, "").replace(/^https:\/(?!\/)/, "https://").replace(/\/+$/, "");
   if (!/^https?:\/\//.test(s)) {
@@ -30,8 +30,6 @@ function getAzureConfig() {
   console.log("[azure] normalized endpoint:", clean);
   return { endpoint: clean, key, model, pages };
 }
-
-// api/azure-token.ts
 var runtime = "nodejs";
 function handler(req, res) {
   if (req.method !== "GET") {

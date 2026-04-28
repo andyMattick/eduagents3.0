@@ -1,7 +1,8 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/auth.ts
+// api/documents/store.ts
+import { createHash } from "crypto";
 async function authenticateUser(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) {
     return { error: "Missing or malformed Authorization header.", status: 401 };
@@ -28,8 +29,6 @@ async function authenticateUser(authHeader) {
     return { error: "Auth verification failed.", status: 500 };
   }
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -38,9 +37,6 @@ function supabaseAdmin() {
   }
   return { url, key };
 }
-
-// lib/rag.ts
-import { createHash } from "crypto";
 var schemaColumnSupport = /* @__PURE__ */ new Map();
 function getMissingSchemaColumn(errorText) {
   if (!errorText.includes("PGRST204") && !errorText.includes("schema cache")) {
@@ -239,8 +235,6 @@ async function embedAndStoreChunks({
     console.warn(`[rag] embedAndStoreChunks aborted for doc ${docId}:`, err);
   }
 }
-
-// lib/semantic/parseQuery.ts
 async function extractSemantics(content) {
   const DEFAULT = {
     topic: "",
@@ -250,8 +244,6 @@ async function extractSemantics(content) {
   };
   return DEFAULT;
 }
-
-// api/documents/store.ts
 var runtime = "nodejs";
 var config = { maxDuration: 60 };
 async function handler(req, res) {

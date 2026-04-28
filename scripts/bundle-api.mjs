@@ -54,7 +54,7 @@ function collectApiTsFiles(dir) {
 // Detect if a file is a real serverless handler
 function isHandlerFile(filePath) {
   const content = readFileSync(filePath, "utf8");
-  return content.includes("export default");
+  return /export\s+default\b|handler\s+as\s+default\b/.test(content);
 }
 
 const tsFiles = collectApiTsFiles(apiDir);

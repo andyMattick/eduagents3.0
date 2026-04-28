@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// src/prism-v4/narrator/composeNarrative.ts
+// api/v4/narrate-problem.ts
 function composeNarrative(blocks) {
   const lines = [];
   if (blocks.taskEssence) {
@@ -27,8 +27,6 @@ function composeNarrative(blocks) {
   }
   return lines.join(" ");
 }
-
-// src/prism-v4/narrator/types.ts
 var LENS_MAP = {
   "what-is-this-asking": ["taskEssence"],
   "cognitive-steps": ["cognitiveMoves"],
@@ -41,64 +39,6 @@ var LENS_MAP = {
   "explain-to-student": ["taskEssence", "cognitiveMoves"],
   misconceptions: ["likelyMisconceptions"]
 };
-
-// src/prism-v4/narrator/service.ts
-var NARRATOR_PROMPT = `You are an expert teacher who explains problems to other teachers.
-
-Your job is to analyze a single problem and produce a structured JSON object
-containing only the narrative blocks requested by the teacher's chosen lens.
-
-Inputs:
-- problemText: the full text of the problem
-- semanticFingerprint: structured v4 semantics (concepts, steps, representations, difficulty, misconceptions)
-- lens: the teacher\u2019s chosen question (mapped to narrative blocks)
-- gradeLevel and subject: optional context for tone and precision
-
-Output JSON structure:
-{
-  "taskEssence": {
-    "summary": "What the student is fundamentally being asked to do.",
-    "evidence": "Which parts of the prompt reveal this."
-  },
-  "cognitiveMoves": [
-    {
-      "step": "A mental action a proficient student takes.",
-      "whyItMatters": "Why this step is cognitively important."
-    }
-  ],
-  "representationalDemands": {
-    "forms": ["equation", "table", "graph", "diagram", "paragraph"],
-    "explanation": "How the student must move between representations."
-  },
-  "likelyMisconceptions": [
-    {
-      "misconception": "A predictable misunderstanding.",
-      "trigger": "What in the problem causes it.",
-      "howToNotice": "What student behavior signals this misconception."
-    }
-  ],
-  "instructionalLevers": [
-    {
-      "move": "A scaffold or teacher move.",
-      "whenToUse": "When this move is most effective.",
-      "whyItWorks": "The cognitive reason this move helps."
-    }
-  ],
-  "instructionalPurpose": {
-    "concept": "The underlying idea or skill this problem builds.",
-    "futureConnection": "Where this skill shows up later in the curriculum."
-  },
-  "teacherVoiceNarrative": "A warm, collegial paragraph synthesizing ONLY the blocks relevant to the chosen lens."
-}
-
-Rules:
-- Only include the blocks requested by the lens.
-- Use a warm, practical teacher voice.
-- No jargon, no metadata, no tags, no bullet points.
-- The narrative must be a single cohesive paragraph.
-- Do not mention the lens or internal reasoning.
-- Do not invent representations not present in the problem.
-- If a block is not relevant, omit it entirely.`;
 function humanize(value) {
   return value.split(/[._-]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
@@ -202,22 +142,6 @@ function buildFallbackBlocks(problemText, semanticFingerprint) {
     instructionalPurpose: buildInstructionalPurpose(semanticFingerprint)
   };
 }
-function cleanJsonString(raw) {
-  const withoutCodeFences = raw.replace(/```(?:json)?\s*/gi, "").replace(/```/g, "").trim();
-  const firstBrace = withoutCodeFences.indexOf("{");
-  const lastBrace = withoutCodeFences.lastIndexOf("}");
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return withoutCodeFences.slice(firstBrace, lastBrace + 1);
-  }
-  return withoutCodeFences;
-}
-function parseNarratorJson(raw) {
-  try {
-    return JSON.parse(cleanJsonString(raw));
-  } catch {
-    return null;
-  }
-}
 function pickBlocksForLens(lens, blocks) {
   return LENS_MAP[lens].reduce((selected, key) => {
     if (blocks[key] !== void 0) {
@@ -225,21 +149,6 @@ function pickBlocksForLens(lens, blocks) {
     }
     return selected;
   }, {});
-}
-function buildPrompt(payload) {
-  return `${NARRATOR_PROMPT}
-
-Teacher inputs:
-${JSON.stringify({
-    problemText: payload.problemText,
-    semanticFingerprint: payload.semanticFingerprint,
-    lens: payload.lens,
-    requestedBlocks: LENS_MAP[payload.lens],
-    gradeLevel: payload.gradeLevel,
-    subject: payload.subject
-  }, null, 2)}
-
-Return valid JSON only.`;
 }
 function toProblemTagVector(value) {
   if (!value || typeof value !== "object") {
@@ -267,8 +176,6 @@ async function narrateProblem(payload) {
     narrative
   };
 }
-
-// api/v4/narrate-problem.ts
 var runtime = "nodejs";
 var CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

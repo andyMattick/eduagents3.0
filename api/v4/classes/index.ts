@@ -1,7 +1,8 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// src/simulation/phase-c/traits.ts
+// api/v4/classes/index.ts
+import { randomUUID } from "crypto";
 var PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
   minTraitValue: 1,
@@ -183,8 +184,6 @@ function computeStudentBiases(profiles, positiveTraits) {
     timeBias: clamp(timeBias, PHASE_C_CONFIG.minBiasValue, PHASE_C_CONFIG.maxBiasValue)
   };
 }
-
-// src/simulation/phase-c/generator.ts
 var POSITIVE_TRAITS = [
   "fast_worker",
   "slow_and_careful",
@@ -351,11 +350,6 @@ function generateSyntheticStudents(input) {
   }
   return output;
 }
-
-// src/simulation/phase-c/store.ts
-import { randomUUID } from "crypto";
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -401,8 +395,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/simulation/phase-c/store.ts
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
@@ -534,8 +526,6 @@ async function listClasses(teacherId) {
   const filtered = teacherId ? values.filter((item) => item.teacherId === teacherId) : values;
   return filtered.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
-
-// api/v4/classes/index.ts
 var runtime = "nodejs";
 function parseBody(body) {
   if (typeof body !== "string") {

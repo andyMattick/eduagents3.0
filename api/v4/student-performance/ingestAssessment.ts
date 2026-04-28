@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/v4/student-performance/ingestAssessment.ts
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -18,8 +20,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -58,8 +58,6 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// src/prism-v4/teacherFeedback/fingerprints.ts
 var BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 function normalizeText(value) {
   return value.toLowerCase().replace(/[^a-z0-9\s-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -70,8 +68,6 @@ function canonicalConceptId(value) {
 function compareBloomLevels(left, right) {
   return BLOOM_LEVELS.indexOf(left) - BLOOM_LEVELS.indexOf(right);
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -117,20 +113,12 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
-
-// src/prism-v4/semantic/learning/learningService.ts
 var ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
-
-// src/prism-v4/studentPerformance/profile.ts
 var MASTERY_ALPHA = 0.35;
 var AUXILIARY_ALPHA = 0.28;
 var RESPONSE_TIME_ALPHA = 0.22;
@@ -315,8 +303,6 @@ function updateStudentPerformanceProfile(profile, events) {
   seed.totalAssessments = seed.assessmentIds.length;
   return seed;
 }
-
-// src/prism-v4/studentPerformance/store.ts
 var studentProfileMemory = /* @__PURE__ */ new Map();
 var studentEventMemory = /* @__PURE__ */ new Map();
 function canUseSupabase() {
@@ -442,8 +428,6 @@ async function appendStudentAssessmentEvents(events) {
   }
   return events;
 }
-
-// api/v4/student-performance/ingestAssessment.ts
 var runtime = "nodejs";
 var CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

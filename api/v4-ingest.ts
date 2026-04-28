@@ -3,8 +3,6 @@
 
 // api/v4-ingest.ts
 import path from "path";
-
-// lib/azure.ts
 function normalizeEndpoint(raw) {
   let s = raw.trim().replace(/\.{2,}/g, "").replace(/^https:\/(?!\/)/, "https://").replace(/\/+$/, "");
   if (!/^https?:\/\//.test(s)) {
@@ -104,8 +102,6 @@ async function analyzeAzureDocument(fileBuffer, mimeType = "application/pdf") {
   }
   throw new Error("Azure analysis timed out after polling");
 }
-
-// src/prism-v4/ingestion/azure/azureClient.ts
 var MAX_ATTEMPTS = 3;
 var INITIAL_BACKOFF_MS = 500;
 async function delay(ms) {
@@ -127,8 +123,6 @@ async function callAzureLayoutModel(fileBuffer, mimeType = "application/pdf") {
   const message = lastError instanceof Error ? lastError.message : "Unknown Azure error";
   throw new Error(`Azure layout extraction failed after ${MAX_ATTEMPTS} attempts: ${message}`);
 }
-
-// src/prism-v4/ingestion/azure/azureExtractor.ts
 var MAX_RETRIES = 3;
 var BASE_DELAY_MS = 500;
 function delay2(ms) {
@@ -193,8 +187,6 @@ async function runAzureExtraction(fileBuffer, mimeType = "application/pdf") {
     }
   }
 }
-
-// src/prism-v4/ingestion/azure/azureNormalizer.ts
 function normalizeAzureLayout(rawAzure) {
   const azure = rawAzure ?? {};
   const pages = (azure.pages ?? []).map((page) => ({
@@ -225,8 +217,6 @@ function normalizeAzureLayout(rawAzure) {
     readingOrder
   };
 }
-
-// src/prism-v4/ingestion/normalize/structureMapper.ts
 function mapAzureToCanonical(normalized, fileName) {
   return {
     fileName,
@@ -253,13 +243,9 @@ function mapAzureToCanonical(normalized, fileName) {
     readingOrder: [...normalized.readingOrder]
   };
 }
-
-// src/prism-v4/ingestion/normalize/textCleaner.ts
 function cleanText(raw) {
   return raw.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 }
-
-// api/v4-ingest.ts
 var DEFAULT_MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024;
 function isPdfUpload(fileName, mimeType) {
   const extension = path.extname(fileName).toLowerCase();

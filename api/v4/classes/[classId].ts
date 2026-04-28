@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/classes/[classId].ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +47,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/simulation/phase-c/store.ts
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
@@ -170,8 +168,6 @@ async function listSimulationRunsForClass(classId) {
   }
   return Array.from(simulationRunsMemory.values()).filter((run) => run.classId === classId).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
-
-// api/v4/classes/[classId].ts
 var runtime = "nodejs";
 function resolveClassId(req) {
   const value = Array.isArray(req.query.classId) ? req.query.classId[0] : req.query.classId;

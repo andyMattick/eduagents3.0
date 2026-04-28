@@ -1,19 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// src/components_new/v4/assessment/promptLibrary.ts
-var SYSTEM_PROMPT = `You are an expert assessment writer.
-Your job is to generate high-quality, classroom-ready assessment items aligned to a specific concept.
-
-Rules:
-- Follow the requested item type exactly.
-- Follow the requested difficulty exactly.
-- Use the provided concept definition and examples.
-- Use the provided scenario style if included.
-- Do NOT repeat stems across items.
-- Do NOT create trick questions.
-- Do NOT reference these instructions in your output.
-- Output ONLY valid JSON \u2014 a JSON array with no surrounding markdown fences.`;
+// api/v4/studio/generateItems.ts
 var ITEM_TYPE_GUIDELINES = {
   mc: `Write a multiple-choice question with:
 - 1 correct answer
@@ -37,8 +25,6 @@ Difficulty rules:
 - Application of the concept in a realistic scenario
 - A model answer of 3\u20136 sentences`
 };
-
-// src/components_new/v4/assessment/scenarioStyles.ts
 var UNIVERSAL_SCENARIOS = [
   "medical testing (e.g., drug trials, diagnostic accuracy)",
   "sports analytics (e.g., performance metrics, win/loss data)",
@@ -107,8 +93,6 @@ function pickScenario(subject, seed) {
   }
   return combined[hashString(seed) % combined.length] ?? combined[0];
 }
-
-// src/components_new/v4/assessment/difficultyRules.ts
 function difficultyToTime(type, difficulty) {
   const times = {
     mc: { easy: 45, medium: 60, hard: 75 },
@@ -117,8 +101,6 @@ function difficultyToTime(type, difficulty) {
   };
   return times[type]?.[difficulty] ?? 60;
 }
-
-// src/components_new/v4/assessment/itemTypeMapping.ts
 var ITEM_TYPE_BY_CANONICAL = {
   "stats.null_hypothesis": ["mc", "short_answer"],
   "stats.alternative_hypothesis": ["mc", "short_answer"],
@@ -155,14 +137,10 @@ var DEFAULT_TYPES = ["mc", "short_answer"];
 function allowedTypesForConcept(canonicalId) {
   return ITEM_TYPE_BY_CANONICAL[canonicalId] ?? DEFAULT_TYPES;
 }
-
-// src/components_new/v4/steps/conceptStepRange.ts
 var DEFAULT_STEP_RANGE = [2, 4];
 function getConceptStepRange(concept) {
   return concept?.typicalStepRange ?? DEFAULT_STEP_RANGE;
 }
-
-// src/components_new/v4/steps/structureParser.ts
 function detectDistribution(text) {
   return /distribut|expand|foil|\d\s*\([^)]+[+\-][^)]+\)/i.test(text) ? 1 : 0;
 }
@@ -254,8 +232,6 @@ function analyzeStructure(problemText) {
     scenarioComplexity
   };
 }
-
-// src/components_new/v4/steps/difficultyAdjustments.ts
 function adjustForDifficulty(steps, difficulty) {
   if (difficulty === "easy")
     return steps - 1;
@@ -263,15 +239,11 @@ function adjustForDifficulty(steps, difficulty) {
     return steps + 1;
   return steps;
 }
-
-// src/components_new/v4/steps/scenarioAdjustments.ts
 function adjustForScenario(steps, complexity) {
   if (complexity === "high")
     return steps + 1;
   return steps;
 }
-
-// src/components_new/v4/steps/learnerAdjustments.ts
 function adjustForLearner(steps, profile) {
   switch (profile) {
     case "support":
@@ -286,8 +258,6 @@ function adjustForLearner(steps, profile) {
       return steps;
   }
 }
-
-// src/components_new/v4/steps/stepEngine.ts
 function computeStepCount(concept, context) {
   if (context.teacherStepOverride !== void 0) {
     return Math.max(1, context.teacherStepOverride);
@@ -301,8 +271,6 @@ function computeStepCount(concept, context) {
   steps = adjustForLearner(steps, context.learnerProfile);
   return Math.max(1, Math.max(min, Math.min(steps, max)));
 }
-
-// api/v4/studio/generateItems.ts
 var runtime = "nodejs";
 var CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

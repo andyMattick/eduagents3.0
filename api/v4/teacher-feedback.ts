@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/v4/teacher-feedback.ts
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -18,8 +20,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -58,8 +58,6 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// src/prism-v4/teacherFeedback/fingerprints.ts
 var BLOOM_LEVELS = ["remember", "understand", "apply", "analyze", "evaluate", "create"];
 function unique(values) {
   return [...new Set(values)];
@@ -421,14 +419,10 @@ function applyAssessmentFingerprintEdits(args) {
     version: assessment.version + 1
   };
 }
-
-// src/prism-v4/teacherFeedback/overrideKeys.ts
 var INSTRUCTIONAL_UNIT_OVERRIDE_NAMESPACE = "instructional-unit";
 function buildInstructionalUnitOverrideId(sessionId, unitId) {
   return `${sessionId}::${INSTRUCTIONAL_UNIT_OVERRIDE_NAMESPACE}::${unitId}`;
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -474,17 +468,11 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
-
-// src/prism-v4/semantic/cognitive/templateLearning.ts
 function oneHotBloom(value) {
   if (typeof value !== "string") {
     return typeof value === "object" && value ? value : {};
@@ -529,8 +517,6 @@ function deriveTemplateFromFeedback(feedback) {
     } : void 0
   };
 }
-
-// src/prism-v4/semantic/learning/learningService.ts
 var teacherActionMemory = [];
 var learningDirty = false;
 var ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
@@ -592,8 +578,6 @@ async function recordTeacherAction(event) {
     });
   }
 }
-
-// src/prism-v4/teacherFeedback/store.ts
 var feedbackMemory = [];
 var overrideMemory = /* @__PURE__ */ new Map();
 var templateMemory = /* @__PURE__ */ new Map();
@@ -1258,8 +1242,6 @@ async function getAssessmentFingerprint(assessmentId) {
   }
   return assessmentFingerprintMemory.get(assessmentId) ?? null;
 }
-
-// api/v4/teacher-feedback.ts
 var runtime = "nodejs";
 var CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

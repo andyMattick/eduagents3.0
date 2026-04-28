@@ -1,7 +1,9 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/simulations/run.ts
+import { randomUUID } from "crypto";
+import { randomUUID as randomUUID2 } from "crypto";
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +49,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/simulation/phase-b/index.ts
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -351,6 +351,29 @@ function sortNormalizedItems(items) {
     return aNumber - bNumber;
   });
 }
+function isSyntheticPartItem(item) {
+  return item.partIndex > 0 && item.itemId.includes("::part-");
+}
+function dedupeNormalizedItems(items) {
+  const byGroupPart = /* @__PURE__ */ new Map();
+  for (const item of items) {
+    if (item.partIndex <= 0) {
+      const parentKey = `${item.groupId}::0::${item.itemId}`;
+      byGroupPart.set(parentKey, item);
+      continue;
+    }
+    const key = `${item.groupId}::${item.partIndex}`;
+    const existing = byGroupPart.get(key);
+    if (!existing) {
+      byGroupPart.set(key, item);
+      continue;
+    }
+    if (isSyntheticPartItem(existing) && !isSyntheticPartItem(item)) {
+      byGroupPart.set(key, item);
+    }
+  }
+  return [...byGroupPart.values()];
+}
 async function normalizeItemsPhaseB(documentId) {
   const rows = await supabaseRest("v4_items", {
     method: "GET",
@@ -360,7 +383,8 @@ async function normalizeItemsPhaseB(documentId) {
       order: "item_number.asc"
     }
   });
-  const normalized = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const normalizedRaw = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const normalized = dedupeNormalizedItems(normalizedRaw);
   const groupsWithChildren = new Set(normalized.filter((item) => item.partIndex > 0).map((item) => item.groupId));
   const withoutMultipartParents = normalized.filter((item) => !item.isParent || !groupsWithChildren.has(item.groupId));
   const effectiveItems = withoutMultipartParents.length > 0 ? withoutMultipartParents : normalized;
@@ -368,8 +392,6 @@ async function normalizeItemsPhaseB(documentId) {
     items: sortNormalizedItems(effectiveItems)
   };
 }
-
-// src/simulation/phase-c/traits.ts
 var PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
   minTraitValue: 1,
@@ -410,9 +432,6 @@ var PHASE_C_CONFIG = {
 function clamp2(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
-
-// src/simulation/phase-c/store.ts
-import { randomUUID } from "crypto";
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
@@ -573,9 +592,6 @@ async function saveSimulationResults(simulationId, results) {
   }
   return results;
 }
-
-// src/simulation/phase-c/engine.ts
-import { randomUUID as randomUUID2 } from "crypto";
 function applyPhaseCCore(student, measurable) {
   const cfg = PHASE_C_CONFIG.formula;
   const readingGap = Math.max(0, measurable.linguisticLoad - student.traits.readingLevel);
@@ -700,19 +716,20 @@ async function runPhaseCSimulation(input) {
     resultCount: results.length
   };
 }
-
-// api/v4/simulations/run.ts
 var runtime = "nodejs";
 function parseBody(body) {
-  if (body === null || body === undefined) return {};
-  if (typeof body === "object" && !Array.isArray(body)) return body;
+  if (body === null || body === void 0)
+    return {};
+  if (typeof body === "object" && !Array.isArray(body))
+    return body;
   if (typeof body === "string") {
     try {
       const parsed = JSON.parse(body);
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) return parsed;
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed))
+        return parsed;
       return {};
     } catch {
-      return null; // signals malformed JSON
+      return null;
     }
   }
   return {};
@@ -754,15 +771,9 @@ async function handler(req, res) {
     if (phaseB.items.length === 0) {
       return sendError(res, "not_found", "No document items found for documentId", 404);
     }
-    // Validate normalized Phase B structure before simulation.
     for (const item of phaseB.items) {
       if (!item.itemId || !item.groupId || !item.logicalLabel || !item.traits) {
-        return sendError(
-          res,
-          "invalid_request",
-          `Malformed document: item ${item.itemId ?? item.itemNumber ?? "unknown"} is missing required phase-b fields`,
-          400
-        );
+        return sendError(res, "invalid_request", `Malformed document: item ${item.itemId ?? item.itemNumber ?? "unknown"} is missing required phase-b fields`, 400);
       }
     }
     const result = await runPhaseCSimulation({

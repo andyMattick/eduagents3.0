@@ -404,6 +404,37 @@ function sortNormalizedItems(items: NormalizedPhaseBItem[]): NormalizedPhaseBIte
   });
 }
 
+function isSyntheticPartItem(item: NormalizedPhaseBItem): boolean {
+  return item.partIndex > 0 && item.itemId.includes("::part-");
+}
+
+function dedupeNormalizedItems(items: NormalizedPhaseBItem[]): NormalizedPhaseBItem[] {
+  const byGroupPart = new Map<string, NormalizedPhaseBItem>();
+
+  for (const item of items) {
+    if (item.partIndex <= 0) {
+      const parentKey = `${item.groupId}::0::${item.itemId}`;
+      byGroupPart.set(parentKey, item);
+      continue;
+    }
+
+    const key = `${item.groupId}::${item.partIndex}`;
+    const existing = byGroupPart.get(key);
+
+    if (!existing) {
+      byGroupPart.set(key, item);
+      continue;
+    }
+
+    // Prefer explicit child rows from ingestion over inferred synthetic rows.
+    if (isSyntheticPartItem(existing) && !isSyntheticPartItem(item)) {
+      byGroupPart.set(key, item);
+    }
+  }
+
+  return [...byGroupPart.values()];
+}
+
 export async function normalizeItemsPhaseB(documentId: string): Promise<{ items: NormalizedPhaseBItem[] }> {
   const rows = await supabaseRest("v4_items", {
     method: "GET",
@@ -414,7 +445,8 @@ export async function normalizeItemsPhaseB(documentId: string): Promise<{ items:
     },
   }) as ItemRow[];
 
-  const normalized = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const normalizedRaw = (rows ?? []).flatMap((row) => toNormalizedItems(row));
+  const normalized = dedupeNormalizedItems(normalizedRaw);
   const groupsWithChildren = new Set(
     normalized
       .filter((item) => item.partIndex > 0)

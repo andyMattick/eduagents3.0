@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/supabase.ts
+// api/v4/teacher-feedback/learning.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -47,8 +47,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/prism-v4/semantic/learning/learningService.ts
 var teacherActionMemory = [];
 var learningRecordMemory = /* @__PURE__ */ new Map();
 var learningDirty = false;
@@ -286,8 +284,6 @@ async function loadTemplateLearning() {
   }
   return [...learningRecordMemory.values()];
 }
-
-// api/v4/teacher-feedback/learning.ts
 var runtime = "nodejs";
 async function handler(_req, res) {
   if (_req.method !== "GET") {

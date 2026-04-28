@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/envGuard.ts
+// api/v4/concept-match/intel.ts
 function hasValue(source, key) {
   const value = source[key];
   return Boolean(value && value.trim().length > 0);
@@ -33,8 +33,6 @@ function assertBackendStartupEnv(requiredKeys, scope) {
   }
   assertRequiredEnvKeys(requiredKeys, process.env, scope);
 }
-
-// lib/provider.ts
 function createConcurrencyLimit(concurrency) {
   let running = 0;
   const queue = [];
@@ -68,8 +66,6 @@ function createConcurrencyLimit(concurrency) {
   return run;
 }
 var providerLimit = createConcurrencyLimit(1);
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -115,8 +111,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// lib/tokenGate.ts
 var DAILY_TOKEN_LIMIT = 25e3;
 var TOKEN_LIMIT_ERROR = "TOKEN_LIMIT_REACHED";
 function getSingleHeader(header) {
@@ -173,8 +167,6 @@ function sendTokenLimitResponse(res, err) {
   }
   return respond;
 }
-
-// api/v4/concept-match/conceptNormalization.ts
 async function batchEmbedConcepts(concepts) {
   if (concepts.length === 0)
     return [];
@@ -284,8 +276,6 @@ async function normalizeConcepts(rawConcepts, callLLM) {
   }
   return { canonicalMap, canonicalLabels };
 }
-
-// api/v4/concept-match/intel.ts
 var runtime = "nodejs";
 assertBackendStartupEnv(["SUPABASE_URL", "SUPABASE_ANON_KEY"], "api/v4/concept-match/intel");
 var CORS_HEADERS = {

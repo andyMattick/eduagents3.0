@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/v4/simulator/shortcircuit.ts
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -21,8 +23,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -73,8 +73,6 @@ var init_supabase = __esm({
     "use strict";
   }
 });
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -113,11 +111,7 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// api/v4/simulator/shortcircuit.ts
 init_supabase();
-
-// src/prism-v4/segmentation/subItemHeuristics.ts
 var LETTERED_LINE_REGEX = /^\s*\(?([a-hA-H])\)?[\.)](?:\s+|$)/;
 var MC_STEM_PHRASES = [
   "which of the following",
@@ -180,16 +174,12 @@ function shouldTreatAsMultipartSubItem(line, parentStem) {
   }
   return false;
 }
-
-// src/prism-v4/segmentation/detectMultiPart.ts
 function detectMultiPart(text) {
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const parentStem = getParentStem(text);
   const subItemCount = lines.filter((line) => isLetteredLine(line)).filter((line) => shouldTreatAsMultipartSubItem(line, parentStem)).length;
   return subItemCount > 0;
 }
-
-// src/prism-v4/segmentation/optionParsing.ts
 var OPTION_TOKEN_RE = /(^|\s)\(?([A-Ea-e])\)?[\.)]\s*/g;
 function normalizeText(text) {
   return text.replace(/\s+/g, " ").trim();
@@ -235,8 +225,6 @@ function extractOptionsFromLine(line) {
 function extractOptionsFromText(text) {
   return text.split(/\r?\n/).flatMap((line) => extractOptionsFromLine(line));
 }
-
-// src/prism-v4/segmentation/detectMultipleChoice.ts
 function detectMultipleChoice(text) {
   const labels = /* @__PURE__ */ new Set();
   for (const parsed of extractOptionsFromText(text)) {
@@ -244,8 +232,6 @@ function detectMultipleChoice(text) {
   }
   return labels.size >= 3;
 }
-
-// src/prism-v4/segmentation/extractSubItems.ts
 var SUB_SUB_PATTERNS = [
   /^Type\s+I(?!\s*[IVX])\b/i,
   /^Type\s+II\b/i,
@@ -345,14 +331,6 @@ function buildSubItemFullText(subItem) {
   const nestedText = subItem.subSubParts.map((ssp) => `${ssp.label} ${ssp.text}`.trim()).join(" ");
   return subItem.text ? `${subItem.text} ${nestedText}` : nestedText;
 }
-function extractSubItems(text) {
-  return extractSubItemsWithNesting(text).map((subItem) => ({
-    itemNumber: subItem.itemNumber,
-    text: buildSubItemFullText(subItem)
-  }));
-}
-
-// src/prism-v4/segmentation/extractDistractors.ts
 function extractDistractors(text) {
   const seen = /* @__PURE__ */ new Set();
   const options = [];
@@ -366,8 +344,6 @@ function extractDistractors(text) {
   }
   return options;
 }
-
-// src/prism-v4/segmentation/writingModeDetector.ts
 function detectWritingMode(text) {
   if (/explain|describe|why/i.test(text))
     return "Explain";
@@ -375,13 +351,9 @@ function detectWritingMode(text) {
     return "Calculate";
   return "Describe";
 }
-
-// src/prism-v4/segmentation/reasoningStepsEstimator.ts
 function estimateReasoningSteps(text) {
   return (text.match(/because|therefore|so that|thus/gi) || []).length;
 }
-
-// src/prism-v4/segmentation/buildItemTree.ts
 function clamp01(value) {
   return Math.min(1, Math.max(0, value));
 }
@@ -545,8 +517,6 @@ function buildItemTree(item) {
     }
   };
 }
-
-// src/prism-v4/segmentation/sectioning.ts
 var HEADER_PATTERNS = [
   /name[:]?/i,
   /class[:]?/i,
@@ -668,14 +638,8 @@ function applySectionInstructionEffects(item, instructions) {
   }
   return next;
 }
-
-// api/v4/simulator/shared.ts
 init_supabase();
-
-// src/prism-v4/teacherFeedback/store.ts
 init_supabase();
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
@@ -696,8 +660,6 @@ function toRuntimeTemplate(template) {
     minConfidence: template.patternConfig.minConfidence
   };
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
 var BLOOM_KEYS = /* @__PURE__ */ new Set(["remember", "understand", "apply", "analyze", "evaluate", "create"]);
 var STEP_TYPES = /* @__PURE__ */ new Set(["procedural", "conceptual", "interpretive", "mixed", "definition", "code-interpretation"]);
@@ -835,8 +797,6 @@ function loadTeacherTemplates(records) {
   }
   return { templates, rejected };
 }
-
-// src/prism-v4/semantic/learning/learningService.ts
 init_supabase();
 var teacherActionMemory = [];
 var learningRecordMemory = /* @__PURE__ */ new Map();
@@ -1109,8 +1069,6 @@ function applyLearningAdjustments(templates, learningRecords) {
     return [adjusted];
   });
 }
-
-// src/prism-v4/teacherFeedback/store.ts
 var overrideMemory = /* @__PURE__ */ new Map();
 var templateMemory = /* @__PURE__ */ new Map();
 function canUseSupabase2() {
@@ -1243,8 +1201,6 @@ async function listTeacherDerivedTemplates(subject, domain) {
   const records = await getTeacherDerivedTemplateRecords(subject, domain);
   return loadTeacherTemplates(records).templates;
 }
-
-// src/prism-v4/semantic/document/buildConceptGraph.ts
 function buildConceptGraph(problemVectors, problems = []) {
   const conceptCounts = {};
   const conceptScores = {};
@@ -1300,8 +1256,6 @@ function buildConceptGraph(problemVectors, problems = []) {
   }
   return { nodes, edges };
 }
-
-// src/prism-v4/semantic/utils/textUtils.ts
 var STOP_WORDS = /* @__PURE__ */ new Set([
   "a",
   "an",
@@ -1369,8 +1323,6 @@ function truncateText(text, maxLength) {
   }
   return `${text.slice(0, maxLength - 1).trimEnd()}...`;
 }
-
-// src/prism-v4/semantic/extract/classifyParagraphBlocks.ts
 var DATE_OR_TIME_PATTERN = /\b(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/gi;
 var PAGE_PATTERN = /^\s*(?:page\s+)?\d+(?:\s+of\s+\d+)?\s*$/i;
 var METADATA_PATTERN = /^(?:name|date|teacher|class|period|student)\b/i;
@@ -1452,8 +1404,6 @@ function classifyParagraphBlocks(azureExtract) {
     };
   });
 }
-
-// src/prism-v4/semantic/utils/heuristics.ts
 function clamp013(value) {
   return Math.max(0, Math.min(1, value));
 }
@@ -1489,8 +1439,6 @@ function scoreToDifficultyBand(score) {
   }
   return "very_hard";
 }
-
-// src/prism-v4/semantic/utils/conceptUtils.ts
 var DATE_OR_TIME_PATTERN2 = /\b(?:mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/gi;
 var LEADING_TRAILING_PUNCTUATION = /^[^a-z0-9]+|[^a-z0-9]+$/gi;
 var SCORE_WEIGHTS = {
@@ -1631,8 +1579,6 @@ function scoreConceptMetadata(input) {
     crossDocumentRecurrence
   };
 }
-
-// src/prism-v4/semantic/document/buildDocumentInsights.ts
 function buildDocumentInsights(args) {
   const { documentId, azureExtract, problems, problemVectors, conceptGraph } = args;
   const conceptTotals = {};
@@ -1843,8 +1789,6 @@ function getProblemTitle(problem) {
   const summary = truncateText(normalizeWhitespace(firstLine2), 80);
   return prefix ? `${prefix}: ${summary}` : summary;
 }
-
-// src/prism-v4/semantic/cognitive/fusionConfig.ts
 var fusionConfig = {
   bloom: {
     azure: 0.3,
@@ -1862,8 +1806,6 @@ var fusionConfig = {
     template: 0.3
   }
 };
-
-// src/prism-v4/semantic/cognitive/fuseCognition.ts
 function clampStepCount(value) {
   return Math.min(6, Math.max(1, value));
 }
@@ -1977,8 +1919,6 @@ function fuseCognition(azure, structural, template, weights = fusionConfig) {
     misconceptionRisk: clamp013(template.misconceptionRisk ?? 0)
   };
 }
-
-// src/prism-v4/semantic/cognitive/fuseOverrides.ts
 var IMMUTABLE_KEYS = /* @__PURE__ */ new Set(["canonicalProblemId", "rootProblemId", "parentProblemId", "displayOrder", "createdAt"]);
 function fuseOverrides(problem, overrides) {
   if (!overrides) {
@@ -2067,8 +2007,6 @@ function fuseOverrides(problem, overrides) {
   }
   return next;
 }
-
-// src/prism-v4/semantic/cognitive/inferStructuralCognition.ts
 var DIRECTIVE_PATTERNS = [
   /\bsolve\b/gi,
   /\bexplain\b/gi,
@@ -2131,8 +2069,6 @@ ${problem.cleanedText ?? problem.rawText ?? ""}`;
     }
   };
 }
-
-// src/prism-v4/semantic/utils/representationCues.ts
 function hasAnyMatch(text, patterns) {
   return patterns.some((pattern) => pattern.test(text));
 }
@@ -2220,8 +2156,6 @@ function detectRepresentationSignals(args) {
     cues
   };
 }
-
-// src/prism-v4/semantic/cognitive/templates/index.ts
 var runtimeTemplates = loadSeededTemplates().map(toRuntimeTemplate);
 var genericOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "generic");
 var mathOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "math");
@@ -2424,8 +2358,6 @@ function applyTemplates(problem, templates = cognitiveTemplates) {
     misconceptionRisk: clamp013(matched.reduce((total, match) => total + (match.template.misconceptionRiskBoost ?? 0) * match.confidence * (match.isBestGuess ? 0.6 : 1), 0))
   };
 }
-
-// src/prism-v4/semantic/extract/extractProblem.ts
 var INLINE_SUBPART_BOUNDARY = /\s+(?=(?:\d+[a-z][.)]|\([a-z]\)|[a-z][.)]|\d+[a-z])\s+)/i;
 function looksLikeProblemBoundary(text) {
   return /^(?:\d+[.)\]]|q\s*\d+[.)\]]|question\s*\d+[:.]|[A-Z][.)])\s+/i.test(text);
@@ -2730,8 +2662,6 @@ function extractProblems(azureExtract) {
   }
   return problems;
 }
-
-// src/prism-v4/semantic/extract/extractProblemMetadata.ts
 var DIRECTIVE_PATTERNS2 = [
   /\bsolve\b/gi,
   /\bexplain\b/gi,
@@ -2791,8 +2721,6 @@ function extractProblemMetadata(problems, tablesByProblemId) {
     };
   });
 }
-
-// src/prism-v4/semantic/extract/extractTables.ts
 function extractTables(azure, problems) {
   const tables = azure.tables ?? [];
   if (!tables.length)
@@ -2818,8 +2746,6 @@ function extractTables(azure, problems) {
   }
   return byProblem;
 }
-
-// src/prism-v4/semantic/generators/antiCheating.ts
 function estimatedStepCount(tags) {
   return Math.max(1, Math.round(tags.reasoning?.adjustedExpectedSteps ?? tags.reasoning?.expectedSteps ?? tags.steps ?? 1));
 }
@@ -2840,8 +2766,6 @@ function analyzeCheatingVulnerabilities(tags) {
     suggestedChanges: issues.map((issue) => `Fix: ${issue}`)
   };
 }
-
-// src/prism-v4/semantic/generators/enrichments.ts
 function topConcepts(tags) {
   return Object.entries(tags.concepts).sort((left, right) => right[1] - left[1]).slice(0, 3).map(([key]) => key);
 }
@@ -2856,8 +2780,6 @@ function generateEnrichments(tags) {
   }
   return enrichments;
 }
-
-// src/prism-v4/semantic/generators/narrative.ts
 function topKeys(record, limit) {
   return Object.entries(record ?? {}).sort((left, right) => right[1] - left[1]).slice(0, limit).map(([key]) => key);
 }
@@ -2968,8 +2890,6 @@ function generateNarrativeBundle(tags) {
     whyThisInterpretation: `This interpretation is based on ${describeRepresentation(tags)}, ${estimatedStepCount2(tags)} expected step${estimatedStepCount2(tags) === 1 ? "" : "s"}, and a dominant ${dominantBloom(tags)} signal.`
   };
 }
-
-// src/prism-v4/semantic/generators/scaffolds.ts
 function estimatedStepCount3(tags) {
   return Math.max(1, Math.round(tags.reasoning?.adjustedExpectedSteps ?? tags.reasoning?.expectedSteps ?? tags.steps ?? 1));
 }
@@ -2986,8 +2906,6 @@ function generateScaffolds(tags) {
   }
   return scaffolds;
 }
-
-// src/prism-v4/semantic/postProcessing.ts
 function applyPostSemanticProcessing(problem) {
   if (!problem.tags) {
     return problem;
@@ -3000,8 +2918,6 @@ function applyPostSemanticProcessing(problem) {
     antiCheating: analyzeCheatingVulnerabilities(problem.tags)
   };
 }
-
-// src/prism-v4/semantic/structure/detectMultipart.ts
 var HTML_SPACE = /&nbsp;|\u00a0/gi;
 var PARENT_LABEL = /^(\d+)\s*\.?\s*$/;
 var CHILD_LABEL = /^(\d+)\s*([a-z])\s*[\.)]?\s*$/;
@@ -3056,8 +2972,6 @@ function detectMultipart(problems) {
   }
   return problems;
 }
-
-// src/prism-v4/semantic/tag/buildProblemTagVector.ts
 var FRUSTRATION_FIELD = "frustrationRisk";
 function buildProblemTagVector(args) {
   const {
@@ -3156,8 +3070,6 @@ ${p.cleanedText ?? p.rawText ?? ""}`,
     return vector;
   });
 }
-
-// src/prism-v4/semantic/tag/tagBloom.ts
 function tagBloom(problems) {
   const result = {};
   for (const p of problems) {
@@ -3190,8 +3102,6 @@ function tagBloom(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagConcepts.ts
 var CONCEPT_RULES = [
   { terms: ["hypothesis", "null", "alternative", "significance"], tag: "math.statistics.hypothesis-testing" },
   { terms: ["p-value", "alpha", "parameter", "statistic"], tag: "math.statistics.decision-rules" },
@@ -3244,8 +3154,6 @@ function tagConcepts(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagLinguisticLoad.ts
 function tagLinguisticLoad(problems) {
   const linguisticLoad = {};
   const vocabularyTier = {};
@@ -3276,8 +3184,6 @@ function tagLinguisticLoad(problems) {
     abstractLanguage
   };
 }
-
-// src/prism-v4/semantic/tag/tagMisconceptionTriggers.ts
 function tagMisconceptionTriggers(problems) {
   const result = {};
   for (const p of problems) {
@@ -3299,8 +3205,6 @@ function tagMisconceptionTriggers(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagRepresentation.ts
 function tagRepresentation(problems) {
   const result = {};
   for (const p of problems) {
@@ -3331,8 +3235,6 @@ function tagRepresentation(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/tag/tagStandards.ts
 function tagStandards(problems) {
   const result = {};
   for (const p of problems) {
@@ -3351,8 +3253,6 @@ function tagStandards(problems) {
   }
   return result;
 }
-
-// src/prism-v4/semantic/pipeline/runSemanticPipeline.ts
 function toCanonicalProblem(documentId, problem, tags) {
   return {
     problemId: problem.problemId,
@@ -3495,8 +3395,6 @@ async function runSemanticPipeline(input) {
     problemVectors: enrichedProblemVectors
   };
 }
-
-// src/prism-v4/semantic/segment/hybridSegmenter.ts
 var ANSWER_KEY_HEADING_RE = /^\s*(?:#+\s*)?answer\s*key\b[:\-]?\s*$/i;
 var ANSWER_KEY_ENTRY_RE = /^\s*\d{1,3}\.\s*([A-E])\s*(?:[\).,:;\-]?\s*)?$/i;
 var PAGE_FOOTER_PATTERNS = [
@@ -3670,8 +3568,6 @@ function dedup(items) {
   }
   return out.map((item, i) => ({ ...item, itemNumber: i + 1 }));
 }
-
-// api/v4/simulator/shared.ts
 function buildAzureExtractFromRow(row) {
   const ae = row.azure_extract;
   if (ae && (ae.content || ae.paragraphs?.length || ae.pages?.length)) {
@@ -3916,8 +3812,6 @@ function vectorToMeasurables(vec, text) {
     symbolDensity
   };
 }
-
-// api/v4/simulator/shortcircuit.ts
 var runtime = "nodejs";
 var maxDuration = 60;
 var PROFILE_LOAD_MODIFIERS = {
@@ -3975,8 +3869,14 @@ function assignLogicalLabels(itemTrees) {
   });
   return itemTrees;
 }
-const VALID_PROFILES = /* @__PURE__ */ new Set([
-  "average", "adhd", "dyslexia", "ell", "gifted", "iep", "struggling"
+var VALID_PROFILES = /* @__PURE__ */ new Set([
+  "average",
+  "adhd",
+  "dyslexia",
+  "ell",
+  "gifted",
+  "iep",
+  "struggling"
 ]);
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -3989,7 +3889,7 @@ async function handler(req, res) {
   let body;
   try {
     const raw = req.body;
-    if (raw === null || raw === undefined) {
+    if (raw === null || raw === void 0) {
       body = {};
     } else if (typeof raw === "string") {
       body = JSON.parse(raw);

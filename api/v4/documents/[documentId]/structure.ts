@@ -3,8 +3,6 @@
 
 // api/v4/documents/[documentId]/structure.ts
 import { createHash } from "crypto";
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -50,8 +48,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// api/v4/documents/[documentId]/structure.ts
 var runtime = "nodejs";
 function resolveDocumentId(req) {
   const value = Array.isArray(req.query.documentId) ? req.query.documentId[0] : req.query.documentId;

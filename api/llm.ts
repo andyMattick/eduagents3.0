@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// lib/auth.ts
+// api/llm.ts
 async function authenticateUser(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) {
     return { error: "Missing or malformed Authorization header.", status: 401 };
@@ -28,8 +28,6 @@ async function authenticateUser(authHeader) {
     return { error: "Auth verification failed.", status: 500 };
   }
 }
-
-// lib/envGuard.ts
 function hasValue(source, key) {
   const value = source[key];
   return Boolean(value && value.trim().length > 0);
@@ -61,8 +59,6 @@ function assertBackendStartupEnv(requiredKeys, scope) {
   }
   assertRequiredEnvKeys(requiredKeys, process.env, scope);
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -71,8 +67,6 @@ function supabaseAdmin() {
   }
   return { url, key };
 }
-
-// lib/rag.ts
 function buildStubEmbedding(text, dims = 64) {
   const vector = new Array(dims).fill(0);
   const input = text || "";
@@ -184,8 +178,6 @@ Do NOT make up information. Do NOT go beyond what the context states.
 --- TASK ---
 ${userPrompt}`;
 }
-
-// lib/semantic/parseQuery.ts
 var DEFAULT_SEMANTICS = {
   intent: "question",
   concepts: [],
@@ -194,8 +186,6 @@ var DEFAULT_SEMANTICS = {
 async function parseQuery(query) {
   return DEFAULT_SEMANTICS;
 }
-
-// lib/blueprint/buildBlueprint.ts
 var INTENT_TO_SKILLS = {
   question: ["remember", "understand"],
   generate: ["understand", "apply"],
@@ -281,8 +271,6 @@ function dedup(arr) {
     return true;
   });
 }
-
-// lib/blueprint/validateOutput.ts
 function validateOutput(output, blueprint) {
   const lower = output.toLowerCase();
   const missingConcepts = blueprint.concepts.filter((c) => !lower.includes(c.toLowerCase()));
@@ -330,8 +318,6 @@ ${JSON.stringify(blueprint, null, 2)}
 Revise the output to include ALL missing concepts and question types.
 Keep everything that was correct. Only fix what's missing.`;
 }
-
-// api/llm.ts
 var runtime = "nodejs";
 assertBackendStartupEnv([
   "SUPABASE_URL",

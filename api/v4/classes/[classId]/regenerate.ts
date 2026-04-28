@@ -1,7 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
-// src/simulation/phase-c/traits.ts
+// api/v4/classes/[classId]/regenerate.ts
 var PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
   minTraitValue: 1,
@@ -183,8 +183,6 @@ function computeStudentBiases(profiles, positiveTraits) {
     timeBias: clamp(timeBias, PHASE_C_CONFIG.minBiasValue, PHASE_C_CONFIG.maxBiasValue)
   };
 }
-
-// src/simulation/phase-c/generator.ts
 var POSITIVE_TRAITS = [
   "fast_worker",
   "slow_and_careful",
@@ -351,8 +349,6 @@ function generateSyntheticStudents(input) {
   }
   return output;
 }
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -398,8 +394,6 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
-
-// src/simulation/phase-c/store.ts
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
@@ -570,8 +564,6 @@ async function regenerateClassStudents(input) {
   }
   return students;
 }
-
-// api/v4/classes/[classId]/regenerate.ts
 var runtime = "nodejs";
 function parseBody(body) {
   if (typeof body !== "string") {

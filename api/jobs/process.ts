@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/jobs/process.ts
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -9,8 +11,6 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -61,8 +61,6 @@ var init_supabase = __esm({
     "use strict";
   }
 });
-
-// src/prism-v4/semantic/learning/learningService.ts
 var learningService_exports = {};
 __export(learningService_exports, {
   DRIFT_FREEZE_THRESHOLD: () => DRIFT_FREEZE_THRESHOLD,
@@ -406,7 +404,13 @@ function resetLearningState() {
   learningRecordMemory.clear();
   learningDirty = false;
 }
-var teacherActionMemory, learningRecordMemory, learningDirty, MIN_LEARNING_EVIDENCE, FREEZE_EVIDENCE_THRESHOLD, DRIFT_FREEZE_THRESHOLD, ONE_WEEK_MS;
+var teacherActionMemory;
+var learningRecordMemory;
+var learningDirty;
+var MIN_LEARNING_EVIDENCE;
+var FREEZE_EVIDENCE_THRESHOLD;
+var DRIFT_FREEZE_THRESHOLD;
+var ONE_WEEK_MS;
 var init_learningService = __esm({
   "src/prism-v4/semantic/learning/learningService.ts"() {
     "use strict";
@@ -420,8 +424,6 @@ var init_learningService = __esm({
     ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
   }
 });
-
-// lib/azure.ts
 var azure_exports = {};
 __export(azure_exports, {
   analyzeAzureDocument: () => analyzeAzureDocument,
@@ -552,8 +554,6 @@ var init_azure = __esm({
     "use strict";
   }
 });
-
-// lib/auth.ts
 async function authenticateUser(authHeader) {
   if (!authHeader?.startsWith("Bearer ")) {
     return { error: "Missing or malformed Authorization header.", status: 401 };
@@ -580,8 +580,6 @@ async function authenticateUser(authHeader) {
     return { error: "Auth verification failed.", status: 500 };
   }
 }
-
-// api/jobs/process.ts
 init_supabase();
 var runtime = "nodejs";
 var config = { maxDuration: 60 };

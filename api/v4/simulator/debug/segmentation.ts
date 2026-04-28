@@ -1,5 +1,7 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
+
+// api/v4/simulator/debug/segmentation.ts
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -21,8 +23,6 @@ var __copyProps = (to, from, except, desc) => {
   return to;
 };
 var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target, mod));
-
-// lib/supabase.ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -73,8 +73,6 @@ var init_supabase = __esm({
     "use strict";
   }
 });
-
-// src/prism-v4/semantic/cognitive/templates/templates.json
 var require_templates = __commonJS({
   "src/prism-v4/semantic/cognitive/templates/templates.json"(exports, module) {
     module.exports = [
@@ -113,17 +111,9 @@ var require_templates = __commonJS({
     ];
   }
 });
-
-// api/v4/simulator/debug/segmentation.ts
 init_supabase();
-
-// api/v4/simulator/shared.ts
 init_supabase();
-
-// src/prism-v4/teacherFeedback/store.ts
 init_supabase();
-
-// src/prism-v4/semantic/cognitive/templates/loadTemplates.ts
 var import_templates = __toESM(require_templates());
 function loadSeededTemplates() {
   return import_templates.default;
@@ -144,15 +134,9 @@ function toRuntimeTemplate(template) {
     minConfidence: template.patternConfig.minConfidence
   };
 }
-
-// src/prism-v4/semantic/cognitive/templates/loadTeacherTemplates.ts
 var SYSTEM_TEMPLATE_IDS = new Set(loadSeededTemplates().map((template) => template.id));
-
-// src/prism-v4/semantic/learning/learningService.ts
 init_supabase();
 var ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1e3;
-
-// src/prism-v4/semantic/cognitive/templates/index.ts
 var runtimeTemplates = loadSeededTemplates().map(toRuntimeTemplate);
 var genericOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "generic");
 var mathOnlyTemplates = runtimeTemplates.filter((template) => template.subject === "math");
@@ -165,8 +149,6 @@ var statsTemplates = [...genericOnlyTemplates, ...statsOnlyTemplates];
 var elaTemplates = [...genericOnlyTemplates, ...elaOnlyTemplates];
 var scienceTemplates = [...genericOnlyTemplates, ...scienceOnlyTemplates];
 var historyTemplates = [...genericOnlyTemplates, ...historyOnlyTemplates];
-
-// src/prism-v4/semantic/segment/hybridSegmenter.ts
 var ANSWER_KEY_HEADING_RE = /^\s*(?:#+\s*)?answer\s*key\b[:\-]?\s*$/i;
 var ANSWER_KEY_ENTRY_RE = /^\s*\d{1,3}\.\s*([A-E])\s*(?:[\).,:;\-]?\s*)?$/i;
 var PAGE_FOOTER_PATTERNS = [
@@ -340,8 +322,6 @@ function dedup(items) {
   }
   return out.map((item, i) => ({ ...item, itemNumber: i + 1 }));
 }
-
-// api/v4/simulator/shared.ts
 function buildAzureExtractFromRow(row) {
   const ae = row.azure_extract;
   if (ae && (ae.content || ae.paragraphs?.length || ae.pages?.length)) {
@@ -440,8 +420,6 @@ function _naiveSegmentFallback(text) {
   console.log(`[_naiveSegmentFallback] produced ${segments.length} item(s)`);
   return segments;
 }
-
-// api/v4/simulator/debug/segmentation.ts
 var runtime = "nodejs";
 var maxDuration = 30;
 async function handler(req, res) {
