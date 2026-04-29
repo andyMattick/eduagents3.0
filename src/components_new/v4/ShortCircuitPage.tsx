@@ -457,11 +457,30 @@ export function ShortCircuitPage() {
     setPhaseCRunLoading(true);
     setPhaseCRunError(null);
     try {
+      // Collect all leaf items from the Phase B graph (sub-items for multipart
+      // problems; standalone items for single-part questions). Using the expanded
+      // tree rather than graphItems ensures we pass ALL sub-items regardless of
+      // the current UI expand/collapse state.
+      const leafItems = itemTrees && itemTrees.length > 0
+        ? flattenExpandedItems(itemTrees)
+        : (items ?? []).filter((item) => Boolean(item.logicalLabel));
+
+      const phaseBItems = leafItems.map((item) => ({
+        itemId: (item as { itemId?: string }).itemId ?? undefined,
+        itemNumber: typeof item.itemNumber === "number" ? item.itemNumber : undefined,
+        logicalLabel: item.logicalLabel!,
+        bloomLevel: (item.bloomsLevel ?? 3) as number,
+        linguisticLoad: item.linguisticLoad,
+        cognitiveLoad: (item as { cognitiveLoad?: number }).cognitiveLoad,
+        representationLoad: (item as { representationLoad?: number }).representationLoad,
+      })).filter((item) => Boolean(item.logicalLabel));
+
       const output = await runSimulationUnifiedApi({
         classId: selectedClassId,
         documentId,
         selectedProfileIds: [],
         mode: "class",
+        phaseBItems: phaseBItems.length > 0 ? phaseBItems : undefined,
       });
 
       setPhaseCSimulationId(output.simulationId);

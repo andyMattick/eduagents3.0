@@ -778,6 +778,41 @@ function sendError(res, code, message, httpStatus) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(httpStatus).json({ error: { code, message } });
 }
+function normalizePhaseBItemsFromClient(rawItems) {
+  const clampTrait = (v) => typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 0), 1) : 0.5;
+  const clampBloom = (v) => typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 1), 6) : 3;
+  const items = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== "object") continue;
+    const logicalLabel = typeof raw.logicalLabel === "string" && raw.logicalLabel.trim() ? raw.logicalLabel.trim() : null;
+    if (!logicalLabel) continue;
+    const alphaMatch = logicalLabel.match(/^(\d+)([a-z])$/i);
+    const numericMatch = logicalLabel.match(/^(\d+)$/);
+    const groupId = alphaMatch ? alphaMatch[1] : numericMatch ? numericMatch[1] : logicalLabel;
+    const partIndex = alphaMatch ? (alphaMatch[2].toLowerCase().charCodeAt(0) - 96) : 0;
+    const isParent = partIndex === 0 && !alphaMatch;
+    const itemId = typeof raw.itemId === "string" && raw.itemId.trim() ? raw.itemId.trim() : `client-item-${logicalLabel}`;
+    const itemNumber = typeof raw.itemNumber === "number" && Number.isFinite(raw.itemNumber) ? raw.itemNumber : void 0;
+    items.push({
+      itemId,
+      itemNumber,
+      groupId,
+      partIndex,
+      logicalLabel,
+      isParent,
+      traits: {
+        bloomLevel: clampBloom(raw.bloomLevel ?? raw.traits?.bloomLevel),
+        linguisticLoad: clampTrait(raw.linguisticLoad ?? raw.traits?.linguisticLoad),
+        cognitiveLoad: clampTrait(raw.cognitiveLoad ?? raw.traits?.cognitiveLoad),
+        representationLoad: clampTrait(raw.representationLoad ?? raw.traits?.representationLoad),
+        vocabDensity: typeof raw.vocabDensity === "number" && Number.isFinite(raw.vocabDensity) ? raw.vocabDensity : void 0,
+        symbolDensity: typeof raw.symbolDensity === "number" && Number.isFinite(raw.symbolDensity) ? raw.symbolDensity : void 0,
+        steps: typeof raw.steps === "number" && Number.isFinite(raw.steps) ? raw.steps : void 0
+      }
+    });
+  }
+  return items;
+}
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -807,11 +842,18 @@ async function handler(req, res) {
     if (mode !== "class") {
       return sendError(res, "invalid_request", "mode must be 'class'", 400);
     }
-    const phaseB = await normalizeItemsPhaseB(payload.documentId);
-    if (phaseB.items.length === 0) {
+    let simulationItems = null;
+    if (Array.isArray(payload.phaseBItems) && payload.phaseBItems.length > 0) {
+      simulationItems = normalizePhaseBItemsFromClient(payload.phaseBItems);
+    }
+    if (!simulationItems || simulationItems.length === 0) {
+      const phaseB = await normalizeItemsPhaseB(payload.documentId);
+      simulationItems = phaseB.items;
+    }
+    if (simulationItems.length === 0) {
       return sendError(res, "not_found", "No document items found for documentId", 404);
     }
-    for (const item of phaseB.items) {
+    for (const item of simulationItems) {
       if (!item.itemId || !item.groupId || !item.logicalLabel || !item.traits) {
         return sendError(res, "invalid_request", `Malformed document: item ${item.itemId ?? item.itemNumber ?? "unknown"} is missing required phase-b fields`, 400);
       }
@@ -819,7 +861,7 @@ async function handler(req, res) {
     const result = await runPhaseCSimulation({
       classId: payload.classId,
       documentId: payload.documentId,
-      items: phaseB.items,
+      items: simulationItems,
       selectedProfileIds: Array.isArray(payload.selectedProfileIds) ? payload.selectedProfileIds : []
     });
     return res.status(201).json({
