@@ -4,7 +4,6 @@ import { NARRATOR_LENS_OPTIONS, type NarratorLens } from "../../prism-v4/narrato
 import { runSemanticPipeline } from "../../prism-v4/semantic/pipeline/runSemanticPipeline";
 import type { TaggingPipelineInput, TaggingPipelineOutput } from "../../prism-v4/schema/semantic";
 
-import { ConceptGraph } from "./ConceptGraph";
 import { DebugPanel } from "./DebugPanel";
 import { DocumentOverview } from "./DocumentOverview";
 import { ProblemList } from "./ProblemList";
@@ -137,7 +136,6 @@ export function SemanticViewer(props: { input: TaggingPipelineInput }) {
         expertMode={isExpertMode}
         lens={lens}
       />
-      {isExpertMode ? <ConceptGraph graph={output.documentInsights.conceptGraph} /> : null}
       {isExpertMode ? <DebugPanel input={input} output={output} /> : null}
       </div>
     </>

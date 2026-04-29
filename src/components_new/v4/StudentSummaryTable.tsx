@@ -13,7 +13,6 @@ type StudentSummaryRow = {
   averageTime: number;
   averageBloomGap: number;
   averagePCorrect: number;
-  averageMisconceptionRisk: number;
   averageTraitDelta: number;
 };
 
@@ -43,7 +42,6 @@ function summarizeStudent(studentId: string, items: StudentItem[]): StudentSumma
   const time = items.map((item) => toNumber(item.timeSeconds));
   const bloomGap = items.map((item) => toNumber(item.bloomGap));
   const pCorrect = items.map((item) => toNumber(item.pCorrect));
-  const misconceptionRisk = pCorrect.map((value) => 1 - value);
   const traitDelta = items.map((item) => toNumber(item.difficultyScore) - toNumber(item.abilityScore));
 
   return {
@@ -52,7 +50,6 @@ function summarizeStudent(studentId: string, items: StudentItem[]): StudentSumma
     averageTime: average(time),
     averageBloomGap: average(bloomGap),
     averagePCorrect: average(pCorrect),
-    averageMisconceptionRisk: average(misconceptionRisk),
     averageTraitDelta: average(traitDelta),
   };
 }
@@ -136,7 +133,6 @@ export function StudentSummaryTable({ simulationId, studentIds }: Props) {
             <th>Avg time (s)</th>
             <th>Avg bloom gap</th>
             <th>Avg pCorrect</th>
-            <th>Avg misconception risk</th>
             <th>Avg trait delta</th>
           </tr>
         </thead>
@@ -148,7 +144,6 @@ export function StudentSummaryTable({ simulationId, studentIds }: Props) {
               <td>{row.averageTime.toFixed(2)}</td>
               <td>{row.averageBloomGap.toFixed(3)}</td>
               <td>{row.averagePCorrect.toFixed(3)}</td>
-              <td>{row.averageMisconceptionRisk.toFixed(3)}</td>
               <td>{row.averageTraitDelta.toFixed(3)}</td>
             </tr>
           ))}

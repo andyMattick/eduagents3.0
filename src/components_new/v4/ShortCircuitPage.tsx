@@ -1095,14 +1095,12 @@ export function ShortCircuitPage() {
                       <th>Time (s)</th>
                       <th>Bloom gap</th>
                       <th>pCorrect</th>
-                      <th>Misconception risk</th>
                       <th>Trait delta</th>
                     </tr>
                   </thead>
                   <tbody>
                     {phaseCItems.map((item) => {
                       const pCorrect = toNumber(item.pCorrect);
-                      const misconceptionRisk = 1 - pCorrect;
                       const traitDelta = toNumber(item.difficultyScore) - toNumber(item.abilityScore);
                       return (
                         <tr key={item.itemId}>
@@ -1111,7 +1109,6 @@ export function ShortCircuitPage() {
                           <td>{toNumber(item.timeSeconds).toFixed(2)}</td>
                           <td>{toNumber(item.bloomGap).toFixed(3)}</td>
                           <td>{pCorrect.toFixed(3)}</td>
-                          <td>{misconceptionRisk.toFixed(3)}</td>
                           <td>{traitDelta.toFixed(3)}</td>
                         </tr>
                       );
