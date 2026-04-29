@@ -463,7 +463,14 @@ function studentSummary(results, itemTraits) {
   });
   const allParents = adjusted.length > 0 && adjusted.every((entry) => entry.isParent);
   const normalizedParents = allParents ? adjusted.map((entry) => ({ ...entry, isParent: false })) : adjusted;
-  return normalizedParents.sort((left, right) => compareByStructure(left, right));
+  const sorted = normalizedParents.sort((left, right) => compareByStructure(left, right));
+  const seenLabels = /* @__PURE__ */ new Set();
+  return sorted.filter((entry) => {
+    const key = entry.logicalLabel ?? entry.itemLabel ?? entry.itemId;
+    if (seenLabels.has(key)) return false;
+    seenLabels.add(key);
+    return true;
+  });
 }
 function phaseBSummary(results, itemTraits) {
   const byItem = /* @__PURE__ */ new Map();

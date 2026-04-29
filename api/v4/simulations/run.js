@@ -210,7 +210,7 @@ function deriveStructure(row) {
       groupId,
       partIndex,
       logicalLabel,
-      isParent: metadataIsParent ?? !hasAnswerKey(row.answer_key)
+      isParent: metadataIsParent ?? (partIndex === 0 && !hasAnswerKey(row.answer_key))
     };
   }
   const stem = (row.stem ?? "").trim();
@@ -224,7 +224,7 @@ function deriveStructure(row) {
       groupId,
       partIndex: letterToPartIndex(suffix),
       logicalLabel: `${groupId}${suffix}`,
-      isParent: !answerPresent
+      isParent: false
     };
   }
   const numeric = stem.match(/^(\d+)[\).:\s]/);
@@ -401,7 +401,18 @@ function dedupeNormalizedItems(items) {
     }
     deduped.push(...bucket.filter((entry) => !isSyntheticPartItem(entry)));
   }
-  return sortNormalizedItems(deduped);
+  const sorted = sortNormalizedItems(deduped);
+  const byLabel = /* @__PURE__ */ new Map();
+  for (const item of sorted) {
+    const key = item.logicalLabel ?? item.itemId;
+    const existing = byLabel.get(key);
+    if (!existing) {
+      byLabel.set(key, item);
+    } else if (isSyntheticPartItem(existing) && !isSyntheticPartItem(item)) {
+      byLabel.set(key, item);
+    }
+  }
+  return sortNormalizedItems([...byLabel.values()]);
 }
 async function normalizeItemsPhaseB(documentId) {
   const rows = await supabaseRest("v4_items", {

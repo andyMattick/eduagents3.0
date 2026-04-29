@@ -1055,7 +1055,7 @@ export function ShortCircuitPage() {
                         void handleStudentChange(event.target.value);
                       }}
                     >
-                      <option value="">Class summary</option>
+                      <option value="">Choose a student</option>
                       {(phaseCClassView.availableStudentIds ?? []).map((id) => (
                         <option key={id} value={id}>{id}</option>
                       ))}
