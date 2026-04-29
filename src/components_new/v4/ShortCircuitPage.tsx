@@ -15,8 +15,7 @@ import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
-import type { SimulationItemTree } from "../../prism-v4/schema";
+import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
 import "./v4.css";
 
 const ACCEPTED_EXTENSIONS = ".pdf,.doc,.docx,.ppt,.pptx";

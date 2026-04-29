@@ -29,7 +29,7 @@ import {
 	Cell,
 } from "recharts";
 import { useTheme } from "../../hooks/useTheme";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
+import type { SimulationItem as ShortCircuitItem } from "../../prism-v4/schema";
 
 // ---------------------------------------------------------------------------
 // Theme-aware color helpers
