@@ -1028,7 +1028,7 @@ export function ShortCircuitPage() {
                 onClick={() => void handleRunPhaseC()}
                 disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId}
               >
-                {phaseCRunLoading ? "Running..." : "Run Student Simulation"}
+                {phaseCRunLoading ? "Running..." : "Run Class Simulation"}
               </button>
             </div>
 
