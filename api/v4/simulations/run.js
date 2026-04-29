@@ -780,7 +780,7 @@ function sendError(res, code, message, httpStatus) {
 }
 function normalizePhaseBItemsFromClient(rawItems) {
   const clampTrait = (v) => typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 0), 1) : 0.5;
-  const clampBloom = (v) => typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 1), 6) : 3;
+  const clampBloom = (v) => typeof v === "number" && Number.isFinite(v) ? Math.min(Math.max(v, 1), 6) : undefined;
   const items = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== "object") continue;
@@ -802,7 +802,7 @@ function normalizePhaseBItemsFromClient(rawItems) {
       isParent,
       traits: {
         //moved bloom out then back in
-        bloomLevel: clampBloom(raw.bloomLevel ?? raw.traits?.bloomLevel),
+        bloomLevel: clampBloom(raw.ingestionBloomLevel ?? raw.bloomLevel ?? raw.traits?.bloomLevel),
         linguisticLoad: clampTrait(raw.linguisticLoad ?? raw.traits?.linguisticLoad),
         cognitiveLoad: clampTrait(raw.cognitiveLoad ?? raw.traits?.cognitiveLoad),
         representationLoad: clampTrait(raw.representationLoad ?? raw.traits?.representationLoad),
@@ -811,6 +811,22 @@ function normalizePhaseBItemsFromClient(rawItems) {
         steps: typeof raw.steps === "number" && Number.isFinite(raw.steps) ? raw.steps : void 0
       }
     });
+  }
+  // Sub-item Bloom inheritance: items in the same group that are missing
+  // bloomLevel inherit from the first sibling that has one.
+  const groupBloom = new Map();
+  for (const item of items) {
+    if (item.traits.bloomLevel !== undefined && !groupBloom.has(item.groupId)) {
+      groupBloom.set(item.groupId, item.traits.bloomLevel);
+    }
+  }
+  for (const item of items) {
+    if (item.traits.bloomLevel === undefined) {
+      const inherited = groupBloom.get(item.groupId);
+      if (inherited !== undefined) {
+        item.traits.bloomLevel = inherited;
+      }
+    }
   }
   return items;
 }
