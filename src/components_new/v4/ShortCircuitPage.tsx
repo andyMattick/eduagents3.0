@@ -353,6 +353,22 @@ export function ShortCircuitPage() {
       setDocumentId(nextDocumentId);
       setIsPublicDocument(false);
       setVisibilityError(null);
+
+      if (nextDocumentId) {
+        const analyzeRes = await fetch("/api/v4/documents/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(user?.id ? { "x-auth-user-id": user.id } : {}),
+          },
+          body: JSON.stringify({ sessionId, documentId: nextDocumentId }),
+        });
+        if (!analyzeRes.ok) {
+          const payload = await analyzeRes.json().catch(() => null);
+          throw new Error(payload?.error ?? "Analysis failed after upload.");
+        }
+      }
+
       await runPhaseB({ nextSessionId: sessionId, nextDocumentId });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
