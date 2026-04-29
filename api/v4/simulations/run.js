@@ -801,6 +801,7 @@ function normalizePhaseBItemsFromClient(rawItems) {
       logicalLabel,
       isParent,
       traits: {
+        //moved bloom out then back in
         bloomLevel: clampBloom(raw.bloomLevel ?? raw.traits?.bloomLevel),
         linguisticLoad: clampTrait(raw.linguisticLoad ?? raw.traits?.linguisticLoad),
         cognitiveLoad: clampTrait(raw.cognitiveLoad ?? raw.traits?.cognitiveLoad),
