@@ -4,7 +4,31 @@ export interface CanonicalDocument {
 	sourceMimeType: string;
 	surfaces: Surface[];
 	nodes: DocumentNode[];
+	items?: CanonicalItem[];
 	createdAt: string;
+}
+
+export interface CanonicalItem {
+	id: string;
+	label?: string;
+	stem: string;
+	bloomLevel: number;
+	bloomLabel: string;
+	subItems: CanonicalSubItem[];
+}
+
+export interface CanonicalSubItem {
+	id: string;
+	label: string;
+	text: string;
+	bloomLevel: number;
+	bloomLabel: string;
+	subSubParts: CanonicalSubSubPart[];
+}
+
+export interface CanonicalSubSubPart {
+	label: string;
+	text: string;
 }
 
 export interface Surface {
