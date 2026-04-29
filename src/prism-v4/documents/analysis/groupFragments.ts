@@ -331,7 +331,7 @@ function toInstructionalUnit(unit: MutableInstructionalUnit): InstructionalUnit 
 		skills,
 		learningTargets,
 		misconceptions,
-		difficulty: average(unit.difficultyValues),
+			contentComplexity: average(unit.difficultyValues),
 		linguisticLoad: average(unit.linguisticLoadValues),
 		sourceSections,
 		confidence: average(unit.confidenceValues),

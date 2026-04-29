@@ -111,7 +111,7 @@ function difficultyCountsFromProduct(product?: TestProduct) {
 		return [] as CountedDifficulty[];
 	}
 
-	const difficulties = product.sections.flatMap((section) => section.items.map((item) => item.difficulty));
+	const difficulties = product.sections.flatMap((section) => section.items.map((item) => item.complexityBand));
 	return toCountedDifficulty(countArrayValues(difficulties, DIFFICULTY_BANDS));
 }
 
@@ -331,11 +331,11 @@ export function buildAssessmentFingerprintFromBlueprint(args: {
 			bloomDistribution: createSingleBloomDistribution(assignedBloom),
 			scenarioPatterns: preferredScenarios.length > 0
 				? [preferredScenarios[index % preferredScenarios.length]]
-				: (existing?.scenarioPatterns.length ? existing.scenarioPatterns : ["abstract-symbolic"]),
+				: (existing?.scenarioPatterns.length ? existing.scenarioPatterns : ["abstract-symbolic" as ScenarioType]),
 			scenarioDirective: existing?.scenarioDirective,
 			itemModes: preferredModes.length > 0
 				? [preferredModes[index % preferredModes.length]]
-				: (existing?.itemModes.length ? existing.itemModes : ["explain"]),
+				: (existing?.itemModes.length ? existing.itemModes : ["explain" as ItemMode]),
 			maxBloomLevel: assignedBloom,
 		};
 	});

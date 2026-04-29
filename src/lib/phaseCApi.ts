@@ -108,7 +108,7 @@ export function regenerateClassApi(classId: string, seed?: string) {
   });
 }
 
-export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class" }) {
+export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class"; phaseBItems?: Array<{ itemId?: string; itemNumber?: number; logicalLabel: string; bloomLevel?: number; ingestionBloomLevel?: number; linguisticLoad?: number; cognitiveLoad?: number; representationLoad?: number }> }) {
   return fetchJson<{
     simulationId: string;
     classId: string;

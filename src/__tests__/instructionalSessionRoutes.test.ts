@@ -53,7 +53,7 @@ function buildAnalyzedDocument(args: {
 			concepts: [...args.concepts],
 			conceptFrequencies: Object.fromEntries(args.concepts.map((concept) => [concept, 1])),
 			representations: ["text"],
-			difficultyDistribution: { low: difficulty === "low" ? 1 : 0, medium: difficulty === "medium" ? 1 : 0, high: difficulty === "high" ? 1 : 0 },
+			complexityDistribution: { low: difficulty === "low" ? 1 : 0, medium: difficulty === "medium" ? 1 : 0, high: difficulty === "high" ? 1 : 0 },
 			misconceptionThemes: [`common error with ${args.concepts[0]!.toLowerCase()}`],
 			instructionalDensity: 1,
 			problemCount: 1,

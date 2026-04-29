@@ -200,7 +200,7 @@ export function buildDefaultCollectionAnalysis(sessionId: string): DocumentColle
 		documentIds: session.documentIds,
 		conceptOverlap: {},
 		conceptGaps: [],
-		difficultyProgression: {},
+		complexityProgression: {},
 		representationProgression: {},
 		redundancy: Object.fromEntries(session.documentIds.map((documentId) => [documentId, []])),
 		coverageSummary: {
@@ -212,7 +212,7 @@ export function buildDefaultCollectionAnalysis(sessionId: string): DocumentColle
 				problemCount: 0,
 				instructionalDensity: 0,
 				representations: [],
-				dominantDifficulty: "low",
+				dominantComplexityBand: "low",
 			}])),
 		},
 		documentSimilarity: [],

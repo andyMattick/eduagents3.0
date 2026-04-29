@@ -86,38 +86,31 @@ export type RegenerateAssessmentSectionRequest = {
 
 export async function fetchJson<T>(input: string, init?: RequestInit) {
 	const response = await fetch(input, { credentials: "include", ...init });
-	let rawBody = "";
+
+	// Reject non-JSON responses before attempting to parse — prevents HTML
+	// error pages (Vercel 404/500 pages) from propagating to callers.
+	const contentType = response.headers?.get?.("content-type") ?? null;
+	if (contentType !== null && !contentType.includes("application/json")) {
+		// Attempt to read body for diagnostics but never expose it to the user.
+		const preview = await response.text().then((t) => t.trim().slice(0, 80)).catch(() => "<unreadable>");
+		throw new Error(`Non-JSON response from ${input} (${response.status}) — content-type: ${contentType}. Preview: ${preview}`);
+	}
+
 	let payload: unknown;
-
-	if (typeof response.text === "function") {
-		rawBody = await response.text();
-	} else if (typeof response.json === "function") {
+	try {
 		payload = await response.json();
-		rawBody = JSON.stringify(payload ?? null);
-	}
-
-	const trimmedBody = rawBody.trim();
-
-	if (!trimmedBody) {
-		throw new Error(`Empty response from ${input}`);
-	}
-
-	if (trimmedBody.startsWith("<!DOCTYPE") || trimmedBody.startsWith("<html") || trimmedBody.startsWith("<")) {
-		throw new Error(`Non-JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-	}
-
-	if (payload === undefined) {
-		try {
-			payload = JSON.parse(trimmedBody);
-		} catch {
-			throw new Error(`Invalid JSON response from ${input}: ${trimmedBody.slice(0, 120)}`);
-		}
+	} catch {
+		throw new Error(`Invalid JSON response from ${input} (${response.status})`);
 	}
 
 	if (!response.ok) {
-		const errorMessage = typeof payload === "object" && payload !== null && "error" in payload
-			? String((payload as { error?: unknown }).error ?? `Request failed: ${input}`)
-			: `Request failed: ${input}`;
+		// Support both flat { error: string } and structured { error: { message } } envelopes.
+		const err = (payload as { error?: unknown } | null)?.error;
+		const errorMessage = typeof err === "object" && err !== null && "message" in err
+			? String((err as { message?: unknown }).message ?? `Request failed: ${input}`)
+			: typeof err === "string"
+			? err
+			: `Request failed: ${input} (${response.status})`;
 		throw new Error(errorMessage);
 	}
 

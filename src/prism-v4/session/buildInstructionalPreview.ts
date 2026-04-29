@@ -51,7 +51,7 @@ function normalizePreviewItem(
 		sourceDocumentId: item.sourceDocumentId,
 		sourceSpan: item.sourceSpan,
 		bloom: deriveBloom(item),
-		difficulty: item.difficulty,
+		difficulty: item.complexityBand,
 		mode: deriveMode(item),
 		scenario: deriveScenario(item),
 		misconceptionTag: item.misconceptionTriggers?.[0],

@@ -1,4 +1,5 @@
-import type { ExtractedProblemCognitiveDemand, TestItem, TestItemExplanation, TestProduct } from "../schema/integration/IntentProduct";
+import type { TestItem, TestItemExplanation, TestProduct } from "../schema/integration/IntentProduct";
+import type { ExtractedProblemCognitiveDemand } from "../schema/semantic";
 import type { StudentPerformanceProfile } from "../studentPerformance";
 
 export type BloomLevel =

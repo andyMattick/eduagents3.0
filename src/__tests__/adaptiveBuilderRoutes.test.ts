@@ -49,13 +49,13 @@ function buildStatsAnalyzedDocument(args: {
 			{ id: `${args.documentId}-fragment-2`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }], isInstructional: true, instructionalRole: "problem-stem", contentType: "question", learningTarget: `Explain ${args.concepts.join(" and ")}`, prerequisiteConcepts: [...args.concepts], scaffoldLevel: "medium", misconceptionTriggers: [`common error with ${args.concepts[0]!.toLowerCase()}`], confidence: 0.95, classifierVersion: "wave5-test", strategy: "rule-based" },
 		],
 		problems: [
-			{ id: `${args.documentId}-problem-1`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }], text: args.problemText, extractionMode: "authored", concepts: [...args.concepts], representations: ["text"], difficulty, misconceptions: [`common error with ${args.concepts[0]!.toLowerCase()}`], cognitiveDemand: difficulty === "high" ? "analysis" : "conceptual" },
+			{ id: `${args.documentId}-problem-1`, documentId: args.documentId, anchors: [{ documentId: args.documentId, surfaceId: `${args.documentId}-surface-1`, nodeId: `${args.documentId}-node-2` }], text: args.problemText, extractionMode: "authored", concepts: [...args.concepts], representations: ["text"], complexityBand: difficulty, misconceptions: [`common error with ${args.concepts[0]!.toLowerCase()}`], cognitiveDemand: difficulty === "high" ? "analysis" : "conceptual" },
 		],
 		insights: {
 			concepts: [...args.concepts],
 			conceptFrequencies: Object.fromEntries(args.concepts.map((concept) => [concept, 1])),
 			representations: ["text"],
-			difficultyDistribution: { low: difficulty === "low" ? 1 : 0, medium: difficulty === "medium" ? 1 : 0, high: difficulty === "high" ? 1 : 0 },
+			complexityDistribution: { low: difficulty === "low" ? 1 : 0, medium: difficulty === "medium" ? 1 : 0, high: difficulty === "high" ? 1 : 0 },
 			misconceptionThemes: [`common error with ${args.concepts[0]!.toLowerCase()}`],
 			instructionalDensity: 1,
 			problemCount: 1,

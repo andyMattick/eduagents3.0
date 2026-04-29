@@ -1,0 +1,46 @@
+name: Verify API Bundles
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+concurrency:
+  group: verify-bundles-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bundle-check:
+    name: Bundle Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run API bundler
+        run: npm run bundle-api
+
+      - name: Fail on stale bundles
+        run: |
+          if [[ -n "$(git status --porcelain api)" ]]; then
+            echo "API bundles are stale. Run 'npm run bundle-api' and commit the updated API handlers."
+            git status --porcelain api
+            git --no-pager diff -- api | head -n 400
+            exit 1
+          fi
+          echo "API bundles are fresh."

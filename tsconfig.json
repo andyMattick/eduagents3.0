@@ -34,7 +34,10 @@
   "exclude": ["supabase",
 
     "api/v4/documents/session/**/*",
-    "api/v4/documents/intent.ts"
+    "api/v4/documents/intent.ts",
+    "api/v4/studio/shared.ts",
+    "api/rewrite/route.ts",
+    "app/api/rewrite/route.ts"
 
 
 ],

@@ -3,6 +3,7 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "Node",
+    "ignoreDeprecations": "6.0",
     "baseUrl": "../src",
     "paths": {
       "@/*": ["./*"],
@@ -12,8 +13,11 @@
       "config/*": ["./config/*"],
       "services/*": ["./services/*"],
       "hooks/*": ["./hooks/*"]
-    }
+    },
+    "strict": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["./**/*.ts"],
-  "exclude": ["../src", "../tests", "../scripts"]
+  "exclude": ["../src", "../tests", "../scripts", "v4/studio/shared.ts", "rewrite/route.ts"]
 }

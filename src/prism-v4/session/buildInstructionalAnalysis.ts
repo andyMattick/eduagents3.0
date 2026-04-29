@@ -110,8 +110,8 @@ export function buildInstructionalAnalysis(context: PrismSessionContext): Instru
 		}
 
 		for (const problem of analyzed.problems) {
-			documentDifficultyDistribution[problem.difficulty] += 1;
-			difficultySummary[problem.difficulty] += 1;
+			documentDifficultyDistribution[problem.complexityBand] += 1;
+			difficultySummary[problem.complexityBand] += 1;
 			demandCounts[problem.cognitiveDemand] = (demandCounts[problem.cognitiveDemand] ?? 0) + 1;
 
 			const bloom = classifyBloomLevel(problem.text);

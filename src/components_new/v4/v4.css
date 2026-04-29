@@ -1493,6 +1493,7 @@
   border-radius: 18px;
   border: 1px solid rgba(86, 57, 32, 0.12);
   background: rgba(255, 255, 255, 0.76);
+  color: #1f1a17;
 }
 
 .v4-viewer .v4-document-card,
@@ -2641,6 +2642,14 @@
     color: #1f1a17 !important;
   }
 
+  /* Document cards and picker — ensure readable dark text on light background */
+  .v4-viewer .v4-document-card,
+  .v4-viewer .v4-product-card,
+  .v4-viewer .v4-history-item,
+  .v4-viewer .v4-segment-card {
+    color: #1f1a17 !important;
+  }
+
   /* Pre / code — prevent dark background + light text on warm panels */
   .v4-viewer pre,
   .v4-viewer code {
@@ -2700,6 +2709,13 @@
 [data-theme="dark"] .v4-viewer h4,
 [data-theme="dark"] .v4-viewer h5,
 [data-theme="dark"] .v4-viewer h6 {
+  color: #1f1a17 !important;
+}
+
+[data-theme="dark"] .v4-viewer .v4-document-card,
+[data-theme="dark"] .v4-viewer .v4-product-card,
+[data-theme="dark"] .v4-viewer .v4-history-item,
+[data-theme="dark"] .v4-viewer .v4-segment-card {
   color: #1f1a17 !important;
 }
 

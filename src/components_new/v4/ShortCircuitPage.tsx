@@ -11,8 +11,10 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { StudentSummaryTable } from "./StudentSummaryTable";
+import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
+import { useAuth } from "../Auth/useAuth";
 import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
 import type { SimulationItemTree } from "../../prism-v4/schema";
 import "./v4.css";
@@ -179,6 +181,7 @@ function flattenCollapsedItems(itemTrees: SimulationItemTree[]): ShortCircuitIte
 }
 
 export function ShortCircuitPage() {
+  const { user } = useAuth();
   const [phase, setPhase] = useState<Phase>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -208,6 +211,10 @@ export function ShortCircuitPage() {
   const [structureSaving, setStructureSaving] = useState(false);
   const [structureSaveError, setStructureSaveError] = useState<string | null>(null);
   const [structureSaveMessage, setStructureSaveMessage] = useState<string | null>(null);
+  const [showPublicPicker, setShowPublicPicker] = useState(false);
+  const [isPublicDocument, setIsPublicDocument] = useState(false);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+  const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
@@ -240,6 +247,10 @@ export function ShortCircuitPage() {
     setStructureSaving(false);
     setStructureSaveError(null);
     setStructureSaveMessage(null);
+    setShowPublicPicker(false);
+    setIsPublicDocument(false);
+    setVisibilitySaving(false);
+    setVisibilityError(null);
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -274,7 +285,14 @@ export function ShortCircuitPage() {
     setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
   };
 
-  const runPhaseB = useCallback(async (nextSessionId: string): Promise<boolean> => {
+  const runPhaseB = useCallback(async ({ nextSessionId, nextDocumentId }: { nextSessionId?: string | null; nextDocumentId?: string | null }): Promise<boolean> => {
+    const hasSession = typeof nextSessionId === "string" && nextSessionId.length > 0;
+    const hasDocument = typeof nextDocumentId === "string" && nextDocumentId.length > 0;
+    if (!hasSession && !hasDocument) {
+      setRunError("A session or document is required to run analysis.");
+      return false;
+    }
+
     setPhase("running");
     setRunError(null);
     setItems(null);
@@ -287,7 +305,11 @@ export function ShortCircuitPage() {
       const res = await fetch("/api/v4/simulator/shortcircuit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: nextSessionId, profiles: ["average"] }),
+        body: JSON.stringify({
+          ...(hasSession ? { sessionId: nextSessionId } : {}),
+          ...(hasDocument ? { documentId: nextDocumentId } : {}),
+          profiles: ["average"],
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -325,17 +347,80 @@ export function ShortCircuitPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const { sessionId, registered } = await createStudioSessionFromFilesApi([file]);
+      const { sessionId, registered } = await createStudioSessionFromFilesApi([file], user?.id);
       setSessionId(sessionId);
       const nextDocumentId = registered[0]?.documentId ?? null;
       setDocumentId(nextDocumentId);
-      await runPhaseB(sessionId);
+      setIsPublicDocument(false);
+      setVisibilityError(null);
+
+      if (nextDocumentId) {
+        const analyzeRes = await fetch("/api/v4/documents/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(user?.id ? { "x-auth-user-id": user.id } : {}),
+          },
+          body: JSON.stringify({ sessionId, documentId: nextDocumentId }),
+        });
+        if (!analyzeRes.ok) {
+          const payload = await analyzeRes.json().catch(() => null);
+          throw new Error(payload?.error ?? "Analysis failed after upload.");
+        }
+      }
+
+      await runPhaseB({ nextSessionId: sessionId, nextDocumentId });
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
       setUploading(false);
     }
   };
+
+  const handleSelectSharedDocument = useCallback(async (doc: PublicDocument) => {
+    setFile(new File([], doc.sourceFileName, { type: doc.sourceMimeType ?? "application/pdf" }));
+    setSessionId(null);
+    setDocumentId(doc.documentId);
+    setIsPublicDocument(true);
+    setVisibilityError(null);
+    setRunError(null);
+    setUploadError(null);
+    setShowPublicPicker(false);
+    await runPhaseB({ nextDocumentId: doc.documentId, nextSessionId: null });
+  }, [runPhaseB]);
+
+  const toggleDocumentVisibility = useCallback(async () => {
+    if (!documentId || visibilitySaving) {
+      return;
+    }
+
+    const nextPublic = !isPublicDocument;
+    setVisibilitySaving(true);
+    setVisibilityError(null);
+
+    try {
+      const res = await fetch(`/api/v4/documents/${encodeURIComponent(documentId)}/visibility`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-auth-user-id": user.id } : {}),
+        },
+        body: JSON.stringify({ isPublic: nextPublic }),
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error?.message ?? "Failed to update sharing visibility.");
+      }
+
+      setIsPublicDocument(nextPublic);
+    } catch (err) {
+      setVisibilityError(err instanceof Error ? err.message : "Failed to update sharing visibility.");
+    } finally {
+      setVisibilitySaving(false);
+    }
+  }, [documentId, isPublicDocument, user?.id, visibilitySaving]);
 
   const loadClasses = useCallback(async () => {
     setPhaseCClassLoading(true);
@@ -372,11 +457,31 @@ export function ShortCircuitPage() {
     setPhaseCRunLoading(true);
     setPhaseCRunError(null);
     try {
+      // Collect all leaf items from the Phase B graph (sub-items for multipart
+      // problems; standalone items for single-part questions). Using the expanded
+      // tree rather than graphItems ensures we pass ALL sub-items regardless of
+      // the current UI expand/collapse state.
+      const leafItems = itemTrees && itemTrees.length > 0
+        ? flattenExpandedItems(itemTrees)
+        : (items ?? []).filter((item) => Boolean(item.logicalLabel));
+
+      const phaseBItems = leafItems.map((item) => ({
+        itemId: (item as { itemId?: string }).itemId ?? undefined,
+        itemNumber: typeof item.itemNumber === "number" ? item.itemNumber : undefined,
+        logicalLabel: item.logicalLabel!,
+        bloomLevel: item.bloomsLevel,
+        ingestionBloomLevel: item.bloomsLevel,
+        linguisticLoad: item.linguisticLoad,
+        cognitiveLoad: (item as { cognitiveLoad?: number }).cognitiveLoad,
+        representationLoad: (item as { representationLoad?: number }).representationLoad,
+      })).filter((item) => Boolean(item.logicalLabel));
+
       const output = await runSimulationUnifiedApi({
         classId: selectedClassId,
         documentId,
         selectedProfileIds: [],
         mode: "class",
+        phaseBItems: phaseBItems.length > 0 ? phaseBItems : undefined,
       });
 
       setPhaseCSimulationId(output.simulationId);
@@ -569,7 +674,7 @@ export function ShortCircuitPage() {
 
       const canReload = Boolean(sessionId);
       if (canReload) {
-        const ok = await runPhaseB(sessionId as string);
+        const ok = await runPhaseB({ nextSessionId: sessionId as string, nextDocumentId: documentId });
         if (!ok) {
           throw new Error("Structure saved, but reload failed. Please retry analysis.");
         }
@@ -646,7 +751,7 @@ export function ShortCircuitPage() {
                 <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem", color: "rgba(86,57,32,0.4)" }}>^</div>
                 <p style={{ margin: 0, fontWeight: 600, color: "#1f1a17" }}>Drop your file here</p>
                 <p style={{ margin: "0.35rem 0 0", fontSize: "0.78rem", color: "#6b7280" }}>
-                  or click to browse -- PDF, Word, PowerPoint accepted
+                  or click to browse -- PDF accepted
                 </p>
               </>
             )}
@@ -664,6 +769,26 @@ export function ShortCircuitPage() {
           >
             {uploading ? "Uploading and analyzing..." : "Run Analysis"}
           </button>
+
+          <div style={{ marginTop: "0.9rem" }}>
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => setShowPublicPicker((value) => !value)}
+              style={{ width: "100%" }}
+            >
+              {showPublicPicker ? "Hide shared materials" : "Browse shared teacher materials"}
+            </button>
+          </div>
+
+          {showPublicPicker && (
+            <div style={{ marginTop: "0.8rem" }}>
+              <DocumentPicker
+                onClose={() => setShowPublicPicker(false)}
+                onSelectDocument={handleSelectSharedDocument}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -695,6 +820,50 @@ export function ShortCircuitPage() {
               {runError}
             </div>
           )}
+
+          <div className="v4-shortcircuit-result-card">
+            <h3 className="v4-shortcircuit-tree-title">Document Sharing</h3>
+            <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
+              Make your uploaded document visible to other teachers, or browse currently shared materials.
+            </p>
+            <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="v4-button"
+                disabled={!documentId || visibilitySaving}
+                onClick={() => void toggleDocumentVisibility()}
+              >
+                {!documentId
+                  ? "Upload a document first"
+                  : visibilitySaving
+                    ? "Saving..."
+                    : isPublicDocument
+                      ? "Make private"
+                      : "Make this document public"}
+              </button>
+              <button
+                type="button"
+                className="v4-button v4-button-secondary"
+                onClick={() => setShowPublicPicker((value) => !value)}
+              >
+                {showPublicPicker ? "Hide shared materials" : "Browse shared teacher materials"}
+              </button>
+            </div>
+            {visibilityError && <p className="phasec-error">{visibilityError}</p>}
+            {documentId && !visibilityError && (
+              <p className="phasec-copy" style={{ marginTop: "0.5rem" }}>
+                Sharing status: {isPublicDocument ? "Public" : "Private"}
+              </p>
+            )}
+            {showPublicPicker && (
+              <div style={{ marginTop: "0.8rem" }}>
+                <DocumentPicker
+                  onClose={() => setShowPublicPicker(false)}
+                  onSelectDocument={handleSelectSharedDocument}
+                />
+              </div>
+            )}
+          </div>
 
           <div className="v4-shortcircuit-result-card">
             <div className="v4-shortcircuit-graph-toggle-row">
@@ -859,7 +1028,7 @@ export function ShortCircuitPage() {
                 onClick={() => void handleRunPhaseC()}
                 disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId}
               >
-                {phaseCRunLoading ? "Running..." : "Run Student Simulation"}
+                {phaseCRunLoading ? "Running..." : "Run Class Simulation"}
               </button>
             </div>
 
@@ -906,7 +1075,7 @@ export function ShortCircuitPage() {
                         void handleStudentChange(event.target.value);
                       }}
                     >
-                      <option value="">Class summary</option>
+                      <option value="">Choose a student</option>
                       {(phaseCClassView.availableStudentIds ?? []).map((id) => (
                         <option key={id} value={id}>{id}</option>
                       ))}

@@ -9,6 +9,7 @@ import { useInstructionalSession } from "../../hooks/useInstructionalSession";
 import { useAuth } from "../Auth/useAuth";
 import { DocumentSubmit } from "../../components/studentPortal/DocumentSubmit";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
+import { DocumentPicker } from "./DocumentPicker";
 import { ProductViewer } from "./ProductViewer";
 import "./v4.css";
 
@@ -150,6 +151,8 @@ export function DocumentUpload() {
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
+  const [publicDocIds, setPublicDocIds] = useState<Record<string, boolean>>({});
+  const [showPublicPicker, setShowPublicPicker] = useState(false);
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
 
@@ -345,6 +348,26 @@ export function DocumentUpload() {
       : [...current, documentId]);
   }
 
+  async function toggleDocumentVisibility(documentId: string, currentlyPublic: boolean) {
+    const nextPublic = !currentlyPublic;
+    // Optimistic update
+    setPublicDocIds((prev) => ({ ...prev, [documentId]: nextPublic }));
+    try {
+      await fetch(`/api/v4/documents/${encodeURIComponent(documentId)}/visibility`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(user?.id ? { "x-auth-user-id": user.id } : {}),
+        },
+        body: JSON.stringify({ isPublic: nextPublic }),
+      });
+    } catch {
+      // Roll back on failure
+      setPublicDocIds((prev) => ({ ...prev, [documentId]: currentlyPublic }));
+    }
+  }
+
   const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
 
   return (
@@ -406,6 +429,23 @@ export function DocumentUpload() {
 
             {error && <p className="v4-error">{error}</p>}
           </form>
+
+          <div className="v4-upload-divider">
+            <span>or</span>
+          </div>
+          <button
+            type="button"
+            className="v4-button v4-button-secondary"
+            onClick={() => setShowPublicPicker((v) => !v)}
+          >
+            {showPublicPicker ? "Hide shared materials" : "Browse shared teacher materials"}
+          </button>
+
+          {showPublicPicker && (
+            <DocumentPicker
+              onClose={() => setShowPublicPicker(false)}
+            />
+          )}
         </section>
 
         {workspace && (
@@ -441,6 +481,14 @@ export function DocumentUpload() {
                         <label className="v4-document-toggle">
                           <input type="radio" name="primary-document" checked={primaryDocumentId === document.documentId} onChange={() => setPrimaryDocumentId(document.documentId)} />
                           <span>Main source</span>
+                        </label>
+                        <label className="v4-document-toggle">
+                          <input
+                            type="checkbox"
+                            checked={publicDocIds[document.documentId] ?? false}
+                            onChange={() => toggleDocumentVisibility(document.documentId, publicDocIds[document.documentId] ?? false)}
+                          />
+                          <span>Share with all teachers</span>
                         </label>
                       </div>
                       <div className="v4-document-summary">

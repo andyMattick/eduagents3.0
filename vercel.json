@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "node scripts/bundle-api.mjs && npm run build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
   "routes": [
@@ -18,6 +18,14 @@
     {
       "src": "/api/v4/sessions/([^/]+)/blueprint",
       "dest": "/api/v4/sessions/blueprint?sessionId=$1"
+    },
+    {
+      "src": "/api/v4/documents/([^/]+)/visibility",
+      "dest": "/api/v4/documents/[documentId]/visibility?documentId=$1"
+    },
+    {
+      "src": "/api/v4/simulations/([^/]+)",
+      "dest": "/api/v4/simulations/[simulationId]?simulationId=$1"
     },
     {
       "src": "/.*",

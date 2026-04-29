@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use strict";
 /* Bundled by esbuild — do not edit */
 var __create = Object.create;

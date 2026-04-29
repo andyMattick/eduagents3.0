@@ -103,7 +103,7 @@ export function buildInstructionalBuilderPlan(args: {
 			conceptName: conceptProfile?.displayName ?? section.concept,
 			itemCount: section.items.length,
 			bloomSequence: section.items.map((item) => deriveBloom(item)),
-			difficultySequence: section.items.map((item) => item.difficulty as ExtractedProblemDifficulty),
+			difficultySequence: section.items.map((item) => item.complexityBand as ExtractedProblemDifficulty),
 			modeSequence: section.items.map((item) => deriveMode(item)),
 			scenarioSequence: section.items.map((item) => deriveScenario(item)),
 		};

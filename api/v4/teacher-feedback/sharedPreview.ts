@@ -82,8 +82,8 @@ export async function buildConceptVerificationPreview(payload: ConceptVerificati
 	}
 
 	const options = (payload.options ?? {}) as BuildTestIntentOptions;
-	const requestStudentId = typeof (payload as { studentId?: unknown }).studentId === "string" && (payload as { studentId?: string }).studentId?.trim()
-		? (payload as { studentId: string }).studentId.trim()
+	const requestStudentId = typeof (payload as unknown as { studentId?: unknown }).studentId === "string" && (payload as unknown as { studentId?: string }).studentId?.trim()
+		? (payload as unknown as { studentId: string }).studentId.trim()
 		: null;
 	const requestStudentProfile = ((payload as { studentPerformanceProfile?: StudentPerformanceProfile }).studentPerformanceProfile ?? null) as StudentPerformanceProfile | null;
 	const teacherId = normalizedBlueprint.teacherId ?? getStringOption(options, "teacherId") ?? "concept-blueprint-preview";

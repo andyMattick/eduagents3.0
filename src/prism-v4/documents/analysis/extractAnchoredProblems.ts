@@ -34,7 +34,7 @@ function anchorsForProblem(problem: Problem, document: CanonicalDocument) {
 		: [];
 }
 
-function difficultyLabel(score: number): ExtractedProblem["difficulty"] {
+function difficultyLabel(score: number): ExtractedProblem["complexityBand"] {
 	if (score >= 0.67) {
 		return "high";
 	}
@@ -139,7 +139,7 @@ export function extractAnchoredProblems(args: {
 			sourceSpan: problem.sourceSpan,
 			concepts: Object.keys(concepts[problem.problemId] ?? {}),
 			representations: [representation],
-			difficulty: difficultyLabel(difficultyScore),
+			complexityBand: difficultyLabel(difficultyScore),
 			misconceptions: Object.keys(misconceptions[problem.problemId] ?? {}),
 			cognitiveDemand: cognitiveDemandLabel(problem.cleanedText ?? problem.rawText, bloomScores),
 			bloomLevel,

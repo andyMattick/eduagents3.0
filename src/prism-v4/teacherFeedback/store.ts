@@ -612,7 +612,7 @@ async function readJsonIfAvailable<T>(response: Response): Promise<T | null> {
 
 export async function saveTeacherFeedback(payload: TeacherFeedbackPayload) {
 	const feedback = createFeedback(payload);
-	const currentOverride = await getProblemOverride(payload.canonicalProblemId);
+	const currentOverride = await getProblemOverride(payload.canonicalProblemId) as ValidatedOverrides | null;
 	const mergedOverride = mergeOverrideRecords(currentOverride, toOverrideFragment(feedback));
 
 	if (canUseSupabase()) {

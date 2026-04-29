@@ -259,7 +259,7 @@ export function applyTemplates(
 	templates: CognitiveTemplate[] = cognitiveTemplates,
 ): Partial<CognitiveProfile> {
 	const matched = getTemplateMatches(problem, templates);
-	const bloom: Partial<CognitiveProfile["bloom"]> = {};
+const bloom: CognitiveProfile["bloom"] = { remember: 0, understand: 0, apply: 0, analyze: 0, evaluate: 0, create: 0 };
 
 	for (const match of matched) {
 		const scale = match.confidence * (match.isBestGuess ? 0.6 : 1);

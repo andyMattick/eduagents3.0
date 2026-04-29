@@ -1,5 +1,5 @@
 import { buildDefaultCollectionAnalysis, getAnalyzedDocumentsForSession, getDocumentSession, saveCollectionAnalysis } from "../registry";
-import type { DocumentCollectionAnalysis } from "../../schema/semantic";
+import type { DocumentCollectionAnalysis, DocumentCoverageSnapshot } from "../../schema/semantic";
 import { normalizeConceptLabel } from "../../semantic/utils/conceptUtils";
 
 const DIFFICULTY_SCORE: Record<"low" | "medium" | "high", number> = {
@@ -45,6 +45,7 @@ function canonicalDocumentConcepts(analyzed: ReturnType<typeof getAnalyzedDocume
 
 	return analyzed.insights.concepts.map((concept) => ({
 		concept,
+		aliases: [],
 		freqProblems: analyzed.problems.filter((problem) => problem.concepts.includes(concept)).length,
 		freqPages: 0,
 		freqDocuments: 1,
@@ -83,7 +84,7 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 
 	const conceptToDocumentMap: Record<string, string[]> = {};
 	const conceptCoverage: NonNullable<DocumentCollectionAnalysis["coverageSummary"]["conceptCoverage"]> = {};
-	const difficultyProgression: DocumentCollectionAnalysis["difficultyProgression"] = {};
+	const complexityProgression: DocumentCollectionAnalysis["complexityProgression"] = {};
 	const representationProgression: DocumentCollectionAnalysis["representationProgression"] = {};
 	const redundancy: DocumentCollectionAnalysis["redundancy"] = Object.fromEntries(session.documentIds.map((documentId) => [documentId, []]));
 	const pairSimilarity = new Map<string, DocumentCollectionAnalysis["documentSimilarity"][number]>();
@@ -95,10 +96,10 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 			problemCount: analyzed.problems.length,
 			instructionalDensity: analyzed.insights.instructionalDensity,
 			representations: analyzed.insights.representations,
-			dominantDifficulty: dominantDifficulty(analyzed.insights.difficultyDistribution),
+			dominantComplexityBand: dominantDifficulty(analyzed.insights.complexityDistribution),
 			averageConceptScore: documentConcepts.length === 0 ? 0 : round(average(documentConcepts.map((concept) => concept.score))),
-		}];
-	}));
+		} as DocumentCoverageSnapshot];
+	})) as Record<string, DocumentCoverageSnapshot>;
 
 	for (const analyzed of analyzedDocuments) {
 		const documentConcepts = canonicalDocumentConcepts(analyzed);
@@ -130,7 +131,7 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 		}
 
 		for (const concept of documentConcepts) {
-			const conceptProblems = analyzed.problems.filter((problem) => problem.concepts.includes(concept));
+			const conceptProblems = analyzed.problems.filter((problem) => problem.concepts.includes(concept.concept));
 			const conceptName = concept.concept;
 			const conceptProblemsCanonical = analyzed.problems.filter((problem) => problem.concepts.some((rawConcept) => {
 				const normalizedConcept = rawConcept.includes(".") ? rawConcept.toLowerCase() : normalizeConceptLabel(rawConcept);
@@ -138,13 +139,13 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 			}));
 			const representations = unique(conceptProblems.flatMap((problem) => problem.representations));
 			conceptToDocumentMap[conceptName] = unique([...(conceptToDocumentMap[conceptName] ?? []), analyzed.document.id]);
-			difficultyProgression[conceptName] = [
-				...(difficultyProgression[conceptName] ?? []),
+			complexityProgression[conceptName] = [
+				...(complexityProgression[conceptName] ?? []),
 				{
 					documentId: analyzed.document.id,
-					difficulty: conceptProblemsCanonical.sort((left, right) => DIFFICULTY_SCORE[right.difficulty] - DIFFICULTY_SCORE[left.difficulty])[0]?.difficulty ?? "low",
+					complexityBand: conceptProblemsCanonical.sort((left, right) => DIFFICULTY_SCORE[right.complexityBand] - DIFFICULTY_SCORE[left.complexityBand])[0]?.complexityBand ?? "low",
 					problemCount: conceptProblemsCanonical.length,
-					averageDifficultyScore: average(conceptProblemsCanonical.map((problem) => DIFFICULTY_SCORE[problem.difficulty])),
+					averageComplexityScore: average(conceptProblemsCanonical.map((problem) => DIFFICULTY_SCORE[problem.complexityBand])),
 				},
 			];
 			representationProgression[conceptName] = [
@@ -198,8 +199,8 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 		}
 	}
 
-	for (const concept of Object.keys(difficultyProgression)) {
-		difficultyProgression[concept] = difficultyProgression[concept]!.sort((left, right) => left.averageDifficultyScore - right.averageDifficultyScore || left.documentId.localeCompare(right.documentId));
+	for (const concept of Object.keys(complexityProgression)) {
+		complexityProgression[concept] = complexityProgression[concept]!.sort((left, right) => left.averageComplexityScore - right.averageComplexityScore || left.documentId.localeCompare(right.documentId));
 		representationProgression[concept] = representationProgression[concept]!.sort((left, right) => left.representationCount - right.representationCount || left.documentId.localeCompare(right.documentId));
 	}
 
@@ -268,7 +269,7 @@ export function buildDocumentCollectionAnalysis(sessionId: string): DocumentColl
 		documentIds: session.documentIds,
 		conceptOverlap,
 		conceptGaps,
-		difficultyProgression,
+		complexityProgression,
 		representationProgression,
 		redundancy,
 		coverageSummary: {

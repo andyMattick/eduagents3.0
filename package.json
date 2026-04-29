@@ -57,7 +57,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "bundle-api": "node scripts/bundle-api.mjs",
+    "build": "npm run bundle-api && vite build",
     "preview": "vite preview",
     "test": "vitest",
     "test:phase-c": "vitest run tests/phase-c",

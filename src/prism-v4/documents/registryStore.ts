@@ -3,6 +3,7 @@ import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragme
 import { canonicalDocumentToAzureExtract } from "./analysis/canonicalize";
 import { withPreferredContentHash } from "./contentHash";
 import { buildInstructionalUnitOverrideId, getProblemOverride } from "../teacherFeedback";
+import { segmentText } from "../segmentation/segmentLines";
 import {
 	addDocumentToSession,
 	buildDefaultCollectionAnalysis,
@@ -25,6 +26,7 @@ import {
 import type { DocumentSession, DocumentRole, SessionRole } from "../schema/domain";
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../schema/semantic";
+import type { CanonicalDocument, CanonicalItem } from "../schema/semantic";
 import type {
 	BlueprintArtifact,
 	BlueprintArtifactStatus,
@@ -104,6 +106,76 @@ let studioBlueprintsSupported = true;
 let studioBlueprintVersionsSupported = true;
 let studioOutputsSupported = true;
 
+const BLOOMS_KEYWORDS = {
+	create: ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+	evaluate: ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+	analyze: ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+	apply: ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out", "find"],
+	understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate", "state", "name"],
+	remember: ["identify", "list", "define", "recall", "label", "match", "select", "recognize", "repeat", "choose", "underline", "point", "circle", "highlight"],
+} as const;
+
+function inferBloom(text: string): { level: number; label: string } {
+	const lower = text.toLowerCase();
+	const hit = (keywords: readonly string[]) => keywords.some((keyword) => lower.includes(keyword));
+
+	if (hit(BLOOMS_KEYWORDS.create)) return { level: 6, label: "Create" };
+	if (hit(BLOOMS_KEYWORDS.evaluate)) return { level: 5, label: "Evaluate" };
+	if (hit(BLOOMS_KEYWORDS.analyze)) return { level: 4, label: "Analyze" };
+	if (hit(BLOOMS_KEYWORDS.apply)) return { level: 3, label: "Apply" };
+	if (hit(BLOOMS_KEYWORDS.understand)) return { level: 2, label: "Understand" };
+	if (hit(BLOOMS_KEYWORDS.remember)) return { level: 1, label: "Remember" };
+	return { level: 2, label: "Understand" };
+}
+
+function flattenNodesToLines(document: CanonicalDocument): string[] {
+	return [...document.nodes]
+		.sort((left, right) => left.orderIndex - right.orderIndex)
+		.map((node) => (node.normalizedText ?? node.text ?? "").trim())
+		.filter((line) => line.length > 0);
+}
+
+function buildCanonicalItems(document: CanonicalDocument): CanonicalItem[] {
+	const lines = flattenNodesToLines(document);
+	if (lines.length === 0) {
+		return [];
+	}
+
+	const segmented = segmentText(lines.join("\n"));
+	if (segmented.length === 0) {
+		return [];
+	}
+
+	return segmented.map((item, index) => {
+		const numericId = item.id && item.id.trim().length > 0 ? item.id.trim() : String(index + 1);
+		const itemId = `item-${numericId}`;
+		const subItems = item.subItems.map((sub) => {
+			const subBloom = inferBloom(sub.text);
+			return {
+				id: `${itemId}${sub.letter}`,
+				label: sub.label,
+				text: sub.text,
+				bloomLevel: subBloom.level,
+				bloomLabel: subBloom.label,
+				subSubParts: sub.subSubParts.map((part) => ({
+					label: part.label,
+					text: part.text,
+				})),
+			};
+		});
+
+		const itemBloom = inferBloom([item.stem, ...subItems.map((sub) => sub.text)].join(" "));
+		return {
+			id: itemId,
+			label: item.label,
+			stem: item.stem,
+			bloomLevel: itemBloom.level,
+			bloomLabel: itemBloom.label,
+			subItems,
+		};
+	});
+}
+
 type SessionRow = {
 	session_id: string;
 	document_ids: string[];
@@ -126,6 +198,10 @@ type DocumentRow = {
 	raw_binary_base64: string | null;
 	canonical_document: RegisteredDocument["canonicalDocument"] | null;
 	azure_extract: RegisteredDocument["azureExtract"] | null;
+	/** UUID of the authenticated teacher who created the document. */
+	owner_id: string | null;
+	/** Whether the document is publicly visible to all teachers. */
+	is_public: boolean;
 };
 
 type AnalyzedDocumentRow = {
@@ -410,7 +486,7 @@ function fromSessionRow(row: SessionRow): DocumentSession {
 	};
 }
 
-function toDocumentRow(document: RegisteredDocument, sessionId: string | null): DocumentRow {
+function toDocumentRow(document: RegisteredDocument, sessionId: string | null, ownerId: string | null = null): DocumentRow {
 	return {
 		document_id: document.documentId,
 		session_id: sessionId,
@@ -420,8 +496,10 @@ function toDocumentRow(document: RegisteredDocument, sessionId: string | null): 
 		raw_binary_base64: document.rawBinary ? document.rawBinary.toString("base64") : null,
 		canonical_document: document.canonicalDocument ?? null,
 		azure_extract: document.azureExtract ?? null,
+		owner_id: ownerId,
+		is_public: false,
 	};
-	}
+}
 
 function fromDocumentRow(row: DocumentRow): RegisteredDocument {
 	return {
@@ -725,7 +803,11 @@ export async function invalidatePrismSessionSnapshot(sessionId: string | null | 
 	}
 }
 
-export async function registerDocumentsStore(entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>, sessionId: string | null = null) {
+export async function registerDocumentsStore(
+	entries: Array<{ sourceFileName: string; sourceMimeType: string; rawBinary?: Buffer; canonicalDocument?: RegisteredDocument["canonicalDocument"]; azureExtract?: RegisteredDocument["azureExtract"] }>,
+	sessionId: string | null = null,
+	ownerId: string | null = null,
+) {
 	if (!canUseSupabase()) {
 		const registered = registerDocuments(entries);
 		markCollectionAnalysisStale(sessionId);
@@ -747,7 +829,7 @@ export async function registerDocumentsStore(entries: Array<{ sourceFileName: st
 
 	await supabaseRest(DOCUMENTS_TABLE, {
 		method: "POST",
-		body: registered.map((document) => toDocumentRow(document, sessionId)),
+		body: registered.map((document) => toDocumentRow(document, sessionId, ownerId)),
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	markCollectionAnalysisStale(sessionId);
@@ -1011,7 +1093,14 @@ export async function saveAnalyzedDocumentStore(
 ) {
 	const invalidateSessionCache = options.invalidateSessionCache ?? true;
 	const invalidateSnapshot = options.invalidateSnapshot ?? true;
-	const normalized = withPreferredContentHash(analyzedDocument);
+	const enrichedDocument: CanonicalDocument = {
+		...analyzedDocument.document,
+		items: buildCanonicalItems(analyzedDocument.document),
+	};
+	const normalized = withPreferredContentHash({
+		...analyzedDocument,
+		document: enrichedDocument,
+	});
 
 	if (!canUseSupabase()) {
 		const saved = saveAnalyzedDocument(normalized);

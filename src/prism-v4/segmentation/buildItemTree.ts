@@ -1,8 +1,8 @@
 import type { SimulationItem } from "../schema/SimulationItem";
-import type { SimulationItemTree } from "../schema/SimulationItemTree";
+import type { SimulationItemTree, SimulationSubItem } from "../schema/SimulationItemTree";
 import { detectMultiPart } from "./detectMultiPart";
 import { detectMultipleChoice } from "./detectMultipleChoice";
-import { extractSubItems } from "./extractSubItems";
+import { extractSubItemsWithNesting } from "./extractSubItems";
 import { extractDistractors } from "./extractDistractors";
 import { detectWritingMode } from "./writingModeDetector";
 import { estimateReasoningSteps } from "./reasoningStepsEstimator";
@@ -140,19 +140,35 @@ function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<Simul
   };
 }
 
-function buildSubItem(parent: SimulationItem, itemNumber: number, text: string): SimulationItem {
-  const subMetrics = computeSubItemMetrics(parent, text);
+function buildSubItem(
+  parent: SimulationItem,
+  args: {
+    itemNumber: number;
+    text: string;
+    logicalLabel: string;
+    groupId: string;
+    partIndex: number;
+    itemId: string;
+  }
+): SimulationSubItem {
+  const subMetrics = computeSubItemMetrics(parent, args.text);
+  const logicalNumber = parent.logicalNumber ?? parent.itemNumber;
 
   return {
     ...parent,
     ...subMetrics,
-    itemNumber,
-    text,
+    itemNumber: parent.itemNumber,
+    logicalNumber,
+    logicalLabel: args.logicalLabel,
+    text: args.text,
     isMultiPartItem: false,
     isMultipleChoice: false,
     subQuestionCount: 0,
     distractorCount: 0,
     branchingFactor: 0,
+    itemId: args.itemId,
+    groupId: args.groupId,
+    partIndex: args.partIndex,
   };
 }
 
@@ -162,8 +178,21 @@ export function buildItemTree(item: SimulationItem): SimulationItemTree {
   const reasoningSteps = estimateReasoningSteps(text);
 
   if (detectMultiPart(text)) {
-    const subItemsRaw = extractSubItems(text);
-    const subItems = subItemsRaw.map((sub) => buildSubItem(item, sub.itemNumber, sub.text));
+    const subItemsRaw = extractSubItemsWithNesting(text);
+    const subItems: SimulationSubItem[] = subItemsRaw.map((sub) => {
+      const built = buildSubItem(item, {
+        itemNumber: sub.itemNumber,
+        text: sub.text.trim(),
+        logicalLabel: sub.logicalLabel,
+        groupId: sub.groupId,
+        partIndex: sub.partIndex,
+        itemId: sub.itemId,
+      });
+      // Attach structured nesting data as metadata without breaking SimulationItem shape.
+      built.letter = sub.letter;
+      built.subSubParts = sub.subSubParts;
+      return built;
+    });
 
     return {
       item: {

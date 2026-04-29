@@ -20,6 +20,7 @@ import {
 	loadTeacherFingerprintApi,
 	updateTeacherFingerprintApi,
 } from "../lib/instructionalSessionApi";
+import { useAuth } from "../components_new/Auth/useAuth";
 
 type BlueprintResponse = {
 	sessionId: string;
@@ -138,6 +139,7 @@ function mergeInstructionalSession(
 }
 
 export function useInstructionalSession() {
+	const { user } = useAuth();
 	const [workspace, setWorkspace] = useState<InstructionalSessionWorkspace | null>(null);
 	const [isUploading, setIsUploading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -203,6 +205,7 @@ export function useInstructionalSession() {
 					headers: {
 						"Content-Type": file.type || "application/octet-stream",
 						"x-file-name": file.name,
+						...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
 						...(sessionId ? { "x-session-id": sessionId } : {}),
 					},
 					body: buffer,

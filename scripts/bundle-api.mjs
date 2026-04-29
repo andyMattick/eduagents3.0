@@ -51,10 +51,11 @@ function collectApiTsFiles(dir) {
   return files;
 }
 
-// Detect if a file is a real serverless handler
+// Detect if a file is a real serverless handler (supports all default-export patterns)
 function isHandlerFile(filePath) {
   const content = readFileSync(filePath, "utf8");
-  return content.includes("export default");
+  // Matches: export default X  |  export { X as default }  |  export { handler as default, ... }
+  return /export\s+default\b|export\s*\{[^}]*\bas\s+default\b/.test(content);
 }
 
 const tsFiles = collectApiTsFiles(apiDir);
@@ -67,7 +68,8 @@ for (const file of tsFiles) {
   }
 
   const entry = file;
-  const tmpFile = file.replace(/\.ts$/, ".bundled.mjs");
+  const tmpFile = file.replace(/\.ts$/, ".bundled.js");
+  const finalFile = file.replace(/\.ts$/, ".js");
 
   const aliasPlugin = {
     name: "resolve-at-alias",
@@ -99,8 +101,8 @@ for (const file of tsFiles) {
   });
 
   unlinkSync(entry);
-  renameSync(tmpFile, entry);
-  console.log(`  ${file} → bundled in-place`);
+  renameSync(tmpFile, finalFile);
+  console.log(`  ${file} → bundled as ${finalFile}`);
 }
 
 console.log(`\n✓ Bundled only real API handlers\n`);
