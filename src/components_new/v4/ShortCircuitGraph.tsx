@@ -115,9 +115,12 @@ function axisTick(textColor: string) {
 
 interface ShortCircuitGraphProps {
 	items: ShortCircuitItem[];
+	selectedMetric?: string;
+	onMetricHover?: (metricKey: string | null) => void;
+	onMetricSelect?: (metricKey: string) => void;
 }
 
-export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
+export function ShortCircuitGraph({ items, selectedMetric, onMetricHover, onMetricSelect }: ShortCircuitGraphProps) {
 	const theme = useChartTheme();
 
 	// Section 1 state — selected deterministic series
@@ -126,6 +129,7 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 	);
 
 	const toggleDet = (key: DeterministicKey) => {
+		onMetricSelect?.(key);
 		setSelectedDet((prev) => {
 			const next = new Set(prev);
 			if (next.has(key)) { next.delete(key); } else { next.add(key); }
@@ -196,13 +200,16 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 								padding: "0.25rem 0.65rem",
 								borderRadius: "6px",
 								border: `2px solid ${s.color}`,
-								background: active ? s.color : "transparent",
-								color: active ? "#fff" : s.color,
+								background: active || selectedMetric === s.key ? s.color : "transparent",
+								color: active || selectedMetric === s.key ? "#fff" : s.color,
 								fontSize: "0.75rem",
 								cursor: "pointer",
 								fontWeight: active ? 600 : 400,
 								transition: "all 0.15s",
 							}}
+							title={s.description}
+							onMouseEnter={() => onMetricHover?.(s.key)}
+							onMouseLeave={() => onMetricHover?.(null)}
 						>
 							{s.label}
 						</button>

@@ -133,6 +133,23 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
     documentId: string;
     view: "class" | "profile" | "student" | "phase-b";
     summary: SimulationSummary;
+    narrative?: {
+      provider?: string;
+      text?: string;
+      usage?: {
+        promptTokens?: number;
+        completionTokens?: number;
+        totalTokens?: number;
+      };
+    };
+    suggestions?: {
+      hardestItems?: Array<{
+        itemId: string;
+        itemLabel?: string;
+        logicalLabel?: string;
+        pCorrect?: number;
+      }>;
+    };
     items?: Array<{
       itemId: string;
       itemLabel?: string;
@@ -143,6 +160,7 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
       isParent?: boolean;
       confusionScore?: number;
       timeSeconds?: number;
+      timeSecondsNormalized?: number;
       bloomGap?: number;
       difficultyScore?: number;
       abilityScore?: number;

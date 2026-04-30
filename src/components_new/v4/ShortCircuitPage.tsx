@@ -9,7 +9,6 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
-import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { StudentSummaryTable } from "./StudentSummaryTable";
 import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
@@ -994,10 +993,6 @@ export function ShortCircuitPage() {
 
           <div className="v4-shortcircuit-result-card">
             <ShortCircuitGraph items={graphItems} />
-          </div>
-
-          <div className="v4-shortcircuit-result-card">
-            <SimulationExplanationPanel />
           </div>
 
           <div className="v4-shortcircuit-result-card">

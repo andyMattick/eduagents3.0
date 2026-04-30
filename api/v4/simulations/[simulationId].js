@@ -332,6 +332,68 @@ function compareByStructure(left, right) {
   const rightNumber = typeof right.itemNumber === "number" && Number.isFinite(right.itemNumber) ? right.itemNumber : Number.POSITIVE_INFINITY;
   return leftNumber - rightNumber;
 }
+
+function average(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildHardestItems(results, itemTraits) {
+  const byItem = /* @__PURE__ */ new Map();
+  for (const result of results) {
+    const current = byItem.get(result.itemId) ?? {
+      itemId: result.itemId,
+      itemLabel: result.itemLabel,
+      pCorrect: []
+    };
+    current.pCorrect.push(Number(result.pCorrect ?? 0));
+    byItem.set(result.itemId, current);
+  }
+  return [...byItem.values()].map((entry) => {
+    const traits = itemTraits[entry.itemId] ?? {};
+    return {
+      itemId: entry.itemId,
+      itemLabel: entry.itemLabel,
+      logicalLabel: traits.logicalLabel,
+      pCorrect: average(entry.pCorrect)
+    };
+  }).sort((left, right) => left.pCorrect - right.pCorrect).slice(0, 5);
+}
+
+async function buildNarrativePayload(params) {
+  const useAzure = String(process.env.USE_AZURE_NARRATIVE ?? "false").toLowerCase() === "true";
+  if (!useAzure) {
+    return {
+      provider: "deterministic",
+      text: "Narrative running in deterministic mode. Set USE_AZURE_NARRATIVE=true to enable Azure narrative generation.",
+      usage: void 0
+    };
+  }
+  try {
+    const { buildTeacherNarrativeFromSimulation } = await import("../../../src/prism-v4/intelligence/buildTeacherNarrative.ts");
+    const narrative = await buildTeacherNarrativeFromSimulation(params);
+    return {
+      provider: "azure",
+      text: narrative.text,
+      usage: narrative.usage
+    };
+  } catch (error) {
+    console.warn("[simulation/get] Azure narrative failed; returning deterministic fallback.", {
+      message: error instanceof Error ? error.message : String(error),
+      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+      deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION
+    });
+    return {
+      provider: "deterministic-fallback",
+      text: "Narrative temporarily unavailable. Please retry in a moment.",
+      usage: void 0
+    };
+  }
+}
+
 function readNumeric(metadata, keys) {
   if (!metadata) {
     return void 0;
@@ -532,14 +594,24 @@ async function handler(req, res) {
       getSyntheticStudentsForClass(run.classId)
     ]);
     const itemTraits = await loadItemTraits(run.documentId);
+      const hardestItems = buildHardestItems(results, itemTraits);
     const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
     if (view === "class") {
+        const narrative = await buildNarrativePayload({
+          simulationId,
+          classId: run.classId,
+          documentId: run.documentId,
+          summary: aggregateClass(results),
+          hardestItems
+        });
       return res.status(200).json({
         simulationId,
         classId: run.classId,
         documentId: run.documentId,
         view,
         summary: aggregateClass(results),
+          narrative,
+          suggestions: { hardestItems },
         availableStudentIds
       });
     }

@@ -12458,6 +12458,120 @@ async function getDailyUsageCount(userId, date) {
     return 0;
   }
 }
+function normalizeTier(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "school")
+    return "school";
+  if (normalized === "teacher")
+    return "teacher";
+  return "free";
+}
+function resolveTierFromHeaders(headers) {
+  return normalizeTier(getSingleHeaderValue(headers["x-user-tier"]));
+}
+function getMaxPagesPerDay(tier) {
+  if (tier === "school") {
+    const configured = Number(process.env.MAX_PAGES_PER_DAY_SCHOOL);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 500;
+  }
+  if (tier === "teacher") {
+    const configured = Number(process.env.MAX_PAGES_PER_DAY_TEACHER);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 100;
+  }
+  const configured = Number(process.env.MAX_PAGES_PER_DAY_FREE);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 20;
+}
+function isAdminOverrideEnabled(headers, actor) {
+  if (parseBooleanHeader(headers["x-admin-override"])) {
+    return true;
+  }
+  const allowed = String(process.env.UPLOAD_QUOTA_ADMIN_OVERRIDE_USERS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  return Boolean(actor.userId && allowed.includes(actor.userId));
+}
+function estimatePagesFromDocPayload(doc) {
+  const explicitPageCount = Number(doc?.pageCount ?? doc?.pagesUploaded ?? doc?.pages);
+  if (Number.isFinite(explicitPageCount) && explicitPageCount > 0) {
+    return Math.max(1, Math.round(explicitPageCount));
+  }
+  const azureExtractPages = doc?.azureExtract?.pages;
+  if (Array.isArray(azureExtractPages) && azureExtractPages.length > 0) {
+    return azureExtractPages.length;
+  }
+  const azureExtractPageCount = Number(doc?.azureExtract?.pageCount);
+  if (Number.isFinite(azureExtractPageCount) && azureExtractPageCount > 0) {
+    return Math.max(1, Math.round(azureExtractPageCount));
+  }
+  return 1;
+}
+function estimatePagesFromAnalyzedDocument(analyzedDocument) {
+  const explicitPageCount = Number(analyzedDocument?.pageCount ?? analyzedDocument?.pagesUploaded);
+  if (Number.isFinite(explicitPageCount) && explicitPageCount > 0) {
+    return Math.max(1, Math.round(explicitPageCount));
+  }
+  if (Array.isArray(analyzedDocument?.pages) && analyzedDocument.pages.length > 0) {
+    return analyzedDocument.pages.length;
+  }
+  const pageSpans = analyzedDocument?.insights?.pageSpans;
+  if (Array.isArray(pageSpans) && pageSpans.length > 0) {
+    const pages = /* @__PURE__ */ new Set();
+    for (const span of pageSpans) {
+      const firstPage = Number(span?.firstPage);
+      const lastPage = Number(span?.lastPage);
+      if (!Number.isFinite(firstPage) || !Number.isFinite(lastPage)) {
+        continue;
+      }
+      const start = Math.max(1, Math.floor(firstPage));
+      const end = Math.max(start, Math.floor(lastPage));
+      for (let current = start; current <= end; current += 1) {
+        pages.add(current);
+      }
+    }
+    if (pages.size > 0) {
+      return pages.size;
+    }
+  }
+  return 1;
+}
+async function getDailyUploadedPages(actorKey, date) {
+  try {
+    const rows = await supabaseRest("user_daily_usage", {
+      method: "GET",
+      select: "pages_uploaded",
+      filters: {
+        actor_key: `eq.${actorKey}`,
+        usage_date: `eq.${date}`
+      }
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      const pagesUploaded = Number(rows[0]?.pages_uploaded);
+      return Number.isFinite(pagesUploaded) ? Math.max(0, Math.round(pagesUploaded)) : 0;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+async function incrementDailyUploadedPages(params) {
+  if (!Number.isFinite(params.pagesToAdd) || params.pagesToAdd <= 0) {
+    return;
+  }
+  const current = await getDailyUploadedPages(params.actorKey, params.date);
+  try {
+    await supabaseRest("user_daily_usage", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        actor_key: params.actorKey,
+        user_id: params.userId,
+        usage_date: params.date,
+        pages_uploaded: current + Math.max(1, Math.round(params.pagesToAdd)),
+        tier: params.tier,
+        admin_override: params.adminOverride
+      }
+    });
+  } catch {
+  }
+}
 function estimateTokensFromText(value) {
   if (!value)
     return 0;
@@ -12491,6 +12605,20 @@ async function handler(req, res) {
   }
   const actor = resolveActor(req);
   const today = new Date().toISOString().slice(0, 10);
+  const tier = resolveTierFromHeaders(req.headers ?? {});
+  const maxPagesPerDay = getMaxPagesPerDay(tier);
+  const adminOverride = isAdminOverrideEnabled(req.headers ?? {}, actor);
+  const pagesUploadedToday = await getDailyUploadedPages(actor.actorKey, today);
+  if (!adminOverride && pagesUploadedToday >= maxPagesPerDay) {
+    return res.status(429).json({
+      error: `Daily page limit reached (${maxPagesPerDay} pages/day). Please try again tomorrow or contact your admin for an override.`,
+      details: {
+        tier,
+        maxPagesPerDay,
+        pagesUploadedToday
+      }
+    });
+  }
   const usageCount = await getDailyUsageCount(actor.actorKey, today);
   if (usageCount >= DAILY_TOKEN_LIMIT) {
     return res.status(429).json({
@@ -12515,8 +12643,29 @@ async function handler(req, res) {
       if (documents2.length === 0) {
         return res.status(400).json({ error: "documents must contain at least one sourceFileName/sourceMimeType pair" });
       }
+      const requestedPages = documents2.reduce((sum, doc) => sum + estimatePagesFromDocPayload(doc), 0);
+      if (!adminOverride && pagesUploadedToday + requestedPages > maxPagesPerDay) {
+        return res.status(429).json({
+          error: `Daily page limit reached (${maxPagesPerDay} pages/day). This upload would exceed your remaining quota.`,
+          details: {
+            tier,
+            maxPagesPerDay,
+            pagesUploadedToday,
+            requestedPages,
+            remainingPages: Math.max(0, maxPagesPerDay - pagesUploadedToday)
+          }
+        });
+      }
       const registered2 = await registerDocumentsStore(documents2, resolvedSessionId ?? null, actor.userId);
       const session2 = payload.createSession === false ? null : resolvedSessionId ? await ensureSessionDocumentsStore(resolvedSessionId, registered2.map((entry) => entry.documentId)) : await createDocumentSessionStore(registered2.map((entry) => entry.documentId));
+      await incrementDailyUploadedPages({
+        actorKey: actor.actorKey,
+        userId: actor.userId,
+        date: today,
+        pagesToAdd: requestedPages,
+        tier,
+        adminOverride
+      });
       for (let index = 0; index < registered2.length; index++) {
         const doc = documents2[index];
         const reg = registered2[index];
@@ -12582,6 +12731,27 @@ async function handler(req, res) {
       sourceFileName: registered.sourceFileName,
       sourceMimeType: registered.sourceMimeType,
       rawBinary: buffer
+    });
+    const analyzedPageCount = estimatePagesFromAnalyzedDocument(analyzedDocument);
+    if (!adminOverride && pagesUploadedToday + analyzedPageCount > maxPagesPerDay) {
+      return res.status(429).json({
+        error: `Daily page limit reached (${maxPagesPerDay} pages/day). This upload would exceed your remaining quota.`,
+        details: {
+          tier,
+          maxPagesPerDay,
+          pagesUploadedToday,
+          requestedPages: analyzedPageCount,
+          remainingPages: Math.max(0, maxPagesPerDay - pagesUploadedToday)
+        }
+      });
+    }
+    await incrementDailyUploadedPages({
+      actorKey: actor.actorKey,
+      userId: actor.userId,
+      date: today,
+      pagesToAdd: analyzedPageCount,
+      tier,
+      adminOverride
     });
     await saveAnalyzedDocumentStore(analyzedDocument, session.sessionId);
     ingestDocument({
