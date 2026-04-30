@@ -1,5 +1,15 @@
 import { fetchJson } from "./instructionalSessionApi";
 
+function buildAuthHeaders(userId?: string): Record<string, string> {
+  if (!userId) {
+    return {};
+  }
+  return {
+    "x-user-id": userId,
+    "x-auth-user-id": userId,
+  };
+}
+
 export type PresenceLevel = "None" | "A few" | "Some" | "Many";
 export type ClassLevel = "AP" | "Honors" | "Standard" | "Remedial";
 
@@ -68,8 +78,10 @@ export type DocumentSummary = {
   createdAt: string;
 };
 
-export function listClassesApi() {
-  return fetchJson<{ classes: PhaseCClass[] }>("/api/v4/classes");
+export function listClassesApi(userId?: string) {
+  return fetchJson<{ classes: PhaseCClass[] }>("/api/v4/classes", {
+    headers: buildAuthHeaders(userId),
+  });
 }
 
 export function createClassApi(input: {
@@ -108,7 +120,7 @@ export function regenerateClassApi(classId: string, seed?: string) {
   });
 }
 
-export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class"; phaseBItems?: Array<{ itemId?: string; itemNumber?: number; logicalLabel: string; bloomLevel?: number; ingestionBloomLevel?: number; linguisticLoad?: number; cognitiveLoad?: number; representationLoad?: number }> }) {
+export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class"; phaseBItems?: Array<{ itemId?: string; itemNumber?: number; logicalLabel: string; bloomLevel?: number; ingestionBloomLevel?: number; linguisticLoad?: number; cognitiveLoad?: number; representationLoad?: number }> }, userId?: string) {
   return fetchJson<{
     simulationId: string;
     classId: string;
@@ -120,12 +132,12 @@ export function runSimulationUnifiedApi(input: { classId: string; documentId: st
     phaseCResults?: unknown;
   }>("/api/v4/simulations/run", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...buildAuthHeaders(userId) },
     body: JSON.stringify(input),
   });
 }
 
-export function getSimulationViewApi(simulationId: string, view: "class" | "profile" | "student" | "phase-b", options?: { profile?: string; studentId?: string }) {
+export function getSimulationViewApi(simulationId: string, view: "class" | "profile" | "student" | "phase-b", options?: { profile?: string; studentId?: string }, userId?: string) {
   const query = new URLSearchParams({ view, ...(options?.profile ? { profile: options.profile } : {}), ...(options?.studentId ? { studentId: options.studentId } : {}) });
   return fetchJson<{
     simulationId: string;
@@ -198,7 +210,9 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
       };
     }>;
     availableStudentIds?: string[];
-  }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`);
+  }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`, {
+    headers: buildAuthHeaders(userId),
+  });
 }
 
 export function listDocumentsApi() {

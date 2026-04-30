@@ -165,10 +165,6 @@ export function ShortCircuitGraph({ items, selectedMetric, onMetricHover, onMetr
 		symbolDensity:     Number(item.symbolDensity.toFixed(4)),
 	}));
 
-	// Description shown when exactly one series is selected
-	const activeDet = DETERMINISTIC_SERIES.filter((s) => selectedDet.has(s.key));
-	const singleDescription = activeDet.length === 1 ? activeDet[0]?.description ?? "" : "";
-
 	// Filter out flat/always-zero series
 	const availableSeries = DETERMINISTIC_SERIES.filter(
 		(s) => !(s.key === "time" && timeIsFlat) && !(s.key === "distractorDensity" && distractorIsFlat),
@@ -216,12 +212,6 @@ export function ShortCircuitGraph({ items, selectedMetric, onMetricHover, onMetr
 					);
 				})}
 			</div>
-
-			{singleDescription && (
-				<p style={{ fontSize: "0.75rem", color: theme.subTextColor, marginBottom: "0.5rem", maxWidth: 560 }}>
-					{singleDescription}
-				</p>
-			)}
 
 			{timeIsFlat && (
 				<p style={{ fontSize: "0.72rem", color: theme.subTextColor, fontStyle: "italic", marginBottom: "0.25rem" }}>

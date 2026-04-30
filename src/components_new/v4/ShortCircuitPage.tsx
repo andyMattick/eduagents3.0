@@ -439,12 +439,8 @@ export function ShortCircuitPage() {
       return;
     }
 
-    if (phaseCClasses.length > 0 || phaseCClassLoading) {
-      return;
-    }
-
     void loadClasses();
-  }, [phase, phaseCClasses.length, phaseCClassLoading, loadClasses]);
+  }, [phase, loadClasses]);
 
   const handleRunPhaseC = async () => {
     if (!selectedClassId || !documentId) {
@@ -480,12 +476,12 @@ export function ShortCircuitPage() {
         selectedProfileIds: [],
         mode: "class",
         phaseBItems: phaseBItems.length > 0 ? phaseBItems : undefined,
-      });
+      }, user?.id);
 
       setPhaseCSimulationId(output.simulationId);
       setSelectedStudentId("");
 
-      const classView = await getSimulationViewApi(output.simulationId, "class");
+      const classView = await getSimulationViewApi(output.simulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
       setPhaseCStudentView(null);
     } catch (err) {
@@ -504,12 +500,12 @@ export function ShortCircuitPage() {
 
     if (!studentId) {
       setPhaseCStudentView(null);
-      const classView = await getSimulationViewApi(phaseCSimulationId, "class");
+      const classView = await getSimulationViewApi(phaseCSimulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
       return;
     }
 
-    const studentView = await getSimulationViewApi(phaseCSimulationId, "student", { studentId });
+    const studentView = await getSimulationViewApi(phaseCSimulationId, "student", { studentId }, user?.id);
     setPhaseCStudentView(studentView);
   };
 
@@ -1054,9 +1050,27 @@ export function ShortCircuitPage() {
                   </div>
                 </div>
 
+                {phaseCClassView.narrative?.text && (
+                  <div style={{ marginTop: "1rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.8rem", background: "rgba(255,251,245,0.9)" }}>
+                    <p className="phasec-stat-label" style={{ marginBottom: "0.35rem" }}>Teacher narrative</p>
+                    <p className="phasec-copy" style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>
+                      {phaseCClassView.narrative.text}
+                    </p>
+                    {(phaseCClassView.narrative.provider || phaseCClassView.narrative.usage?.totalTokens) && (
+                      <p className="phasec-copy" style={{ marginBottom: 0, opacity: 0.8 }}>
+                        {phaseCClassView.narrative.provider ? `Provider: ${phaseCClassView.narrative.provider}` : ""}
+                        {phaseCClassView.narrative.provider && phaseCClassView.narrative.usage?.totalTokens ? " · " : ""}
+                        {phaseCClassView.narrative.usage?.totalTokens ? `Tokens: ${phaseCClassView.narrative.usage.totalTokens}` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <StudentSummaryTable
                   simulationId={phaseCSimulationId}
                   studentIds={phaseCClassView.availableStudentIds ?? []}
+                  userId={user?.id}
+                  selectedStudentId={selectedStudentId}
                 />
 
                 {(phaseCClassView.availableStudentIds?.length ?? 0) > 0 && (
