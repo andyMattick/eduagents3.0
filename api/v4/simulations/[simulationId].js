@@ -393,7 +393,7 @@ async function buildNarrativePayload(params) {
     };
   }
   try {
-    const { buildTeacherNarrativeFromSimulation } = await import("../../../src/prism-v4/intelligence/buildTeacherNarrative.ts");
+    const { buildTeacherNarrativeFromSimulation } = await import("./narrative.js");
     const narrative = await buildTeacherNarrativeFromSimulation(params);
     return {
       provider: "azure",
@@ -403,8 +403,9 @@ async function buildNarrativePayload(params) {
   } catch (error) {
     console.warn("[simulation/get] Azure narrative failed; returning deterministic fallback.", {
       message: error instanceof Error ? error.message : String(error),
-      endpoint: process.env.AZURE_OPENAI_ENDPOINT,
-      deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+      endpointConfigured: Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim()),
+      deploymentConfigured: Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim()),
+      apiKeyConfigured: Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim()),
       apiVersion: process.env.AZURE_OPENAI_API_VERSION
     });
     return {
