@@ -84,10 +84,6 @@ function gapConcepts(scoredConcepts: ViewerScoredConcept[]): ViewerScoredConcept
 	return scoredConcepts.filter((c) => !c.noiseCandidate && c.gap);
 }
 
-function noiseCandidates(scoredConcepts: ViewerScoredConcept[]): ViewerScoredConcept[] {
-	return scoredConcepts.filter((c) => c.noiseCandidate);
-}
-
 function allMisconceptions(data: ViewerData): string[] {
 	const seen = new Set<string>();
 	const result: string[] = [];
