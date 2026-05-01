@@ -12604,6 +12604,9 @@ async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
   const actor = resolveActor(req);
+  if (!actor.userId) {
+    return res.status(401).json({ error: "Cannot ingest document without authenticated user." });
+  }
   const today = new Date().toISOString().slice(0, 10);
   const tier = resolveTierFromHeaders(req.headers ?? {});
   const maxPagesPerDay = getMaxPagesPerDay(tier);

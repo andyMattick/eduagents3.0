@@ -35,7 +35,7 @@ export function StudentSummaryCard({ students }: Props) {
 
   return (
     <div className="v4-shortcircuit-result-card">
-      <h3 className="v4-shortcircuit-tree-title">Predicted Student Range</h3>
+      <h3 className="v4-shortcircuit-tree-title">Predicted Class Range</h3>
       <p className="phasec-copy" style={{ marginTop: "0.35rem" }}>
         Score: {formatPercent(minScore)} - {formatPercent(maxScore)}
       </p>

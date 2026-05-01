@@ -178,7 +178,7 @@ export function StudentSummaryTable({ simulationId, studentIds, userId, selected
     <div style={{ marginTop: "1rem" }}>
       {summaryRange && (
         <>
-          <h4 style={{ margin: "0 0 0.35rem" }}>Predicted Student Range</h4>
+          <h4 style={{ margin: "0 0 0.35rem" }}>Predicted Class Range</h4>
           <p className="phasec-copy" style={{ marginTop: 0 }}>
             Predicted range of scores: {formatPercent(summaryRange.minScore)} - {formatPercent(summaryRange.maxScore)}
           </p>
@@ -188,19 +188,7 @@ export function StudentSummaryTable({ simulationId, studentIds, userId, selected
         </>
       )}
 
-      {selectedStudentSummary && (
-        <>
-          <h4 style={{ margin: "0.7rem 0 0.35rem" }}>Selected Student Prediction</h4>
-          <p className="phasec-copy" style={{ marginTop: 0 }}>
-            Predicted score: {formatPercent(selectedStudentSummary.averagePCorrect)}
-          </p>
-          <p className="phasec-copy" style={{ marginTop: "0.2rem" }}>
-            Predicted total time: {formatDuration(selectedStudentSummary.totalTime)}
-          </p>
-        </>
-      )}
-
-      <h4 style={{ margin: "0 0 0.5rem" }}>Class Student Summary</h4>
+      <h4 style={{ margin: "0 0 0.5rem" }}>Class - Test Summary</h4>
       <table className="phasec-table">
         <thead>
           <tr>
@@ -227,6 +215,18 @@ export function StudentSummaryTable({ simulationId, studentIds, userId, selected
           ))}
         </tbody>
       </table>
+
+      {selectedStudentSummary && (
+        <>
+          <h4 style={{ margin: "0.9rem 0 0.35rem" }}>Selected Student Prediction</h4>
+          <p className="phasec-copy" style={{ marginTop: 0 }}>
+            Predicted score: {formatPercent(selectedStudentSummary.averagePCorrect)}
+          </p>
+          <p className="phasec-copy" style={{ marginTop: "0.2rem" }}>
+            Predicted total time: {formatDuration(selectedStudentSummary.totalTime)}
+          </p>
+        </>
+      )}
     </div>
   );
 }

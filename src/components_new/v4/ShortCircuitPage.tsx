@@ -213,6 +213,7 @@ export function ShortCircuitPage() {
   const [isPublicDocument, setIsPublicDocument] = useState(false);
   const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
+  const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
@@ -249,6 +250,7 @@ export function ShortCircuitPage() {
     setIsPublicDocument(false);
     setVisibilitySaving(false);
     setVisibilityError(null);
+    setVisibilityMessage(null);
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -351,6 +353,7 @@ export function ShortCircuitPage() {
       setDocumentId(nextDocumentId);
       setIsPublicDocument(false);
       setVisibilityError(null);
+      setVisibilityMessage(null);
 
       if (nextDocumentId) {
         const analyzeRes = await fetch("/api/v4/documents/analyze", {
@@ -381,6 +384,7 @@ export function ShortCircuitPage() {
     setDocumentId(doc.documentId);
     setIsPublicDocument(true);
     setVisibilityError(null);
+    setVisibilityMessage(null);
     setRunError(null);
     setUploadError(null);
     setShowPublicPicker(false);
@@ -395,6 +399,7 @@ export function ShortCircuitPage() {
     const nextPublic = !isPublicDocument;
     setVisibilitySaving(true);
     setVisibilityError(null);
+    setVisibilityMessage(null);
 
     try {
       const res = await fetch(`/api/v4/documents/${encodeURIComponent(documentId)}/visibility`, {
@@ -411,8 +416,11 @@ export function ShortCircuitPage() {
         const payload = await res.json().catch(() => null);
         throw new Error(payload?.error?.message ?? "Failed to update sharing visibility.");
       }
-
-      setIsPublicDocument(nextPublic);
+      const payload = await res.json().catch(() => null);
+      setIsPublicDocument(typeof payload?.isPublic === "boolean" ? payload.isPublic : nextPublic);
+      if (typeof payload?.message === "string" && payload.message.trim().length > 0) {
+        setVisibilityMessage(payload.message);
+      }
     } catch (err) {
       setVisibilityError(err instanceof Error ? err.message : "Failed to update sharing visibility.");
     } finally {
@@ -844,6 +852,7 @@ export function ShortCircuitPage() {
               </button>
             </div>
             {visibilityError && <p className="phasec-error">{visibilityError}</p>}
+            {visibilityMessage && !visibilityError && <p className="phasec-copy">{visibilityMessage}</p>}
             {documentId && !visibilityError && (
               <p className="phasec-copy" style={{ marginTop: "0.5rem" }}>
                 Sharing status: {isPublicDocument ? "Public" : "Private"}
@@ -897,7 +906,7 @@ export function ShortCircuitPage() {
                             {tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
                             {tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
                           </summary>
-                          <p className="v4-shortcircuit-tree-parent-text">{tree.item.isMultiPartItem ? extractParentStem(tree.item.text) : tree.item.text}</p>
+                          <p className="v4-shortcircuit-tree-parent-text">{tree.item.isMultiPartItem || tree.item.isMultipleChoice ? extractParentStem(tree.item.text) : tree.item.text}</p>
                           {tree.subItems && tree.subItems.length > 0 && (
                             <ul className="v4-shortcircuit-tree-children">
                               {tree.subItems.map((sub, subIndex) => (
@@ -1066,6 +1075,8 @@ export function ShortCircuitPage() {
                   </div>
                 )}
 
+                
+
                 <StudentSummaryTable
                   simulationId={phaseCSimulationId}
                   studentIds={phaseCClassView.availableStudentIds ?? []}
@@ -1075,7 +1086,7 @@ export function ShortCircuitPage() {
 
                 {(phaseCClassView.availableStudentIds?.length ?? 0) > 0 && (
                   <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                    <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>View:</label>
+                    <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>Student - Individual Problems:</label>
                     <select
                       id="phasec-student-select"
                       value={selectedStudentId}
