@@ -1,5 +1,3 @@
-import { AzureOpenAI } from "openai";
-
 const SYSTEM_PROMPT = `You are an educational simulation interpreter. You explain predicted student performance based on a deterministic simulation engine. You never describe past performance, never imply that students have already taken the assessment, and never use evaluative language such as "strengths," "weaknesses," "performed," or "did well." You always use predictive, forward-looking language such as "the simulation predicts," "students are expected to," "the model anticipates," or "this item may create difficulty."
 
 Your job is to translate the simulation output into a clear, teacher-friendly narrative that helps teachers understand what the simulation suggests about how students are likely to experience the assessment.
@@ -60,26 +58,43 @@ function resolveApiVersion(raw) {
   return value || "2024-02-15-preview";
 }
 
-function createAzureClient() {
+function resolveAzureConfig() {
+  const endpoint = normalizeEndpoint(process.env.AZURE_OPENAI_ENDPOINT);
+  const deployment = String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim();
   const apiKey = String(process.env.AZURE_OPENAI_API_KEY ?? "").trim();
-  if (!apiKey) {
-    throw new Error("AZURE_OPENAI_API_KEY is required for Azure narrative generation.");
+  const apiVersion = resolveApiVersion(process.env.AZURE_OPENAI_API_VERSION);
+  if (!deployment || !apiKey) {
+    throw new Error("Azure OpenAI environment variables missing");
   }
 
-  return new AzureOpenAI({
-    endpoint: normalizeEndpoint(process.env.AZURE_OPENAI_ENDPOINT),
-    apiKey,
-    apiVersion: resolveApiVersion(process.env.AZURE_OPENAI_API_VERSION),
+  return { endpoint, deployment, apiKey, apiVersion };
+}
+
+async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 800 }) {
+  const { endpoint, deployment, apiKey, apiVersion } = resolveAzureConfig();
+  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": apiKey
+    },
+    body: JSON.stringify({
+      messages,
+      temperature,
+      max_tokens: maxTokens
+    })
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Azure error ${response.status}: ${text}`);
+  }
+
+  return response.json();
 }
 
 export async function buildTeacherNarrativeFromSimulation(simulation) {
-  const deployment = String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim();
-  if (!deployment) {
-    throw new Error("AZURE_OPENAI_DEPLOYMENT is required for Azure narrative generation.");
-  }
-
-  const azureClient = createAzureClient();
   const messages = [
     {
       role: "system",
@@ -133,11 +148,10 @@ Here is the simulation output:\n\n${JSON.stringify(simulation, null, 2)}`,
     },
   ];
 
-  const response = await azureClient.chat.completions.create({
-    model: deployment,
+  const response = await azureChatCompletion({
     messages,
     temperature: 0.2,
-    max_tokens: 800,
+    maxTokens: 800,
   });
 
   return {

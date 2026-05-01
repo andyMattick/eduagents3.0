@@ -288,12 +288,7 @@ export type SimulationNarrativeResult = {
 };
 
 export async function buildTeacherNarrativeFromSimulation(simulation: unknown): Promise<SimulationNarrativeResult> {
-	const { azureClient } = await import("@/lib/azureOpenAIClient");
-	const deployment = String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim();
-
-	if (!deployment) {
-		throw new Error("AZURE_OPENAI_DEPLOYMENT is required for Azure narrative generation.");
-	}
+	const { azureChatCompletion } = await import("@/lib/azureOpenAIClient");
 
 	const messages: SimulationChatMessage[] = [
 		{
@@ -348,11 +343,10 @@ Here is the simulation output:\n\n${JSON.stringify(simulation, null, 2)}`,
 		},
 	];
 
-	const response = await azureClient.chat.completions.create({
-		model: deployment,
+	const response = await azureChatCompletion({
 		messages,
 		temperature: 0.2,
-		max_tokens: 800,
+		maxTokens: 800,
 	});
 
 	return {

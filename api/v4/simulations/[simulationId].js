@@ -382,6 +382,12 @@ function buildHardestItems(results, itemTraits) {
 
 async function buildNarrativePayload(params) {
   const azureToggle = String(process.env.USE_AZURE_NARRATIVE ?? "").trim().toLowerCase();
+  console.log("[narrative env check]", {
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+    toggle: process.env.USE_AZURE_NARRATIVE
+  });
   const endpointConfigured = Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim());
   const deploymentConfigured = Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim());
   const apiKeyConfigured = Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim());
