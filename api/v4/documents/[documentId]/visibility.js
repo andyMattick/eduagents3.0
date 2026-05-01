@@ -17,6 +17,7 @@ function createRequestId(req) {
     return raw.trim();
   return `visibility-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
+//this will mask a uuid like "123e4567-e89b-12d3-a456-426614174000" to "123e4567...4000" to avoid logging full user ids while still allowing some correlation of events by caller. If the value is not a valid uuid, it will return "unknown".
 function maskCallerId(value) {
   if (!value || value.length < 12)
     return "unknown";
