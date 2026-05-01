@@ -1,6 +1,8 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
+import { buildTeacherNarrativeFromSimulation } from "./narrative.js";
+
 // api/v4/simulations/[simulationId].ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
@@ -380,20 +382,26 @@ function buildHardestItems(results, itemTraits) {
 
 async function buildNarrativePayload(params) {
   const azureToggle = String(process.env.USE_AZURE_NARRATIVE ?? "").trim().toLowerCase();
-  const hasAzureConfig = Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim())
-    && Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim());
+  const endpointConfigured = Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim());
+  const deploymentConfigured = Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim());
+  const apiKeyConfigured = Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim());
+  const hasAzureConfig = endpointConfigured && deploymentConfigured && apiKeyConfigured;
   const useAzure = azureToggle === "false" ? false : hasAzureConfig;
   if (!useAzure) {
+    const missingConfig = [
+      !endpointConfigured ? "AZURE_OPENAI_ENDPOINT" : null,
+      !deploymentConfigured ? "AZURE_OPENAI_DEPLOYMENT" : null,
+      !apiKeyConfigured ? "AZURE_OPENAI_API_KEY" : null
+    ].filter(Boolean);
     return {
       provider: "deterministic",
-      text: hasAzureConfig
+      text: azureToggle === "false"
         ? "Narrative running in deterministic mode. Azure narrative generation is disabled by configuration."
-        : "Narrative running in deterministic mode. Configure AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT to enable Azure narrative generation.",
+        : `Narrative running in deterministic mode. Configure ${missingConfig.join(", ")} to enable Azure narrative generation.`,
       usage: void 0
     };
   }
   try {
-    const { buildTeacherNarrativeFromSimulation } = await import("./narrative.js");
     const narrative = await buildTeacherNarrativeFromSimulation(params);
     return {
       provider: "azure",
@@ -403,9 +411,9 @@ async function buildNarrativePayload(params) {
   } catch (error) {
     console.warn("[simulation/get] Azure narrative failed; returning deterministic fallback.", {
       message: error instanceof Error ? error.message : String(error),
-      endpointConfigured: Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim()),
-      deploymentConfigured: Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim()),
-      apiKeyConfigured: Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim()),
+      endpointConfigured,
+      deploymentConfigured,
+      apiKeyConfigured,
       apiVersion: process.env.AZURE_OPENAI_API_VERSION
     });
     return {
