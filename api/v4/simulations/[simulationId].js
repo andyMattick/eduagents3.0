@@ -379,11 +379,16 @@ function buildHardestItems(results, itemTraits) {
 }
 
 async function buildNarrativePayload(params) {
-  const useAzure = String(process.env.USE_AZURE_NARRATIVE ?? "false").toLowerCase() === "true";
+  const azureToggle = String(process.env.USE_AZURE_NARRATIVE ?? "").trim().toLowerCase();
+  const hasAzureConfig = Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim())
+    && Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim());
+  const useAzure = azureToggle === "false" ? false : hasAzureConfig;
   if (!useAzure) {
     return {
       provider: "deterministic",
-      text: "Narrative running in deterministic mode. Set USE_AZURE_NARRATIVE=true to enable Azure narrative generation.",
+      text: hasAzureConfig
+        ? "Narrative running in deterministic mode. Azure narrative generation is disabled by configuration."
+        : "Narrative running in deterministic mode. Configure AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT to enable Azure narrative generation.",
       usage: void 0
     };
   }
