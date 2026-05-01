@@ -30,6 +30,8 @@ export function hasSupabaseServiceRoleCredentials(): boolean {
  * Thin wrapper around the Supabase REST API for server-side use.
  * Avoids pulling in the full @supabase/supabase-js package in API routes.
  */
+const SUPABASE_REST_TIMEOUT_MS = 8_000;
+
 export async function supabaseRest(
   table: string,
   options: {
@@ -39,6 +41,7 @@ export async function supabaseRest(
     body?: unknown;
     prefer?: string;
     single?: boolean;
+    timeoutMs?: number;
   } = {}
 ) {
   const { url, key } = supabaseAdmin();
@@ -48,6 +51,7 @@ export async function supabaseRest(
     filters = {},
     body,
     prefer,
+    timeoutMs = SUPABASE_REST_TIMEOUT_MS,
   } = options;
 
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
@@ -63,11 +67,27 @@ export async function supabaseRest(
   };
   if (prefer) headers["Prefer"] = prefer;
 
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      (timeoutError as NodeJS.ErrnoException).code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!res.ok) {
     const text = await res.text();
