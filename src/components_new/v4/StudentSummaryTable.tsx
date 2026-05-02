@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getSimulationViewApi, type SyntheticStudent } from "../../lib/phaseCApi";
 
+import { computeProfileAggregates, primaryProfile, studentOverlays } from "./phase-c/profileAggregates";
 import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
 import { sortStudentsByProfile } from "./phase-c/studentRoster";
 
@@ -64,6 +65,10 @@ function formatDuration(seconds: number): string {
 
 function joinLabels(values: string[]): string {
   return values.length > 0 ? values.join(", ") : "-";
+}
+
+function formatSeconds(seconds: number): string {
+  return `${safeNumber(seconds).toFixed(1)} s`;
 }
 
 function summarizeStudent(studentId: string, items: StudentItem[]): StudentSummaryRow {
@@ -196,6 +201,10 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
     return sortedRows.find((row) => row.studentId === selectedStudentId) ?? null;
   }, [sortedRows, selectedStudentId]);
 
+  const profileAggregates = useMemo(() => {
+    return computeProfileAggregates(sortedRows, students);
+  }, [sortedRows, students]);
+
   if (loading) {
     return <p className="phasec-copy">Loading student summary table...</p>;
   }
@@ -219,6 +228,31 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
           <p className="phasec-copy" style={{ marginTop: "0.2rem" }}>
             Predicted total time: {formatDuration(summaryRange.minTime)} - {formatDuration(summaryRange.maxTime)}
           </p>
+        </>
+      )}
+
+      {profileAggregates.length > 0 && (
+        <>
+          <h4 style={{ margin: "0.9rem 0 0.5rem" }}>Profile Summary</h4>
+          <div className="phasec-grid-3">
+            {profileAggregates.map((aggregate) => (
+              <div key={aggregate.profile} className="phasec-stat-card">
+                <p className="phasec-stat-value" style={{ fontSize: "1.05rem" }}>{aggregate.profile}</p>
+                <p className="phasec-copy">{aggregate.count} student{aggregate.count === 1 ? "" : "s"}</p>
+                <p className="phasec-copy">Avg confusion: {aggregate.averageConfusion.toFixed(3)}</p>
+                <p className="phasec-copy">Avg time: {formatSeconds(aggregate.averageTime)}</p>
+                <p className="phasec-copy">Avg total time: {formatDuration(aggregate.totalTime)}</p>
+                <p className="phasec-copy">Avg bloom gap: {aggregate.averageBloomGap.toFixed(3)}</p>
+                <p className="phasec-copy">Avg pCorrect: {aggregate.averagePCorrect.toFixed(3)}</p>
+                <p className="phasec-copy">Avg trait delta: {aggregate.averageTraitDelta.toFixed(3)}</p>
+                <p className="phasec-copy" style={{ marginBottom: 0 }}>
+                  Overlays: {aggregate.overlayCounts.length > 0
+                    ? aggregate.overlayCounts.map((entry) => `${entry.label} (${entry.count})`).join(", ")
+                    : "-"}
+                </p>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
@@ -250,8 +284,8 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
                   <p className="phasec-copy" style={{ marginTop: "0.25rem", fontSize: "0.78rem" }}>{row.studentId}</p>
                 )}
               </td>
-              <td>{studentsById.has(row.studentId) ? joinLabels(studentsById.get(row.studentId)!.profiles) : "-"}</td>
-              <td>{studentsById.has(row.studentId) ? joinLabels(studentsById.get(row.studentId)!.positiveTraits) : "-"}</td>
+              <td>{studentsById.has(row.studentId) ? primaryProfile(studentsById.get(row.studentId)!) : "-"}</td>
+              <td>{studentsById.has(row.studentId) ? joinLabels(studentOverlays(studentsById.get(row.studentId)!)) : "-"}</td>
               <td>{row.averageConfusion.toFixed(3)}</td>
               <td>{row.averageTime.toFixed(2)}</td>
               <td>{formatDuration(row.totalTime)}</td>
