@@ -162,6 +162,7 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
         pCorrect?: number;
       }>;
     };
+    students?: SyntheticStudent[];
     items?: Array<{
       itemId: string;
       itemLabel?: string;

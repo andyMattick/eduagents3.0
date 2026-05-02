@@ -495,11 +495,18 @@ export function ShortCircuitPage() {
 
       const classView = await getSimulationViewApi(output.simulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
+      if ((classView.students ?? []).length > 0) {
+        setPhaseCStudents(classView.students ?? []);
+      }
       try {
-        const classDetail = await getClassDetailApi(selectedClassId);
-        setPhaseCStudents(classDetail.students);
+        if ((classView.students ?? []).length === 0) {
+          const classDetail = await getClassDetailApi(selectedClassId);
+          setPhaseCStudents(classDetail.students);
+        }
       } catch {
-        setPhaseCStudents([]);
+        if ((classView.students ?? []).length === 0) {
+          setPhaseCStudents([]);
+        }
       }
       setPhaseCStudentView(null);
     } catch (err) {

@@ -525,6 +525,42 @@ function filterByProfileOrTrait(results, students, profile) {
   const matchingIds = new Set(students.filter((student) => student.profiles.includes(profile) || student.positiveTraits.includes(profile)).map((student) => student.id));
   return results.filter((result) => matchingIds.has(result.syntheticStudentId));
 }
+function profileSummaryLabel(profiles, positiveTraits) {
+  if (profiles.length === 0 && positiveTraits.length === 0) {
+    return "General mix";
+  }
+  const profileText = profiles.length > 0 ? profiles.join(", ") : "No assigned profiles";
+  const traitText = positiveTraits.length > 0 ? positiveTraits.join(", ") : "No highlighted traits";
+  return `${profileText} | ${traitText}`;
+}
+function buildStudentRoster(classId, students, results) {
+  const roster = new Map(students.map((student) => [student.id, student]));
+  for (const result of results) {
+    if (roster.has(result.syntheticStudentId) || !result.traitsSnapshot) {
+      continue;
+    }
+    const snapshot = result.traitsSnapshot;
+    roster.set(result.syntheticStudentId, {
+      id: result.syntheticStudentId,
+      classId,
+      displayName: result.syntheticStudentId,
+      traits: snapshot.traits ?? {
+        readingLevel: 3,
+        vocabularyLevel: 3,
+        backgroundKnowledge: 3,
+        processingSpeed: 3,
+        bloomMastery: 3,
+        mathLevel: 3,
+        writingLevel: 3
+      },
+      profiles: snapshot.profiles ?? [],
+      positiveTraits: snapshot.positiveTraits ?? [],
+      profileSummaryLabel: profileSummaryLabel(snapshot.profiles ?? [], snapshot.positiveTraits ?? []),
+      biases: snapshot.biases ?? { confusionBias: 0, timeBias: 0 }
+    });
+  }
+  return [...roster.values()].sort((left, right) => left.displayName.localeCompare(right.displayName, void 0, { numeric: true }));
+}
 function studentSummary(results, itemTraits) {
   const byItem = results.reduce((accumulator, result) => {
     const traits = itemTraits[result.itemId] ?? {};
@@ -629,6 +665,7 @@ async function handler(req, res) {
       listSimulationResults(simulationId),
       getSyntheticStudentsForClass(run.classId)
     ]);
+    const roster = buildStudentRoster(run.classId, students, results);
     const itemTraits = await loadItemTraits(run.documentId);
       const hardestItems = buildHardestItems(results, itemTraits);
     const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
@@ -646,6 +683,7 @@ async function handler(req, res) {
         documentId: run.documentId,
         view,
         summary: aggregateClass(results),
+          students: roster,
           narrative,
           suggestions: { hardestItems },
         availableStudentIds
@@ -664,6 +702,7 @@ async function handler(req, res) {
         view,
         profile,
         summary: aggregateClass(scoped),
+        students: roster,
         availableStudentIds
       });
     }
@@ -680,6 +719,7 @@ async function handler(req, res) {
         view,
         studentId,
         summary: aggregateClass(scoped),
+        students: roster,
         items: studentSummary(scoped, itemTraits),
         availableStudentIds
       });
