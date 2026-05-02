@@ -413,6 +413,14 @@ async function supabaseRest(table, options = {}) {
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -479,16 +487,12 @@ function hydrateStudentRow(row) {
     biases: row.biases ?? { confusionBias: 0, timeBias: 0 }
   };
 }
+function needsLegacyProfileBackfill(students) {
+  return students.length > 0 && students.every((student) => student.profiles.length === 0 && student.positiveTraits.length === 0);
+}
 function deriveProfilePercentagesFromStudents(students) {
-  if (students.length === 0) {
-    return {
-      ell: 0,
-      sped: 0,
-      adhd: 0,
-      dyslexia: 0,
-      gifted: 0,
-      attention504: 0
-    };
+  if (students.length === 0 || needsLegacyProfileBackfill(students)) {
+    return { ...LEGACY_PROFILE_FALLBACK };
   }
   const total = students.length;
   const ratioToPercent = (count) => count / total * 100;

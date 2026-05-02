@@ -493,6 +493,14 @@ var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
 var simulationResultsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -540,6 +548,27 @@ function hydrateStudentRow(row) {
     profileSummaryLabel: row.profile_summary_label,
     biases: row.biases ?? { confusionBias: 0, timeBias: 0 }
   };
+}
+function normalizeStudentRow(item) {
+  return {
+    id: item.id,
+    class_id: item.classId,
+    display_name: item.displayName,
+    reading_level: item.traits.readingLevel,
+    vocabulary_level: item.traits.vocabularyLevel,
+    background_knowledge: item.traits.backgroundKnowledge,
+    processing_speed: item.traits.processingSpeed,
+    bloom_mastery: item.traits.bloomMastery,
+    math_level: item.traits.mathLevel,
+    writing_level: item.traits.writingLevel,
+    profiles: item.profiles,
+    positive_traits: item.positiveTraits,
+    profile_summary_label: item.profileSummaryLabel,
+    biases: item.biases
+  };
+}
+function needsLegacyProfileBackfill(students) {
+  return students.length > 0 && students.every((student) => student.profiles.length === 0 && student.positiveTraits.length === 0);
 }
 function normalizeSimulationRun(run) {
   return {
@@ -605,6 +634,44 @@ async function getSyntheticStudentsForClass(classId) {
     }
   }
   return [...studentsMemory.get(classId) ?? []];
+}
+async function persistSyntheticStudentsForClass(classId, students) {
+  studentsMemory.set(classId, [...students]);
+  if (canUseSupabase()) {
+    try {
+      await supabaseRest("synthetic_students", {
+        method: "DELETE",
+        filters: { class_id: `eq.${classId}` },
+        prefer: "return=minimal"
+      });
+      if (students.length > 0) {
+        await supabaseRest("synthetic_students", {
+          method: "POST",
+          body: students.map((student) => normalizeStudentRow(student)),
+          prefer: "return=minimal"
+        });
+      }
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+}
+async function ensureStudentsHaveProfiles(classRecord, students) {
+  if (students.length > 0 && !needsLegacyProfileBackfill(students)) {
+    return students;
+  }
+  const regenerated = generateSyntheticStudents({
+    classId: classRecord.id,
+    classLevel: classRecord.level,
+    profilePercentages: { ...LEGACY_PROFILE_FALLBACK },
+    studentCount: students.length > 0 ? students.length : PHASE_C_CONFIG.defaultSyntheticStudentCount
+  });
+  await persistSyntheticStudentsForClass(classRecord.id, regenerated);
+  console.warn(`[phase-c] Backfilled legacy class ${classRecord.id} with fallback profile percentages.`);
+  return regenerated;
 }
 async function createSimulationRun(input) {
   const run = {
@@ -717,7 +784,7 @@ async function runPhaseCSimulation(input) {
   if (!classRecord) {
     throw new Error("Class not found");
   }
-  const students = await getSyntheticStudentsForClass(classRecord.id);
+  const students = await ensureStudentsHaveProfiles(classRecord, await getSyntheticStudentsForClass(classRecord.id));
   if (students.length === 0) {
     throw new Error("Synthetic students not found for class");
   }

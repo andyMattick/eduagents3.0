@@ -414,6 +414,14 @@ async function supabaseRest(table, options = {}) {
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -477,6 +485,15 @@ function normalizeStudentRow(item) {
     biases: item.biases
   };
 }
+function isZeroProfilePercentages(profilePercentages) {
+  if (!profilePercentages) {
+    return true;
+  }
+  return Object.values(profilePercentages).every((value) => Number(value ?? 0) <= 0);
+}
+function resolveRequestedProfilePercentages(profilePercentages) {
+  return isZeroProfilePercentages(profilePercentages) ? { ...LEGACY_PROFILE_FALLBACK } : profilePercentages;
+}
 async function createClassWithSyntheticStudents(input) {
   const classRecord = {
     id: randomUUID(),
@@ -490,7 +507,7 @@ async function createClassWithSyntheticStudents(input) {
   const students = generateSyntheticStudents({
     classId: classRecord.id,
     classLevel: classRecord.level,
-    profilePercentages: input.profilePercentages,
+    profilePercentages: resolveRequestedProfilePercentages(input.profilePercentages),
     studentCount: input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed: input.seed
   });

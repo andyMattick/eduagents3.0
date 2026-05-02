@@ -18,6 +18,15 @@ const simulationRunsMemory = new Map<string, SimulationRun>();
 const simulationResultsMemory = new Map<string, SimulationResult[]>();
 let phaseCSupabaseDisabled = false;
 
+const LEGACY_PROFILE_FALLBACK: CreateClassInput["profilePercentages"] = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10,
+};
+
 function canUseSupabase() {
   return !phaseCSupabaseDisabled
     && typeof window === "undefined"
@@ -43,6 +52,22 @@ function disableSupabaseForPhaseC(reason: unknown) {
   phaseCSupabaseDisabled = true;
   const detail = reason instanceof Error ? reason.message : String(reason);
   console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
+}
+
+function needsLegacyProfileBackfill(students: SyntheticStudent[]): boolean {
+  return students.length > 0 && students.every((student) => student.profiles.length === 0 && student.positiveTraits.length === 0);
+}
+
+function isZeroProfilePercentages(profilePercentages: CreateClassInput["profilePercentages"] | undefined): boolean {
+  if (!profilePercentages) {
+    return true;
+  }
+
+  return Object.values(profilePercentages).every((value) => Number(value ?? 0) <= 0);
+}
+
+function resolveRequestedProfilePercentages(profilePercentages: CreateClassInput["profilePercentages"] | undefined): CreateClassInput["profilePercentages"] {
+  return isZeroProfilePercentages(profilePercentages) ? { ...LEGACY_PROFILE_FALLBACK } : profilePercentages!;
 }
 
 function currentSchoolYear(now = new Date()): string {
@@ -221,15 +246,8 @@ function hydrateSimulationResult(row: SupabaseSimulationResultRow): SimulationRe
 }
 
 function deriveProfilePercentagesFromStudents(students: SyntheticStudent[]): CreateClassInput["profilePercentages"] {
-  if (students.length === 0) {
-    return {
-      ell: 0,
-      sped: 0,
-      adhd: 0,
-      dyslexia: 0,
-      gifted: 0,
-      attention504: 0,
-    };
+  if (students.length === 0 || needsLegacyProfileBackfill(students)) {
+    return { ...LEGACY_PROFILE_FALLBACK };
   }
 
   const total = students.length;
@@ -260,7 +278,7 @@ export async function createClassWithSyntheticStudents(input: CreateClassInput):
   const students = generateSyntheticStudents({
     classId: classRecord.id,
     classLevel: classRecord.level,
-    profilePercentages: input.profilePercentages,
+    profilePercentages: resolveRequestedProfilePercentages(input.profilePercentages),
     studentCount: input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed: input.seed,
   });
