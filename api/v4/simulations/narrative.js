@@ -52,7 +52,17 @@ Follow these rules:
 	- No moralizing or evaluative tone.
 	- No past tense.
 
-Your output should be a single, coherent narrative that helps a teacher understand predicted experience, and where available, how actual outcomes diverged from those predictions.`;
+Your output must use this exact two-section structure:
+
+Section 1: Executive summary
+- Prioritize the most instructionally critical patterns only.
+- Keep this concise and action-oriented.
+
+Section 2: Full category appendix
+- Include all provided categories/signals in compact form.
+- Keep this complete but brief (short bullets or compact lines).
+
+This allows the UI to keep Section 2 collapsible while still available.`;
 
 function normalizeEndpoint(raw) {
   const value = String(raw ?? "").trim();
@@ -183,8 +193,10 @@ Your narrative should include:
   - Summarize profileDeltas as profile-specific calibration notes.
   - If predictedVsActual.available is false or missing, state that comparison data is not yet available.
 
-Write a single, coherent narrative that helps the teacher understand how students are
-predicted to experience the assessment.
+Output format requirements:
+- Start with the heading "Section 1: Executive summary"
+- Then include the heading "Section 2: Full category appendix"
+- Keep Section 2 complete across all available categories.
 
 Here is the simulation output:\n\n${JSON.stringify(simulation, null, 2)}`,
     },

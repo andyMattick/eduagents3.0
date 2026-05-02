@@ -134,6 +134,22 @@ function computeDocumentConfidence(items: VerificationItem[]): number {
   return total / active.length;
 }
 
+function splitNarrativeSections(text: string): { summary: string; appendix: string | null } {
+  const marker = /(section\s*2\s*[:\-]?\s*full category appendix|full category appendix)/i;
+  const match = text.match(marker);
+  if (!match || match.index === undefined) {
+    return { summary: text.trim(), appendix: null };
+  }
+
+  const pivot = match.index;
+  const summary = text.slice(0, pivot).trim();
+  const appendix = text.slice(pivot).trim();
+  return {
+    summary,
+    appendix: appendix.length > 0 ? appendix : null,
+  };
+}
+
 export function extractParentStem(text: string): string {
   if (!text) return "";
   const lines = text.split(/\r?\n/);
@@ -588,6 +604,11 @@ export function ShortCircuitPage() {
       .sort((left, right) => left.localeCompare(right));
     return [...orderedKnownIds, ...missingIds];
   }, [phaseCClassView?.availableStudentIds, phaseCStudents]);
+
+  const narrativeSections = useMemo(() => {
+    const text = phaseCClassView?.narrative?.text ?? "";
+    return splitNarrativeSections(text);
+  }, [phaseCClassView?.narrative?.text]);
 
   const selectedPhaseCStudent = useMemo(() => {
     return phaseCStudents.find((student) => student.id === selectedStudentId) ?? null;
@@ -1109,8 +1130,18 @@ export function ShortCircuitPage() {
                   <div style={{ marginTop: "1rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.8rem", background: "rgba(255,251,245,0.9)" }}>
                     <p className="phasec-stat-label" style={{ marginBottom: "0.35rem" }}>Teacher narrative</p>
                     <p className="phasec-copy" style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>
-                      {phaseCClassView.narrative.text}
+                      {narrativeSections.summary}
                     </p>
+                    {narrativeSections.appendix && (
+                      <details style={{ marginTop: "0.6rem" }}>
+                        <summary className="phasec-copy" style={{ cursor: "pointer", fontWeight: 600 }}>
+                          Full category appendix
+                        </summary>
+                        <p className="phasec-copy" style={{ marginTop: "0.5rem", whiteSpace: "pre-wrap" }}>
+                          {narrativeSections.appendix}
+                        </p>
+                      </details>
+                    )}
                     {(phaseCClassView.narrative.provider || phaseCClassView.narrative.usage?.totalTokens) && (
                       <p className="phasec-copy" style={{ marginBottom: 0, opacity: 0.8 }}>
                         {phaseCClassView.narrative.provider ? `Provider: ${phaseCClassView.narrative.provider}` : ""}
