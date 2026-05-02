@@ -149,6 +149,7 @@ async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 80
     "api-key": apiKey,
     "Authorization": `Bearer ${apiKey}`,
   };
+  const attemptErrors = [];
 
   // Attempt 1: classic Azure OpenAI deployments URL
   const legacyUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
@@ -163,8 +164,27 @@ async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 80
   }
 
   const legacyText = await legacyResponse.text();
+  attemptErrors.push(`legacy(${apiVersion}) ${legacyResponse.status}: ${legacyText}`);
   if (legacyResponse.status !== 404) {
     throw new Error(`Azure error ${legacyResponse.status}: ${legacyText}`);
+  }
+
+  // Attempt 1b: classic URL with known-good fallback API version.
+  // This protects against misconfigured AZURE_OPENAI_API_VERSION values.
+  if (apiVersion !== "2024-02-15-preview") {
+    const legacyFallbackUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-15-preview`;
+    const legacyFallbackResponse = await fetch(legacyFallbackUrl, {
+      method: "POST",
+      headers: baseHeaders,
+      body: JSON.stringify({ messages, temperature, max_tokens: maxTokens }),
+    });
+
+    if (legacyFallbackResponse.ok) {
+      return legacyFallbackResponse.json();
+    }
+
+    const legacyFallbackText = await legacyFallbackResponse.text();
+    attemptErrors.push(`legacy(2024-02-15-preview) ${legacyFallbackResponse.status}: ${legacyFallbackText}`);
   }
 
   // Attempt 2: Azure AI Foundry /models/ endpoint (api-version 2025-x)
@@ -179,6 +199,9 @@ async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 80
     return foundryResponse.json();
   }
 
+  const foundryText = await foundryResponse.text();
+  attemptErrors.push(`foundry(${apiVersion}) ${foundryResponse.status}: ${foundryText}`);
+
   // Attempt 3: OpenAI-compatible /openai/v1/ path
   const v1Url = `${endpoint}/openai/v1/chat/completions`;
   const v1Response = await fetch(v1Url, {
@@ -189,7 +212,8 @@ async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 80
 
   if (!v1Response.ok) {
     const v1Text = await v1Response.text();
-    throw new Error(`Azure error ${v1Response.status}: ${v1Text}`);
+    attemptErrors.push(`v1 ${v1Response.status}: ${v1Text}`);
+    throw new Error(`Azure narrative failed across endpoints. ${attemptErrors.join(" | ")}`);
   }
 
   return v1Response.json();
