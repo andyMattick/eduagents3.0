@@ -463,6 +463,66 @@
   flex-wrap: wrap;
 }
 
+/* Classes list page */
+.classes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.classes-list-item {
+  width: 100%;
+}
+
+.classes-list-btn {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  transition: background 0.15s;
+}
+
+.classes-list-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.classes-list-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #2d1f14;
+}
+
+.classes-list-meta {
+  font-size: 0.82rem;
+  color: #7a6b5e;
+}
+
+[data-theme="dark"] .classes-list-btn {
+  background: rgba(40, 30, 20, 0.55);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .classes-list-btn:hover {
+  background: rgba(60, 45, 30, 0.75);
+}
+
+[data-theme="dark"] .classes-list-name {
+  color: #f5e6d3;
+}
+
+[data-theme="dark"] .classes-list-meta {
+  color: #b8a898;
+}
+
 .phasec-button,
 .phasec-button-secondary {
   border-radius: 999px;

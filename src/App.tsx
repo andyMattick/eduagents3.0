@@ -12,6 +12,7 @@ import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreati
 import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
 import { ClassBuilderPage } from './components_new/v4/phase-c/ClassBuilderPage';
+import { ClassesListPage } from './components_new/v4/phase-c/ClassesListPage';
 import { ClassDetailPage } from './components_new/v4/phase-c/ClassDetailPage';
 import { PhaseCResultsPage } from './components_new/v4/phase-c/PhaseCResultsPage';
 import './App.css';
@@ -20,7 +21,7 @@ console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/classes/new']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/classes', '/classes/new']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname)
@@ -50,7 +51,7 @@ function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
       <p className="home-landing-sub">Choose a workflow below to get started.</p>
 
       <div className="home-landing-cards">
-        <button className="home-card" onClick={() => navigate("/classes/new")}>
+        <button className="home-card" onClick={() => navigate("/classes")}>
           <span className="home-card-icon">🧩</span>
           <span className="home-card-title">Class Builder</span>
           <span className="home-card-desc">
@@ -99,6 +100,7 @@ function TeacherAppContent() {
   // Derive page title for the header
   const pageTitle =
     pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
+    pathname === '/classes' ? 'My Classes' :
     pathname === '/classes/new' || pathname.startsWith('/classes/') ? 'Class Builder' :
     pathname.startsWith('/simulations/') && pathname.endsWith('/phase-c') ? 'Phase C Student Simulation' :
     pathname.startsWith('/simulations/') ? 'Simulation Results' :
@@ -142,6 +144,8 @@ function TeacherAppContent() {
           ? <HomeLanding navigate={navigate} />
           : pathname === '/legacy'
           ? <LegacyDocumentCreation />
+          : pathname === '/classes'
+          ? <ClassesListPage navigate={navigate} />
           : pathname === '/classes/new'
           ? <ClassBuilderPage navigate={navigate} />
           : classDetailMatch

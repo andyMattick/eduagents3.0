@@ -102,8 +102,29 @@ function fmtDate(value: string): string {
   });
 }
 
+type SystemEventRow = {
+  id: string;
+  user_id: string | null;
+  actor_key: string | null;
+  event_type: string;
+  event_payload: Record<string, unknown>;
+  created_at: string;
+};
+
+type UserActivityResponse = {
+  userId: string;
+  events: SystemEventRow[];
+  uploadUsage: Array<Record<string, unknown>>;
+  simulationUsage: Array<Record<string, unknown>>;
+};
+
+type LimitSettingsResponse = {
+  upload: { free: number; teacher: number; school: number };
+  simulation: { free: number; teacher: number; school: number };
+};
+
 export const AdminDashboard = () => {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +139,47 @@ export const AdminDashboard = () => {
   const [selectedRewriteEvent, setSelectedRewriteEvent] = useState<RewriteEventDetail | null>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
 
-function isoDaysAgo(days: number): string {
+  const [events, setEvents] = useState<SystemEventRow[]>([]);
+  const [eventFilters, setEventFilters] = useState({
+    type: "",
+    userId: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  const [activityUserId, setActivityUserId] = useState("");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityData, setActivityData] = useState<UserActivityResponse | null>(null);
+
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [limitsSettings, setLimitsSettings] = useState<LimitSettingsResponse | null>(null);
+  const [limitsDraft, setLimitsDraft] = useState<LimitSettingsResponse | null>(null);
+
+  const [resetUsageUserId, setResetUsageUserId] = useState("");
+  const [resettingUsage, setResettingUsage] = useState<"upload" | "simulation" | "all" | null>(null);
+  const [adminActionMessage, setAdminActionMessage] = useState<string | null>(null);
+
+  async function adminFetch<T>(input: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(input, {
+      credentials: "include",
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-override": "true",
+        ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error ?? `Request failed: ${input}`);
+    }
+
+    return payload as T;
+  }
+
+  function isoDaysAgo(days: number): string {
   const now = new Date();
   now.setDate(now.getDate() - days);
   return now.toISOString();
@@ -197,6 +258,16 @@ function isoDaysAgo(days: number): string {
     });
   }, [badReports, emailByUserId, badReportFilters]);
 
+  const eventsFiltered = useMemo(() => {
+    return events.filter((row) => {
+      const userOk = !eventFilters.userId || (row.user_id ?? "").toLowerCase().includes(eventFilters.userId.trim().toLowerCase());
+      const typeOk = !eventFilters.type || row.event_type.toLowerCase().includes(eventFilters.type.trim().toLowerCase());
+      const dateFromOk = !eventFilters.dateFrom || new Date(row.created_at).getTime() >= new Date(eventFilters.dateFrom).getTime();
+      const dateToOk = !eventFilters.dateTo || new Date(row.created_at).getTime() <= new Date(eventFilters.dateTo).getTime();
+      return userOk && typeOk && dateFromOk && dateToOk;
+    });
+  }, [events, eventFilters]);
+
   async function loadDashboardData() {
     setLoading(true);
     setError(null);
@@ -245,6 +316,103 @@ function isoDaysAgo(days: number): string {
     setTeachers((teacherRes.data ?? []) as TeacherRow[]);
 
     setLoading(false);
+  }
+
+  async function loadAdminEvents() {
+    try {
+      const query = new URLSearchParams();
+      if (eventFilters.type) query.set("type", eventFilters.type);
+      if (eventFilters.userId) query.set("userId", eventFilters.userId);
+      if (eventFilters.dateFrom) query.set("dateFrom", eventFilters.dateFrom);
+      if (eventFilters.dateTo) query.set("dateTo", eventFilters.dateTo);
+      const payload = await adminFetch<{ events: SystemEventRow[] }>(`/api/v4/admin/events${query.toString() ? `?${query.toString()}` : ""}`);
+      setEvents(payload.events ?? []);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load admin events");
+    }
+  }
+
+  async function loadLimits() {
+    setLimitsLoading(true);
+    try {
+      const payload = await adminFetch<LimitSettingsResponse>("/api/v4/admin/limits");
+      setLimitsSettings(payload);
+      setLimitsDraft(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load limits");
+    } finally {
+      setLimitsLoading(false);
+    }
+  }
+
+  async function handleLoadActivity() {
+    if (!activityUserId.trim()) {
+      setAdminActionMessage("Enter a user ID to load activity.");
+      return;
+    }
+
+    setActivityLoading(true);
+    setAdminActionMessage(null);
+    try {
+      const payload = await adminFetch<UserActivityResponse>(`/api/v4/admin/users/${encodeURIComponent(activityUserId.trim())}/activity`);
+      setActivityData(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load user activity");
+      setActivityData(null);
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  async function handleResetUsage(kind: "upload" | "simulation" | "all") {
+    const userId = resetUsageUserId.trim();
+    if (!userId) {
+      setAdminActionMessage("Enter a user ID before resetting usage.");
+      return;
+    }
+
+    setResettingUsage(kind);
+    setAdminActionMessage(null);
+
+    const endpoint = kind === "upload"
+      ? "/api/v4/admin/reset-upload-usage"
+      : kind === "simulation"
+      ? "/api/v4/admin/reset-simulation-usage"
+      : "/api/v4/admin/reset-usage";
+
+    try {
+      await adminFetch<{ ok: boolean }>(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      });
+      setAdminActionMessage(`Reset ${kind} usage for ${userId}.`);
+      await Promise.all([loadDashboardData(), loadAdminEvents()]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to reset usage");
+    } finally {
+      setResettingUsage(null);
+    }
+  }
+
+  async function handleSaveLimits() {
+    if (!limitsDraft) {
+      return;
+    }
+
+    setLimitsLoading(true);
+    setAdminActionMessage(null);
+    try {
+      await adminFetch<{ ok: boolean }>("/api/v4/admin/limits", {
+        method: "POST",
+        body: JSON.stringify(limitsDraft),
+      });
+      setAdminActionMessage("Limits updated.");
+      await loadLimits();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to update limits");
+    } finally {
+      setLimitsLoading(false);
+    }
   }
 
   async function handleInspectRewriteEvent(row: RewriteEventRow) {
@@ -329,6 +497,8 @@ function isoDaysAgo(days: number): string {
 
   useEffect(() => {
     void loadDashboardData();
+    void loadAdminEvents();
+    void loadLimits();
   }, []);
 
   return (
@@ -346,6 +516,182 @@ function isoDaysAgo(days: number): string {
 
       {loading && <p className="admin-muted">Loading...</p>}
       {error && <p className="admin-error">Error: {error}</p>}
+      {adminActionMessage && <p className="admin-muted">{adminActionMessage}</p>}
+
+      <section className="admin-section">
+        <h2>Usage Controls</h2>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID for reset"
+            value={resetUsageUserId}
+            onChange={(event) => setResetUsageUserId(event.target.value)}
+          />
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("upload")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "upload" ? "Resetting..." : "Reset Upload Usage"}
+          </button>
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("simulation")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "simulation" ? "Resetting..." : "Reset Simulation Usage"}
+          </button>
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("all")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "all" ? "Resetting..." : "Reset All Usage"}
+          </button>
+        </div>
+
+        <h3>Limit Settings</h3>
+        {limitsSettings && limitsDraft ? (
+          <>
+            <div className="admin-filters">
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Upload free"
+                value={limitsDraft.upload.free}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, upload: { ...prev.upload, free: Number(event.target.value) } } : prev)}
+              />
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Upload teacher"
+                value={limitsDraft.upload.teacher}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, upload: { ...prev.upload, teacher: Number(event.target.value) } } : prev)}
+              />
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Upload school"
+                value={limitsDraft.upload.school}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, upload: { ...prev.upload, school: Number(event.target.value) } } : prev)}
+              />
+            </div>
+            <div className="admin-filters">
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Simulation free"
+                value={limitsDraft.simulation.free}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, simulation: { ...prev.simulation, free: Number(event.target.value) } } : prev)}
+              />
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Simulation teacher"
+                value={limitsDraft.simulation.teacher}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, simulation: { ...prev.simulation, teacher: Number(event.target.value) } } : prev)}
+              />
+              <input
+                type="number"
+                className="admin-filter-input"
+                placeholder="Simulation school"
+                value={limitsDraft.simulation.school}
+                onChange={(event) => setLimitsDraft((prev) => prev ? { ...prev, simulation: { ...prev.simulation, school: Number(event.target.value) } } : prev)}
+              />
+              <button type="button" className="admin-button" onClick={() => void handleSaveLimits()} disabled={limitsLoading}>
+                {limitsLoading ? "Saving..." : "Save Limits"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <p className="admin-muted">{limitsLoading ? "Loading limits..." : "Limits unavailable."}</p>
+        )}
+
+        <h3>User Activity Lookup</h3>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID"
+            value={activityUserId}
+            onChange={(event) => setActivityUserId(event.target.value)}
+          />
+          <button type="button" className="admin-button" onClick={() => void handleLoadActivity()} disabled={activityLoading}>
+            {activityLoading ? "Loading..." : "Load Activity"}
+          </button>
+        </div>
+        {activityData && (
+          <p className="admin-muted">
+            Activity for {activityData.userId}: {activityData.events.length} events, {activityData.uploadUsage.length} upload rows, {activityData.simulationUsage.length} simulation rows.
+          </p>
+        )}
+      </section>
+
+      <section className="admin-section">
+        <h2>System Events</h2>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="Type (upload/simulation/review)"
+            value={eventFilters.type}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, type: event.target.value }))}
+          />
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID"
+            value={eventFilters.userId}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, userId: event.target.value }))}
+          />
+          <input
+            type="date"
+            className="admin-filter-input"
+            value={eventFilters.dateFrom}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+          />
+          <input
+            type="date"
+            className="admin-filter-input"
+            value={eventFilters.dateTo}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+          />
+          <button type="button" className="admin-button" onClick={() => void loadAdminEvents()}>
+            Refresh Events
+          </button>
+        </div>
+        <div className="admin-table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>User ID</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eventsFiltered.map((row) => (
+                <tr key={row.id}>
+                  <td>{fmtDate(row.created_at)}</td>
+                  <td>{row.event_type}</td>
+                  <td>{row.user_id ?? "-"}</td>
+                  <td>{clip(JSON.stringify(row.event_payload ?? {}), 260)}</td>
+                </tr>
+              ))}
+              {!loading && eventsFiltered.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="admin-muted">No events found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="admin-section">
         <h2>Token Usage Today</h2>

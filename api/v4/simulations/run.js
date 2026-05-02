@@ -857,6 +857,105 @@ function parseBody(body) {
   }
   return {};
 }
+function getSingleHeaderValue(header) {
+  return Array.isArray(header) ? header[0] ?? "" : header ?? "";
+}
+function parseBooleanHeader(value) {
+  const normalized = String(getSingleHeaderValue(value)).trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
+  const ip = raw.split(",")[0].trim();
+  return ip || "unknown";
+}
+function resolveActor(req) {
+  const userId = getSingleHeaderValue(req.headers["x-user-id"]) || getSingleHeaderValue(req.headers["x-auth-user-id"]);
+  if (userId && isUuid(userId)) {
+    return { actorKey: userId, userId };
+  }
+  return { actorKey: getClientIp(req), userId: null };
+}
+function normalizeTier(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "school")
+    return "school";
+  if (normalized === "teacher")
+    return "teacher";
+  return "free";
+}
+function getMaxSimulationsPerDay(tier) {
+  if (tier === "school") {
+    const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_SCHOOL);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 100;
+  }
+  if (tier === "teacher") {
+    const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_TEACHER);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 50;
+  }
+  const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_FREE);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 10;
+}
+function isAdminSimulationOverride(req, actor) {
+  if (parseBooleanHeader(req.headers["x-admin-override"])) {
+    return true;
+  }
+  const allowed = String(process.env.SIMULATION_QUOTA_ADMIN_OVERRIDE_USERS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  return Boolean(actor.userId && allowed.includes(actor.userId));
+}
+async function getDailySimulationUsage(actorKey, date) {
+  try {
+    const rows = await supabaseRest("user_daily_simulations", {
+      method: "GET",
+      select: "simulations_run",
+      filters: {
+        actor_key: `eq.${actorKey}`,
+        usage_date: `eq.${date}`
+      }
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      const value = Number(rows[0]?.simulations_run ?? 0);
+      return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+}
+async function incrementDailySimulationUsage(params) {
+  const current = await getDailySimulationUsage(params.actorKey, params.date);
+  await supabaseRest("user_daily_simulations", {
+    method: "POST",
+    prefer: "resolution=merge-duplicates,return=minimal",
+    body: {
+      actor_key: params.actorKey,
+      user_id: params.userId,
+      usage_date: params.date,
+      simulations_run: current + 1,
+      tier: params.tier,
+      admin_override: params.adminOverride
+    }
+  });
+  return current + 1;
+}
+async function logSystemEvent(params) {
+  try {
+    await supabaseRest("system_events", {
+      method: "POST",
+      body: {
+        user_id: params.userId,
+        actor_key: params.actorKey,
+        event_type: params.eventType,
+        event_payload: params.eventPayload
+      }
+    });
+  } catch {
+  }
+}
 function sendError(res, code, message, httpStatus) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(httpStatus).json({ error: { code, message } });
@@ -916,7 +1015,7 @@ function normalizePhaseBItemsFromClient(rawItems) {
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-id, x-auth-user-id, x-user-tier, x-admin-override");
 }
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -926,6 +1025,15 @@ async function handler(req, res) {
   }
   if (req.method !== "POST") {
     return sendError(res, "method_not_allowed", "Method not allowed", 405);
+  }
+  const actor = resolveActor(req);
+  const date = new Date().toISOString().slice(0, 10);
+  const tier = normalizeTier(getSingleHeaderValue(req.headers["x-user-tier"]));
+  const maxSimulationsPerDay = getMaxSimulationsPerDay(tier);
+  const adminOverride = isAdminSimulationOverride(req, actor);
+  const simulationsRunToday = await getDailySimulationUsage(actor.actorKey, date);
+  if (!adminOverride && simulationsRunToday >= maxSimulationsPerDay) {
+    return sendError(res, "rate_limited", `Daily simulation limit reached (${maxSimulationsPerDay} simulations/day). Try again tomorrow or contact your admin.`, 429);
   }
   try {
     const payload = parseBody(req.body);
@@ -963,6 +1071,25 @@ async function handler(req, res) {
       documentId: payload.documentId,
       items: simulationItems,
       selectedProfileIds: Array.isArray(payload.selectedProfileIds) ? payload.selectedProfileIds : []
+    });
+    await incrementDailySimulationUsage({
+      actorKey: actor.actorKey,
+      userId: actor.userId,
+      date,
+      tier,
+      adminOverride
+    });
+    await logSystemEvent({
+      userId: actor.userId,
+      actorKey: actor.actorKey,
+      eventType: "simulation",
+      eventPayload: {
+        classId: result.simulationRun.classId,
+        assessmentId: result.simulationRun.documentId,
+        simulationId: result.simulationRun.id,
+        mode,
+        resultCount: result.resultCount
+      }
     });
     return res.status(201).json({
       simulationId: result.simulationRun.id,

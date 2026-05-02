@@ -45,6 +45,19 @@ type StudentResultRow = {
   abilityScore?: number;
 };
 
+type SimulationUsageToday = {
+  simulationsRun: number;
+  maxSimulationsPerDay: number;
+  remainingSimulations: number | null;
+  adminOverride?: boolean;
+};
+
+type UploadUsageToday = {
+  pagesUploaded: number;
+  maxPagesPerDay: number;
+  remainingPages: number;
+};
+
 type VerificationItemType = "mc" | "free_response" | "multipart_parent" | "multipart_child" | "other" | "ignore";
 
 type VerificationItem = {
@@ -135,19 +148,24 @@ function computeDocumentConfidence(items: VerificationItem[]): number {
 }
 
 function splitNarrativeSections(text: string): { summary: string; appendix: string | null } {
-  const marker = /(section\s*2\s*[:\-]?\s*full category appendix|full category appendix)/i;
-  const match = text.match(marker);
-  if (!match || match.index === undefined) {
-    return { summary: text.trim(), appendix: null };
+  // v4.2 structure: sections 1–2 visible, sections 3–6 collapsible
+  // Split after "### 2. Most Urgent Patterns to Watch" block ends (i.e. at heading 3)
+  const collapseMarker = /^###\s*3\.\s+Profile.Specific Considerations/im;
+  const match = text.match(collapseMarker);
+  if (match && match.index !== undefined) {
+    const summary = text.slice(0, match.index).trim();
+    const appendix = text.slice(match.index).trim();
+    return { summary, appendix: appendix.length > 0 ? appendix : null };
   }
-
-  const pivot = match.index;
-  const summary = text.slice(0, pivot).trim();
-  const appendix = text.slice(pivot).trim();
-  return {
-    summary,
-    appendix: appendix.length > 0 ? appendix : null,
-  };
+  // Fallback: old Section 1/2 split
+  const legacyMarker = /(section\s*2\s*[:\-]?\s*full category appendix|full category appendix)/i;
+  const legacyMatch = text.match(legacyMarker);
+  if (legacyMatch && legacyMatch.index !== undefined) {
+    const summary = text.slice(0, legacyMatch.index).trim();
+    const appendix = text.slice(legacyMatch.index).trim();
+    return { summary, appendix: appendix.length > 0 ? appendix : null };
+  }
+  return { summary: text.trim(), appendix: null };
 }
 
 export function extractParentStem(text: string): string {
@@ -217,6 +235,8 @@ export function ShortCircuitPage() {
   const [phaseCClassView, setPhaseCClassView] = useState<PhaseCView | null>(null);
   const [phaseCStudentView, setPhaseCStudentView] = useState<PhaseCView | null>(null);
   const [phaseCStudents, setPhaseCStudents] = useState<SyntheticStudent[]>([]);
+  const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageToday | null>(null);
+  const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageToday | null>(null);
 
   const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
@@ -462,13 +482,68 @@ export function ShortCircuitPage() {
     }
   }, []);
 
+  const loadSimulationUsage = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v4/simulations/usage-today", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Failed to load simulation usage.");
+      }
+      setSimulationUsageToday({
+        simulationsRun: Number(payload.simulationsRun ?? 0),
+        maxSimulationsPerDay: Number(payload.maxSimulationsPerDay ?? 10),
+        remainingSimulations: payload.remainingSimulations == null ? null : Number(payload.remainingSimulations),
+        adminOverride: Boolean(payload.adminOverride),
+      });
+    } catch {
+      setSimulationUsageToday(null);
+    }
+  }, [user?.id]);
+
+  const loadUploadUsage = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v4/documents/usage-today", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Failed to load upload usage.");
+      }
+      setUploadUsageToday({
+        pagesUploaded: Number(payload.pagesUploaded ?? 0),
+        maxPagesPerDay: Number(payload.maxPagesPerDay ?? 20),
+        remainingPages: Number(payload.remainingPages ?? 0),
+      });
+    } catch {
+      setUploadUsageToday(null);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (phase !== "upload") {
+      return;
+    }
+    void loadUploadUsage();
+  }, [phase, loadUploadUsage]);
+
   useEffect(() => {
     if (phase !== "results") {
       return;
     }
 
     void loadClasses();
-  }, [phase, loadClasses]);
+    void loadSimulationUsage();
+  }, [phase, loadClasses, loadSimulationUsage]);
 
   const handleRunPhaseC = async () => {
     if (!selectedClassId || !documentId) {
@@ -525,6 +600,8 @@ export function ShortCircuitPage() {
         }
       }
       setPhaseCStudentView(null);
+      await loadSimulationUsage();
+      await loadUploadUsage();
     } catch (err) {
       setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
     } finally {
@@ -604,6 +681,14 @@ export function ShortCircuitPage() {
       .sort((left, right) => left.localeCompare(right));
     return [...orderedKnownIds, ...missingIds];
   }, [phaseCClassView?.availableStudentIds, phaseCStudents]);
+
+  const simulationsRunToday = simulationUsageToday?.simulationsRun ?? 0;
+  const simulationsLimit = simulationUsageToday?.maxSimulationsPerDay ?? 10;
+  const simulationUsagePct = simulationsLimit > 0 ? Math.min(100, Math.round(simulationsRunToday / simulationsLimit * 100)) : 0;
+  const simulationLimitReached = simulationUsageToday?.remainingSimulations === 0;
+  const uploadedPages = uploadUsageToday?.pagesUploaded ?? 0;
+  const uploadPagesLimit = uploadUsageToday?.maxPagesPerDay ?? 20;
+  const uploadUsagePct = uploadPagesLimit > 0 ? Math.min(100, Math.round(uploadedPages / uploadPagesLimit * 100)) : 0;
 
   const narrativeSections = useMemo(() => {
     const text = phaseCClassView?.narrative?.text ?? "";
@@ -790,6 +875,16 @@ export function ShortCircuitPage() {
           <p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1.25rem" }}>
             Documents must be in PDF format.
           </p>
+          {uploadUsageToday && (
+            <div style={{ marginBottom: "0.9rem" }}>
+              <p className="phasec-copy" style={{ margin: 0 }}>
+                Pages used today: {uploadedPages} / {uploadPagesLimit}
+              </p>
+              <div style={{ marginTop: "0.35rem", width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+                <div style={{ width: `${uploadUsagePct}%`, height: "100%", background: uploadUsagePct >= 100 ? "#b45309" : "#285d7a" }} />
+              </div>
+            </div>
+          )}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -1092,11 +1187,28 @@ export function ShortCircuitPage() {
               <button
                 className="phasec-button"
                 onClick={() => void handleRunPhaseC()}
-                disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId}
+                disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId || simulationLimitReached}
               >
                 {phaseCRunLoading ? "Running..." : "Run Class Simulation"}
               </button>
             </div>
+
+            {simulationUsageToday && (
+              <div style={{ marginTop: "0.6rem" }}>
+                <p className="phasec-copy" style={{ margin: 0 }}>
+                  Simulations run today: {simulationsRunToday} / {simulationsLimit}
+                  {simulationUsageToday.adminOverride ? " (admin override active)" : ""}
+                </p>
+                <div style={{ marginTop: "0.35rem", width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+                  <div style={{ width: `${simulationUsagePct}%`, height: "100%", background: simulationUsagePct >= 100 ? "#b45309" : "#285d7a" }} />
+                </div>
+                {simulationLimitReached && (
+                  <p className="phasec-error" style={{ marginTop: "0.4rem" }}>
+                    You have reached your daily simulation limit. Try again tomorrow or ask an admin to reset your usage.
+                  </p>
+                )}
+              </div>
+            )}
 
             {phaseCClassLoading && <p className="phasec-copy">Loading classes...</p>}
             {phaseCRunError && <p className="phasec-error">{phaseCRunError}</p>}
