@@ -28,7 +28,7 @@ function normalizeEndpoint(raw: string | undefined): string {
     throw new Error("AZURE_OPENAI_ENDPOINT is required for Azure narrative generation.");
   }
 
-  return value.replace(/\/openai\/?$/i, "").replace(/\/+$/, "");
+  return value.replace(/\/+$/, "");
 }
 
 function resolveApiVersion(raw: string | undefined): string {
