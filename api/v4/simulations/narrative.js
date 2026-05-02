@@ -144,21 +144,18 @@ function resolveAzureConfig() {
 
 async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 800 }) {
   const { endpoint, deployment, apiKey, apiVersion } = resolveAzureConfig();
-  const legacyUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
-  const legacyBody = {
-    messages,
-    temperature,
-    max_tokens: maxTokens
-  };
   const baseHeaders = {
     "Content-Type": "application/json",
-    "api-key": apiKey
+    "api-key": apiKey,
+    "Authorization": `Bearer ${apiKey}`,
   };
 
+  // Attempt 1: classic Azure OpenAI deployments URL
+  const legacyUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
   const legacyResponse = await fetch(legacyUrl, {
     method: "POST",
     headers: baseHeaders,
-    body: JSON.stringify(legacyBody)
+    body: JSON.stringify({ messages, temperature, max_tokens: maxTokens }),
   });
 
   if (legacyResponse.ok) {
@@ -166,21 +163,28 @@ async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 80
   }
 
   const legacyText = await legacyResponse.text();
-  const shouldRetryWithV1 = legacyResponse.status === 404 && legacyText.includes("Resource not found");
-  if (!shouldRetryWithV1) {
+  if (legacyResponse.status !== 404) {
     throw new Error(`Azure error ${legacyResponse.status}: ${legacyText}`);
   }
 
+  // Attempt 2: Azure AI Foundry /models/ endpoint (api-version 2025-x)
+  const foundryUrl = `${endpoint}/models/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+  const foundryResponse = await fetch(foundryUrl, {
+    method: "POST",
+    headers: baseHeaders,
+    body: JSON.stringify({ messages, temperature, max_tokens: maxTokens }),
+  });
+
+  if (foundryResponse.ok) {
+    return foundryResponse.json();
+  }
+
+  // Attempt 3: OpenAI-compatible /openai/v1/ path
   const v1Url = `${endpoint}/openai/v1/chat/completions`;
   const v1Response = await fetch(v1Url, {
     method: "POST",
     headers: baseHeaders,
-    body: JSON.stringify({
-      model: deployment,
-      messages,
-      temperature,
-      max_tokens: maxTokens
-    })
+    body: JSON.stringify({ model: deployment, messages, temperature, max_tokens: maxTokens }),
   });
 
   if (!v1Response.ok) {
