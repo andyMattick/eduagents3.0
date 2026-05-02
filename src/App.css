@@ -528,6 +528,74 @@
   font-weight: 700;
 }
 
+.phasec-student-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.phasec-student-chip {
+  border: 1px solid rgba(86, 57, 32, 0.18);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.9);
+  color: #4e301d;
+  cursor: pointer;
+  font: inherit;
+}
+
+.phasec-student-chip:hover,
+.phasec-student-chip:focus-visible {
+  background: #f0dfc8;
+  outline: none;
+}
+
+.phasec-student-inline {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.phasec-student-inline-id {
+  display: inline-flex;
+  width: fit-content;
+  border-bottom: 1px dashed rgba(86, 57, 32, 0.4);
+  color: #4e301d;
+}
+
+.phasec-student-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.phasec-student-tooltip-trigger {
+  display: inline-flex;
+}
+
+.phasec-student-tooltip-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.55rem);
+  transform: translateX(-50%);
+  min-width: 220px;
+  max-width: 280px;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid rgba(86, 57, 32, 0.18);
+  background: #fffaf3;
+  box-shadow: 0 12px 28px rgba(31, 26, 23, 0.14);
+  display: grid;
+  gap: 0.3rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+  z-index: 5;
+}
+
+.phasec-student-tooltip:hover .phasec-student-tooltip-panel,
+.phasec-student-tooltip:focus-within .phasec-student-tooltip-panel {
+  opacity: 1;
+}
+
 .phasec-table {
   width: 100%;
   border-collapse: collapse;

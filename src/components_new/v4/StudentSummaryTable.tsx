@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getSimulationViewApi } from "../../lib/phaseCApi";
+import { getSimulationViewApi, type SyntheticStudent } from "../../lib/phaseCApi";
+
+import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
+import { sortStudentsByProfile } from "./phase-c/studentRoster";
 
 type Props = {
   simulationId: string;
   studentIds: string[];
+  students?: SyntheticStudent[];
   userId?: string;
   selectedStudentId?: string;
 };
@@ -78,7 +82,7 @@ function summarizeStudent(studentId: string, items: StudentItem[]): StudentSumma
   };
 }
 
-export function StudentSummaryTable({ simulationId, studentIds, userId, selectedStudentId }: Props) {
+export function StudentSummaryTable({ simulationId, studentIds, students = [], userId, selectedStudentId }: Props) {
   const [rows, setRows] = useState<StudentSummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,9 +134,35 @@ export function StudentSummaryTable({ simulationId, studentIds, userId, selected
     };
   }, [simulationId, studentIds, userId]);
 
+  const studentsById = useMemo(() => {
+    return new Map(students.map((student) => [student.id, student]));
+  }, [students]);
+
   const sortedRows = useMemo(() => {
-    return [...rows].sort((left, right) => right.averageConfusion - left.averageConfusion);
-  }, [rows]);
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const metadataOrderedIds = sortStudentsByProfile(
+      students.filter((student) => rows.some((row) => row.studentId === student.id)),
+    ).map((student) => student.id);
+
+    const orderedIds = new Map(metadataOrderedIds.map((studentId, index) => [studentId, index]));
+    return [...rows].sort((left, right) => {
+      const leftOrder = orderedIds.get(left.studentId);
+      const rightOrder = orderedIds.get(right.studentId);
+      if (leftOrder !== undefined && rightOrder !== undefined) {
+        return leftOrder - rightOrder;
+      }
+      if (leftOrder !== undefined) {
+        return -1;
+      }
+      if (rightOrder !== undefined) {
+        return 1;
+      }
+      return left.studentId.localeCompare(right.studentId);
+    });
+  }, [rows, students]);
 
   const summaryRange = useMemo(() => {
     if (sortedRows.length === 0) {
@@ -204,7 +234,13 @@ export function StudentSummaryTable({ simulationId, studentIds, userId, selected
         <tbody>
           {sortedRows.map((row) => (
             <tr key={row.studentId}>
-              <td>{row.studentId}</td>
+              <td>
+                {studentsById.has(row.studentId) ? (
+                  <StudentProfileTooltip student={studentsById.get(row.studentId)!}>
+                    <span className="phasec-student-inline-id">{row.studentId}</span>
+                  </StudentProfileTooltip>
+                ) : row.studentId}
+              </td>
               <td>{row.averageConfusion.toFixed(3)}</td>
               <td>{row.averageTime.toFixed(2)}</td>
               <td>{formatDuration(row.totalTime)}</td>

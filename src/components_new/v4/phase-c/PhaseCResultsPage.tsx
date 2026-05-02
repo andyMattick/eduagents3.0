@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getSimulationViewApi, type SimulationSummary } from "../../../lib/phaseCApi";
+import { getClassDetailApi, getSimulationViewApi, type SimulationSummary, type SyntheticStudent } from "../../../lib/phaseCApi";
+
+import { StudentProfileTooltip } from "./StudentProfileTooltip";
+import { matchesSelectedProfile, sortStudentsByProfile } from "./studentRoster";
 
 type Props = {
   simulationId: string;
@@ -106,6 +109,10 @@ function formatStudentLabel(studentId: string): string {
   return `Student ${compact}`;
 }
 
+function sortStudentIds(studentIds: string[]): string[] {
+  return [...studentIds].sort((left, right) => left.localeCompare(right));
+}
+
 function toNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -122,6 +129,7 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
   const [profileView, setProfileView] = useState<Awaited<ReturnType<typeof getSimulationViewApi>> | null>(null);
   const [studentView, setStudentView] = useState<Awaited<ReturnType<typeof getSimulationViewApi>> | null>(null);
   const [studentOptions, setStudentOptions] = useState<string[]>([]);
+  const [classStudents, setClassStudents] = useState<SyntheticStudent[]>([]);
 
   useEffect(() => {
     async function loadInitial() {
@@ -131,6 +139,13 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
         const classData = await getSimulationViewApi(simulationId, "class");
 
         setClassView(classData);
+
+        try {
+          const classDetail = await getClassDetailApi(classData.classId);
+          setClassStudents(classDetail.students);
+        } catch {
+          setClassStudents([]);
+        }
 
         const defaultStudentId = classData.availableStudentIds?.[0] ?? "";
         if (defaultStudentId) {
@@ -179,6 +194,41 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
 
   const items = useMemo(() => (studentView?.items ?? []) as StudentItem[], [studentView]);
   const curveItems = useMemo(() => items.map((item) => ({ confusionScore: toNumber(item.confusionScore), timeSeconds: toNumber(item.timeSeconds) })), [items]);
+  const availableStudentSet = useMemo(() => new Set(studentOptions), [studentOptions]);
+  const sortedRoster = useMemo(() => {
+    if (classStudents.length === 0) {
+      return [];
+    }
+
+    const scopedStudents = classStudents.filter((student) => availableStudentSet.size === 0 || availableStudentSet.has(student.id));
+    return sortStudentsByProfile(scopedStudents);
+  }, [availableStudentSet, classStudents]);
+  const filteredRoster = useMemo(() => {
+    return sortedRoster.filter((student) => matchesSelectedProfile(student, profile));
+  }, [profile, sortedRoster]);
+  const orderedStudentIds = useMemo(() => {
+    if (sortedRoster.length === 0) {
+      const ids = studentOptions.length > 0 ? studentOptions : studentId ? [studentId] : [];
+      return sortStudentIds(ids);
+    }
+
+    const ordered = sortedRoster.map((student) => student.id);
+    const missing = sortStudentIds(studentOptions.filter((value) => !ordered.includes(value)));
+    return [...ordered, ...missing];
+  }, [sortedRoster, studentId, studentOptions]);
+  const selectedStudent = useMemo(() => {
+    return sortedRoster.find((student) => student.id === studentId) ?? null;
+  }, [sortedRoster, studentId]);
+
+  useEffect(() => {
+    if (orderedStudentIds.length === 0) {
+      return;
+    }
+
+    if (!orderedStudentIds.includes(studentId)) {
+      setStudentId(orderedStudentIds[0]);
+    }
+  }, [orderedStudentIds, studentId]);
 
   if (loading) {
     return <div className="phasec-shell"><p>Loading simulation...</p></div>;
@@ -214,6 +264,31 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
             {PROFILE_OPTIONS.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
           {profileView ? <SummaryCard summary={profileView.summary} /> : <p className="phasec-empty">Loading profile slice...</p>}
+
+          <div>
+            <h3>Students</h3>
+            <p className="phasec-copy">Hover a student ID for profile details. Click a student to open the student view.</p>
+            {filteredRoster.length > 0 ? (
+              <div className="phasec-student-roster">
+                {filteredRoster.map((student) => (
+                  <StudentProfileTooltip key={student.id} student={student}>
+                    <button
+                      type="button"
+                      className="phasec-student-chip"
+                      onClick={() => {
+                        setStudentId(student.id);
+                        setTab("student");
+                      }}
+                    >
+                      {formatStudentLabel(student.id)}
+                    </button>
+                  </StudentProfileTooltip>
+                ))}
+              </div>
+            ) : (
+              <p className="phasec-empty">No students match the selected profile in this simulation.</p>
+            )}
+          </div>
         </div>
       )}
 
@@ -221,8 +296,16 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
         <div className="phasec-card">
           <label>Student</label>
           <select value={studentId} onChange={(event) => setStudentId(event.target.value)}>
-            {(studentOptions.length > 0 ? studentOptions : [studentId]).map((value) => <option key={value} value={value}>{formatStudentLabel(value)}</option>)}
+            {orderedStudentIds.map((value) => <option key={value} value={value}>{formatStudentLabel(value)}</option>)}
           </select>
+          {selectedStudent && (
+            <div className="phasec-student-inline">
+              <span className="phasec-stat-label">Hover for student profile details</span>
+              <StudentProfileTooltip student={selectedStudent}>
+                <span className="phasec-student-inline-id">{formatStudentLabel(selectedStudent.id)}</span>
+              </StudentProfileTooltip>
+            </div>
+          )}
           {studentView && <SummaryCard summary={studentView.summary} />}
 
           <CumulativeCurve items={curveItems} />

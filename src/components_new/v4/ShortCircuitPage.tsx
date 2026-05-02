@@ -12,9 +12,11 @@ import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { StudentSummaryTable } from "./StudentSummaryTable";
 import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
-import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
+import { getClassDetailApi, getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass, type SyntheticStudent } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
 import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
+import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
+import { sortStudentsByProfile } from "./phase-c/studentRoster";
 import "./v4.css";
 
 const ACCEPTED_EXTENSIONS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -198,6 +200,7 @@ export function ShortCircuitPage() {
   const [phaseCSimulationId, setPhaseCSimulationId] = useState<string | null>(null);
   const [phaseCClassView, setPhaseCClassView] = useState<PhaseCView | null>(null);
   const [phaseCStudentView, setPhaseCStudentView] = useState<PhaseCView | null>(null);
+  const [phaseCStudents, setPhaseCStudents] = useState<SyntheticStudent[]>([]);
 
   const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
@@ -235,6 +238,7 @@ export function ShortCircuitPage() {
     setPhaseCSimulationId(null);
     setPhaseCClassView(null);
     setPhaseCStudentView(null);
+    setPhaseCStudents([]);
 
     setItems(null);
     setItemTrees(null);
@@ -491,6 +495,12 @@ export function ShortCircuitPage() {
 
       const classView = await getSimulationViewApi(output.simulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
+      try {
+        const classDetail = await getClassDetailApi(selectedClassId);
+        setPhaseCStudents(classDetail.students);
+      } catch {
+        setPhaseCStudents([]);
+      }
       setPhaseCStudentView(null);
     } catch (err) {
       setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
@@ -555,6 +565,35 @@ export function ShortCircuitPage() {
   const phaseCItems = useMemo(() => {
     return (phaseCStudentView?.items ?? []) as StudentResultRow[];
   }, [phaseCStudentView]);
+
+  const orderedPhaseCStudentIds = useMemo(() => {
+    const availableIds = phaseCClassView?.availableStudentIds ?? [];
+    if (availableIds.length === 0) {
+      return [];
+    }
+
+    const availableSet = new Set(availableIds);
+    const orderedKnownIds = sortStudentsByProfile(
+      phaseCStudents.filter((student) => availableSet.has(student.id)),
+    ).map((student) => student.id);
+    const missingIds = availableIds
+      .filter((studentId) => !orderedKnownIds.includes(studentId))
+      .sort((left, right) => left.localeCompare(right));
+    return [...orderedKnownIds, ...missingIds];
+  }, [phaseCClassView?.availableStudentIds, phaseCStudents]);
+
+  const selectedPhaseCStudent = useMemo(() => {
+    return phaseCStudents.find((student) => student.id === selectedStudentId) ?? null;
+  }, [phaseCStudents, selectedStudentId]);
+
+  useEffect(() => {
+    if (orderedPhaseCStudentIds.length === 0) {
+      return;
+    }
+    if (!selectedStudentId || !orderedPhaseCStudentIds.includes(selectedStudentId)) {
+      setSelectedStudentId(orderedPhaseCStudentIds[0]);
+    }
+  }, [orderedPhaseCStudentIds, selectedStudentId]);
 
   const derivedDocumentConfidence = useMemo(() => {
     return computeDocumentConfidence(verificationItems);
@@ -1080,6 +1119,7 @@ export function ShortCircuitPage() {
                 <StudentSummaryTable
                   simulationId={phaseCSimulationId}
                   studentIds={phaseCClassView.availableStudentIds ?? []}
+                  students={phaseCStudents}
                   userId={user?.id}
                   selectedStudentId={selectedStudentId}
                 />
@@ -1095,10 +1135,19 @@ export function ShortCircuitPage() {
                       }}
                     >
                       <option value="">Choose a student</option>
-                      {(phaseCClassView.availableStudentIds ?? []).map((id) => (
+                      {orderedPhaseCStudentIds.map((id) => (
                         <option key={id} value={id}>{id}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {selectedPhaseCStudent && (
+                  <div style={{ marginTop: "0.5rem" }}>
+                    <span className="phasec-stat-label" style={{ display: "block", marginBottom: "0.3rem" }}>Hover for student profile details</span>
+                    <StudentProfileTooltip student={selectedPhaseCStudent}>
+                      <span className="phasec-student-inline-id">{selectedPhaseCStudent.id}</span>
+                    </StudentProfileTooltip>
                   </div>
                 )}
               </div>
