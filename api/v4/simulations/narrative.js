@@ -72,26 +72,51 @@ function resolveAzureConfig() {
 
 async function azureChatCompletion({ messages, temperature = 0.2, maxTokens = 800 }) {
   const { endpoint, deployment, apiKey, apiVersion } = resolveAzureConfig();
-  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
-  const response = await fetch(url, {
+  const legacyUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+  const legacyBody = {
+    messages,
+    temperature,
+    max_tokens: maxTokens
+  };
+  const baseHeaders = {
+    "Content-Type": "application/json",
+    "api-key": apiKey
+  };
+
+  const legacyResponse = await fetch(legacyUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": apiKey
-    },
+    headers: baseHeaders,
+    body: JSON.stringify(legacyBody)
+  });
+
+  if (legacyResponse.ok) {
+    return legacyResponse.json();
+  }
+
+  const legacyText = await legacyResponse.text();
+  const shouldRetryWithV1 = legacyResponse.status === 404 && legacyText.includes("Resource not found");
+  if (!shouldRetryWithV1) {
+    throw new Error(`Azure error ${legacyResponse.status}: ${legacyText}`);
+  }
+
+  const v1Url = `${endpoint}/openai/v1/chat/completions`;
+  const v1Response = await fetch(v1Url, {
+    method: "POST",
+    headers: baseHeaders,
     body: JSON.stringify({
+      model: deployment,
       messages,
       temperature,
       max_tokens: maxTokens
     })
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Azure error ${response.status}: ${text}`);
+  if (!v1Response.ok) {
+    const v1Text = await v1Response.text();
+    throw new Error(`Azure error ${v1Response.status}: ${v1Text}`);
   }
 
-  return response.json();
+  return v1Response.json();
 }
 
 export async function buildTeacherNarrativeFromSimulation(simulation) {

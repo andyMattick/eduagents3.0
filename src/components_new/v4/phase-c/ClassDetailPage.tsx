@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { getClassDetailApi, regenerateClassApi } from "../../../lib/phaseCApi";
 
+import { StudentProfileTooltip } from "./StudentProfileTooltip";
+import { sortStudentsByProfile } from "./studentRoster";
+
 type Props = {
   classId: string;
   navigate: (path: string) => void;
@@ -51,6 +54,10 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       math: sums.math / students.length,
       writing: sums.writing / students.length,
     };
+  }, [data]);
+
+  const sortedStudents = useMemo(() => {
+    return sortStudentsByProfile(data?.students ?? []);
   }, [data]);
 
   async function handleRegenerate() {
@@ -156,16 +163,21 @@ export function ClassDetailPage({ classId, navigate }: Props) {
           <table className="phasec-table">
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Student</th>
                 <th>Profiles</th>
                 <th>Positive traits</th>
                 <th>Trait summary</th>
               </tr>
             </thead>
             <tbody>
-              {data.students.map((student) => (
+              {sortedStudents.map((student) => (
                 <tr key={student.id}>
-                  <td>{student.displayName}</td>
+                  <td>
+                    <StudentProfileTooltip student={student}>
+                      <span className="phasec-student-inline-id">{student.id}</span>
+                    </StudentProfileTooltip>
+                    <p className="phasec-copy" style={{ marginTop: "0.25rem" }}>{student.displayName}</p>
+                  </td>
                   <td>{student.profiles.join(", ") || "-"}</td>
                   <td>{student.positiveTraits.join(", ") || "-"}</td>
                   <td>

@@ -55,14 +55,15 @@ export async function azureChatCompletion({
   maxTokens = 800,
 }: AzureChatCompletionOptions): Promise<AzureChatCompletionResponse> {
   const { endpoint, deployment, apiKey, apiVersion } = resolveAzureOpenAIConfig();
-  const url = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+  const legacyUrl = `${endpoint}/openai/deployments/${deployment}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`;
+  const headers = {
+    "Content-Type": "application/json",
+    "api-key": apiKey,
+  };
 
-  const response = await fetch(url, {
+  const legacyResponse = await fetch(legacyUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "api-key": apiKey,
-    },
+    headers,
     body: JSON.stringify({
       messages,
       temperature,
@@ -70,10 +71,31 @@ export async function azureChatCompletion({
     }),
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Azure error ${response.status}: ${text}`);
+  if (legacyResponse.ok) {
+    return legacyResponse.json() as Promise<AzureChatCompletionResponse>;
   }
 
-  return response.json() as Promise<AzureChatCompletionResponse>;
+  const legacyText = await legacyResponse.text();
+  const shouldRetryWithV1 = legacyResponse.status === 404 && legacyText.includes("Resource not found");
+  if (!shouldRetryWithV1) {
+    throw new Error(`Azure error ${legacyResponse.status}: ${legacyText}`);
+  }
+
+  const v1Response = await fetch(`${endpoint}/openai/v1/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: deployment,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!v1Response.ok) {
+    const v1Text = await v1Response.text();
+    throw new Error(`Azure error ${v1Response.status}: ${v1Text}`);
+  }
+
+  return v1Response.json() as Promise<AzureChatCompletionResponse>;
 }
