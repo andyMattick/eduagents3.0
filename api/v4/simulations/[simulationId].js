@@ -430,6 +430,41 @@ async function buildNarrativePayload(params) {
   }
 }
 
+async function loadPredictedVsActualDelta(classId, assessmentId) {
+  if (!classId || !assessmentId || !canUseSupabase()) {
+    return { available: false };
+  }
+
+  try {
+    const rows = await supabaseRest("class_assessment_deltas", {
+      method: "GET",
+      select: "assessment_id,timing_delta,confusion_delta,accuracy_delta,profile_deltas,created_at",
+      filters: {
+        class_id: `eq.${classId}`,
+        assessment_id: `eq.${assessmentId}`,
+        order: "created_at.desc",
+        limit: "1"
+      }
+    });
+
+    const row = (rows ?? [])[0];
+    if (!row) {
+      return { available: false };
+    }
+
+    return {
+      available: true,
+      assessmentId: row.assessment_id,
+      timingDelta: Number(row.timing_delta ?? 0),
+      confusionDelta: Number(row.confusion_delta ?? 0),
+      accuracyDelta: Number(row.accuracy_delta ?? 0),
+      profileDeltas: row.profile_deltas ?? {}
+    };
+  } catch {
+    return { available: false };
+  }
+}
+
 function readNumeric(metadata, keys) {
   if (!metadata) {
     return void 0;
@@ -670,12 +705,14 @@ async function handler(req, res) {
       const hardestItems = buildHardestItems(results, itemTraits);
     const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
     if (view === "class") {
+        const predictedVsActual = await loadPredictedVsActualDelta(run.classId, run.documentId);
         const narrative = await buildNarrativePayload({
           simulationId,
           classId: run.classId,
           documentId: run.documentId,
           summary: aggregateClass(results),
-          hardestItems
+          hardestItems,
+          predictedVsActual
         });
       return res.status(200).json({
         simulationId,

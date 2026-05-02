@@ -78,6 +78,75 @@ export type DocumentSummary = {
   createdAt: string;
 };
 
+export type ClassResultHistoryItem = {
+  assessmentId: string;
+  type: "predicted" | "actual";
+  timestamp: string;
+};
+
+export type ActualItemResult = {
+  itemId: string;
+  correct: boolean;
+  time: number;
+  confusion: number;
+};
+
+export type ActualStudentResult = {
+  studentId: string;
+  profiles: string[];
+  positiveTraits: string[];
+  actual: {
+    score: number;
+    time: number;
+    itemResults: ActualItemResult[];
+  };
+};
+
+export type ClassActualResultsResponse = {
+  classId: string;
+  assessmentId: string | null;
+  students: ActualStudentResult[];
+  summary?: {
+    averageScore: number;
+    averageTime: number;
+    averageConfusion: number;
+    averageCorrectRate: number;
+  };
+};
+
+export type ProfileDelta = {
+  timingDelta: number;
+  confusionDelta: number;
+  accuracyDelta: number;
+};
+
+export type ClassCompareResultsResponse = {
+  classId: string;
+  assessmentId: string | null;
+  timingDelta: number;
+  confusionDelta: number;
+  accuracyDelta: number;
+  profileDeltas: Record<string, ProfileDelta>;
+  classAverages?: {
+    predicted: {
+      avgTime: number;
+      avgConfusion: number;
+      avgPCorrect: number;
+    };
+    actual: {
+      avgTime: number;
+      avgConfusion: number;
+      avgPCorrect: number;
+    };
+  };
+  itemDeltas?: Array<{
+    itemId: string;
+    timingDelta: number;
+    confusionDelta: number;
+    accuracyDelta: number;
+  }>;
+};
+
 export function listClassesApi(userId?: string) {
   return fetchJson<{ classes: PhaseCClass[] }>("/api/v4/classes", {
     headers: buildAuthHeaders(userId),
@@ -218,4 +287,18 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
 
 export function listDocumentsApi() {
   return fetchJson<{ documents: DocumentSummary[] }>("/api/v4/documents");
+}
+
+export function listClassResultsHistoryApi(classId: string) {
+  return fetchJson<ClassResultHistoryItem[]>(`/api/v4/classes/${encodeURIComponent(classId)}/results`);
+}
+
+export function getClassActualResultsApi(classId: string, assessmentId?: string) {
+  const query = assessmentId ? `?assessmentId=${encodeURIComponent(assessmentId)}` : "";
+  return fetchJson<ClassActualResultsResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/results/actual${query}`);
+}
+
+export function getClassCompareResultsApi(classId: string, assessmentId?: string) {
+  const query = assessmentId ? `?assessmentId=${encodeURIComponent(assessmentId)}` : "";
+  return fetchJson<ClassCompareResultsResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/results/compare${query}`);
 }

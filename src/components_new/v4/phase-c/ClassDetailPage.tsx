@@ -3,6 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { getClassDetailApi, regenerateClassApi } from "../../../lib/phaseCApi";
 
 import { StudentProfileTooltip } from "./StudentProfileTooltip";
+import { ActualResultsView } from "./ActualResultsView";
+import { ClassResultsHistory } from "./ClassResultsHistory";
+import { ClassResultsSelector, type ResultType } from "./ClassResultsSelector";
+import { PredictedVsActualView } from "./PredictedVsActualView";
 import { sortStudentsByProfile } from "./studentRoster";
 
 type Props = {
@@ -14,6 +18,7 @@ type Tab = "overview" | "students" | "simulations";
 
 export function ClassDetailPage({ classId, navigate }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
+  const [selectedResultType, setSelectedResultType] = useState<ResultType>("predicted");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
@@ -192,19 +197,31 @@ export function ClassDetailPage({ classId, navigate }: Props) {
 
       {tab === "simulations" && (
         <div className="phasec-card">
-          <h3>Simulation runs</h3>
-          {(data.simulations ?? []).length > 0 ? (
-            <ul className="phasec-kv-list">
-              {(data.simulations ?? []).map((run) => (
-                <li key={run.id}>
-                  <button className="phasec-link" onClick={() => navigate(`/simulations/${run.id}/phase-c`)}>{run.id}</button>
-                  <span>{new Date(run.createdAt).toLocaleString()} · document {run.documentId}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="phasec-copy">No simulation runs yet.</p>
+          <h3>Class results</h3>
+          <ClassResultsSelector selected={selectedResultType} onChange={setSelectedResultType} />
+
+          {selectedResultType === "predicted" && (
+            <>
+              <h4>Simulation runs (predicted)</h4>
+              {(data.simulations ?? []).length > 0 ? (
+                <ul className="phasec-kv-list">
+                  {(data.simulations ?? []).map((run) => (
+                    <li key={run.id}>
+                      <button className="phasec-link" onClick={() => navigate(`/simulations/${run.id}/phase-c`)}>{run.id}</button>
+                      <span>{new Date(run.createdAt).toLocaleString()} · document {run.documentId}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="phasec-copy">No simulation runs yet.</p>
+              )}
+            </>
           )}
+
+          {selectedResultType === "actual" && <ActualResultsView classId={classId} />}
+          {selectedResultType === "compare" && <PredictedVsActualView classId={classId} />}
+
+          <ClassResultsHistory classId={classId} />
         </div>
       )}
 
