@@ -50,7 +50,7 @@ function getMaxPagesPerDay(tier) {
     return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 100;
   }
   const configured = Number(process.env.MAX_PAGES_PER_DAY_FREE);
-  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 20;
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 25;
 }
 
 async function getDailyUploadedPages(actorKey, date) {

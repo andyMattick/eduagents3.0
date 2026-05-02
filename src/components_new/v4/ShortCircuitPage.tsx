@@ -687,7 +687,7 @@ export function ShortCircuitPage() {
   const simulationUsagePct = simulationsLimit > 0 ? Math.min(100, Math.round(simulationsRunToday / simulationsLimit * 100)) : 0;
   const simulationLimitReached = simulationUsageToday?.remainingSimulations === 0;
   const uploadedPages = uploadUsageToday?.pagesUploaded ?? 0;
-  const uploadPagesLimit = uploadUsageToday?.maxPagesPerDay ?? 20;
+  const uploadPagesLimit = uploadUsageToday?.maxPagesPerDay ?? 25;
   const uploadUsagePct = uploadPagesLimit > 0 ? Math.min(100, Math.round(uploadedPages / uploadPagesLimit * 100)) : 0;
 
   const narrativeSections = useMemo(() => {

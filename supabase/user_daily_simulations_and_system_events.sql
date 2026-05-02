@@ -41,6 +41,6 @@ create table if not exists public.app_settings (
 
 insert into public.app_settings (key, value)
 values
-  ('limits.upload', '{"free":20,"teacher":100,"school":500}'::jsonb),
+  ('limits.upload', '{"free":25,"teacher":100,"school":500}'::jsonb),
   ('limits.simulation', '{"free":10,"teacher":50,"school":100}'::jsonb)
 on conflict (key) do nothing;

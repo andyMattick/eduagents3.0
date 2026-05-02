@@ -28,6 +28,34 @@
       "dest": "/api/v4/simulations/[simulationId]?simulationId=$1"
     },
     {
+      "src": "/api/v4/classes/([^/]+)/regenerate",
+      "dest": "/api/v4/classes/[classId]/regenerate?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)/performance",
+      "dest": "/api/v4/classes/[classId]/performance?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)/differentiated-build",
+      "dest": "/api/v4/classes/[classId]/differentiated-build?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)/results/actual",
+      "dest": "/api/v4/classes/[classId]/results/actual?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)/results/compare",
+      "dest": "/api/v4/classes/[classId]/results/compare?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)/results",
+      "dest": "/api/v4/classes/[classId]/results?classId=$1"
+    },
+    {
+      "src": "/api/v4/classes/([^/]+)",
+      "dest": "/api/v4/classes/[classId]?classId=$1"
+    },
+    {
       "src": "/.*",
       "dest": "/index.html"
     }

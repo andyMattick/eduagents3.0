@@ -83,7 +83,7 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   }
 
   if (!data) {
-    return <div className="phasec-shell"><p>Class not found.</p></div>;
+    return <div className="phasec-shell"><p>{error ?? "Class not found."}</p></div>;
   }
 
   const profileEntries = Object.entries(data.summary.profileCounts).sort((a, b) => b[1] - a[1]);
