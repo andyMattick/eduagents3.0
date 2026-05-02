@@ -62,6 +62,10 @@ function formatDuration(seconds: number): string {
   return `${safe.toFixed(1)} s`;
 }
 
+function joinLabels(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "-";
+}
+
 function summarizeStudent(studentId: string, items: StudentItem[]): StudentSummaryRow {
   const confusion = items.map((item) => toNumber(item.confusionScore));
   const time = items.map((item) => toNumber(item.timeSeconds));
@@ -223,6 +227,8 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
         <thead>
           <tr>
             <th>Student</th>
+            <th>Profiles</th>
+            <th>Overlays</th>
             <th>Avg confusion</th>
             <th>Avg time (s)</th>
             <th>Total time</th>
@@ -237,10 +243,15 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
               <td>
                 {studentsById.has(row.studentId) ? (
                   <StudentProfileTooltip student={studentsById.get(row.studentId)!}>
-                    <span className="phasec-student-inline-id">{row.studentId}</span>
+                    <span className="phasec-student-inline-id">{studentsById.get(row.studentId)!.displayName}</span>
                   </StudentProfileTooltip>
                 ) : row.studentId}
+                {studentsById.has(row.studentId) && (
+                  <p className="phasec-copy" style={{ marginTop: "0.25rem", fontSize: "0.78rem" }}>{row.studentId}</p>
+                )}
               </td>
+              <td>{studentsById.has(row.studentId) ? joinLabels(studentsById.get(row.studentId)!.profiles) : "-"}</td>
+              <td>{studentsById.has(row.studentId) ? joinLabels(studentsById.get(row.studentId)!.positiveTraits) : "-"}</td>
               <td>{row.averageConfusion.toFixed(3)}</td>
               <td>{row.averageTime.toFixed(2)}</td>
               <td>{formatDuration(row.totalTime)}</td>

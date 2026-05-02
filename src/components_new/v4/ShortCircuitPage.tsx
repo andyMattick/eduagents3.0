@@ -89,8 +89,8 @@ const MC_STEM_PHRASES = [
   "the figure shows",
 ] as const;
 
-function toNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function joinStudentLabels(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "-";
 }
 
 function parentLooksLikeMCStem(parentText: string): boolean {
@@ -1135,19 +1135,33 @@ export function ShortCircuitPage() {
                       }}
                     >
                       <option value="">Choose a student</option>
-                      {orderedPhaseCStudentIds.map((id) => (
-                        <option key={id} value={id}>{id}</option>
-                      ))}
+                      {orderedPhaseCStudentIds.map((id) => {
+                        const student = phaseCStudents.find((entry) => entry.id === id);
+                        const label = student
+                          ? `${student.displayName} — ${joinStudentLabels(student.profiles)}`
+                          : id;
+                        return <option key={id} value={id}>{label}</option>;
+                      })}
                     </select>
                   </div>
                 )}
 
                 {selectedPhaseCStudent && (
-                  <div style={{ marginTop: "0.5rem" }}>
-                    <span className="phasec-stat-label" style={{ display: "block", marginBottom: "0.3rem" }}>Hover for student profile details</span>
+                  <div className="phasec-card" style={{ marginTop: "0.75rem", padding: "0.9rem", gap: "0.45rem" }}>
+                    <span className="phasec-stat-label">Selected student</span>
                     <StudentProfileTooltip student={selectedPhaseCStudent}>
-                      <span className="phasec-student-inline-id">{selectedPhaseCStudent.id}</span>
+                      <span className="phasec-student-inline-id">{selectedPhaseCStudent.displayName}</span>
                     </StudentProfileTooltip>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>{selectedPhaseCStudent.id}</p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Profiles:</strong> {joinStudentLabels(selectedPhaseCStudent.profiles)}
+                    </p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Overlays:</strong> {joinStudentLabels(selectedPhaseCStudent.positiveTraits)}
+                    </p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Summary:</strong> {selectedPhaseCStudent.profileSummaryLabel || "-"}
+                    </p>
                   </div>
                 )}
               </div>
@@ -1168,14 +1182,20 @@ export function ShortCircuitPage() {
                   </thead>
                   <tbody>
                     {phaseCItems.map((item) => {
-                      const pCorrect = toNumber(item.pCorrect);
-                      const traitDelta = toNumber(item.difficultyScore) - toNumber(item.abilityScore);
+                      const confusionScore = typeof item.confusionScore === "number" && Number.isFinite(item.confusionScore) ? item.confusionScore : 0;
+                      const timeSeconds = typeof item.timeSeconds === "number" && Number.isFinite(item.timeSeconds) ? item.timeSeconds : 0;
+                      const bloomGap = typeof item.bloomGap === "number" && Number.isFinite(item.bloomGap) ? item.bloomGap : 0;
+                      const pCorrect = typeof item.pCorrect === "number" && Number.isFinite(item.pCorrect) ? item.pCorrect : 0;
+                      const difficultyScore = typeof item.difficultyScore === "number" && Number.isFinite(item.difficultyScore) ? item.difficultyScore : 0;
+                      const abilityScore = typeof item.abilityScore === "number" && Number.isFinite(item.abilityScore) ? item.abilityScore : 0;
+                      const traitDelta = difficultyScore - abilityScore;
+
                       return (
                         <tr key={item.itemId}>
                           <td>{item.itemLabel ?? item.itemId}</td>
-                          <td>{toNumber(item.confusionScore).toFixed(3)}</td>
-                          <td>{toNumber(item.timeSeconds).toFixed(2)}</td>
-                          <td>{toNumber(item.bloomGap).toFixed(3)}</td>
+                          <td>{confusionScore.toFixed(3)}</td>
+                          <td>{timeSeconds.toFixed(2)}</td>
+                          <td>{bloomGap.toFixed(3)}</td>
                           <td>{pCorrect.toFixed(3)}</td>
                           <td>{traitDelta.toFixed(3)}</td>
                         </tr>
