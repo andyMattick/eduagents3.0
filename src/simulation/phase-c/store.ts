@@ -34,6 +34,16 @@ function canUseSupabase() {
     && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
+function requiresPersistentPhaseCStorage() {
+  return typeof window === "undefined" && Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+}
+
+function assertPersistentPhaseCStorage(action: string) {
+  if (!canUseSupabase() && requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C ${action} requires Supabase persistence on Vercel. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`);
+  }
+}
+
 function isSupabaseSchemaCacheError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -51,6 +61,9 @@ function disableSupabaseForPhaseC(reason: unknown) {
 
   phaseCSupabaseDisabled = true;
   const detail = reason instanceof Error ? reason.message : String(reason);
+  if (requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C persistence unavailable on Vercel. ${detail}`);
+  }
   console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
 }
 
@@ -265,6 +278,7 @@ function deriveProfilePercentagesFromStudents(students: SyntheticStudent[]): Cre
 }
 
 export async function createClassWithSyntheticStudents(input: CreateClassInput): Promise<{ classRecord: PhaseCClass; students: SyntheticStudent[] }> {
+  assertPersistentPhaseCStorage("class creation");
   const classRecord: PhaseCClass = {
     id: randomUUID(),
     teacherId: input.teacherId,
@@ -339,6 +353,7 @@ export async function listClasses(teacherId?: string): Promise<PhaseCClass[]> {
 }
 
 export async function getClassById(classId: string): Promise<PhaseCClass | null> {
+  assertPersistentPhaseCStorage("class lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("classes", {
@@ -360,6 +375,7 @@ export async function getClassById(classId: string): Promise<PhaseCClass | null>
 }
 
 export async function getSyntheticStudentsForClass(classId: string): Promise<SyntheticStudent[]> {
+  assertPersistentPhaseCStorage("student lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("synthetic_students", {
@@ -383,6 +399,7 @@ export async function getSyntheticStudentsForClass(classId: string): Promise<Syn
 }
 
 export async function regenerateClassStudents(input: RegenerateStudentsInput): Promise<SyntheticStudent[]> {
+  assertPersistentPhaseCStorage("student regeneration");
   const classRecord = await getClassById(input.classId);
   if (!classRecord) {
     throw new Error("Class not found");

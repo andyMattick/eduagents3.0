@@ -70,6 +70,14 @@ var phaseCSupabaseDisabled = false;
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
+function requiresPersistentPhaseCStorage() {
+  return typeof window === "undefined" && Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+}
+function assertPersistentPhaseCStorage(action) {
+  if (!canUseSupabase() && requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C ${action} requires Supabase persistence on Vercel. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`);
+  }
+}
 function isSupabaseSchemaCacheError(error) {
   if (!(error instanceof Error)) {
     return false;
@@ -82,6 +90,9 @@ function disableSupabaseForPhaseC(reason) {
   }
   phaseCSupabaseDisabled = true;
   const detail = reason instanceof Error ? reason.message : String(reason);
+  if (requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C persistence unavailable on Vercel. ${detail}`);
+  }
   console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
 }
 function hydrateClassRow(row) {
@@ -124,6 +135,7 @@ function hydrateSimulationRun(row) {
   };
 }
 async function getClassById(classId) {
+  assertPersistentPhaseCStorage("class lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("classes", {
@@ -143,6 +155,7 @@ async function getClassById(classId) {
   return classesMemory.get(classId) ?? null;
 }
 async function getSyntheticStudentsForClass(classId) {
+  assertPersistentPhaseCStorage("student lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("synthetic_students", {
