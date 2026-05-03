@@ -4,6 +4,7 @@
 // api/v4/simulations/run.ts
 import { randomUUID } from "crypto";
 import { randomUUID as randomUUID2 } from "crypto";
+var DAILY_SIMULATION_LIMIT = 20;
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -19,7 +20,8 @@ async function supabaseRest(table, options = {}) {
     select,
     filters = {},
     body,
-    prefer
+    prefer,
+    timeoutMs = 8e3
   } = options;
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
   if (select)
@@ -34,11 +36,26 @@ async function supabaseRest(table, options = {}) {
   };
   if (prefer)
     headers["Prefer"] = prefer;
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : void 0
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+  let res;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : void 0,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
@@ -477,6 +494,14 @@ var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
 var simulationResultsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -524,6 +549,27 @@ function hydrateStudentRow(row) {
     profileSummaryLabel: row.profile_summary_label,
     biases: row.biases ?? { confusionBias: 0, timeBias: 0 }
   };
+}
+function normalizeStudentRow(item) {
+  return {
+    id: item.id,
+    class_id: item.classId,
+    display_name: item.displayName,
+    reading_level: item.traits.readingLevel,
+    vocabulary_level: item.traits.vocabularyLevel,
+    background_knowledge: item.traits.backgroundKnowledge,
+    processing_speed: item.traits.processingSpeed,
+    bloom_mastery: item.traits.bloomMastery,
+    math_level: item.traits.mathLevel,
+    writing_level: item.traits.writingLevel,
+    profiles: item.profiles,
+    positive_traits: item.positiveTraits,
+    profile_summary_label: item.profileSummaryLabel,
+    biases: item.biases
+  };
+}
+function needsLegacyProfileBackfill(students) {
+  return students.length > 0 && students.every((student) => student.profiles.length === 0 && student.positiveTraits.length === 0);
 }
 function normalizeSimulationRun(run) {
   return {
@@ -589,6 +635,44 @@ async function getSyntheticStudentsForClass(classId) {
     }
   }
   return [...studentsMemory.get(classId) ?? []];
+}
+async function persistSyntheticStudentsForClass(classId, students) {
+  studentsMemory.set(classId, [...students]);
+  if (canUseSupabase()) {
+    try {
+      await supabaseRest("synthetic_students", {
+        method: "DELETE",
+        filters: { class_id: `eq.${classId}` },
+        prefer: "return=minimal"
+      });
+      if (students.length > 0) {
+        await supabaseRest("synthetic_students", {
+          method: "POST",
+          body: students.map((student) => normalizeStudentRow(student)),
+          prefer: "return=minimal"
+        });
+      }
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+}
+async function ensureStudentsHaveProfiles(classRecord, students) {
+  if (students.length > 0 && !needsLegacyProfileBackfill(students)) {
+    return students;
+  }
+  const regenerated = generateSyntheticStudents({
+    classId: classRecord.id,
+    classLevel: classRecord.level,
+    profilePercentages: { ...LEGACY_PROFILE_FALLBACK },
+    studentCount: students.length > 0 ? students.length : PHASE_C_CONFIG.defaultSyntheticStudentCount
+  });
+  await persistSyntheticStudentsForClass(classRecord.id, regenerated);
+  console.warn(`[phase-c] Backfilled legacy class ${classRecord.id} with fallback profile percentages.`);
+  return regenerated;
 }
 async function createSimulationRun(input) {
   const run = {
@@ -701,7 +785,7 @@ async function runPhaseCSimulation(input) {
   if (!classRecord) {
     throw new Error("Class not found");
   }
-  const students = await getSyntheticStudentsForClass(classRecord.id);
+  const students = await ensureStudentsHaveProfiles(classRecord, await getSyntheticStudentsForClass(classRecord.id));
   if (students.length === 0) {
     throw new Error("Synthetic students not found for class");
   }
@@ -774,6 +858,103 @@ function parseBody(body) {
   }
   return {};
 }
+function getSingleHeaderValue(header) {
+  return Array.isArray(header) ? header[0] ?? "" : header ?? "";
+}
+function parseBooleanHeader(value) {
+  const normalized = String(getSingleHeaderValue(value)).trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
+  const ip = raw.split(",")[0].trim();
+  return ip || "unknown";
+}
+function resolveActor(req) {
+  const userId = getSingleHeaderValue(req.headers["x-user-id"]) || getSingleHeaderValue(req.headers["x-auth-user-id"]);
+  if (userId && isUuid(userId)) {
+    return { actorKey: userId, userId };
+  }
+  return { actorKey: getClientIp(req), userId: null };
+}
+function normalizeTier(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "school")
+    return "school";
+  if (normalized === "teacher")
+    return "teacher";
+  return "free";
+}
+function getMaxSimulationsPerDay(tier) {
+  return DAILY_SIMULATION_LIMIT;
+}
+function isAdminSimulationOverride(req, actor) {
+  if (parseBooleanHeader(req.headers["x-admin-override"])) {
+    return true;
+  }
+  const allowed = String(process.env.SIMULATION_QUOTA_ADMIN_OVERRIDE_USERS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  return Boolean(actor.userId && allowed.includes(actor.userId));
+}
+async function getDailySimulationUsage(actorKey, date) {
+  if (!actorKey) {
+    return 0;
+  }
+  try {
+    const rows = await supabaseRest("user_daily_simulations", {
+      method: "GET",
+      select: "simulations_run",
+      filters: {
+        user_id: `eq.${actorKey}`,
+        date: `eq.${date}`
+      }
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      const value = Number(rows[0]?.simulations_run ?? 0);
+      return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+}
+async function incrementDailySimulationUsage(params) {
+  if (!params.userId) {
+    return 0;
+  }
+  const current = await getDailySimulationUsage(params.userId, params.date);
+  try {
+    await supabaseRest("user_daily_simulations", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        user_id: params.userId,
+        date: params.date,
+        simulations_run: current + 1
+      }
+    });
+  } catch {
+    return current;
+  }
+  return current + 1;
+}
+async function logSystemEvent(params) {
+  try {
+    await supabaseRest("system_events", {
+      method: "POST",
+      body: {
+        user_id: params.userId,
+        actor_key: params.actorKey,
+        event_type: params.eventType,
+        event_payload: params.eventPayload
+      }
+    });
+  } catch {
+  }
+}
 function sendError(res, code, message, httpStatus) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   return res.status(httpStatus).json({ error: { code, message } });
@@ -833,7 +1014,7 @@ function normalizePhaseBItemsFromClient(rawItems) {
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-user-id, x-auth-user-id, x-user-tier, x-admin-override");
 }
 async function handler(req, res) {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -843,6 +1024,15 @@ async function handler(req, res) {
   }
   if (req.method !== "POST") {
     return sendError(res, "method_not_allowed", "Method not allowed", 405);
+  }
+  const actor = resolveActor(req);
+  const date = new Date().toISOString().slice(0, 10);
+  const tier = normalizeTier(getSingleHeaderValue(req.headers["x-user-tier"]));
+  const maxSimulationsPerDay = getMaxSimulationsPerDay(tier);
+  const adminOverride = isAdminSimulationOverride(req, actor);
+  const currentSimulationCount = await getDailySimulationUsage(actor.userId, date);
+  if (!adminOverride && currentSimulationCount >= maxSimulationsPerDay) {
+    return sendError(res, "rate_limited", `Daily simulation limit reached (${maxSimulationsPerDay} simulations/day). Try again tomorrow or contact your admin.`, 429);
   }
   try {
     const payload = parseBody(req.body);
@@ -880,6 +1070,25 @@ async function handler(req, res) {
       documentId: payload.documentId,
       items: simulationItems,
       selectedProfileIds: Array.isArray(payload.selectedProfileIds) ? payload.selectedProfileIds : []
+    });
+    await incrementDailySimulationUsage({
+      actorKey: actor.actorKey,
+      userId: actor.userId,
+      date,
+      tier,
+      adminOverride
+    });
+    await logSystemEvent({
+      userId: actor.userId,
+      actorKey: actor.actorKey,
+      eventType: "simulation",
+      eventPayload: {
+        classId: result.simulationRun.classId,
+        assessmentId: result.simulationRun.documentId,
+        simulationId: result.simulationRun.id,
+        mode,
+        resultCount: result.resultCount
+      }
     });
     return res.status(201).json({
       simulationId: result.simulationRun.id,

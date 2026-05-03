@@ -9,14 +9,14 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
-import { SimulationExplanationPanel } from "./SimulationExplanationPanel";
 import { StudentSummaryTable } from "./StudentSummaryTable";
 import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
 import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
-import { getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass } from "../../lib/phaseCApi";
+import { getClassDetailApi, getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass, type SyntheticStudent } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
-import type { SimulationItemTree } from "../../prism-v4/schema";
+import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
+import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
+import { sortStudentsByProfile } from "./phase-c/studentRoster";
 import "./v4.css";
 
 const ACCEPTED_EXTENSIONS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -43,6 +43,19 @@ type StudentResultRow = {
   pCorrect?: number;
   difficultyScore?: number;
   abilityScore?: number;
+};
+
+type SimulationUsageToday = {
+  simulationsRun: number;
+  maxSimulationsPerDay: number;
+  remainingSimulations: number | null;
+  adminOverride?: boolean;
+};
+
+type UploadUsageToday = {
+  pagesUploaded: number;
+  maxPagesPerDay: number;
+  remainingPages: number;
 };
 
 type VerificationItemType = "mc" | "free_response" | "multipart_parent" | "multipart_child" | "other" | "ignore";
@@ -89,8 +102,8 @@ const MC_STEM_PHRASES = [
   "the figure shows",
 ] as const;
 
-function toNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function joinStudentLabels(values: string[]): string {
+  return values.length > 0 ? values.join(", ") : "-";
 }
 
 function parentLooksLikeMCStem(parentText: string): boolean {
@@ -132,6 +145,27 @@ function computeDocumentConfidence(items: VerificationItem[]): number {
   }
   const total = active.reduce((sum, item) => sum + item.confidence, 0);
   return total / active.length;
+}
+
+function splitNarrativeSections(text: string): { summary: string; appendix: string | null } {
+  // v4.2 structure: sections 1–2 visible, sections 3–6 collapsible
+  // Split after "### 2. Most Urgent Patterns to Watch" block ends (i.e. at heading 3)
+  const collapseMarker = /^###\s*3\.\s+Profile.Specific Considerations/im;
+  const match = text.match(collapseMarker);
+  if (match && match.index !== undefined) {
+    const summary = text.slice(0, match.index).trim();
+    const appendix = text.slice(match.index).trim();
+    return { summary, appendix: appendix.length > 0 ? appendix : null };
+  }
+  // Fallback: old Section 1/2 split
+  const legacyMarker = /(section\s*2\s*[:\-]?\s*full category appendix|full category appendix)/i;
+  const legacyMatch = text.match(legacyMarker);
+  if (legacyMatch && legacyMatch.index !== undefined) {
+    const summary = text.slice(0, legacyMatch.index).trim();
+    const appendix = text.slice(legacyMatch.index).trim();
+    return { summary, appendix: appendix.length > 0 ? appendix : null };
+  }
+  return { summary: text.trim(), appendix: null };
 }
 
 export function extractParentStem(text: string): string {
@@ -200,6 +234,9 @@ export function ShortCircuitPage() {
   const [phaseCSimulationId, setPhaseCSimulationId] = useState<string | null>(null);
   const [phaseCClassView, setPhaseCClassView] = useState<PhaseCView | null>(null);
   const [phaseCStudentView, setPhaseCStudentView] = useState<PhaseCView | null>(null);
+  const [phaseCStudents, setPhaseCStudents] = useState<SyntheticStudent[]>([]);
+  const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageToday | null>(null);
+  const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageToday | null>(null);
 
   const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
@@ -215,6 +252,7 @@ export function ShortCircuitPage() {
   const [isPublicDocument, setIsPublicDocument] = useState(false);
   const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
+  const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
@@ -236,6 +274,7 @@ export function ShortCircuitPage() {
     setPhaseCSimulationId(null);
     setPhaseCClassView(null);
     setPhaseCStudentView(null);
+    setPhaseCStudents([]);
 
     setItems(null);
     setItemTrees(null);
@@ -251,6 +290,7 @@ export function ShortCircuitPage() {
     setIsPublicDocument(false);
     setVisibilitySaving(false);
     setVisibilityError(null);
+    setVisibilityMessage(null);
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -339,6 +379,11 @@ export function ShortCircuitPage() {
   }, []);
 
   const handleUpload = async () => {
+    if (uploadUsageToday?.remainingPages === 0) {
+      setUploadError("You have reached your daily page limit. Try again tomorrow or ask an admin to reset your usage.");
+      return;
+    }
+
     if (!file) {
       setUploadError("Select a file before continuing.");
       return;
@@ -353,6 +398,7 @@ export function ShortCircuitPage() {
       setDocumentId(nextDocumentId);
       setIsPublicDocument(false);
       setVisibilityError(null);
+      setVisibilityMessage(null);
 
       if (nextDocumentId) {
         const analyzeRes = await fetch("/api/v4/documents/analyze", {
@@ -383,6 +429,7 @@ export function ShortCircuitPage() {
     setDocumentId(doc.documentId);
     setIsPublicDocument(true);
     setVisibilityError(null);
+    setVisibilityMessage(null);
     setRunError(null);
     setUploadError(null);
     setShowPublicPicker(false);
@@ -397,6 +444,7 @@ export function ShortCircuitPage() {
     const nextPublic = !isPublicDocument;
     setVisibilitySaving(true);
     setVisibilityError(null);
+    setVisibilityMessage(null);
 
     try {
       const res = await fetch(`/api/v4/documents/${encodeURIComponent(documentId)}/visibility`, {
@@ -413,8 +461,11 @@ export function ShortCircuitPage() {
         const payload = await res.json().catch(() => null);
         throw new Error(payload?.error?.message ?? "Failed to update sharing visibility.");
       }
-
-      setIsPublicDocument(nextPublic);
+      const payload = await res.json().catch(() => null);
+      setIsPublicDocument(typeof payload?.isPublic === "boolean" ? payload.isPublic : nextPublic);
+      if (typeof payload?.message === "string" && payload.message.trim().length > 0) {
+        setVisibilityMessage(payload.message);
+      }
     } catch (err) {
       setVisibilityError(err instanceof Error ? err.message : "Failed to update sharing visibility.");
     } finally {
@@ -436,17 +487,68 @@ export function ShortCircuitPage() {
     }
   }, []);
 
+  const loadSimulationUsage = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v4/simulations/usage-today", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Failed to load simulation usage.");
+      }
+      setSimulationUsageToday({
+        simulationsRun: Number(payload.simulationsRun ?? 0),
+        maxSimulationsPerDay: Number(payload.maxSimulationsPerDay ?? 10),
+        remainingSimulations: payload.remainingSimulations == null ? null : Number(payload.remainingSimulations),
+        adminOverride: Boolean(payload.adminOverride),
+      });
+    } catch {
+      setSimulationUsageToday(null);
+    }
+  }, [user?.id]);
+
+  const loadUploadUsage = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v4/documents/usage-today", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Failed to load upload usage.");
+      }
+      setUploadUsageToday({
+        pagesUploaded: Number(payload.pagesUploaded ?? 0),
+        maxPagesPerDay: Number(payload.maxPagesPerDay ?? 20),
+        remainingPages: Number(payload.remainingPages ?? 0),
+      });
+    } catch {
+      setUploadUsageToday(null);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (phase !== "upload") {
+      return;
+    }
+    void loadUploadUsage();
+  }, [phase, loadUploadUsage]);
+
   useEffect(() => {
     if (phase !== "results") {
       return;
     }
 
-    if (phaseCClasses.length > 0 || phaseCClassLoading) {
-      return;
-    }
-
     void loadClasses();
-  }, [phase, phaseCClasses.length, phaseCClassLoading, loadClasses]);
+    void loadSimulationUsage();
+  }, [phase, loadClasses, loadSimulationUsage]);
 
   const handleRunPhaseC = async () => {
     if (!selectedClassId || !documentId) {
@@ -482,14 +584,29 @@ export function ShortCircuitPage() {
         selectedProfileIds: [],
         mode: "class",
         phaseBItems: phaseBItems.length > 0 ? phaseBItems : undefined,
-      });
+      }, user?.id);
 
       setPhaseCSimulationId(output.simulationId);
       setSelectedStudentId("");
 
-      const classView = await getSimulationViewApi(output.simulationId, "class");
+      const classView = await getSimulationViewApi(output.simulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
+      if ((classView.students ?? []).length > 0) {
+        setPhaseCStudents(classView.students ?? []);
+      }
+      try {
+        if ((classView.students ?? []).length === 0) {
+          const classDetail = await getClassDetailApi(selectedClassId);
+          setPhaseCStudents(classDetail.students);
+        }
+      } catch {
+        if ((classView.students ?? []).length === 0) {
+          setPhaseCStudents([]);
+        }
+      }
       setPhaseCStudentView(null);
+      await loadSimulationUsage();
+      await loadUploadUsage();
     } catch (err) {
       setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
     } finally {
@@ -506,12 +623,12 @@ export function ShortCircuitPage() {
 
     if (!studentId) {
       setPhaseCStudentView(null);
-      const classView = await getSimulationViewApi(phaseCSimulationId, "class");
+      const classView = await getSimulationViewApi(phaseCSimulationId, "class", undefined, user?.id);
       setPhaseCClassView(classView);
       return;
     }
 
-    const studentView = await getSimulationViewApi(phaseCSimulationId, "student", { studentId });
+    const studentView = await getSimulationViewApi(phaseCSimulationId, "student", { studentId }, user?.id);
     setPhaseCStudentView(studentView);
   };
 
@@ -553,6 +670,49 @@ export function ShortCircuitPage() {
   const phaseCItems = useMemo(() => {
     return (phaseCStudentView?.items ?? []) as StudentResultRow[];
   }, [phaseCStudentView]);
+
+  const orderedPhaseCStudentIds = useMemo(() => {
+    const availableIds = phaseCClassView?.availableStudentIds ?? [];
+    if (availableIds.length === 0) {
+      return [];
+    }
+
+    const availableSet = new Set(availableIds);
+    const orderedKnownIds = sortStudentsByProfile(
+      phaseCStudents.filter((student) => availableSet.has(student.id)),
+    ).map((student) => student.id);
+    const missingIds = availableIds
+      .filter((studentId) => !orderedKnownIds.includes(studentId))
+      .sort((left, right) => left.localeCompare(right));
+    return [...orderedKnownIds, ...missingIds];
+  }, [phaseCClassView?.availableStudentIds, phaseCStudents]);
+
+  const simulationsRunToday = simulationUsageToday?.simulationsRun ?? 0;
+  const simulationsLimit = simulationUsageToday?.maxSimulationsPerDay ?? 10;
+  const simulationUsagePct = simulationsLimit > 0 ? Math.min(100, Math.round(simulationsRunToday / simulationsLimit * 100)) : 0;
+  const simulationLimitReached = simulationUsageToday?.remainingSimulations === 0;
+  const uploadedPages = uploadUsageToday?.pagesUploaded ?? 0;
+  const uploadPagesLimit = uploadUsageToday?.maxPagesPerDay ?? 25;
+  const uploadUsagePct = uploadPagesLimit > 0 ? Math.min(100, Math.round(uploadedPages / uploadPagesLimit * 100)) : 0;
+  const uploadLimitReached = uploadUsageToday?.remainingPages === 0;
+
+  const narrativeSections = useMemo(() => {
+    const text = phaseCClassView?.narrative?.text ?? "";
+    return splitNarrativeSections(text);
+  }, [phaseCClassView?.narrative?.text]);
+
+  const selectedPhaseCStudent = useMemo(() => {
+    return phaseCStudents.find((student) => student.id === selectedStudentId) ?? null;
+  }, [phaseCStudents, selectedStudentId]);
+
+  useEffect(() => {
+    if (orderedPhaseCStudentIds.length === 0) {
+      return;
+    }
+    if (!selectedStudentId || !orderedPhaseCStudentIds.includes(selectedStudentId)) {
+      setSelectedStudentId(orderedPhaseCStudentIds[0]);
+    }
+  }, [orderedPhaseCStudentIds, selectedStudentId]);
 
   const derivedDocumentConfidence = useMemo(() => {
     return computeDocumentConfidence(verificationItems);
@@ -721,6 +881,16 @@ export function ShortCircuitPage() {
           <p style={{ fontSize: "0.85rem", color: "#6b5040", marginBottom: "1.25rem" }}>
             Documents must be in PDF format.
           </p>
+          {uploadUsageToday && (
+            <div style={{ marginBottom: "0.9rem" }}>
+              <p className="phasec-copy" style={{ margin: 0 }}>
+                Pages used today: {uploadedPages} / {uploadPagesLimit}
+              </p>
+              <div style={{ marginTop: "0.35rem", width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+                <div style={{ width: `${uploadUsagePct}%`, height: "100%", background: uploadUsagePct >= 100 ? "#b45309" : "#285d7a" }} />
+              </div>
+            </div>
+          )}
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -764,11 +934,16 @@ export function ShortCircuitPage() {
           <button
             type="button"
             onClick={() => void handleUpload()}
-            disabled={!file || uploading}
-            style={{ padding: "0.65rem 1.5rem", background: !file || uploading ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading ? "not-allowed" : "pointer", width: "100%" }}
+            disabled={!file || uploading || uploadLimitReached}
+            style={{ padding: "0.65rem 1.5rem", background: !file || uploading || uploadLimitReached ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading || uploadLimitReached ? "not-allowed" : "pointer", width: "100%" }}
           >
             {uploading ? "Uploading and analyzing..." : "Run Analysis"}
           </button>
+          {uploadLimitReached && !uploadError && (
+            <p className="phasec-error" style={{ marginTop: "0.6rem" }}>
+              You have reached your daily page limit. Try again tomorrow or ask an admin to reset your usage.
+            </p>
+          )}
 
           <div style={{ marginTop: "0.9rem" }}>
             <button
@@ -850,6 +1025,7 @@ export function ShortCircuitPage() {
               </button>
             </div>
             {visibilityError && <p className="phasec-error">{visibilityError}</p>}
+            {visibilityMessage && !visibilityError && <p className="phasec-copy">{visibilityMessage}</p>}
             {documentId && !visibilityError && (
               <p className="phasec-copy" style={{ marginTop: "0.5rem" }}>
                 Sharing status: {isPublicDocument ? "Public" : "Private"}
@@ -903,7 +1079,7 @@ export function ShortCircuitPage() {
                             {tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
                             {tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
                           </summary>
-                          <p className="v4-shortcircuit-tree-parent-text">{tree.item.isMultiPartItem ? extractParentStem(tree.item.text) : tree.item.text}</p>
+                          <p className="v4-shortcircuit-tree-parent-text">{tree.item.isMultiPartItem || tree.item.isMultipleChoice ? extractParentStem(tree.item.text) : tree.item.text}</p>
                           {tree.subItems && tree.subItems.length > 0 && (
                             <ul className="v4-shortcircuit-tree-children">
                               {tree.subItems.map((sub, subIndex) => (
@@ -998,10 +1174,6 @@ export function ShortCircuitPage() {
           </div>
 
           <div className="v4-shortcircuit-result-card">
-            <SimulationExplanationPanel />
-          </div>
-
-          <div className="v4-shortcircuit-result-card">
             <h3 className="v4-shortcircuit-tree-title">Student Simulation</h3>
             <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
               Run Phase C directly from this page and inspect real student-level outputs inline.
@@ -1026,11 +1198,28 @@ export function ShortCircuitPage() {
               <button
                 className="phasec-button"
                 onClick={() => void handleRunPhaseC()}
-                disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId}
+                disabled={phaseCRunLoading || phaseCClassLoading || !selectedClassId || !documentId || simulationLimitReached}
               >
                 {phaseCRunLoading ? "Running..." : "Run Class Simulation"}
               </button>
             </div>
+
+            {simulationUsageToday && (
+              <div style={{ marginTop: "0.6rem" }}>
+                <p className="phasec-copy" style={{ margin: 0 }}>
+                  Simulations run today: {simulationsRunToday} / {simulationsLimit}
+                  {simulationUsageToday.adminOverride ? " (admin override active)" : ""}
+                </p>
+                <div style={{ marginTop: "0.35rem", width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+                  <div style={{ width: `${simulationUsagePct}%`, height: "100%", background: simulationUsagePct >= 100 ? "#b45309" : "#285d7a" }} />
+                </div>
+                {simulationLimitReached && (
+                  <p className="phasec-error" style={{ marginTop: "0.4rem" }}>
+                    You have reached your daily simulation limit. Try again tomorrow or ask an admin to reset your usage.
+                  </p>
+                )}
+              </div>
+            )}
 
             {phaseCClassLoading && <p className="phasec-copy">Loading classes...</p>}
             {phaseCRunError && <p className="phasec-error">{phaseCRunError}</p>}
@@ -1060,14 +1249,45 @@ export function ShortCircuitPage() {
                   </div>
                 </div>
 
+                {phaseCClassView.narrative?.text && (
+                  <div style={{ marginTop: "1rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.8rem", background: "rgba(255,251,245,0.9)" }}>
+                    <p className="phasec-stat-label" style={{ marginBottom: "0.35rem" }}>Teacher narrative</p>
+                    <p className="phasec-copy" style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>
+                      {narrativeSections.summary}
+                    </p>
+                    {narrativeSections.appendix && (
+                      <details style={{ marginTop: "0.6rem" }}>
+                        <summary className="phasec-copy" style={{ cursor: "pointer", fontWeight: 600 }}>
+                          Full category appendix
+                        </summary>
+                        <p className="phasec-copy" style={{ marginTop: "0.5rem", whiteSpace: "pre-wrap" }}>
+                          {narrativeSections.appendix}
+                        </p>
+                      </details>
+                    )}
+                    {(phaseCClassView.narrative.provider || phaseCClassView.narrative.usage?.totalTokens) && (
+                      <p className="phasec-copy" style={{ marginBottom: 0, opacity: 0.8 }}>
+                        {phaseCClassView.narrative.provider ? `Provider: ${phaseCClassView.narrative.provider}` : ""}
+                        {phaseCClassView.narrative.provider && phaseCClassView.narrative.usage?.totalTokens ? " · " : ""}
+                        {phaseCClassView.narrative.usage?.totalTokens ? `Tokens: ${phaseCClassView.narrative.usage.totalTokens}` : ""}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                
+
                 <StudentSummaryTable
                   simulationId={phaseCSimulationId}
                   studentIds={phaseCClassView.availableStudentIds ?? []}
+                  students={phaseCStudents}
+                  userId={user?.id}
+                  selectedStudentId={selectedStudentId}
                 />
 
                 {(phaseCClassView.availableStudentIds?.length ?? 0) > 0 && (
                   <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                    <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>View:</label>
+                    <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>Student - Individual Problems:</label>
                     <select
                       id="phasec-student-select"
                       value={selectedStudentId}
@@ -1076,10 +1296,33 @@ export function ShortCircuitPage() {
                       }}
                     >
                       <option value="">Choose a student</option>
-                      {(phaseCClassView.availableStudentIds ?? []).map((id) => (
-                        <option key={id} value={id}>{id}</option>
-                      ))}
+                      {orderedPhaseCStudentIds.map((id) => {
+                        const student = phaseCStudents.find((entry) => entry.id === id);
+                        const label = student
+                          ? `${student.displayName} — ${joinStudentLabels(student.profiles)}`
+                          : id;
+                        return <option key={id} value={id}>{label}</option>;
+                      })}
                     </select>
+                  </div>
+                )}
+
+                {selectedPhaseCStudent && (
+                  <div className="phasec-card" style={{ marginTop: "0.75rem", padding: "0.9rem", gap: "0.45rem" }}>
+                    <span className="phasec-stat-label">Selected student</span>
+                    <StudentProfileTooltip student={selectedPhaseCStudent}>
+                      <span className="phasec-student-inline-id">{selectedPhaseCStudent.displayName}</span>
+                    </StudentProfileTooltip>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>{selectedPhaseCStudent.id}</p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Profiles:</strong> {joinStudentLabels(selectedPhaseCStudent.profiles)}
+                    </p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Overlays:</strong> {joinStudentLabels(selectedPhaseCStudent.positiveTraits)}
+                    </p>
+                    <p className="phasec-copy" style={{ marginTop: 0 }}>
+                      <strong>Summary:</strong> {selectedPhaseCStudent.profileSummaryLabel || "-"}
+                    </p>
                   </div>
                 )}
               </div>
@@ -1095,23 +1338,26 @@ export function ShortCircuitPage() {
                       <th>Time (s)</th>
                       <th>Bloom gap</th>
                       <th>pCorrect</th>
-                      <th>Misconception risk</th>
                       <th>Trait delta</th>
                     </tr>
                   </thead>
                   <tbody>
                     {phaseCItems.map((item) => {
-                      const pCorrect = toNumber(item.pCorrect);
-                      const misconceptionRisk = 1 - pCorrect;
-                      const traitDelta = toNumber(item.difficultyScore) - toNumber(item.abilityScore);
+                      const confusionScore = typeof item.confusionScore === "number" && Number.isFinite(item.confusionScore) ? item.confusionScore : 0;
+                      const timeSeconds = typeof item.timeSeconds === "number" && Number.isFinite(item.timeSeconds) ? item.timeSeconds : 0;
+                      const bloomGap = typeof item.bloomGap === "number" && Number.isFinite(item.bloomGap) ? item.bloomGap : 0;
+                      const pCorrect = typeof item.pCorrect === "number" && Number.isFinite(item.pCorrect) ? item.pCorrect : 0;
+                      const difficultyScore = typeof item.difficultyScore === "number" && Number.isFinite(item.difficultyScore) ? item.difficultyScore : 0;
+                      const abilityScore = typeof item.abilityScore === "number" && Number.isFinite(item.abilityScore) ? item.abilityScore : 0;
+                      const traitDelta = difficultyScore - abilityScore;
+
                       return (
                         <tr key={item.itemId}>
                           <td>{item.itemLabel ?? item.itemId}</td>
-                          <td>{toNumber(item.confusionScore).toFixed(3)}</td>
-                          <td>{toNumber(item.timeSeconds).toFixed(2)}</td>
-                          <td>{toNumber(item.bloomGap).toFixed(3)}</td>
+                          <td>{confusionScore.toFixed(3)}</td>
+                          <td>{timeSeconds.toFixed(2)}</td>
+                          <td>{bloomGap.toFixed(3)}</td>
                           <td>{pCorrect.toFixed(3)}</td>
-                          <td>{misconceptionRisk.toFixed(3)}</td>
                           <td>{traitDelta.toFixed(3)}</td>
                         </tr>
                       );

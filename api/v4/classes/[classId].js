@@ -17,7 +17,8 @@ async function supabaseRest(table, options = {}) {
     select,
     filters = {},
     body,
-    prefer
+    prefer,
+    timeoutMs = 8e3
   } = options;
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
   if (select)
@@ -32,11 +33,26 @@ async function supabaseRest(table, options = {}) {
   };
   if (prefer)
     headers["Prefer"] = prefer;
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : void 0
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+  let res;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : void 0,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
@@ -54,6 +70,14 @@ var phaseCSupabaseDisabled = false;
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
+function requiresPersistentPhaseCStorage() {
+  return typeof window === "undefined" && Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+}
+function assertPersistentPhaseCStorage(action) {
+  if (!canUseSupabase() && requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C ${action} requires Supabase persistence on Vercel. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`);
+  }
+}
 function isSupabaseSchemaCacheError(error) {
   if (!(error instanceof Error)) {
     return false;
@@ -66,6 +90,9 @@ function disableSupabaseForPhaseC(reason) {
   }
   phaseCSupabaseDisabled = true;
   const detail = reason instanceof Error ? reason.message : String(reason);
+  if (requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C persistence unavailable on Vercel. ${detail}`);
+  }
   console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
 }
 function hydrateClassRow(row) {
@@ -108,6 +135,7 @@ function hydrateSimulationRun(row) {
   };
 }
 async function getClassById(classId) {
+  assertPersistentPhaseCStorage("class lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("classes", {
@@ -127,6 +155,7 @@ async function getClassById(classId) {
   return classesMemory.get(classId) ?? null;
 }
 async function getSyntheticStudentsForClass(classId) {
+  assertPersistentPhaseCStorage("student lookup");
   if (canUseSupabase()) {
     try {
       const rows = await supabaseRest("synthetic_students", {

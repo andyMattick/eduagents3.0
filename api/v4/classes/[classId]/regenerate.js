@@ -2,6 +2,7 @@
 /* Bundled by esbuild — do not edit */
 
 // api/v4/classes/[classId]/regenerate.ts
+var DAILY_SIMULATION_LIMIT = 20;
 var PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
   minTraitValue: 1,
@@ -364,7 +365,8 @@ async function supabaseRest(table, options = {}) {
     select,
     filters = {},
     body,
-    prefer
+    prefer,
+    timeoutMs = 8e3
   } = options;
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
   if (select)
@@ -379,11 +381,26 @@ async function supabaseRest(table, options = {}) {
   };
   if (prefer)
     headers["Prefer"] = prefer;
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : void 0
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+  let res;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : void 0,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
@@ -397,6 +414,14 @@ async function supabaseRest(table, options = {}) {
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -463,16 +488,12 @@ function hydrateStudentRow(row) {
     biases: row.biases ?? { confusionBias: 0, timeBias: 0 }
   };
 }
+function needsLegacyProfileBackfill(students) {
+  return students.length > 0 && students.every((student) => student.profiles.length === 0 && student.positiveTraits.length === 0);
+}
 function deriveProfilePercentagesFromStudents(students) {
-  if (students.length === 0) {
-    return {
-      ell: 0,
-      sped: 0,
-      adhd: 0,
-      dyslexia: 0,
-      gifted: 0,
-      attention504: 0
-    };
+  if (students.length === 0 || needsLegacyProfileBackfill(students)) {
+    return { ...LEGACY_PROFILE_FALLBACK };
   }
   const total = students.length;
   const ratioToPercent = (count) => count / total * 100;
@@ -565,6 +586,102 @@ async function regenerateClassStudents(input) {
   return students;
 }
 var runtime = "nodejs";
+function getSingleHeaderValue(header) {
+  return Array.isArray(header) ? header[0] ?? "" : header ?? "";
+}
+function parseBooleanHeader(value) {
+  const normalized = String(getSingleHeaderValue(value)).trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
+  const ip = raw.split(",")[0].trim();
+  return ip || "unknown";
+}
+function resolveActor(req) {
+  const userId = getSingleHeaderValue(req.headers["x-user-id"]) || getSingleHeaderValue(req.headers["x-auth-user-id"]);
+  if (userId && isUuid(userId)) {
+    return { actorKey: userId, userId };
+  }
+  return { actorKey: getClientIp(req), userId: null };
+}
+function normalizeTier(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "school")
+    return "school";
+  if (normalized === "teacher")
+    return "teacher";
+  return "free";
+}
+function getMaxSimulationsPerDay(tier) {
+  return DAILY_SIMULATION_LIMIT;
+}
+function isAdminSimulationOverride(req, actor) {
+  if (parseBooleanHeader(req.headers["x-admin-override"])) {
+    return true;
+  }
+  const allowed = String(process.env.SIMULATION_QUOTA_ADMIN_OVERRIDE_USERS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  return Boolean(actor.userId && allowed.includes(actor.userId));
+}
+async function getDailySimulationUsage(actorKey, date) {
+  if (!actorKey) {
+    return 0;
+  }
+  try {
+    const rows = await supabaseRest("user_daily_simulations", {
+      method: "GET",
+      select: "simulations_run",
+      filters: {
+        user_id: `eq.${actorKey}`,
+        date: `eq.${date}`
+      }
+    });
+    if (Array.isArray(rows) && rows.length > 0) {
+      const value = Number(rows[0]?.simulations_run ?? 0);
+      return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+    }
+  } catch {
+    return 0;
+  }
+  return 0;
+}
+async function incrementDailySimulationUsage(params) {
+  if (!params.userId) {
+    return;
+  }
+  const current = await getDailySimulationUsage(params.userId, params.date);
+  try {
+    await supabaseRest("user_daily_simulations", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        user_id: params.userId,
+        date: params.date,
+        simulations_run: current + 1
+      }
+    });
+  } catch {
+    return;
+  }
+}
+async function logSystemEvent(params) {
+  try {
+    await supabaseRest("system_events", {
+      method: "POST",
+      body: {
+        user_id: params.userId,
+        actor_key: params.actorKey,
+        event_type: params.eventType,
+        event_payload: params.eventPayload
+      }
+    });
+  } catch {
+  }
+}
 function parseBody(body) {
   if (typeof body !== "string") {
     return body;
@@ -579,6 +696,17 @@ async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
+  const actor = resolveActor(req);
+  const date = new Date().toISOString().slice(0, 10);
+  const tier = normalizeTier(getSingleHeaderValue(req.headers["x-user-tier"]));
+  const maxSimulationsPerDay = getMaxSimulationsPerDay(tier);
+  const adminOverride = isAdminSimulationOverride(req, actor);
+  const simulationsRunToday = await getDailySimulationUsage(actor.userId, date);
+  if (!adminOverride && simulationsRunToday >= maxSimulationsPerDay) {
+    return res.status(429).json({
+      error: `Daily simulation limit reached (${maxSimulationsPerDay} simulations/day). Try again tomorrow or contact your admin.`
+    });
+  }
   const classId = resolveClassId(req);
   if (!classId) {
     return res.status(400).json({ error: "classId is required" });
@@ -589,6 +717,24 @@ async function handler(req, res) {
       classId,
       studentCount: payload.studentCount,
       seed: payload.seed
+    });
+    await incrementDailySimulationUsage({
+      actorKey: actor.actorKey,
+      userId: actor.userId,
+      date,
+      tier,
+      adminOverride
+    });
+    await logSystemEvent({
+      userId: actor.userId,
+      actorKey: actor.actorKey,
+      eventType: "simulation",
+      eventPayload: {
+        classId,
+        assessmentId: null,
+        operation: "regenerate_class",
+        studentCount: students.length
+      }
     });
     return res.status(200).json({ classId, students, studentCount: students.length });
   } catch (error) {

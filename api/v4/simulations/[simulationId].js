@@ -1,6 +1,8 @@
 "use strict";
 /* Bundled by esbuild — do not edit */
 
+import { buildTeacherNarrativeFromSimulation } from "./narrative.js";
+
 // api/v4/simulations/[simulationId].ts
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
@@ -17,7 +19,8 @@ async function supabaseRest(table, options = {}) {
     select,
     filters = {},
     body,
-    prefer
+    prefer,
+    timeoutMs = 8e3
   } = options;
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
   if (select)
@@ -32,11 +35,26 @@ async function supabaseRest(table, options = {}) {
   };
   if (prefer)
     headers["Prefer"] = prefer;
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : void 0
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+  let res;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : void 0,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
@@ -332,6 +350,121 @@ function compareByStructure(left, right) {
   const rightNumber = typeof right.itemNumber === "number" && Number.isFinite(right.itemNumber) ? right.itemNumber : Number.POSITIVE_INFINITY;
   return leftNumber - rightNumber;
 }
+
+function average(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return 0;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildHardestItems(results, itemTraits) {
+  const byItem = /* @__PURE__ */ new Map();
+  for (const result of results) {
+    const current = byItem.get(result.itemId) ?? {
+      itemId: result.itemId,
+      itemLabel: result.itemLabel,
+      pCorrect: []
+    };
+    current.pCorrect.push(Number(result.pCorrect ?? 0));
+    byItem.set(result.itemId, current);
+  }
+  return [...byItem.values()].map((entry) => {
+    const traits = itemTraits[entry.itemId] ?? {};
+    return {
+      itemId: entry.itemId,
+      itemLabel: entry.itemLabel,
+      logicalLabel: traits.logicalLabel,
+      pCorrect: average(entry.pCorrect)
+    };
+  }).sort((left, right) => left.pCorrect - right.pCorrect).slice(0, 5);
+}
+
+async function buildNarrativePayload(params) {
+  const azureToggle = String(process.env.USE_AZURE_NARRATIVE ?? "").trim().toLowerCase();
+  console.log("[narrative env check]", {
+    endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+    deployment: process.env.AZURE_OPENAI_DEPLOYMENT,
+    apiVersion: process.env.AZURE_OPENAI_API_VERSION,
+    toggle: process.env.USE_AZURE_NARRATIVE
+  });
+  const endpointConfigured = Boolean(String(process.env.AZURE_OPENAI_ENDPOINT ?? "").trim());
+  const deploymentConfigured = Boolean(String(process.env.AZURE_OPENAI_DEPLOYMENT ?? "").trim());
+  const apiKeyConfigured = Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim());
+  const hasAzureConfig = endpointConfigured && deploymentConfigured && apiKeyConfigured;
+  const useAzure = azureToggle === "false" ? false : hasAzureConfig;
+  if (!useAzure) {
+    const missingConfig = [
+      !endpointConfigured ? "AZURE_OPENAI_ENDPOINT" : null,
+      !deploymentConfigured ? "AZURE_OPENAI_DEPLOYMENT" : null,
+      !apiKeyConfigured ? "AZURE_OPENAI_API_KEY" : null
+    ].filter(Boolean);
+    return {
+      provider: "deterministic",
+      text: azureToggle === "false"
+        ? "Narrative running in deterministic mode. Azure narrative generation is disabled by configuration."
+        : `Narrative running in deterministic mode. Configure ${missingConfig.join(", ")} to enable Azure narrative generation.`,
+      usage: void 0
+    };
+  }
+  try {
+    const narrative = await buildTeacherNarrativeFromSimulation(params);
+    return {
+      provider: "azure",
+      text: narrative.text,
+      usage: narrative.usage
+    };
+  } catch (error) {
+    console.warn("[simulation/get] Azure narrative failed; returning deterministic fallback.", {
+      message: error instanceof Error ? error.message : String(error),
+      endpointConfigured,
+      deploymentConfigured,
+      apiKeyConfigured,
+      apiVersion: process.env.AZURE_OPENAI_API_VERSION
+    });
+    return {
+      provider: "deterministic-fallback",
+      text: "Narrative temporarily unavailable. Please retry in a moment.",
+      usage: void 0
+    };
+  }
+}
+
+async function loadPredictedVsActualDelta(classId, assessmentId) {
+  if (!classId || !assessmentId || !canUseSupabase()) {
+    return { available: false };
+  }
+
+  try {
+    const rows = await supabaseRest("class_assessment_deltas", {
+      method: "GET",
+      select: "assessment_id,timing_delta,confusion_delta,accuracy_delta,profile_deltas,created_at",
+      filters: {
+        class_id: `eq.${classId}`,
+        assessment_id: `eq.${assessmentId}`,
+        order: "created_at.desc",
+        limit: "1"
+      }
+    });
+
+    const row = (rows ?? [])[0];
+    if (!row) {
+      return { available: false };
+    }
+
+    return {
+      available: true,
+      assessmentId: row.assessment_id,
+      timingDelta: Number(row.timing_delta ?? 0),
+      confusionDelta: Number(row.confusion_delta ?? 0),
+      accuracyDelta: Number(row.accuracy_delta ?? 0),
+      profileDeltas: row.profile_deltas ?? {}
+    };
+  } catch {
+    return { available: false };
+  }
+}
+
 function readNumeric(metadata, keys) {
   if (!metadata) {
     return void 0;
@@ -426,6 +559,50 @@ function aggregateClass(results) {
 function filterByProfileOrTrait(results, students, profile) {
   const matchingIds = new Set(students.filter((student) => student.profiles.includes(profile) || student.positiveTraits.includes(profile)).map((student) => student.id));
   return results.filter((result) => matchingIds.has(result.syntheticStudentId));
+}
+function profileSummaryLabel(profiles, positiveTraits) {
+  if (profiles.length === 0 && positiveTraits.length === 0) {
+    return "General mix";
+  }
+  const profileText = profiles.length > 0 ? profiles.join(", ") : "No assigned profiles";
+  const traitText = positiveTraits.length > 0 ? positiveTraits.join(", ") : "No highlighted traits";
+  return `${profileText} | ${traitText}`;
+}
+function buildStudentRoster(classId, students, results) {
+  const roster = new Map(students.map((student) => [student.id, student]));
+  for (const result of results) {
+    if (roster.has(result.syntheticStudentId) || !result.traitsSnapshot) {
+      continue;
+    }
+    const snapshot = result.traitsSnapshot;
+    roster.set(result.syntheticStudentId, {
+      id: result.syntheticStudentId,
+      classId,
+      displayName: typeof snapshot.displayName === "string" && snapshot.displayName.trim().length > 0 ? snapshot.displayName.trim() : `Student ${result.syntheticStudentId}`,
+      traits: snapshot.traits ?? {
+        readingLevel: 3,
+        vocabularyLevel: 3,
+        backgroundKnowledge: 3,
+        processingSpeed: 3,
+        bloomMastery: 3,
+        mathLevel: 3,
+        writingLevel: 3
+      },
+      profiles: snapshot.profiles ?? [],
+      positiveTraits: snapshot.positiveTraits ?? [],
+      profileSummaryLabel: profileSummaryLabel(snapshot.profiles ?? [], snapshot.positiveTraits ?? []),
+      biases: snapshot.biases ?? { confusionBias: 0, timeBias: 0 }
+    });
+  }
+  return [...roster.values()].sort((left, right) => {
+    const leftName = typeof left.displayName === "string" ? left.displayName : "";
+    const rightName = typeof right.displayName === "string" ? right.displayName : "";
+    const byName = leftName.localeCompare(rightName, void 0, { numeric: true });
+    if (byName !== 0) {
+      return byName;
+    }
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""), void 0, { numeric: true });
+  });
 }
 function studentSummary(results, itemTraits) {
   const byItem = results.reduce((accumulator, result) => {
@@ -531,15 +708,29 @@ async function handler(req, res) {
       listSimulationResults(simulationId),
       getSyntheticStudentsForClass(run.classId)
     ]);
+    const roster = buildStudentRoster(run.classId, students, results);
     const itemTraits = await loadItemTraits(run.documentId);
-    const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
+      const hardestItems = buildHardestItems(results, itemTraits);
+    const availableStudentIds = roster.map((student) => student.id);
     if (view === "class") {
+        const predictedVsActual = await loadPredictedVsActualDelta(run.classId, run.documentId);
+        const narrative = await buildNarrativePayload({
+          simulationId,
+          classId: run.classId,
+          documentId: run.documentId,
+          summary: aggregateClass(results),
+          hardestItems,
+          predictedVsActual
+        });
       return res.status(200).json({
         simulationId,
         classId: run.classId,
         documentId: run.documentId,
         view,
         summary: aggregateClass(results),
+          students: roster,
+          narrative,
+          suggestions: { hardestItems },
         availableStudentIds
       });
     }
@@ -556,13 +747,24 @@ async function handler(req, res) {
         view,
         profile,
         summary: aggregateClass(scoped),
+        students: roster,
         availableStudentIds
       });
     }
     if (view === "student") {
-      const studentId = resolveQuery(req, "studentId") ?? availableStudentIds[0];
+      const studentId = resolveQuery(req, "studentId");
       if (!studentId) {
-        return res.status(404).json({ error: { code: "not_found", message: "No student results found for simulation" } });
+        return res.status(200).json({
+          simulationId,
+          classId: run.classId,
+          documentId: run.documentId,
+          view,
+          studentId: null,
+          summary: aggregateClass([]),
+          students: roster,
+          items: [],
+          availableStudentIds
+        });
       }
       const scoped = results.filter((result) => result.syntheticStudentId === studentId);
       return res.status(200).json({
@@ -572,6 +774,7 @@ async function handler(req, res) {
         view,
         studentId,
         summary: aggregateClass(scoped),
+        students: roster,
         items: studentSummary(scoped, itemTraits),
         availableStudentIds
       });

@@ -365,7 +365,8 @@ async function supabaseRest(table, options = {}) {
     select,
     filters = {},
     body,
-    prefer
+    prefer,
+    timeoutMs = 8e3
   } = options;
   const reqUrl = new URL(`${url}/rest/v1/${table}`);
   if (select)
@@ -380,11 +381,26 @@ async function supabaseRest(table, options = {}) {
   };
   if (prefer)
     headers["Prefer"] = prefer;
-  const res = await fetch(reqUrl.toString(), {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : void 0
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => { controller.abort(); }, timeoutMs);
+  let res;
+  try {
+    res = await fetch(reqUrl.toString(), {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : void 0,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      const timeoutError = new Error(`Supabase REST ${method} ${table} timed out after ${timeoutMs}ms`);
+      timeoutError.code = "timeout";
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Supabase REST ${method} ${table} failed (${res.status}): ${text}`);
@@ -398,8 +414,24 @@ async function supabaseRest(table, options = {}) {
 var classesMemory = /* @__PURE__ */ new Map();
 var studentsMemory = /* @__PURE__ */ new Map();
 var phaseCSupabaseDisabled = false;
+var LEGACY_PROFILE_FALLBACK = {
+  ell: 10,
+  sped: 10,
+  adhd: 10,
+  dyslexia: 10,
+  gifted: 10,
+  attention504: 10
+};
 function canUseSupabase() {
   return !phaseCSupabaseDisabled && typeof window === "undefined" && Boolean(process.env.SUPABASE_URL) && Boolean(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
+}
+function requiresPersistentPhaseCStorage() {
+  return typeof window === "undefined" && Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+}
+function assertPersistentPhaseCStorage(action) {
+  if (!canUseSupabase() && requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C ${action} requires Supabase persistence on Vercel. Check SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.`);
+  }
 }
 function isSupabaseSchemaCacheError(error) {
   if (!(error instanceof Error)) {
@@ -413,6 +445,9 @@ function disableSupabaseForPhaseC(reason) {
   }
   phaseCSupabaseDisabled = true;
   const detail = reason instanceof Error ? reason.message : String(reason);
+  if (requiresPersistentPhaseCStorage()) {
+    throw new Error(`Phase C persistence unavailable on Vercel. ${detail}`);
+  }
   console.warn(`Phase C: disabling Supabase persistence and falling back to in-memory store. ${detail}`);
 }
 function currentSchoolYear(now = new Date()) {
@@ -461,7 +496,17 @@ function normalizeStudentRow(item) {
     biases: item.biases
   };
 }
+function isZeroProfilePercentages(profilePercentages) {
+  if (!profilePercentages) {
+    return true;
+  }
+  return Object.values(profilePercentages).every((value) => Number(value ?? 0) <= 0);
+}
+function resolveRequestedProfilePercentages(profilePercentages) {
+  return isZeroProfilePercentages(profilePercentages) ? { ...LEGACY_PROFILE_FALLBACK } : profilePercentages;
+}
 async function createClassWithSyntheticStudents(input) {
+  assertPersistentPhaseCStorage("class creation");
   const classRecord = {
     id: randomUUID(),
     teacherId: input.teacherId,
@@ -474,7 +519,7 @@ async function createClassWithSyntheticStudents(input) {
   const students = generateSyntheticStudents({
     classId: classRecord.id,
     classLevel: classRecord.level,
-    profilePercentages: input.profilePercentages,
+    profilePercentages: resolveRequestedProfilePercentages(input.profilePercentages),
     studentCount: input.studentCount ?? PHASE_C_CONFIG.defaultSyntheticStudentCount,
     seed: input.seed
   });

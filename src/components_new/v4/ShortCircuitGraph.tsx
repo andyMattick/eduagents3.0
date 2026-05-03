@@ -29,7 +29,7 @@ import {
 	Cell,
 } from "recharts";
 import { useTheme } from "../../hooks/useTheme";
-import type { ShortCircuitItem } from "../../../api/v4/simulator/shortcircuit";
+import type { SimulationItem as ShortCircuitItem } from "../../prism-v4/schema";
 
 // ---------------------------------------------------------------------------
 // Theme-aware color helpers
@@ -115,9 +115,12 @@ function axisTick(textColor: string) {
 
 interface ShortCircuitGraphProps {
 	items: ShortCircuitItem[];
+	selectedMetric?: string;
+	onMetricHover?: (metricKey: string | null) => void;
+	onMetricSelect?: (metricKey: string) => void;
 }
 
-export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
+export function ShortCircuitGraph({ items, selectedMetric, onMetricHover, onMetricSelect }: ShortCircuitGraphProps) {
 	const theme = useChartTheme();
 
 	// Section 1 state — selected deterministic series
@@ -126,6 +129,7 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 	);
 
 	const toggleDet = (key: DeterministicKey) => {
+		onMetricSelect?.(key);
 		setSelectedDet((prev) => {
 			const next = new Set(prev);
 			if (next.has(key)) { next.delete(key); } else { next.add(key); }
@@ -161,10 +165,6 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 		symbolDensity:     Number(item.symbolDensity.toFixed(4)),
 	}));
 
-	// Description shown when exactly one series is selected
-	const activeDet = DETERMINISTIC_SERIES.filter((s) => selectedDet.has(s.key));
-	const singleDescription = activeDet.length === 1 ? activeDet[0]?.description ?? "" : "";
-
 	// Filter out flat/always-zero series
 	const availableSeries = DETERMINISTIC_SERIES.filter(
 		(s) => !(s.key === "time" && timeIsFlat) && !(s.key === "distractorDensity" && distractorIsFlat),
@@ -196,25 +196,22 @@ export function ShortCircuitGraph({ items }: ShortCircuitGraphProps) {
 								padding: "0.25rem 0.65rem",
 								borderRadius: "6px",
 								border: `2px solid ${s.color}`,
-								background: active ? s.color : "transparent",
-								color: active ? "#fff" : s.color,
+								background: active || selectedMetric === s.key ? s.color : "transparent",
+								color: active || selectedMetric === s.key ? "#fff" : s.color,
 								fontSize: "0.75rem",
 								cursor: "pointer",
 								fontWeight: active ? 600 : 400,
 								transition: "all 0.15s",
 							}}
+							title={s.description}
+							onMouseEnter={() => onMetricHover?.(s.key)}
+							onMouseLeave={() => onMetricHover?.(null)}
 						>
 							{s.label}
 						</button>
 					);
 				})}
 			</div>
-
-			{singleDescription && (
-				<p style={{ fontSize: "0.75rem", color: theme.subTextColor, marginBottom: "0.5rem", maxWidth: 560 }}>
-					{singleDescription}
-				</p>
-			)}
 
 			{timeIsFlat && (
 				<p style={{ fontSize: "0.72rem", color: theme.subTextColor, fontStyle: "italic", marginBottom: "0.25rem" }}>

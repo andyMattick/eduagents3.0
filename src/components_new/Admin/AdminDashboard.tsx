@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/supabase/client";
 import { useAuth } from "@/components_new/Auth/useAuth";
+import { listAdminSimulationReviewsApi, resolveAdminSimulationReviewApi, type AdminSimulationReview } from "../../lib/phaseCApi";
 import "./AdminDashboard.css";
 
 type TokenUsageRow = {
@@ -102,8 +103,31 @@ function fmtDate(value: string): string {
   });
 }
 
+type SystemEventRow = {
+  id: string;
+  user_id: string | null;
+  actor_key: string | null;
+  event_type: string;
+  event_payload: Record<string, unknown>;
+  created_at: string;
+};
+
+type UserActivityResponse = {
+  userId: string;
+  events: SystemEventRow[];
+  uploadUsage: Array<Record<string, unknown>>;
+  simulationUsage: Array<Record<string, unknown>>;
+};
+
+type LimitSettingsResponse = {
+  dailyPageLimit: number;
+  dailySimulationLimit: number;
+};
+
+type AdminTab = "observability" | "reviews";
+
 export const AdminDashboard = () => {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,7 +142,58 @@ export const AdminDashboard = () => {
   const [selectedRewriteEvent, setSelectedRewriteEvent] = useState<RewriteEventDetail | null>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
 
-function isoDaysAgo(days: number): string {
+  const [events, setEvents] = useState<SystemEventRow[]>([]);
+  const [adminTab, setAdminTab] = useState<AdminTab>("observability");
+  const [eventFilters, setEventFilters] = useState({
+    type: "",
+    userId: "",
+    dateFrom: "",
+    dateTo: "",
+  });
+
+  const [activityUserId, setActivityUserId] = useState("");
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityData, setActivityData] = useState<UserActivityResponse | null>(null);
+
+  const [limitsLoading, setLimitsLoading] = useState(false);
+  const [limitsSettings, setLimitsSettings] = useState<LimitSettingsResponse | null>(null);
+  const [simulationReviews, setSimulationReviews] = useState<AdminSimulationReview[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [resolvingReviewId, setResolvingReviewId] = useState<string | null>(null);
+  const [simulationReviewFilters, setSimulationReviewFilters] = useState({
+    severity: "",
+    dateFrom: "",
+    dateTo: "",
+    classId: "",
+    userId: "",
+    resolved: "",
+  });
+
+  const [resetUsageUserId, setResetUsageUserId] = useState("");
+  const [resettingUsage, setResettingUsage] = useState<"upload" | "simulation" | "all" | null>(null);
+  const [adminActionMessage, setAdminActionMessage] = useState<string | null>(null);
+
+  async function adminFetch<T>(input: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(input, {
+      credentials: "include",
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-override": "true",
+        ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error ?? `Request failed: ${input}`);
+    }
+
+    return payload as T;
+  }
+
+  function isoDaysAgo(days: number): string {
   const now = new Date();
   now.setDate(now.getDate() - days);
   return now.toISOString();
@@ -197,6 +272,30 @@ function isoDaysAgo(days: number): string {
     });
   }, [badReports, emailByUserId, badReportFilters]);
 
+  const simulationReviewsFiltered = useMemo(() => {
+    return simulationReviews.filter((row) => {
+      const severityOk = !simulationReviewFilters.severity || row.severity === simulationReviewFilters.severity;
+      const classNeedle = simulationReviewFilters.classId.trim().toLowerCase();
+      const classOk = !classNeedle || row.classId.toLowerCase().includes(classNeedle) || (row.className ?? "").toLowerCase().includes(classNeedle);
+      const userOk = !simulationReviewFilters.userId || row.userId.toLowerCase().includes(simulationReviewFilters.userId.trim().toLowerCase());
+      const resolvedOk = !simulationReviewFilters.resolved || String(row.resolved) === simulationReviewFilters.resolved;
+      const created = new Date(row.createdAt).getTime();
+      const dateFromOk = !simulationReviewFilters.dateFrom || created >= new Date(simulationReviewFilters.dateFrom).getTime();
+      const dateToOk = !simulationReviewFilters.dateTo || created <= new Date(`${simulationReviewFilters.dateTo}T23:59:59.999Z`).getTime();
+      return severityOk && classOk && userOk && resolvedOk && dateFromOk && dateToOk;
+    });
+  }, [simulationReviewFilters, simulationReviews]);
+
+  const eventsFiltered = useMemo(() => {
+    return events.filter((row) => {
+      const userOk = !eventFilters.userId || (row.user_id ?? "").toLowerCase().includes(eventFilters.userId.trim().toLowerCase());
+      const typeOk = !eventFilters.type || row.event_type.toLowerCase().includes(eventFilters.type.trim().toLowerCase());
+      const dateFromOk = !eventFilters.dateFrom || new Date(row.created_at).getTime() >= new Date(eventFilters.dateFrom).getTime();
+      const dateToOk = !eventFilters.dateTo || new Date(row.created_at).getTime() <= new Date(eventFilters.dateTo).getTime();
+      return userOk && typeOk && dateFromOk && dateToOk;
+    });
+  }, [events, eventFilters]);
+
   async function loadDashboardData() {
     setLoading(true);
     setError(null);
@@ -245,6 +344,105 @@ function isoDaysAgo(days: number): string {
     setTeachers((teacherRes.data ?? []) as TeacherRow[]);
 
     setLoading(false);
+  }
+
+  async function loadAdminEvents() {
+    try {
+      const query = new URLSearchParams();
+      if (eventFilters.type) query.set("type", eventFilters.type);
+      if (eventFilters.userId) query.set("userId", eventFilters.userId);
+      if (eventFilters.dateFrom) query.set("dateFrom", eventFilters.dateFrom);
+      if (eventFilters.dateTo) query.set("dateTo", eventFilters.dateTo);
+      const payload = await adminFetch<{ events: SystemEventRow[] }>(`/api/v4/admin/events${query.toString() ? `?${query.toString()}` : ""}`);
+      setEvents(payload.events ?? []);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load admin events");
+    }
+  }
+
+  async function loadLimits() {
+    setLimitsLoading(true);
+    try {
+      const payload = await adminFetch<LimitSettingsResponse>("/api/v4/admin/limits");
+      setLimitsSettings(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load limits");
+    } finally {
+      setLimitsLoading(false);
+    }
+  }
+
+  async function loadSimulationReviews() {
+    setReviewsLoading(true);
+    try {
+      const payload = await listAdminSimulationReviewsApi(undefined, user?.id);
+      setSimulationReviews(payload.reviews ?? []);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load simulation reviews");
+    } finally {
+      setReviewsLoading(false);
+    }
+  }
+
+  async function handleLoadActivity() {
+    if (!activityUserId.trim()) {
+      setAdminActionMessage("Enter a user ID to load activity.");
+      return;
+    }
+
+    setActivityLoading(true);
+    setAdminActionMessage(null);
+    try {
+      const payload = await adminFetch<UserActivityResponse>(`/api/v4/admin/users/${encodeURIComponent(activityUserId.trim())}/activity`);
+      setActivityData(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to load user activity");
+      setActivityData(null);
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  async function handleResetUsage(kind: "upload" | "simulation" | "all") {
+    const userId = resetUsageUserId.trim();
+    if (!userId) {
+      setAdminActionMessage("Enter a user ID before resetting usage.");
+      return;
+    }
+
+    setResettingUsage(kind);
+    setAdminActionMessage(null);
+
+    const endpoint = kind === "upload"
+      ? "/api/v4/admin/reset-upload-usage"
+      : kind === "simulation"
+      ? "/api/v4/admin/reset-simulation-usage"
+      : "/api/v4/admin/reset-usage";
+
+    try {
+      await adminFetch<{ ok: boolean }>(endpoint, {
+        method: "POST",
+        body: JSON.stringify({ userId }),
+      });
+      setAdminActionMessage(`Reset ${kind} usage for ${userId}.`);
+      await Promise.all([loadDashboardData(), loadAdminEvents()]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to reset usage");
+    } finally {
+      setResettingUsage(null);
+    }
+  }
+
+  async function handleResolveSimulationReview(reviewId: string) {
+    setResolvingReviewId(reviewId);
+    try {
+      await resolveAdminSimulationReviewApi(reviewId, user?.id);
+      await loadSimulationReviews();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to resolve simulation review");
+    } finally {
+      setResolvingReviewId(null);
+    }
   }
 
   async function handleInspectRewriteEvent(row: RewriteEventRow) {
@@ -329,6 +527,9 @@ function isoDaysAgo(days: number): string {
 
   useEffect(() => {
     void loadDashboardData();
+    void loadAdminEvents();
+    void loadLimits();
+    void loadSimulationReviews();
   }, []);
 
   return (
@@ -341,11 +542,158 @@ function isoDaysAgo(days: number): string {
       </div>
 
       <p className="admin-subtitle">
-        Token usage, pipeline errors, rewrite activity, and bad rewrite reports.
+        Token usage, pipeline errors, rewrite activity, bad rewrite reports, and simulation review triage.
       </p>
 
       {loading && <p className="admin-muted">Loading...</p>}
       {error && <p className="admin-error">Error: {error}</p>}
+      {adminActionMessage && <p className="admin-muted">{adminActionMessage}</p>}
+
+      <div className="admin-tabs">
+        <button type="button" className={adminTab === "observability" ? "admin-tab admin-tab-active" : "admin-tab"} onClick={() => setAdminTab("observability")}>
+          Observability
+        </button>
+        <button type="button" className={adminTab === "reviews" ? "admin-tab admin-tab-active" : "admin-tab"} onClick={() => setAdminTab("reviews")}>
+          Reviews
+        </button>
+      </div>
+
+      {adminTab === "observability" && (
+        <>
+
+      <section className="admin-section">
+        <h2>Usage Controls</h2>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID for reset"
+            value={resetUsageUserId}
+            onChange={(event) => setResetUsageUserId(event.target.value)}
+          />
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("upload")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "upload" ? "Resetting..." : "Reset Upload Usage"}
+          </button>
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("simulation")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "simulation" ? "Resetting..." : "Reset Simulation Usage"}
+          </button>
+          <button
+            type="button"
+            className="admin-button admin-button-danger"
+            onClick={() => void handleResetUsage("all")}
+            disabled={resettingUsage !== null}
+          >
+            {resettingUsage === "all" ? "Resetting..." : "Reset All Usage"}
+          </button>
+        </div>
+
+        <h3>Limit Settings</h3>
+        {limitsSettings ? (
+          <div className="admin-filters">
+            <div className="admin-limit-card">
+              <strong>Daily page limit</strong>
+              <span>{limitsSettings.dailyPageLimit}</span>
+            </div>
+            <div className="admin-limit-card">
+              <strong>Daily simulation limit</strong>
+              <span>{limitsSettings.dailySimulationLimit}</span>
+            </div>
+          </div>
+        ) : (
+          <p className="admin-muted">{limitsLoading ? "Loading limits..." : "Limits unavailable."}</p>
+        )}
+
+        <h3>User Activity Lookup</h3>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID"
+            value={activityUserId}
+            onChange={(event) => setActivityUserId(event.target.value)}
+          />
+          <button type="button" className="admin-button" onClick={() => void handleLoadActivity()} disabled={activityLoading}>
+            {activityLoading ? "Loading..." : "Load Activity"}
+          </button>
+        </div>
+        {activityData && (
+          <p className="admin-muted">
+            Activity for {activityData.userId}: {activityData.events.length} events, {activityData.uploadUsage.length} upload rows, {activityData.simulationUsage.length} simulation rows.
+          </p>
+        )}
+      </section>
+
+      <section className="admin-section">
+        <h2>System Events</h2>
+        <div className="admin-filters">
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="Type (upload/simulation/review)"
+            value={eventFilters.type}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, type: event.target.value }))}
+          />
+          <input
+            type="text"
+            className="admin-filter-input"
+            placeholder="User ID"
+            value={eventFilters.userId}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, userId: event.target.value }))}
+          />
+          <input
+            type="date"
+            className="admin-filter-input"
+            value={eventFilters.dateFrom}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+          />
+          <input
+            type="date"
+            className="admin-filter-input"
+            value={eventFilters.dateTo}
+            onChange={(event) => setEventFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+          />
+          <button type="button" className="admin-button" onClick={() => void loadAdminEvents()}>
+            Refresh Events
+          </button>
+        </div>
+        <div className="admin-table-container">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>User ID</th>
+                <th>Payload</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eventsFiltered.map((row) => (
+                <tr key={row.id}>
+                  <td>{fmtDate(row.created_at)}</td>
+                  <td>{row.event_type}</td>
+                  <td>{row.user_id ?? "-"}</td>
+                  <td>{clip(JSON.stringify(row.event_payload ?? {}), 260)}</td>
+                </tr>
+              ))}
+              {!loading && eventsFiltered.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="admin-muted">No events found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="admin-section">
         <h2>Token Usage Today</h2>
@@ -613,6 +961,114 @@ function isoDaysAgo(days: number): string {
           </table>
         </div>
       </section>
+        </>
+      )}
+
+      {adminTab === "reviews" && (
+        <section className="admin-section">
+          <h2>Simulation Reviews</h2>
+          <div className="admin-filters">
+            <select
+              className="admin-filter-input"
+              value={simulationReviewFilters.severity}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, severity: event.target.value }))}
+            >
+              <option value="">All severities</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+            <input
+              type="date"
+              className="admin-filter-input"
+              value={simulationReviewFilters.dateFrom}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+            />
+            <input
+              type="date"
+              className="admin-filter-input"
+              value={simulationReviewFilters.dateTo}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+            />
+            <input
+              type="text"
+              className="admin-filter-input"
+              placeholder="Class"
+              value={simulationReviewFilters.classId}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, classId: event.target.value }))}
+            />
+            <input
+              type="text"
+              className="admin-filter-input"
+              placeholder="User ID"
+              value={simulationReviewFilters.userId}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, userId: event.target.value }))}
+            />
+            <select
+              className="admin-filter-input"
+              value={simulationReviewFilters.resolved}
+              onChange={(event) => setSimulationReviewFilters((prev) => ({ ...prev, resolved: event.target.value }))}
+            >
+              <option value="">All statuses</option>
+              <option value="false">Open</option>
+              <option value="true">Resolved</option>
+            </select>
+            <button type="button" className="admin-button" onClick={() => void loadSimulationReviews()}>
+              {reviewsLoading ? "Refreshing..." : "Refresh Reviews"}
+            </button>
+          </div>
+          <div className="admin-table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>User</th>
+                  <th>Class</th>
+                  <th>Assessment</th>
+                  <th>Severity</th>
+                  <th>Message</th>
+                  <th>Status</th>
+                  <th className="action-cell">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {simulationReviewsFiltered.map((row) => (
+                  <tr key={row.id}>
+                    <td>{fmtDate(row.createdAt)}</td>
+                    <td>
+                      <div>{emailByUserId.get(row.userId) ?? "-"}</div>
+                      <div className="admin-muted">{row.userId}</div>
+                    </td>
+                    <td>{row.className ?? row.classId}</td>
+                    <td>{clip(row.documentId, 48)}</td>
+                    <td>{row.severity}</td>
+                    <td>{clip(row.message, 240)}</td>
+                    <td>{row.resolved ? `Resolved${row.resolvedAt ? ` (${fmtDate(row.resolvedAt)})` : ""}` : "Open"}</td>
+                    <td className="action-cell">
+                      <button type="button" className="admin-button" onClick={() => window.location.assign(`/simulations/${encodeURIComponent(row.simulationId)}/phase-c`)}>
+                        Open Simulation
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-button admin-button-danger"
+                        onClick={() => void handleResolveSimulationReview(row.id)}
+                        disabled={row.resolved || resolvingReviewId === row.id}
+                      >
+                        {resolvingReviewId === row.id ? "Resolving..." : row.resolved ? "Resolved" : "Mark Resolved"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!reviewsLoading && simulationReviewsFiltered.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="admin-muted">No simulation reviews found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {inspectorLoading && (
         <div className="admin-modal-overlay">

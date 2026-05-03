@@ -122,7 +122,7 @@ export function ClassBuilderPage({ navigate }: Props) {
           </select>
 
           <div className="phasec-row">
-            <button className="phasec-button-secondary" onClick={() => navigate("/")}>Cancel</button>
+            <button className="phasec-button-secondary" onClick={() => navigate("/classes")}>Cancel</button>
             <button className="phasec-button" disabled={!name.trim()} onClick={() => setStep(2)}>Next</button>
           </div>
         </div>

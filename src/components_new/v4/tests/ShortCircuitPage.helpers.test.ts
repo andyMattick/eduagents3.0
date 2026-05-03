@@ -21,4 +21,19 @@ describe("extractParentStem", () => {
     const stem = extractParentStem(text);
     expect(stem).toBe("Read the scenario carefully");
   });
+
+  it("returns only the stem before multiple-choice options", () => {
+    const text = [
+      "Which statement is true?",
+      "A) First option.",
+      "B) Second option.",
+      "C) Third option.",
+    ].join("\n");
+
+    const stem = extractParentStem(text);
+    expect(stem).toBe("Which statement is true?");
+    expect(stem).not.toContain("A)");
+    expect(stem).not.toContain("B)");
+    expect(stem).not.toContain("C)");
+  });
 });

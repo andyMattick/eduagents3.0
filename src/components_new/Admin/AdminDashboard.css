@@ -26,6 +26,29 @@
   font-size: 14px;
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.admin-tab {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-tab-active {
+  background: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
 .admin-section {
   margin-top: 22px;
 }
@@ -76,6 +99,26 @@
 
 .admin-table .action-cell {
   width: 120px;
+}
+
+.admin-limit-card {
+  min-width: 180px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: grid;
+  gap: 6px;
+}
+
+.admin-limit-card span {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.action-cell .admin-button + .admin-button {
+  margin-top: 8px;
 }
 
 .admin-button {
