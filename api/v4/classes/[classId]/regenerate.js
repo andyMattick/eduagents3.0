@@ -2,6 +2,7 @@
 /* Bundled by esbuild — do not edit */
 
 // api/v4/classes/[classId]/regenerate.ts
+var DAILY_SIMULATION_LIMIT = 20;
 var PHASE_C_CONFIG = {
   defaultSyntheticStudentCount: 20,
   minTraitValue: 1,
