@@ -379,6 +379,11 @@ export function ShortCircuitPage() {
   }, []);
 
   const handleUpload = async () => {
+    if (uploadUsageToday?.remainingPages === 0) {
+      setUploadError("You have reached your daily page limit. Try again tomorrow or ask an admin to reset your usage.");
+      return;
+    }
+
     if (!file) {
       setUploadError("Select a file before continuing.");
       return;
@@ -689,6 +694,7 @@ export function ShortCircuitPage() {
   const uploadedPages = uploadUsageToday?.pagesUploaded ?? 0;
   const uploadPagesLimit = uploadUsageToday?.maxPagesPerDay ?? 25;
   const uploadUsagePct = uploadPagesLimit > 0 ? Math.min(100, Math.round(uploadedPages / uploadPagesLimit * 100)) : 0;
+  const uploadLimitReached = uploadUsageToday?.remainingPages === 0;
 
   const narrativeSections = useMemo(() => {
     const text = phaseCClassView?.narrative?.text ?? "";
@@ -928,11 +934,16 @@ export function ShortCircuitPage() {
           <button
             type="button"
             onClick={() => void handleUpload()}
-            disabled={!file || uploading}
-            style={{ padding: "0.65rem 1.5rem", background: !file || uploading ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading ? "not-allowed" : "pointer", width: "100%" }}
+            disabled={!file || uploading || uploadLimitReached}
+            style={{ padding: "0.65rem 1.5rem", background: !file || uploading || uploadLimitReached ? "#9ca3af" : "#bb5b35", color: "#fff", border: "none", borderRadius: "8px", fontSize: "0.9rem", fontWeight: 600, cursor: !file || uploading || uploadLimitReached ? "not-allowed" : "pointer", width: "100%" }}
           >
             {uploading ? "Uploading and analyzing..." : "Run Analysis"}
           </button>
+          {uploadLimitReached && !uploadError && (
+            <p className="phasec-error" style={{ marginTop: "0.6rem" }}>
+              You have reached your daily page limit. Try again tomorrow or ask an admin to reset your usage.
+            </p>
+          )}
 
           <div style={{ marginTop: "0.9rem" }}>
             <button

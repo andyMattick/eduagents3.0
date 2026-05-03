@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getClassDetailApi, regenerateClassApi } from "../../../lib/phaseCApi";
+import { getClassDetailApi, getSimulationUsageTodayApi, regenerateClassApi, type SimulationUsageTodayResponse } from "../../../lib/phaseCApi";
+import { useAuth } from "../../Auth/useAuth";
 
 import { StudentProfileTooltip } from "./StudentProfileTooltip";
 import { ActualResultsView } from "./ActualResultsView";
@@ -17,11 +18,13 @@ type Props = {
 type Tab = "overview" | "students" | "simulations";
 
 export function ClassDetailPage({ classId, navigate }: Props) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
   const [selectedResultType, setSelectedResultType] = useState<ResultType>("predicted");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageTodayResponse | null>(null);
 
   const [data, setData] = useState<Awaited<ReturnType<typeof getClassDetailApi>> | null>(null);
 
@@ -41,6 +44,17 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   useEffect(() => {
     void load();
   }, [classId]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSimulationUsageToday(null);
+      return;
+    }
+
+    void getSimulationUsageTodayApi(user.id)
+      .then((payload) => setSimulationUsageToday(payload))
+      .catch(() => setSimulationUsageToday(null));
+  }, [user?.id]);
 
   const traitAverages = useMemo(() => {
     const students = data?.students ?? [];
@@ -66,11 +80,20 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   }, [data]);
 
   async function handleRegenerate() {
+    if (simulationUsageToday?.remainingSimulations === 0) {
+      setError("You have reached your daily simulation limit. Try again tomorrow or ask an admin to reset usage.");
+      return;
+    }
+
     setRegenerating(true);
     setError(null);
     try {
-      await regenerateClassApi(classId);
+      await regenerateClassApi(classId, undefined, user?.id);
       await load();
+      if (user?.id) {
+        const usage = await getSimulationUsageTodayApi(user.id).catch(() => null);
+        setSimulationUsageToday(usage);
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Regeneration failed");
     } finally {
@@ -88,6 +111,10 @@ export function ClassDetailPage({ classId, navigate }: Props) {
 
   const profileEntries = Object.entries(data.summary.profileCounts).sort((a, b) => b[1] - a[1]);
   const traitEntries = Object.entries(data.summary.positiveTraitCounts).sort((a, b) => b[1] - a[1]);
+  const simulationUsagePct = simulationUsageToday && simulationUsageToday.maxSimulationsPerDay > 0
+    ? Math.min(100, Math.round(simulationUsageToday.simulationsRun / simulationUsageToday.maxSimulationsPerDay * 100))
+    : 0;
+  const regenerateBlocked = simulationUsageToday?.remainingSimulations === 0;
 
   return (
     <div className="phasec-shell">
@@ -98,10 +125,22 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       </div>
 
       <div className="phasec-row">
-        <button className="phasec-button-secondary" disabled={regenerating} onClick={() => void handleRegenerate()}>
+        <button className="phasec-button-secondary" disabled={regenerating || regenerateBlocked} onClick={() => void handleRegenerate()}>
           {regenerating ? "Regenerating..." : "Regenerate students"}
         </button>
       </div>
+
+      {simulationUsageToday && (
+        <div className="phasec-card" style={{ marginTop: "1rem" }}>
+          <p className="phasec-copy" style={{ marginTop: 0 }}>
+            Simulations run today: {simulationUsageToday.simulationsRun} / {simulationUsageToday.maxSimulationsPerDay}
+          </p>
+          <div style={{ width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+            <div style={{ width: `${simulationUsagePct}%`, height: "100%", background: simulationUsagePct >= 100 ? "#b45309" : "#285d7a" }} />
+          </div>
+          {regenerateBlocked && <p className="phasec-error" style={{ marginTop: "0.5rem", marginBottom: 0 }}>Daily simulation limit reached. Regeneration is disabled until tomorrow or admin reset.</p>}
+        </div>
+      )}
 
       <div className="phasec-tabs">
         <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}>Overview</button>

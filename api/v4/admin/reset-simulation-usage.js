@@ -29,13 +29,10 @@ export default async function handler(req, res) {
   const date = todayIsoDate();
   try {
     await supabaseRest("user_daily_simulations", {
-      method: "PATCH",
+      method: "DELETE",
       filters: {
         user_id: `eq.${userId}`,
-        usage_date: `eq.${date}`,
-      },
-      body: {
-        simulations_run: 0,
+        date: `eq.${date}`,
       },
       prefer: "return=minimal",
     });

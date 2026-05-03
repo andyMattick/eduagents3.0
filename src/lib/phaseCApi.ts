@@ -72,6 +72,46 @@ export type SimulationSummary = {
   averageBloomGap: number;
 };
 
+export type UploadUsageTodayResponse = {
+  userId: string | null;
+  date: string;
+  pagesUploaded: number;
+  maxPagesPerDay: number;
+  remainingPages: number;
+};
+
+export type SimulationUsageTodayResponse = {
+  userId: string | null;
+  date: string;
+  simulationsRun: number;
+  maxSimulationsPerDay: number;
+  remainingSimulations: number | null;
+  adminOverride: boolean;
+};
+
+export type SimulationReviewPayload = {
+  simulationId: string;
+  classId: string;
+  documentId: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  simulationSnapshot?: Record<string, unknown> | null;
+};
+
+export type AdminSimulationReview = {
+  id: string;
+  simulationId: string;
+  classId: string;
+  className: string | null;
+  documentId: string;
+  userId: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  createdAt: string;
+  resolved: boolean;
+  resolvedAt: string | null;
+};
+
 export type DocumentSummary = {
   documentId: string;
   sourceFileName: string;
@@ -181,11 +221,23 @@ export function getClassDetailApi(classId: string) {
   }>(`/api/v4/classes/${encodeURIComponent(classId)}`);
 }
 
-export function regenerateClassApi(classId: string, seed?: string) {
+export function regenerateClassApi(classId: string, seed?: string, userId?: string) {
   return fetchJson<{ classId: string; students: SyntheticStudent[]; studentCount: number }>(`/api/v4/classes/${encodeURIComponent(classId)}/regenerate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...buildAuthHeaders(userId) },
     body: JSON.stringify({ seed }),
+  });
+}
+
+export function getUploadUsageTodayApi(userId?: string) {
+  return fetchJson<UploadUsageTodayResponse>("/api/v4/documents/usage-today", {
+    headers: buildAuthHeaders(userId),
+  });
+}
+
+export function getSimulationUsageTodayApi(userId?: string) {
+  return fetchJson<SimulationUsageTodayResponse>("/api/v4/simulations/usage-today", {
+    headers: buildAuthHeaders(userId),
   });
 }
 
@@ -282,6 +334,42 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
     availableStudentIds?: string[];
   }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`, {
     headers: buildAuthHeaders(userId),
+  });
+}
+
+export function submitSimulationReviewApi(payload: SimulationReviewPayload, userId?: string) {
+  return fetchJson<{ ok: boolean; reviewId: string }>("/api/v4/simulations/review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...buildAuthHeaders(userId) },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listAdminSimulationReviewsApi(filters?: {
+  severity?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  classId?: string;
+  userId?: string;
+  resolved?: string;
+}, userId?: string) {
+  const query = new URLSearchParams();
+  if (filters?.severity) query.set("severity", filters.severity);
+  if (filters?.dateFrom) query.set("dateFrom", filters.dateFrom);
+  if (filters?.dateTo) query.set("dateTo", filters.dateTo);
+  if (filters?.classId) query.set("classId", filters.classId);
+  if (filters?.userId) query.set("userId", filters.userId);
+  if (filters?.resolved) query.set("resolved", filters.resolved);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return fetchJson<{ reviews: AdminSimulationReview[] }>(`/api/v4/admin/simulation-reviews${suffix}`, {
+    headers: { ...buildAuthHeaders(userId), "x-admin-override": "true" },
+  });
+}
+
+export function resolveAdminSimulationReviewApi(reviewId: string, userId?: string) {
+  return fetchJson<{ ok: boolean; reviewId: string }>(`/api/v4/admin/simulation-reviews/${encodeURIComponent(reviewId)}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...buildAuthHeaders(userId), "x-admin-override": "true" },
   });
 }
 

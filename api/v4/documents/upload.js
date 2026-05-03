@@ -12486,16 +12486,7 @@ function resolveTierFromHeaders(headers) {
   return normalizeTier(getSingleHeaderValue(headers["x-user-tier"]));
 }
 function getMaxPagesPerDay(tier) {
-  if (tier === "school") {
-    const configured = Number(process.env.MAX_PAGES_PER_DAY_SCHOOL);
-    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 500;
-  }
-  if (tier === "teacher") {
-    const configured = Number(process.env.MAX_PAGES_PER_DAY_TEACHER);
-    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 100;
-  }
-  const configured = Number(process.env.MAX_PAGES_PER_DAY_FREE);
-  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 25;
+  return 50;
 }
 function isAdminOverrideEnabled(headers, actor) {
   if (parseBooleanHeader(headers["x-admin-override"])) {
@@ -12548,14 +12539,17 @@ function estimatePagesFromAnalyzedDocument(analyzedDocument) {
   }
   return 1;
 }
-async function getDailyUploadedPages(actorKey, date) {
+async function getDailyUploadedPages(userId, date) {
+  if (!userId) {
+    return 0;
+  }
   try {
-    const rows = await supabaseRest("user_daily_usage", {
+    const rows = await supabaseRest("user_daily_uploads", {
       method: "GET",
       select: "pages_uploaded",
       filters: {
-        actor_key: `eq.${actorKey}`,
-        usage_date: `eq.${date}`
+        user_id: `eq.${userId}`,
+        date: `eq.${date}`
       }
     });
     if (Array.isArray(rows) && rows.length > 0) {
@@ -12568,21 +12562,21 @@ async function getDailyUploadedPages(actorKey, date) {
   }
 }
 async function incrementDailyUploadedPages(params) {
+  if (!params.userId) {
+    return;
+  }
   if (!Number.isFinite(params.pagesToAdd) || params.pagesToAdd <= 0) {
     return;
   }
-  const current = await getDailyUploadedPages(params.actorKey, params.date);
+  const current = await getDailyUploadedPages(params.userId, params.date);
   try {
-    await supabaseRest("user_daily_usage", {
+    await supabaseRest("user_daily_uploads", {
       method: "POST",
       prefer: "resolution=merge-duplicates,return=minimal",
       body: {
-        actor_key: params.actorKey,
         user_id: params.userId,
-        usage_date: params.date,
-        pages_uploaded: current + Math.max(1, Math.round(params.pagesToAdd)),
-        tier: params.tier,
-        admin_override: params.adminOverride
+        date: params.date,
+        pages_uploaded: current + Math.max(1, Math.round(params.pagesToAdd))
       }
     });
   } catch {
@@ -12628,6 +12622,7 @@ async function handler(req, res) {
   const maxPagesPerDay = getMaxPagesPerDay(tier);
   const adminOverride = isAdminOverrideEnabled(req.headers ?? {}, actor);
   const pagesUploadedToday = await getDailyUploadedPages(actor.actorKey, today);
+    const pagesUploadedToday = await getDailyUploadedPages(actor.userId, today);
   if (!adminOverride && pagesUploadedToday >= maxPagesPerDay) {
     return res.status(429).json({
       error: `Daily page limit reached (${maxPagesPerDay} pages/day). Please try again tomorrow or contact your admin for an override.`,

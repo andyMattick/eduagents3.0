@@ -617,16 +617,7 @@ function normalizeTier(value) {
   return "free";
 }
 function getMaxSimulationsPerDay(tier) {
-  if (tier === "school") {
-    const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_SCHOOL);
-    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 100;
-  }
-  if (tier === "teacher") {
-    const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_TEACHER);
-    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 50;
-  }
-  const configured = Number(process.env.MAX_SIMULATIONS_PER_DAY_FREE);
-  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 10;
+  return DAILY_SIMULATION_LIMIT;
 }
 function isAdminSimulationOverride(req, actor) {
   if (parseBooleanHeader(req.headers["x-admin-override"])) {
@@ -636,13 +627,16 @@ function isAdminSimulationOverride(req, actor) {
   return Boolean(actor.userId && allowed.includes(actor.userId));
 }
 async function getDailySimulationUsage(actorKey, date) {
+  if (!actorKey) {
+    return 0;
+  }
   try {
     const rows = await supabaseRest("user_daily_simulations", {
       method: "GET",
       select: "simulations_run",
       filters: {
-        actor_key: `eq.${actorKey}`,
-        usage_date: `eq.${date}`
+        user_id: `eq.${actorKey}`,
+        date: `eq.${date}`
       }
     });
     if (Array.isArray(rows) && rows.length > 0) {
@@ -655,17 +649,17 @@ async function getDailySimulationUsage(actorKey, date) {
   return 0;
 }
 async function incrementDailySimulationUsage(params) {
-  const current = await getDailySimulationUsage(params.actorKey, params.date);
+  if (!params.userId) {
+    return;
+  }
+  const current = await getDailySimulationUsage(params.userId, params.date);
   await supabaseRest("user_daily_simulations", {
     method: "POST",
     prefer: "resolution=merge-duplicates,return=minimal",
     body: {
-      actor_key: params.actorKey,
       user_id: params.userId,
-      usage_date: params.date,
-      simulations_run: current + 1,
-      tier: params.tier,
-      admin_override: params.adminOverride
+      date: params.date,
+      simulations_run: current + 1
     }
   });
 }
@@ -703,6 +697,9 @@ async function handler(req, res) {
   const maxSimulationsPerDay = getMaxSimulationsPerDay(tier);
   const adminOverride = isAdminSimulationOverride(req, actor);
   const simulationsRunToday = await getDailySimulationUsage(actor.actorKey, date);
+    const usage = await getDailySimulationUsage(actor.userId, date);
+    const simulationsRunToday = usage.simulationsRun;
+    await incrementDailySimulationUsage({ userId: actor.userId, date });
   if (!adminOverride && simulationsRunToday >= maxSimulationsPerDay) {
     return res.status(429).json({
       error: `Daily simulation limit reached (${maxSimulationsPerDay} simulations/day). Try again tomorrow or contact your admin.`

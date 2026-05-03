@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getClassDetailApi, getSimulationViewApi, type SimulationSummary, type SyntheticStudent } from "../../../lib/phaseCApi";
+import { getClassDetailApi, getSimulationViewApi, submitSimulationReviewApi, type SimulationSummary, type SyntheticStudent } from "../../../lib/phaseCApi";
+import { useAuth } from "../../Auth/useAuth";
 
 import { StudentProfileTooltip } from "./StudentProfileTooltip";
 import { matchesSelectedProfile, sortStudentsByProfile } from "./studentRoster";
@@ -118,9 +119,17 @@ function toNumber(value: unknown): number {
 }
 
 export function PhaseCResultsPage({ simulationId, navigate }: Props) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("class");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewSeverity, setReviewSeverity] = useState<"low" | "medium" | "high">("medium");
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [includeSimulationJson, setIncludeSimulationJson] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
   const [profile, setProfile] = useState(PROFILE_OPTIONS[0]);
   const [studentId, setStudentId] = useState("student-1");
@@ -230,6 +239,41 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
     }
   }, [orderedStudentIds, studentId]);
 
+  async function handleSubmitReview() {
+    if (!classView?.classId || !classView?.documentId || !reviewMessage.trim()) {
+      setReviewError("Class, document, and a review message are required.");
+      return;
+    }
+
+    setReviewSubmitting(true);
+    setReviewError(null);
+    setReviewSuccess(null);
+    try {
+      await submitSimulationReviewApi({
+        simulationId,
+        classId: classView.classId,
+        documentId: classView.documentId,
+        severity: reviewSeverity,
+        message: reviewMessage.trim(),
+        simulationSnapshot: includeSimulationJson
+          ? {
+              classView,
+              profileView,
+              studentView,
+            }
+          : null,
+      }, user?.id);
+      setReviewSuccess("Review submitted.");
+      setReviewMessage("");
+      setIncludeSimulationJson(false);
+      setReviewOpen(false);
+    } catch (caught) {
+      setReviewError(caught instanceof Error ? caught.message : "Failed to submit review");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  }
+
   if (loading) {
     return <div className="phasec-shell"><p>Loading simulation...</p></div>;
   }
@@ -239,6 +283,16 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
       <div className="phasec-head">
         <p className="phasec-kicker">Simulation</p>
         <h2>{simulationId}</h2>
+        <div className="phasec-row" style={{ marginTop: "0.75rem" }}>
+          <button className="phasec-button-secondary" type="button" onClick={() => {
+            setReviewOpen(true);
+            setReviewError(null);
+            setReviewSuccess(null);
+          }}>
+            Report an issue with this simulation
+          </button>
+        </div>
+        {reviewSuccess && <p className="phasec-copy" style={{ marginTop: "0.5rem" }}>{reviewSuccess}</p>}
       </div>
 
       <div className="phasec-tabs">
@@ -336,6 +390,47 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
       )}
 
       {error && <p className="phasec-error">{error}</p>}
+
+      {reviewOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem", zIndex: 1200 }}>
+          <div style={{ width: "min(640px, 100%)", background: "#fff", borderRadius: "16px", padding: "1.25rem", boxShadow: "0 24px 64px rgba(15,23,42,0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center" }}>
+              <h3 style={{ margin: 0 }}>Report an issue with this simulation</h3>
+              <button type="button" className="phasec-button-secondary" onClick={() => setReviewOpen(false)}>Close</button>
+            </div>
+            <div style={{ display: "grid", gap: "0.85rem", marginTop: "1rem" }}>
+              <label>
+                <span style={{ display: "block", marginBottom: "0.35rem" }}>Severity</span>
+                <select value={reviewSeverity} onChange={(event) => setReviewSeverity(event.target.value as "low" | "medium" | "high")} style={{ width: "100%" }}>
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+              <label>
+                <span style={{ display: "block", marginBottom: "0.35rem" }}>What went wrong?</span>
+                <textarea
+                  value={reviewMessage}
+                  onChange={(event) => setReviewMessage(event.target.value)}
+                  rows={6}
+                  style={{ width: "100%", resize: "vertical" }}
+                  placeholder="Describe the bad prediction, mismatch, or behavior that needs review."
+                />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input type="checkbox" checked={includeSimulationJson} onChange={(event) => setIncludeSimulationJson(event.target.checked)} />
+                <span>Include simulation JSON</span>
+              </label>
+              {reviewError && <p className="phasec-error" style={{ margin: 0 }}>{reviewError}</p>}
+              <div className="phasec-row">
+                <button className="phasec-button" type="button" disabled={reviewSubmitting} onClick={() => void handleSubmitReview()}>
+                  {reviewSubmitting ? "Submitting..." : "Submit review"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

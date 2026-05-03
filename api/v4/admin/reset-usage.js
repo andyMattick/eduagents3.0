@@ -1,4 +1,5 @@
-import { assertAdmin, runtime, supabaseRest, todayIsoDate } from "./shared.js";
+import { assertAdmin, runtime, todayIsoDate } from "./shared.js";
+import { resetDailyUsageForUser } from "../usage/shared.js";
 
 function parseBody(body) {
   if (typeof body === "string") {
@@ -29,20 +30,7 @@ export default async function handler(req, res) {
   const date = todayIsoDate();
 
   try {
-    await Promise.all([
-      supabaseRest("user_daily_usage", {
-        method: "PATCH",
-        filters: { user_id: `eq.${userId}`, usage_date: `eq.${date}` },
-        body: { pages_uploaded: 0 },
-        prefer: "return=minimal",
-      }),
-      supabaseRest("user_daily_simulations", {
-        method: "PATCH",
-        filters: { user_id: `eq.${userId}`, usage_date: `eq.${date}` },
-        body: { simulations_run: 0 },
-        prefer: "return=minimal",
-      }),
-    ]);
+    await resetDailyUsageForUser(userId, date);
 
     return res.status(200).json({ ok: true, userId, date, reset: "all" });
   } catch (error) {

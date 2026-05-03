@@ -34,21 +34,21 @@ export default async function handler(req, res) {
           limit: "200",
         },
       }).catch(() => []),
-      supabaseRest("user_daily_usage", {
+      supabaseRest("user_daily_uploads", {
         method: "GET",
-        select: "usage_date,pages_uploaded,tier,admin_override,updated_at",
+        select: "date,pages_uploaded",
         filters: {
           user_id: `eq.${userId}`,
-          order: "usage_date.desc",
+          order: "date.desc",
           limit: "30",
         },
       }).catch(() => []),
       supabaseRest("user_daily_simulations", {
         method: "GET",
-        select: "usage_date,simulations_run,tier,admin_override,updated_at",
+        select: "date,simulations_run",
         filters: {
           user_id: `eq.${userId}`,
-          order: "usage_date.desc",
+          order: "date.desc",
           limit: "30",
         },
       }).catch(() => []),

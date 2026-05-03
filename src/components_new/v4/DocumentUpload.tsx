@@ -6,6 +6,7 @@ import type { AnalyzedDocument } from "../../prism-v4/schema/semantic";
 import type { InstructionalSessionWorkspace } from "../../types/v4/InstructionalSession";
 
 import { useInstructionalSession } from "../../hooks/useInstructionalSession";
+import { getUploadUsageTodayApi, type UploadUsageTodayResponse } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
 import { DocumentSubmit } from "../../components/studentPortal/DocumentSubmit";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
@@ -116,9 +117,13 @@ function resolveIntentDocumentIds(workspace: InstructionalSessionWorkspace | nul
   return selectedDocumentIds.length > 0 ? selectedDocumentIds : allDocumentIds;
 }
 
-function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean) {
+function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean, remainingPages: number | null) {
   if (isUploading) {
     return "Workspace creation is already running.";
+  }
+
+  if (remainingPages === 0) {
+    return "You have reached your daily page limit. Try again tomorrow or ask an admin to reset usage.";
   }
 
   if (selectedFileCount === 0) {
@@ -153,8 +158,20 @@ export function DocumentUpload() {
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
   const [publicDocIds, setPublicDocIds] = useState<Record<string, boolean>>({});
   const [showPublicPicker, setShowPublicPicker] = useState(false);
+  const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageTodayResponse | null>(null);
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUploadUsageToday(null);
+      return;
+    }
+
+    void getUploadUsageTodayApi(user.id)
+      .then((payload) => setUploadUsageToday(payload))
+      .catch(() => setUploadUsageToday(null));
+  }, [user?.id]);
 
   useEffect(() => {
     if (!workspace) {
@@ -224,6 +241,11 @@ export function DocumentUpload() {
       setSelectedDocumentIds(nextWorkspace.documents.map((entry) => entry.documentId));
       setPrimaryDocumentId(nextWorkspace.documents[0]?.documentId ?? null);
       logUploadTrace("upload flow complete", { sessionId: nextWorkspace.sessionId, uploadedCount: nextWorkspace.documents.length });
+      if (user?.id) {
+        void getUploadUsageTodayApi(user.id)
+          .then((payload) => setUploadUsageToday(payload))
+          .catch(() => setUploadUsageToday(null));
+      }
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Workspace creation failed.");
       logUploadTrace("upload flow failed", { error: uploadError instanceof Error ? uploadError.message : "Workspace creation failed." });
@@ -368,7 +390,10 @@ export function DocumentUpload() {
     }
   }
 
-  const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading);
+  const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading, uploadUsageToday?.remainingPages ?? null);
+  const uploadUsagePct = uploadUsageToday && uploadUsageToday.maxPagesPerDay > 0
+    ? Math.min(100, Math.round(uploadUsageToday.pagesUploaded / uploadUsageToday.maxPagesPerDay * 100))
+    : 0;
 
   return (
     <div className="v4-viewer">
@@ -395,6 +420,16 @@ export function DocumentUpload() {
           </div>
 
           <form className="v4-upload-form" onSubmit={handleUpload}>
+            {uploadUsageToday && (
+              <div style={{ marginBottom: "0.9rem" }}>
+                <p className="v4-body-copy" style={{ marginBottom: "0.4rem" }}>
+                  Pages used today: {uploadUsageToday.pagesUploaded} / {uploadUsageToday.maxPagesPerDay}
+                </p>
+                <div style={{ width: "100%", height: "8px", borderRadius: "999px", background: "rgba(37,99,235,0.12)", overflow: "hidden" }}>
+                  <div style={{ width: `${uploadUsagePct}%`, height: "100%", background: uploadUsagePct >= 100 ? "#dc2626" : "#2563eb" }} />
+                </div>
+              </div>
+            )}
             <label className="v4-upload-field" htmlFor="v4-upload-input">
               <span>Teaching materials</span>
               <input
