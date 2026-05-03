@@ -578,7 +578,7 @@ function buildStudentRoster(classId, students, results) {
     roster.set(result.syntheticStudentId, {
       id: result.syntheticStudentId,
       classId,
-      displayName: result.syntheticStudentId,
+      displayName: typeof snapshot.displayName === "string" && snapshot.displayName.trim().length > 0 ? snapshot.displayName.trim() : `Student ${result.syntheticStudentId}`,
       traits: snapshot.traits ?? {
         readingLevel: 3,
         vocabularyLevel: 3,
@@ -594,7 +594,15 @@ function buildStudentRoster(classId, students, results) {
       biases: snapshot.biases ?? { confusionBias: 0, timeBias: 0 }
     });
   }
-  return [...roster.values()].sort((left, right) => left.displayName.localeCompare(right.displayName, void 0, { numeric: true }));
+  return [...roster.values()].sort((left, right) => {
+    const leftName = typeof left.displayName === "string" ? left.displayName : "";
+    const rightName = typeof right.displayName === "string" ? right.displayName : "";
+    const byName = leftName.localeCompare(rightName, void 0, { numeric: true });
+    if (byName !== 0) {
+      return byName;
+    }
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""), void 0, { numeric: true });
+  });
 }
 function studentSummary(results, itemTraits) {
   const byItem = results.reduce((accumulator, result) => {
@@ -703,7 +711,7 @@ async function handler(req, res) {
     const roster = buildStudentRoster(run.classId, students, results);
     const itemTraits = await loadItemTraits(run.documentId);
       const hardestItems = buildHardestItems(results, itemTraits);
-    const availableStudentIds = Array.from(new Set(results.map((result) => result.syntheticStudentId)));
+    const availableStudentIds = roster.map((student) => student.id);
     if (view === "class") {
         const predictedVsActual = await loadPredictedVsActualDelta(run.classId, run.documentId);
         const narrative = await buildNarrativePayload({
@@ -744,9 +752,19 @@ async function handler(req, res) {
       });
     }
     if (view === "student") {
-      const studentId = resolveQuery(req, "studentId") ?? availableStudentIds[0];
+      const studentId = resolveQuery(req, "studentId");
       if (!studentId) {
-        return res.status(404).json({ error: { code: "not_found", message: "No student results found for simulation" } });
+        return res.status(200).json({
+          simulationId,
+          classId: run.classId,
+          documentId: run.documentId,
+          view,
+          studentId: null,
+          summary: aggregateClass([]),
+          students: roster,
+          items: [],
+          availableStudentIds
+        });
       }
       const scoped = results.filter((result) => result.syntheticStudentId === studentId);
       return res.status(200).json({

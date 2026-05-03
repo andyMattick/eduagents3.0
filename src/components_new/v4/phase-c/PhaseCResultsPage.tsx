@@ -132,7 +132,7 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
   const [reviewSuccess, setReviewSuccess] = useState<string | null>(null);
 
   const [profile, setProfile] = useState(PROFILE_OPTIONS[0]);
-  const [studentId, setStudentId] = useState("student-1");
+  const [studentId, setStudentId] = useState("");
 
   const [classView, setClassView] = useState<Awaited<ReturnType<typeof getSimulationViewApi>> | null>(null);
   const [profileView, setProfileView] = useState<Awaited<ReturnType<typeof getSimulationViewApi>> | null>(null);
@@ -156,14 +156,9 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
           setClassStudents([]);
         }
 
-        const defaultStudentId = classData.availableStudentIds?.[0] ?? "";
-        if (defaultStudentId) {
-          setStudentId(defaultStudentId);
-        }
-
-        const studentRes = await getSimulationViewApi(simulationId, "student", defaultStudentId ? { studentId: defaultStudentId } : undefined);
-        setStudentView(studentRes);
-        const uniqueStudentIds = studentRes.availableStudentIds ?? classData.availableStudentIds ?? [];
+        setStudentId("");
+        setStudentView(null);
+        const uniqueStudentIds = classData.availableStudentIds ?? [];
         if (uniqueStudentIds.length > 0) {
           setStudentOptions(uniqueStudentIds);
         }
@@ -191,9 +186,13 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
 
   useEffect(() => {
     if (tab !== "student") return;
+    if (!studentId) {
+      setStudentView(null);
+      return;
+    }
     void (async () => {
       try {
-        const data = await getSimulationViewApi(simulationId, "student", studentId ? { studentId } : undefined);
+        const data = await getSimulationViewApi(simulationId, "student", { studentId });
         setStudentView(data);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Failed loading student view");
@@ -230,12 +229,8 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
   }, [sortedRoster, studentId]);
 
   useEffect(() => {
-    if (orderedStudentIds.length === 0) {
-      return;
-    }
-
-    if (!orderedStudentIds.includes(studentId)) {
-      setStudentId(orderedStudentIds[0]);
+    if (studentId && orderedStudentIds.length > 0 && !orderedStudentIds.includes(studentId)) {
+      setStudentId("");
     }
   }, [orderedStudentIds, studentId]);
 
@@ -350,6 +345,7 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
         <div className="phasec-card">
           <label>Student</label>
           <select value={studentId} onChange={(event) => setStudentId(event.target.value)}>
+            <option value="">Choose a Student</option>
             {orderedStudentIds.map((value) => <option key={value} value={value}>{formatStudentLabel(value)}</option>)}
           </select>
           {selectedStudent && (
@@ -360,7 +356,7 @@ export function PhaseCResultsPage({ simulationId, navigate }: Props) {
               </StudentProfileTooltip>
             </div>
           )}
-          {studentView && <SummaryCard summary={studentView.summary} />}
+          {studentView && studentId && <SummaryCard summary={studentView.summary} />}
 
           <CumulativeCurve items={curveItems} />
 
