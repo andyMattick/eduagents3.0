@@ -12621,8 +12621,7 @@ async function handler(req, res) {
   const tier = resolveTierFromHeaders(req.headers ?? {});
   const maxPagesPerDay = getMaxPagesPerDay(tier);
   const adminOverride = isAdminOverrideEnabled(req.headers ?? {}, actor);
-  const pagesUploadedToday = await getDailyUploadedPages(actor.actorKey, today);
-    const pagesUploadedToday = await getDailyUploadedPages(actor.userId, today);
+  const pagesUploadedToday = await getDailyUploadedPages(actor.userId, today);
   if (!adminOverride && pagesUploadedToday >= maxPagesPerDay) {
     return res.status(429).json({
       error: `Daily page limit reached (${maxPagesPerDay} pages/day). Please try again tomorrow or contact your admin for an override.`,
