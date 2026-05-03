@@ -925,15 +925,19 @@ async function incrementDailySimulationUsage(params) {
     return 0;
   }
   const current = await getDailySimulationUsage(params.userId, params.date);
-  await supabaseRest("user_daily_simulations", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: {
-      user_id: params.userId,
-      date: params.date,
-      simulations_run: current + 1
-    }
-  });
+  try {
+    await supabaseRest("user_daily_simulations", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        user_id: params.userId,
+        date: params.date,
+        simulations_run: current + 1
+      }
+    });
+  } catch {
+    return current;
+  }
   return current + 1;
 }
 async function logSystemEvent(params) {

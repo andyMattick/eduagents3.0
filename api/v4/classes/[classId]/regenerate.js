@@ -653,15 +653,19 @@ async function incrementDailySimulationUsage(params) {
     return;
   }
   const current = await getDailySimulationUsage(params.userId, params.date);
-  await supabaseRest("user_daily_simulations", {
-    method: "POST",
-    prefer: "resolution=merge-duplicates,return=minimal",
-    body: {
-      user_id: params.userId,
-      date: params.date,
-      simulations_run: current + 1
-    }
-  });
+  try {
+    await supabaseRest("user_daily_simulations", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        user_id: params.userId,
+        date: params.date,
+        simulations_run: current + 1
+      }
+    });
+  } catch {
+    return;
+  }
 }
 async function logSystemEvent(params) {
   try {
@@ -696,10 +700,7 @@ async function handler(req, res) {
   const tier = normalizeTier(getSingleHeaderValue(req.headers["x-user-tier"]));
   const maxSimulationsPerDay = getMaxSimulationsPerDay(tier);
   const adminOverride = isAdminSimulationOverride(req, actor);
-  const simulationsRunToday = await getDailySimulationUsage(actor.actorKey, date);
-    const usage = await getDailySimulationUsage(actor.userId, date);
-    const simulationsRunToday = usage.simulationsRun;
-    await incrementDailySimulationUsage({ userId: actor.userId, date });
+  const simulationsRunToday = await getDailySimulationUsage(actor.userId, date);
   if (!adminOverride && simulationsRunToday >= maxSimulationsPerDay) {
     return res.status(429).json({
       error: `Daily simulation limit reached (${maxSimulationsPerDay} simulations/day). Try again tomorrow or contact your admin.`
