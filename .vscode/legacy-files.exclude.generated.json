@@ -1,0 +1,8 @@
+{
+  "files.exclude": {
+    "legacy/**": true,
+    "src/pipeline/legacyV2/**": true,
+    "tmp/**": true,
+    "legacy/v3/**": true
+  }
+}

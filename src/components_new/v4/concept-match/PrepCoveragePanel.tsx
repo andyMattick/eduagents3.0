@@ -57,8 +57,8 @@ export function PrepCoveragePanel({
             return (
               <tr key={concept} className={rowClass(concept, conceptCoverage)}>
                 <td>{concept}</td>
-                <td>{testStat.avgDifficulty.toFixed(1)}</td>
-                <td>{prepStat ? prepStat.avgDifficulty.toFixed(1) : "—"}</td>
+                <td>{testStat.averageContentComplexity.toFixed(1)}</td>
+                <td>{prepStat ? prepStat.averageContentComplexity.toFixed(1) : "—"}</td>
                 <td>{statusBadge(concept, conceptCoverage)}</td>
               </tr>
             );

@@ -1,0 +1,2447 @@
+{
+  "metadata": {
+    "generatedAt": "2026-05-04T14:32:16.757Z",
+    "root": "/workspaces/eduagents3.0",
+    "strictMode": false,
+    "scannedRoots": [
+      "src",
+      "api",
+      "lib",
+      "scripts",
+      "tests",
+      "supabase",
+      "app",
+      "config"
+    ],
+    "tables": [
+      "old_items",
+      "legacy_documents",
+      "v3_segments",
+      "v4_items",
+      "simulation_cache",
+      "v4_sections",
+      "v4_analysis",
+      "user_daily_simulations_legacy",
+      "cognitive_templates",
+      "simulation_runs",
+      "simulation_results",
+      "classes",
+      "synthetic_students"
+    ]
+  },
+  "summary": {
+    "totalTables": 13,
+    "totalReferences": 329,
+    "cleanupCandidateCount": 4,
+    "referencedTableCount": 9,
+    "cleanupCandidates": [
+      "old_items",
+      "legacy_documents",
+      "v3_segments",
+      "simulation_cache"
+    ],
+    "referencedTables": [
+      "v4_items",
+      "v4_sections",
+      "v4_analysis",
+      "user_daily_simulations_legacy",
+      "cognitive_templates",
+      "simulation_runs",
+      "simulation_results",
+      "classes",
+      "synthetic_students"
+    ]
+  },
+  "tables": [
+    {
+      "table": "old_items",
+      "totalReferences": 0,
+      "filesReferenced": 0,
+      "categoryCounts": {},
+      "cleanupCandidate": true,
+      "files": []
+    },
+    {
+      "table": "legacy_documents",
+      "totalReferences": 0,
+      "filesReferenced": 0,
+      "categoryCounts": {},
+      "cleanupCandidate": true,
+      "files": []
+    },
+    {
+      "table": "v3_segments",
+      "totalReferences": 0,
+      "filesReferenced": 0,
+      "categoryCounts": {},
+      "cleanupCandidate": true,
+      "files": []
+    },
+    {
+      "table": "v4_items",
+      "totalReferences": 59,
+      "filesReferenced": 20,
+      "categoryCounts": {
+        "api-call": 11,
+        "reference": 46,
+        "function-trigger": 1,
+        "policy": 1
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/documents/[documentId]/structure.js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 140,
+              "category": "api-call",
+              "excerpt": "const existingRows = await supabaseRest(\"v4_items\", {"
+            },
+            {
+              "line": 183,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/documents/status.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 10428,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/documents/upload.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 12116,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            },
+            {
+              "line": 12165,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_items\", {"
+            },
+            {
+              "line": 12171,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_items\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/[simulationId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 521,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/run.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 435,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/generate-test.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 9553,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            },
+            {
+              "line": 9704,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_items\", {"
+            },
+            {
+              "line": 9710,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_items\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/shared.ts",
+          "count": 9,
+          "matches": [
+            {
+              "line": 33,
+              "category": "function-trigger",
+              "excerpt": "function disableV4Table(table: \"v4_items\" | \"v4_sections\" | \"v4_analysis\", error: unknown): boolean {"
+            },
+            {
+              "line": 38,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            },
+            {
+              "line": 513,
+              "category": "reference",
+              "excerpt": "// V4 item storage — v4_items table"
+            },
+            {
+              "line": 517,
+              "category": "reference",
+              "excerpt": "* A structured assessment item as stored in (and loaded from) `v4_items`."
+            },
+            {
+              "line": 531,
+              "category": "reference",
+              "excerpt": "* Persist extracted items to `v4_items`."
+            },
+            {
+              "line": 560,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_items\", {"
+            },
+            {
+              "line": 566,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_items\", error)) return;"
+            },
+            {
+              "line": 767,
+              "category": "reference",
+              "excerpt": "* Load all items for a document from `v4_items`, ordered by item_number."
+            },
+            {
+              "line": 774,
+              "category": "api-call",
+              "excerpt": "const rows = (await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/student-portal/documents/submit.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 10191,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            },
+            {
+              "line": 10240,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_items\", {"
+            },
+            {
+              "line": 10246,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_items\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "src/prism-v4/ingestion/ingestDocument.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 18,
+              "category": "reference",
+              "excerpt": "*   2.  v4_items populated (for \"problem\" and \"mixed\" docs)"
+            }
+          ]
+        },
+        {
+          "filePath": "src/simulation/phase-b/index.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 439,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"v4_items\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_items_migration.sql",
+          "count": 6,
+          "matches": [
+            {
+              "line": 1,
+              "category": "reference",
+              "excerpt": "-- Migration: v4_items"
+            },
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS v4_items ("
+            },
+            {
+              "line": 21,
+              "category": "reference",
+              "excerpt": "ON v4_items (document_id);"
+            },
+            {
+              "line": 24,
+              "category": "reference",
+              "excerpt": "ON v4_items (document_id, item_number);"
+            },
+            {
+              "line": 27,
+              "category": "reference",
+              "excerpt": "ALTER TABLE v4_items ENABLE ROW LEVEL SECURITY;"
+            },
+            {
+              "line": 30,
+              "category": "policy",
+              "excerpt": "CREATE POLICY \"service_role_all\" ON v4_items"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_schema_repair_migration.sql",
+          "count": 20,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "-- on v4_items / v4_sections / v4_analysis."
+            },
+            {
+              "line": 8,
+              "category": "reference",
+              "excerpt": "-- v4_items"
+            },
+            {
+              "line": 10,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS public.v4_items ("
+            },
+            {
+              "line": 28,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_items' AND column_name = 'doc_id'"
+            },
+            {
+              "line": 32,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_items' AND column_name = 'document_id'"
+            },
+            {
+              "line": 34,
+              "category": "reference",
+              "excerpt": "EXECUTE 'ALTER TABLE public.v4_items RENAME COLUMN doc_id TO document_id';"
+            },
+            {
+              "line": 38,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS document_id text;"
+            },
+            {
+              "line": 39,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS item_number integer;"
+            },
+            {
+              "line": 40,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS type text DEFAULT 'question';"
+            },
+            {
+              "line": 41,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS stem text DEFAULT '';"
+            },
+            {
+              "line": 42,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS choices jsonb;"
+            },
+            {
+              "line": 43,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS answer_key jsonb;"
+            },
+            {
+              "line": 44,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;"
+            },
+            {
+              "line": 45,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS source_page_numbers integer[] DEFAULT '{}';"
+            },
+            {
+              "line": 46,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 47,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 49,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items"
+            },
+            {
+              "line": 52,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_items"
+            },
+            {
+              "line": 63,
+              "category": "reference",
+              "excerpt": "ON public.v4_items (document_id);"
+            },
+            {
+              "line": 66,
+              "category": "reference",
+              "excerpt": "ON public.v4_items (document_id, item_number);"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/BOUNDARY_GUARDRAILS.md",
+          "count": 1,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "Any change to PRISM extraction, ingestion, v4_items metadata, or Phase C loader must keep boundary tests passing."
+            }
+          ]
+        },
+        {
+          "filePath": "tests/e2e/simulate-assessment.e2e.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-b/analysis.boundary.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 34,
+              "category": "reference",
+              "excerpt": "it(\"persists numeric traits into v4_items metadata\", async () => {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/engine.boundary.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/engine.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 9,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/integration-end-to-end.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/parent-item-filter.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-d/alignment.boundary.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_items\") {"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "simulation_cache",
+      "totalReferences": 0,
+      "filesReferenced": 0,
+      "categoryCounts": {},
+      "cleanupCandidate": true,
+      "files": []
+    },
+    {
+      "table": "v4_sections",
+      "totalReferences": 52,
+      "filesReferenced": 8,
+      "categoryCounts": {
+        "reference": 40,
+        "api-call": 10,
+        "function-trigger": 1,
+        "policy": 1
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/documents/status.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 10389,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"v4_sections\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/documents/upload.js",
+          "count": 5,
+          "matches": [
+            {
+              "line": 12122,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_sections\") {"
+            },
+            {
+              "line": 12186,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 12191,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            },
+            {
+              "line": 12203,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 12209,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/generate-test.js",
+          "count": 5,
+          "matches": [
+            {
+              "line": 9559,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_sections\") {"
+            },
+            {
+              "line": 9725,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 9730,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            },
+            {
+              "line": 9742,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 9748,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/shared.ts",
+          "count": 10,
+          "matches": [
+            {
+              "line": 33,
+              "category": "function-trigger",
+              "excerpt": "function disableV4Table(table: \"v4_items\" | \"v4_sections\" | \"v4_analysis\", error: unknown): boolean {"
+            },
+            {
+              "line": 45,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_sections\") {"
+            },
+            {
+              "line": 572,
+              "category": "reference",
+              "excerpt": "// V4 section storage — v4_sections table"
+            },
+            {
+              "line": 584,
+              "category": "reference",
+              "excerpt": "* Persist extracted sections to `v4_sections`."
+            },
+            {
+              "line": 597,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 602,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error)) return;"
+            },
+            {
+              "line": 616,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 622,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error)) return;"
+            },
+            {
+              "line": 628,
+              "category": "reference",
+              "excerpt": "* Load all sections for a document from `v4_sections`, ordered by `order`."
+            },
+            {
+              "line": 633,
+              "category": "api-call",
+              "excerpt": "const rows = (await supabaseRest(\"v4_sections\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/student-portal/documents/submit.js",
+          "count": 5,
+          "matches": [
+            {
+              "line": 10197,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_sections\") {"
+            },
+            {
+              "line": 10261,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 10266,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            },
+            {
+              "line": 10278,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_sections\", {"
+            },
+            {
+              "line": 10284,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_sections\", error))"
+            }
+          ]
+        },
+        {
+          "filePath": "src/prism-v4/ingestion/ingestDocument.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 19,
+              "category": "reference",
+              "excerpt": "*   3.  v4_sections populated (for \"notes\" and \"mixed\" docs)"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_schema_repair_migration.sql",
+          "count": 18,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "-- on v4_items / v4_sections / v4_analysis."
+            },
+            {
+              "line": 69,
+              "category": "reference",
+              "excerpt": "-- v4_sections"
+            },
+            {
+              "line": 71,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS public.v4_sections ("
+            },
+            {
+              "line": 87,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_sections' AND column_name = 'doc_id'"
+            },
+            {
+              "line": 91,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_sections' AND column_name = 'document_id'"
+            },
+            {
+              "line": 93,
+              "category": "reference",
+              "excerpt": "EXECUTE 'ALTER TABLE public.v4_sections RENAME COLUMN doc_id TO document_id';"
+            },
+            {
+              "line": 97,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS document_id text;"
+            },
+            {
+              "line": 98,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS section_id text;"
+            },
+            {
+              "line": 99,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS \"order\" integer;"
+            },
+            {
+              "line": 100,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS title text;"
+            },
+            {
+              "line": 101,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS text text DEFAULT '';"
+            },
+            {
+              "line": 102,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;"
+            },
+            {
+              "line": 103,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 104,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 106,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections"
+            },
+            {
+              "line": 109,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_sections"
+            },
+            {
+              "line": 119,
+              "category": "reference",
+              "excerpt": "ON public.v4_sections (document_id);"
+            },
+            {
+              "line": 122,
+              "category": "reference",
+              "excerpt": "ON public.v4_sections (document_id, \"order\");"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_unified_ingestion_migration.sql",
+          "count": 7,
+          "matches": [
+            {
+              "line": 2,
+              "category": "reference",
+              "excerpt": "-- Adds: v4_sections, v4_analysis, doc_type column on prism_v4_documents"
+            },
+            {
+              "line": 12,
+              "category": "reference",
+              "excerpt": "-- 2. v4_sections — stores segmented note/mixed document sections"
+            },
+            {
+              "line": 15,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS v4_sections ("
+            },
+            {
+              "line": 28,
+              "category": "reference",
+              "excerpt": "ON v4_sections (document_id);"
+            },
+            {
+              "line": 31,
+              "category": "reference",
+              "excerpt": "ON v4_sections (document_id, \"order\");"
+            },
+            {
+              "line": 33,
+              "category": "reference",
+              "excerpt": "ALTER TABLE v4_sections ENABLE ROW LEVEL SECURITY;"
+            },
+            {
+              "line": 35,
+              "category": "policy",
+              "excerpt": "CREATE POLICY \"service_role_all\" ON v4_sections"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "v4_analysis",
+      "totalReferences": 42,
+      "filesReferenced": 7,
+      "categoryCounts": {
+        "reference": 35,
+        "api-call": 4,
+        "function-trigger": 1,
+        "sql-write": 1,
+        "policy": 1
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/documents/upload.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 12128,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_analysis\") {"
+            },
+            {
+              "line": 12222,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_analysis\", {"
+            },
+            {
+              "line": 12237,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_analysis\", err))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/generate-test.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 9565,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_analysis\") {"
+            },
+            {
+              "line": 9761,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_analysis\", {"
+            },
+            {
+              "line": 9776,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_analysis\", err))"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulator/shared.ts",
+          "count": 6,
+          "matches": [
+            {
+              "line": 33,
+              "category": "function-trigger",
+              "excerpt": "function disableV4Table(table: \"v4_items\" | \"v4_sections\" | \"v4_analysis\", error: unknown): boolean {"
+            },
+            {
+              "line": 52,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_analysis\") {"
+            },
+            {
+              "line": 661,
+              "category": "reference",
+              "excerpt": "// V4 analysis storage — v4_analysis table"
+            },
+            {
+              "line": 665,
+              "category": "reference",
+              "excerpt": "* Persist structured analysis for a document to `v4_analysis`."
+            },
+            {
+              "line": 686,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_analysis\", {"
+            },
+            {
+              "line": 701,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_analysis\", err)) return;"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/student-portal/documents/submit.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 10203,
+              "category": "reference",
+              "excerpt": "if (table === \"v4_analysis\") {"
+            },
+            {
+              "line": 10297,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"v4_analysis\", {"
+            },
+            {
+              "line": 10312,
+              "category": "reference",
+              "excerpt": "if (disableV4Table(\"v4_analysis\", err))"
+            }
+          ]
+        },
+        {
+          "filePath": "src/prism-v4/ingestion/ingestDocument.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 20,
+              "category": "reference",
+              "excerpt": "*   4.  v4_analysis populated"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_schema_repair_migration.sql",
+          "count": 21,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "-- on v4_items / v4_sections / v4_analysis."
+            },
+            {
+              "line": 125,
+              "category": "reference",
+              "excerpt": "-- v4_analysis"
+            },
+            {
+              "line": 127,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS public.v4_analysis ("
+            },
+            {
+              "line": 144,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_analysis' AND column_name = 'doc_id'"
+            },
+            {
+              "line": 148,
+              "category": "reference",
+              "excerpt": "WHERE table_schema = 'public' AND table_name = 'v4_analysis' AND column_name = 'document_id'"
+            },
+            {
+              "line": 150,
+              "category": "reference",
+              "excerpt": "EXECUTE 'ALTER TABLE public.v4_analysis RENAME COLUMN doc_id TO document_id';"
+            },
+            {
+              "line": 154,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS document_id text;"
+            },
+            {
+              "line": 155,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS doc_type text;"
+            },
+            {
+              "line": 156,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS summary text;"
+            },
+            {
+              "line": 157,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS key_concepts jsonb DEFAULT '[]'::jsonb;"
+            },
+            {
+              "line": 158,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS misconceptions jsonb DEFAULT '[]'::jsonb;"
+            },
+            {
+              "line": 159,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS cognitive_load jsonb DEFAULT '{}'::jsonb;"
+            },
+            {
+              "line": 160,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS charts jsonb DEFAULT '{}'::jsonb;"
+            },
+            {
+              "line": 161,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;"
+            },
+            {
+              "line": 162,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 163,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD COLUMN IF NOT EXISTS updated_at timestamptz DEFAULT now();"
+            },
+            {
+              "line": 165,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis"
+            },
+            {
+              "line": 168,
+              "category": "sql-write",
+              "excerpt": "UPDATE public.v4_analysis"
+            },
+            {
+              "line": 172,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis"
+            },
+            {
+              "line": 188,
+              "category": "reference",
+              "excerpt": "AND conrelid = 'public.v4_analysis'::regclass"
+            },
+            {
+              "line": 190,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.v4_analysis ADD CONSTRAINT v4_analysis_pkey PRIMARY KEY (document_id);"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/v4_unified_ingestion_migration.sql",
+          "count": 5,
+          "matches": [
+            {
+              "line": 2,
+              "category": "reference",
+              "excerpt": "-- Adds: v4_sections, v4_analysis, doc_type column on prism_v4_documents"
+            },
+            {
+              "line": 42,
+              "category": "reference",
+              "excerpt": "-- 3. v4_analysis — structured analysis per document (replaces opaque JSONB blob)"
+            },
+            {
+              "line": 45,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS v4_analysis ("
+            },
+            {
+              "line": 58,
+              "category": "reference",
+              "excerpt": "ALTER TABLE v4_analysis ENABLE ROW LEVEL SECURITY;"
+            },
+            {
+              "line": 60,
+              "category": "policy",
+              "excerpt": "CREATE POLICY \"service_role_all\" ON v4_analysis"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "user_daily_simulations_legacy",
+      "totalReferences": 5,
+      "filesReferenced": 1,
+      "categoryCounts": {
+        "reference": 5
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "supabase/daily_limits_and_simulation_reviews.sql",
+          "count": 5,
+          "matches": [
+            {
+              "line": 76,
+              "category": "reference",
+              "excerpt": "and table_name = 'user_daily_simulations_legacy'"
+            },
+            {
+              "line": 78,
+              "category": "reference",
+              "excerpt": "alter table public.user_daily_simulations rename to user_daily_simulations_legacy;"
+            },
+            {
+              "line": 100,
+              "category": "reference",
+              "excerpt": "and table_name = 'user_daily_simulations_legacy'"
+            },
+            {
+              "line": 107,
+              "category": "reference",
+              "excerpt": "and table_name = 'user_daily_simulations_legacy'"
+            },
+            {
+              "line": 119,
+              "category": "reference",
+              "excerpt": "from public.user_daily_simulations_legacy legacy"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "cognitive_templates",
+      "totalReferences": 15,
+      "filesReferenced": 6,
+      "categoryCounts": {
+        "api-call": 12,
+        "reference": 3
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/simulator/shortcircuit.js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 1159,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 1177,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/teacher-feedback.js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 1190,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 1199,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/teacher-feedback/templates.js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 157,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 175,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/prism-v4/teacherFeedback/store.ts",
+          "count": 6,
+          "matches": [
+            {
+              "line": 809,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 819,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 843,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 853,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 898,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            },
+            {
+              "line": 917,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"cognitive_templates\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/teacher_feedback_cognition_migration.sql",
+          "count": 1,
+          "matches": [
+            {
+              "line": 20,
+              "category": "reference",
+              "excerpt": "create table if not exists cognitive_templates ("
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/teacher_feedback_semantic_repair.sql",
+          "count": 2,
+          "matches": [
+            {
+              "line": 35,
+              "category": "reference",
+              "excerpt": "CREATE TABLE IF NOT EXISTS public.cognitive_templates ("
+            },
+            {
+              "line": 49,
+              "category": "reference",
+              "excerpt": "ALTER TABLE public.cognitive_templates"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "simulation_runs",
+      "totalReferences": 19,
+      "filesReferenced": 10,
+      "categoryCounts": {
+        "api-call": 8,
+        "reference": 9,
+        "policy": 2
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/classes/[classId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 182,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/results/_shared.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 136,
+              "category": "api-call",
+              "excerpt": "return supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/[simulationId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 158,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/review.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 54,
+              "category": "api-call",
+              "excerpt": "const runs = await supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/run.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 687,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/simulation/phase-c/store.ts",
+          "count": 3,
+          "matches": [
+            {
+              "line": 459,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"simulation_runs\", {"
+            },
+            {
+              "line": 499,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_runs\", {"
+            },
+            {
+              "line": 520,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_runs\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/daily_limits_and_simulation_reviews.sql",
+          "count": 1,
+          "matches": [
+            {
+              "line": 132,
+              "category": "reference",
+              "excerpt": "simulation_id uuid not null references public.simulation_runs(id) on delete cascade,"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_simulation_migration.sql",
+          "count": 7,
+          "matches": [
+            {
+              "line": 37,
+              "category": "reference",
+              "excerpt": "create table if not exists public.simulation_runs ("
+            },
+            {
+              "line": 44,
+              "category": "reference",
+              "excerpt": "create index if not exists simulation_runs_class_id_idx on public.simulation_runs(class_id);"
+            },
+            {
+              "line": 45,
+              "category": "reference",
+              "excerpt": "create index if not exists simulation_runs_document_id_idx on public.simulation_runs(document_id);"
+            },
+            {
+              "line": 49,
+              "category": "reference",
+              "excerpt": "simulation_id uuid not null references public.simulation_runs(id) on delete cascade,"
+            },
+            {
+              "line": 78,
+              "category": "reference",
+              "excerpt": "alter table public.simulation_runs enable row level security;"
+            },
+            {
+              "line": 95,
+              "category": "policy",
+              "excerpt": "drop policy if exists \"service_role_all_simulation_runs\" on public.simulation_runs;"
+            },
+            {
+              "line": 96,
+              "category": "policy",
+              "excerpt": "create policy \"service_role_all_simulation_runs\" on public.simulation_runs"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/db-schema.test.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 18,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"create table if not exists public.simulation_runs\");"
+            },
+            {
+              "line": 28,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"alter table public.simulation_runs enable row level security\");"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/store.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 110,
+              "category": "reference",
+              "excerpt": "expect([\"classes\", \"synthetic_students\", \"simulation_runs\", \"simulation_results\"]).toContain(table);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "simulation_results",
+      "totalReferences": 17,
+      "filesReferenced": 7,
+      "categoryCounts": {
+        "api-call": 5,
+        "reference": 10,
+        "policy": 2
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/classes/[classId]/results/_shared.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 144,
+              "category": "api-call",
+              "excerpt": "return supabaseRest(\"simulation_results\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/[simulationId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 177,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_results\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/run.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 705,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"simulation_results\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/simulation/phase-c/store.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 480,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"simulation_results\", {"
+            },
+            {
+              "line": 545,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"simulation_results\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_simulation_migration.sql",
+          "count": 9,
+          "matches": [
+            {
+              "line": 47,
+              "category": "reference",
+              "excerpt": "create table if not exists public.simulation_results ("
+            },
+            {
+              "line": 64,
+              "category": "reference",
+              "excerpt": "alter table public.simulation_results"
+            },
+            {
+              "line": 67,
+              "category": "reference",
+              "excerpt": "alter table public.simulation_results"
+            },
+            {
+              "line": 70,
+              "category": "reference",
+              "excerpt": "alter table public.simulation_results"
+            },
+            {
+              "line": 73,
+              "category": "reference",
+              "excerpt": "create index if not exists simulation_results_simulation_id_idx on public.simulation_results(simulation_id);"
+            },
+            {
+              "line": 74,
+              "category": "reference",
+              "excerpt": "create index if not exists simulation_results_student_id_idx on public.simulation_results(synthetic_student_id);"
+            },
+            {
+              "line": 79,
+              "category": "reference",
+              "excerpt": "alter table public.simulation_results enable row level security;"
+            },
+            {
+              "line": 102,
+              "category": "policy",
+              "excerpt": "drop policy if exists \"service_role_all_simulation_results\" on public.simulation_results;"
+            },
+            {
+              "line": 103,
+              "category": "policy",
+              "excerpt": "create policy \"service_role_all_simulation_results\" on public.simulation_results"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/db-schema.test.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 19,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"create table if not exists public.simulation_results\");"
+            },
+            {
+              "line": 29,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"alter table public.simulation_results enable row level security\");"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/store.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 110,
+              "category": "reference",
+              "excerpt": "expect([\"classes\", \"synthetic_students\", \"simulation_runs\", \"simulation_results\"]).toContain(table);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "classes",
+      "totalReferences": 96,
+      "filesReferenced": 29,
+      "categoryCounts": {
+        "reference": 84,
+        "api-call": 9,
+        "function-trigger": 1,
+        "policy": 2
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/rewrite/index.js",
+          "count": 4,
+          "matches": [
+            {
+              "line": 10921,
+              "category": "function-trigger",
+              "excerpt": "function _stringbool(Classes, _params) {"
+            },
+            {
+              "line": 10931,
+              "category": "reference",
+              "excerpt": "const _Codec = Classes.Codec ?? $ZodCodec;"
+            },
+            {
+              "line": 10932,
+              "category": "reference",
+              "excerpt": "const _Boolean = Classes.Boolean ?? $ZodBoolean;"
+            },
+            {
+              "line": 10933,
+              "category": "reference",
+              "excerpt": "const _String = Classes.String ?? $ZodString;"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/admin/simulation-reviews.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 60,
+              "category": "api-call",
+              "excerpt": "const classRows = await supabaseRest(\"classes\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId].js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 4,
+              "category": "reference",
+              "excerpt": "// api/v4/classes/[classId].ts"
+            },
+            {
+              "line": 141,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/differentiated-build.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 11,
+              "category": "reference",
+              "excerpt": "// api/v4/classes/[classId]/differentiated-build.ts"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/performance.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 11,
+              "category": "reference",
+              "excerpt": "// api/v4/classes/[classId]/performance.ts"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/regenerate.js",
+          "count": 2,
+          "matches": [
+            {
+              "line": 4,
+              "category": "reference",
+              "excerpt": "// api/v4/classes/[classId]/regenerate.ts"
+            },
+            {
+              "line": 513,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/index.js",
+          "count": 5,
+          "matches": [
+            {
+              "line": 4,
+              "category": "reference",
+              "excerpt": "// api/v4/classes/index.ts"
+            },
+            {
+              "line": 530,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"classes\", {"
+            },
+            {
+              "line": 554,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            },
+            {
+              "line": 590,
+              "category": "reference",
+              "excerpt": "const classes = await listClasses(teacherId);"
+            },
+            {
+              "line": 591,
+              "category": "reference",
+              "excerpt": "return res.status(200).json({ classes });"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/run.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 602,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/__tests__/classDifferentiatedBuildRoutes.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "import differentiatedBuildHandler from \"../../api/v4/classes/[classId]/differentiated-build\";"
+            }
+          ]
+        },
+        {
+          "filePath": "src/__tests__/classPerformanceRoutes.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "import classPerformanceHandler from \"../../api/v4/classes/[classId]/performance\";"
+            }
+          ]
+        },
+        {
+          "filePath": "src/__tests__/useInstructionalSession.test.tsx",
+          "count": 2,
+          "matches": [
+            {
+              "line": 77,
+              "category": "reference",
+              "excerpt": "if (url.includes(\"/api/v4/classes/class-1/performance\")) {"
+            },
+            {
+              "line": 129,
+              "category": "reference",
+              "excerpt": "expect(fetchMock).toHaveBeenCalledWith(\"/api/v4/classes/class-1/performance\", undefined);"
+            }
+          ]
+        },
+        {
+          "filePath": "src/App.tsx",
+          "count": 8,
+          "matches": [
+            {
+              "line": 24,
+              "category": "reference",
+              "excerpt": "const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/classes', '/classes/new']);"
+            },
+            {
+              "line": 29,
+              "category": "reference",
+              "excerpt": "|| pathname.startsWith('/classes/')"
+            },
+            {
+              "line": 54,
+              "category": "reference",
+              "excerpt": "<button className=\"home-card\" onClick={() => navigate(\"/classes\")}>"
+            },
+            {
+              "line": 103,
+              "category": "reference",
+              "excerpt": "pathname === '/classes' ? 'My Classes' :"
+            },
+            {
+              "line": 104,
+              "category": "reference",
+              "excerpt": "pathname === '/classes/new' || pathname.startsWith('/classes/') ? 'Class Builder' :"
+            },
+            {
+              "line": 110,
+              "category": "reference",
+              "excerpt": "const classDetailMatch = pathname.match(/^\\/classes\\/([^/]+)$/);"
+            },
+            {
+              "line": 147,
+              "category": "reference",
+              "excerpt": ": pathname === '/classes'"
+            },
+            {
+              "line": 149,
+              "category": "reference",
+              "excerpt": ": pathname === '/classes/new'"
+            }
+          ]
+        },
+        {
+          "filePath": "src/components_new/v4/phase-c/ClassBuilderPage.tsx",
+          "count": 3,
+          "matches": [
+            {
+              "line": 98,
+              "category": "reference",
+              "excerpt": "<p className=\"phasec-kicker\">Classes</p>"
+            },
+            {
+              "line": 125,
+              "category": "reference",
+              "excerpt": "<button className=\"phasec-button-secondary\" onClick={() => navigate(\"/classes\")}>Cancel</button>"
+            },
+            {
+              "line": 235,
+              "category": "reference",
+              "excerpt": "<button className=\"phasec-button\" disabled={!createdClassId} onClick={() => createdClassId && navigate(`/classes/${createdClassId}`)}>"
+            }
+          ]
+        },
+        {
+          "filePath": "src/components_new/v4/phase-c/ClassesListPage.tsx",
+          "count": 17,
+          "matches": [
+            {
+              "line": 9,
+              "category": "reference",
+              "excerpt": "const [classes, setClasses] = useState<PhaseCClass[]>([]);"
+            },
+            {
+              "line": 15,
+              "category": "reference",
+              "excerpt": ".then((res) => setClasses(res.classes))"
+            },
+            {
+              "line": 16,
+              "category": "reference",
+              "excerpt": ".catch((err) => setError(err instanceof Error ? err.message : \"Failed to load classes.\"))"
+            },
+            {
+              "line": 23,
+              "category": "reference",
+              "excerpt": "<p className=\"phasec-kicker\">Classes</p>"
+            },
+            {
+              "line": 24,
+              "category": "reference",
+              "excerpt": "<h2>My Classes</h2>"
+            },
+            {
+              "line": 28,
+              "category": "reference",
+              "excerpt": "{loading && <p className=\"phasec-copy\">Loading classes…</p>}"
+            },
+            {
+              "line": 30,
+              "category": "reference",
+              "excerpt": "{!loading && !error && classes.length === 0 && ("
+            },
+            {
+              "line": 31,
+              "category": "reference",
+              "excerpt": "<p className=\"phasec-copy\">You haven't created any classes yet.</p>"
+            },
+            {
+              "line": 33,
+              "category": "reference",
+              "excerpt": "{!loading && !error && classes.length > 0 && ("
+            },
+            {
+              "line": 34,
+              "category": "reference",
+              "excerpt": "<ul className=\"classes-list\">"
+            },
+            {
+              "line": 35,
+              "category": "reference",
+              "excerpt": "{classes.map((cls) => ("
+            },
+            {
+              "line": 36,
+              "category": "reference",
+              "excerpt": "<li key={cls.id} className=\"classes-list-item\">"
+            },
+            {
+              "line": 38,
+              "category": "reference",
+              "excerpt": "className=\"classes-list-btn\""
+            },
+            {
+              "line": 39,
+              "category": "reference",
+              "excerpt": "onClick={() => navigate(`/classes/${cls.id}`)}"
+            },
+            {
+              "line": 41,
+              "category": "reference",
+              "excerpt": "<span className=\"classes-list-name\">{cls.name}</span>"
+            },
+            {
+              "line": 42,
+              "category": "reference",
+              "excerpt": "<span className=\"classes-list-meta\">"
+            },
+            {
+              "line": 52,
+              "category": "reference",
+              "excerpt": "<button className=\"phasec-button\" onClick={() => navigate(\"/classes/new\")}>"
+            }
+          ]
+        },
+        {
+          "filePath": "src/components_new/v4/ShortCircuitPage.tsx",
+          "count": 4,
+          "matches": [
+            {
+              "line": 481,
+              "category": "reference",
+              "excerpt": "setPhaseCClasses(response.classes);"
+            },
+            {
+              "line": 482,
+              "category": "reference",
+              "excerpt": "setSelectedClassId((current) => current || response.classes[0]?.id || \"\");"
+            },
+            {
+              "line": 484,
+              "category": "reference",
+              "excerpt": "setPhaseCRunError(err instanceof Error ? err.message : \"Failed to load classes.\");"
+            },
+            {
+              "line": 1224,
+              "category": "reference",
+              "excerpt": "{phaseCClassLoading && <p className=\"phasec-copy\">Loading classes...</p>}"
+            }
+          ]
+        },
+        {
+          "filePath": "src/components_new/v4/tests/PavilionInstructionalIntelligence.test.tsx",
+          "count": 2,
+          "matches": [
+            {
+              "line": 222,
+              "category": "reference",
+              "excerpt": "if (input === \"/api/v4/classes/session-1/performance\") return jsonResponse({ classProfile: { classId: \"session-1\", students: [], conceptClusters: [], misconceptionClusters: [] } });"
+            },
+            {
+              "line": 223,
+              "category": "reference",
+              "excerpt": "if (input === \"/api/v4/classes/session-1/differentiated-build\") return jsonResponse({ differentiatedBuild: { classId: \"session-1\", versions: [] } });"
+            }
+          ]
+        },
+        {
+          "filePath": "src/components_new/v4/tests/PavilionIntegration.test.tsx",
+          "count": 4,
+          "matches": [
+            {
+              "line": 331,
+              "category": "reference",
+              "excerpt": "if (input === \"/api/v4/classes/session-1/performance\") {"
+            },
+            {
+              "line": 363,
+              "category": "reference",
+              "excerpt": "if (input === \"/api/v4/classes/session-1/differentiated-build\") {"
+            },
+            {
+              "line": 432,
+              "category": "reference",
+              "excerpt": "expect(fetchMock.mock.calls.some(([input]) => input === \"/api/v4/classes/session-1/performance\")).toBe(true);"
+            },
+            {
+              "line": 433,
+              "category": "reference",
+              "excerpt": "expect(fetchMock.mock.calls.some(([input]) => input === \"/api/v4/classes/session-1/differentiated-build\")).toBe(true);"
+            }
+          ]
+        },
+        {
+          "filePath": "src/lib/instructionalSessionApi.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 140,
+              "category": "reference",
+              "excerpt": "return fetchJson<ClassProfileResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/performance`);"
+            },
+            {
+              "line": 144,
+              "category": "reference",
+              "excerpt": "return fetchJson<DifferentiatedBuildResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/differentiated-build`);"
+            }
+          ]
+        },
+        {
+          "filePath": "src/lib/phaseCApi.ts",
+          "count": 7,
+          "matches": [
+            {
+              "line": 191,
+              "category": "reference",
+              "excerpt": "return fetchJson<{ classes: PhaseCClass[] }>(\"/api/v4/classes\", {"
+            },
+            {
+              "line": 204,
+              "category": "reference",
+              "excerpt": "return fetchJson<{ class: PhaseCClass; students: SyntheticStudent[] }>(\"/api/v4/classes\", {"
+            },
+            {
+              "line": 221,
+              "category": "reference",
+              "excerpt": "}>(`/api/v4/classes/${encodeURIComponent(classId)}`);"
+            },
+            {
+              "line": 225,
+              "category": "reference",
+              "excerpt": "return fetchJson<{ classId: string; students: SyntheticStudent[]; studentCount: number }>(`/api/v4/classes/${encodeURIComponent(classId)}/regenerate`, {"
+            },
+            {
+              "line": 381,
+              "category": "reference",
+              "excerpt": "return fetchJson<ClassResultHistoryItem[]>(`/api/v4/classes/${encodeURIComponent(classId)}/results`);"
+            },
+            {
+              "line": 386,
+              "category": "reference",
+              "excerpt": "return fetchJson<ClassActualResultsResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/results/actual${query}`);"
+            },
+            {
+              "line": 391,
+              "category": "reference",
+              "excerpt": "return fetchJson<ClassCompareResultsResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/results/compare${query}`);"
+            }
+          ]
+        },
+        {
+          "filePath": "src/simulation/phase-c/store.ts",
+          "count": 3,
+          "matches": [
+            {
+              "line": 305,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"classes\", {"
+            },
+            {
+              "line": 332,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            },
+            {
+              "line": 359,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"classes\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/utils/computeDiff.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 96,
+              "category": "reference",
+              "excerpt": "* CSS classes:"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/daily_limits_and_simulation_reviews.sql",
+          "count": 1,
+          "matches": [
+            {
+              "line": 133,
+              "category": "reference",
+              "excerpt": "class_id uuid not null references public.classes(id) on delete cascade,"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_actual_results_and_deltas_migration.sql",
+          "count": 2,
+          "matches": [
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "class_id uuid not null references public.classes(id) on delete cascade,"
+            },
+            {
+              "line": 22,
+              "category": "reference",
+              "excerpt": "class_id uuid not null references public.classes(id) on delete cascade,"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_simulation_migration.sql",
+          "count": 9,
+          "matches": [
+            {
+              "line": 1,
+              "category": "reference",
+              "excerpt": "-- Migration: Phase C classes + synthetic students + simulation runs/results"
+            },
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "create table if not exists public.classes ("
+            },
+            {
+              "line": 14,
+              "category": "reference",
+              "excerpt": "create index if not exists classes_teacher_id_idx on public.classes(teacher_id);"
+            },
+            {
+              "line": 15,
+              "category": "reference",
+              "excerpt": "create index if not exists classes_created_at_idx on public.classes(created_at desc);"
+            },
+            {
+              "line": 19,
+              "category": "reference",
+              "excerpt": "class_id uuid not null references public.classes(id) on delete cascade,"
+            },
+            {
+              "line": 39,
+              "category": "reference",
+              "excerpt": "class_id uuid not null references public.classes(id) on delete cascade,"
+            },
+            {
+              "line": 76,
+              "category": "reference",
+              "excerpt": "alter table public.classes enable row level security;"
+            },
+            {
+              "line": 81,
+              "category": "policy",
+              "excerpt": "drop policy if exists \"service_role_all_classes\" on public.classes;"
+            },
+            {
+              "line": 82,
+              "category": "policy",
+              "excerpt": "create policy \"service_role_all_classes\" on public.classes"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/e2e/simulate-assessment.e2e.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 28,
+              "category": "reference",
+              "excerpt": "import classesHandler from \"../../api/v4/classes/index\";"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/api-classes.test.ts",
+          "count": 4,
+          "matches": [
+            {
+              "line": 3,
+              "category": "reference",
+              "excerpt": "import classesHandler from \"../../api/v4/classes/index\";"
+            },
+            {
+              "line": 4,
+              "category": "reference",
+              "excerpt": "import classDetailHandler from \"../../api/v4/classes/[classId]\";"
+            },
+            {
+              "line": 5,
+              "category": "reference",
+              "excerpt": "import regenerateHandler from \"../../api/v4/classes/[classId]/regenerate\";"
+            },
+            {
+              "line": 55,
+              "category": "reference",
+              "excerpt": "expect(listRes.body.classes.length).toBeGreaterThan(0);"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/db-schema.test.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 16,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"create table if not exists public.classes\");"
+            },
+            {
+              "line": 26,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"alter table public.classes enable row level security\");"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/integration-end-to-end.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 35,
+              "category": "reference",
+              "excerpt": "import classesHandler from \"../../api/v4/classes/index\";"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/store.test.ts",
+          "count": 4,
+          "matches": [
+            {
+              "line": 47,
+              "category": "reference",
+              "excerpt": "const classes = await listClasses(\"teacher-1\");"
+            },
+            {
+              "line": 48,
+              "category": "reference",
+              "excerpt": "expect(classes.some((entry) => entry.id === created.classRecord.id)).toBe(true);"
+            },
+            {
+              "line": 88,
+              "category": "reference",
+              "excerpt": "if (table === \"classes\" && (options?.method ?? \"GET\") === \"GET\") {"
+            },
+            {
+              "line": 110,
+              "category": "reference",
+              "excerpt": "expect([\"classes\", \"synthetic_students\", \"simulation_runs\", \"simulation_results\"]).toContain(table);"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "table": "synthetic_students",
+      "totalReferences": 24,
+      "filesReferenced": 11,
+      "categoryCounts": {
+        "api-call": 14,
+        "reference": 8,
+        "policy": 2
+      },
+      "cleanupCandidate": false,
+      "files": [
+        {
+          "filePath": "api/v4/classes/[classId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 161,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/regenerate.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 532,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 567,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 573,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/[classId]/results/_shared.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 105,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/classes/index.js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 536,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/[simulationId].js",
+          "count": 1,
+          "matches": [
+            {
+              "line": 137,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "api/v4/simulations/run.js",
+          "count": 3,
+          "matches": [
+            {
+              "line": 621,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 643,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 649,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "src/simulation/phase-c/store.ts",
+          "count": 4,
+          "matches": [
+            {
+              "line": 312,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 381,
+              "category": "api-call",
+              "excerpt": "const rows = await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 423,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            },
+            {
+              "line": 430,
+              "category": "api-call",
+              "excerpt": "await supabaseRest(\"synthetic_students\", {"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_actual_results_and_deltas_migration.sql",
+          "count": 1,
+          "matches": [
+            {
+              "line": 7,
+              "category": "reference",
+              "excerpt": "synthetic_student_id uuid null references public.synthetic_students(id) on delete set null,"
+            }
+          ]
+        },
+        {
+          "filePath": "supabase/phase_c_simulation_migration.sql",
+          "count": 6,
+          "matches": [
+            {
+              "line": 17,
+              "category": "reference",
+              "excerpt": "create table if not exists public.synthetic_students ("
+            },
+            {
+              "line": 35,
+              "category": "reference",
+              "excerpt": "create index if not exists synthetic_students_class_id_idx on public.synthetic_students(class_id);"
+            },
+            {
+              "line": 50,
+              "category": "reference",
+              "excerpt": "synthetic_student_id uuid not null references public.synthetic_students(id) on delete cascade,"
+            },
+            {
+              "line": 77,
+              "category": "reference",
+              "excerpt": "alter table public.synthetic_students enable row level security;"
+            },
+            {
+              "line": 88,
+              "category": "policy",
+              "excerpt": "drop policy if exists \"service_role_all_synthetic_students\" on public.synthetic_students;"
+            },
+            {
+              "line": 89,
+              "category": "policy",
+              "excerpt": "create policy \"service_role_all_synthetic_students\" on public.synthetic_students"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/db-schema.test.ts",
+          "count": 2,
+          "matches": [
+            {
+              "line": 17,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"create table if not exists public.synthetic_students\");"
+            },
+            {
+              "line": 27,
+              "category": "reference",
+              "excerpt": "expect(sql).toContain(\"alter table public.synthetic_students enable row level security\");"
+            }
+          ]
+        },
+        {
+          "filePath": "tests/phase-c/store.test.ts",
+          "count": 1,
+          "matches": [
+            {
+              "line": 110,
+              "category": "reference",
+              "excerpt": "expect([\"classes\", \"synthetic_students\", \"simulation_runs\", \"simulation_results\"]).toContain(table);"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

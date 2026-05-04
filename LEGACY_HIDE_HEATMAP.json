@@ -1,0 +1,2945 @@
+{
+  "metadata": {
+    "generatedAt": "2026-05-04T14:31:30.655Z",
+    "root": "/workspaces/eduagents3.0",
+    "strictMode": false,
+    "totalScannedFiles": 1056
+  },
+  "summary": {
+    "hideHighCount": 351,
+    "hideMediumCount": 2,
+    "hideLowCount": 6,
+    "activeCount": 697
+  },
+  "suggestedFilesExclude": {
+    "legacy/**": true,
+    "src/pipeline/legacyV2/**": true,
+    "tmp/**": true,
+    "legacy/v3/**": true
+  },
+  "topHideCandidates": [
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/architect/buildDeterministicPlan.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/document/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/inputJudge/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/philosopher/philosopherCall.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/builder/pluginBuilder.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/conceptGraph/ConceptGraph.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/gatekeeper/pluginGatekeeper.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/interfaces/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/templates/generic_content_template.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/writer/writerBridge.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/scribe/AgentSelector.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/scribe/CompensationEngine.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/scribe/defaults.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/writer/slot/normalized.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/ai/aiCall.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/blocks.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/items.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/style.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/templates.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/planPacing.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/types.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/contracts/writerOutput.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/mapper/index.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/orchestrator/documentOrchestrator.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/schema/analyzerOutput.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/schema/teacherStyleProfile.ts",
+      "score": 270,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/philosopher/philosopherPrompt.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/conceptGraph/types.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/diagramGenerator.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 7,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/imageAnalyzer.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/pluginScoring.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/angleDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/barChartDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/coordinateGraphDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/index.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/numberLineDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/scatterPlotDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/diagrams/triangleDiagram.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/llmDefaultPlugin.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/agents/pluginEngine/services/problemPlugins/templates/index.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/patterns.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/analyzerV2/types/section.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/conceptSequencer.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/coveragePlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/depthBound.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/difficultyPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/difficultySmoother.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/feasibilityPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/index.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/multipartPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/pluginPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/slotPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/stimulusPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/topicPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/architectV3/planner/typeMixPlanner.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/legacyV2/contracts/MinimalTeacherIntent.ts",
+      "score": 245,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "legacyV2-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/README.md",
+      "score": 210,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "legacy-language-in-content",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/analyzeResults.ts",
+      "score": 210,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "legacy-language-in-content",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/system/dossier/UserDossierManager.ts",
+      "score": 210,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "legacy-language-in-content",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/azure-extract.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/delete-template.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/derive-template.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/generate-assessment.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/rewrite.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/save-template.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/api/templates.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/__tests__/documentView.test.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/__tests__/dryRun.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/__tests__/pipeline.e2e.test.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/__tests__/pipelineRegression.test.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/api-templates.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/client/azureClient.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/client/llmClient.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Inference/WhatWeInferPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/MathFormatSelector.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/MinimalAssessmentForm.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/PipelineRouter.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/PipelineDebugPanel.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/ApiUsageBanner.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/AssessmentDetailPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/AssessmentResults.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/ComparePredictedActualPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/GenerateNewVersionPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/ImproveFutureWritingPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/MyAgentsPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/MyAssessmentsPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/QuestionBank.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/TeacherDashboard.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/TeacherProfilePage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/ViewAssessmentPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TraceViewer.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/WriterChunkDebugPanel.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/config/aiConfig.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/hooks/usePipeline.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/hooks/useRewrite.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/hooks/useTeacherProfile.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pages/TemplatesPage.tsx",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/buildArchitectUAR.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/conflictResolution.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/planCache.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/astronomer/phase1/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/astronomer/phase2/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/builder/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/buildIncidentReport.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/__tests__/buildDocumentInsights.test.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/__tests__/validateExtractedText.test.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/gatekeeper/bloomClassifier.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/gatekeeper/GatekeeperReport.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/gatekeeper/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/philosopher/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/rewriter/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/rewriter/rewriteSingle.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/scribe/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/scribe/WriterContractStore.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/spacecamp/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/templateDeriver/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/templateDeriver/infer.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/chunk/writerAdaptive.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/index.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/analyzerV2/analyzerV2.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/architectV3/planner/cognitivePlanner.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/architectV3/planner/pacingPlanner.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/contracts/taskTypes.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/persistence/deleteTemplate.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/persistence/loadAnalyzerOutput.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/persistence/saveAnalyzerOutput.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/persistence/saveTemplate.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/utils/concurrency.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/services_new/pipelineClient.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/services_new/pipelineReportService.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/system/dossier/types/ArchitectDossier.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/system/dossier/types/AstronomerDossier.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/system/dossier/types/WriterDossier.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/system/dossier/updateWriterAgentDossier.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/types/Blueprint.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/types/classroomProfiles.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/types/spaceCampSchema.ts",
+      "score": 190,
+      "band": "hide-high",
+      "incomingRefs": 0,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path",
+        "no-incoming-imports"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/AssessmentIntentSelector.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/AssessmentViewer.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/ConversationalAssessment.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/ConversationalAssessmentWrapper.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/DifferentiatedAssessment.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/DifferentiatedResultsView.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/GenerationPreview.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/PlaytesterPayloadPanel.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/PromptEngineerPanel.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/TeacherFeedbackPanel.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/TraceViewer.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/Pipeline/WriterGuidelinesPanel.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/TeacherSystem/ReportResultsPage.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/TemplateCard.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/TemplatesPage.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/TemplateSummaryPage.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/TemplateWizardPage.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components_new/templates/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/components/templates/TemplateCard.tsx",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/adjustPlanForTime.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/allocateBloomCounts.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/architectPrompt.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/assignPluginFields.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/chooseTaskType.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/complexity/complexityCaps.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/complexity/computeSlotComplexity.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/complexity/enforceComplexityCap.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/constraintEngine.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/estimateTime.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/extractors/passageExtractor.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/feasibility.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 5,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/feasibilityPrecheck.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/planners/narrowing/narrowingPlanner.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/planners/narrowing/subjectNarrowers.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/planners/narrowing/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/pluginMaps.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/rigorProfile.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/slotBuilders.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/topicMaps.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/architect/topicRefiner.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/builder/FinalAssessment.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 5,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/builder/sectionGrouper.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/builder/trueFalseFormatter.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/classifyTrace.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/document/analyzer.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/document/comparator.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/document/insights.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/document/summarizer.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/buildDocumentInsights.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/buildInsightsFromAzure.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/detectFileType.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractAzureText.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 5,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractConcepts.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractDocxText.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractEntities.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractExamples.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractFormulas.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractOcrText.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractPdfText.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractStructure.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/extractVocab.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/inferMetadata.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/storeDocumentForRAG.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/summarizeForUI.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/documentAnalyzer/validateExtractedText.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/gatekeeper/Gatekeeper.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/gatekeeper/ViolationCatalog.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/philosopher/philosopherTeacherFeedback.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/conceptGraph/ConceptGraph.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/conceptGraph/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/conceptGraph/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/interfaces/problemPlugin.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 16,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/registerSystemTemplates.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/pluginRegistry.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemGeneratorRouter.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/algebraic_fluency_template.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/arithmetic_fluency_template.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/fractions.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/generic_content_template.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/linearEquation.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/services/problemPlugins/templates/mathUtils.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/pluginEngine/wrapSchemaTemplate.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/promptEngineer/index.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/rewriter/teacherRewrite.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/scribe/GuardrailEngine.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/scribe/SCRIBE.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/shared/internalLogging.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/templateDeriver/builder.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/templateDeriver/derive.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/templateDeriver/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/bloomHintBudget.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/bloomHints.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 4,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/chunk/parseChunk.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/chunk/writerChunkPrompt.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/chunk/writerParallel.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 2,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/telemetry.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 3,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/generalProblems/content.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/generalProblems/essay.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/generalProblems/mcq.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/generalProblems/multiSelect.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/generalProblems/shortAnswer.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/registry.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 1,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/templates/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 6,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    },
+    {
+      "path": "legacy/v3/src/pipeline/agents/writer/types.ts",
+      "score": 165,
+      "band": "hide-high",
+      "incomingRefs": 11,
+      "reasons": [
+        "legacy-root-path",
+        "v3-path",
+        "legacy-keyword-in-path"
+      ]
+    }
+  ]
+}

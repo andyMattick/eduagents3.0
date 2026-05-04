@@ -71,8 +71,11 @@
     "cognition:report": "node --experimental-strip-types scripts/report-cognition.mts",
     "legacy:report": "node scripts/report-legacy-patterns.mjs",
     "legacy:report:strict": "LEGACY_STRICT=true node scripts/report-legacy-patterns.mjs",
+    "supabase:audit": "node scripts/audit-supabase-usage.mjs",
     "v4:heatmap": "node scripts/report-v4-heatmap.mjs",
     "v4:heatmap:strict": "V4_HEATMAP_STRICT=true node scripts/report-v4-heatmap.mjs",
+    "legacy:heatmap:hide": "node scripts/report-legacy-hide-heatmap.mjs",
+    "legacy:heatmap:apply": "node scripts/apply-legacy-excludes.mjs",
     "ci:legacy-check": "LEGACY_STRICT=true node scripts/report-legacy-patterns.mjs"
   },
   "description": "**Transform static educational assessments into dynamic, multidimensional simulations.**",
