@@ -45,7 +45,7 @@ export function TestEvidenceModal({ evidence, onClose, onAddAction }: Props) {
           <div key={item.itemNumber} className="cm-evidence-item">
             <div className="cm-evidence-item-header">
               <span>Q{item.itemNumber}</span>
-              <span>Difficulty: {item.difficulty}/5</span>
+              <span>Difficulty: {item.contentComplexity}/5</span>
             </div>
             <p>{item.rawText}</p>
             <div className="cm-evidence-tags">

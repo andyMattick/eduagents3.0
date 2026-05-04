@@ -144,16 +144,21 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export function applyTraitDelta(base: TraitVector, delta: Partial<TraitVector>): TraitVector {
+export function applyTraitDelta(base: TraitVector, delta?: Partial<TraitVector>): TraitVector {
+  const safeDelta = delta ?? {};
   return {
-    readingLevel: base.readingLevel + (delta.readingLevel ?? 0),
-    vocabularyLevel: base.vocabularyLevel + (delta.vocabularyLevel ?? 0),
-    backgroundKnowledge: base.backgroundKnowledge + (delta.backgroundKnowledge ?? 0),
-    processingSpeed: base.processingSpeed + (delta.processingSpeed ?? 0),
-    bloomMastery: base.bloomMastery + (delta.bloomMastery ?? 0),
-    mathLevel: base.mathLevel + (delta.mathLevel ?? 0),
-    writingLevel: base.writingLevel + (delta.writingLevel ?? 0),
+    readingLevel: base.readingLevel + (safeDelta.readingLevel ?? 0),
+    vocabularyLevel: base.vocabularyLevel + (safeDelta.vocabularyLevel ?? 0),
+    backgroundKnowledge: base.backgroundKnowledge + (safeDelta.backgroundKnowledge ?? 0),
+    processingSpeed: base.processingSpeed + (safeDelta.processingSpeed ?? 0),
+    bloomMastery: base.bloomMastery + (safeDelta.bloomMastery ?? 0),
+    mathLevel: base.mathLevel + (safeDelta.mathLevel ?? 0),
+    writingLevel: base.writingLevel + (safeDelta.writingLevel ?? 0),
   };
+}
+
+export function applyMultipleTraitDeltas(base: TraitVector, deltas: Array<Partial<TraitVector> | undefined>): TraitVector {
+  return deltas.reduce((acc, delta) => applyTraitDelta(acc, delta), base);
 }
 
 export function clampTraitVector(traits: TraitVector): TraitVector {

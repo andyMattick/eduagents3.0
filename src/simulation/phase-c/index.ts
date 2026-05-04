@@ -3,3 +3,4 @@ export * from "./traits";
 export * from "./generator";
 export * from "./store";
 export * from "./engine";
+export * from "./snapshot";

@@ -1,3 +1,3 @@
 export interface Difficulty {
-  difficultyScore: number; // 0-1
+  contentComplexity: number; // 0-1
 }

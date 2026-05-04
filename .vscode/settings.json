@@ -4,7 +4,11 @@
   "files.exclude": {
     "**/node_modules": true,
     "**/.git": true,
-    "dist": true
+    "dist": true,
+    "legacy/**": true,
+    "src/pipeline/legacyV2/**": true,
+    "tmp/**": true,
+    "legacy/v3/**": true
   },
   "search.exclude": {
     "**/node_modules": true,

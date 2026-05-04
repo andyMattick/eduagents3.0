@@ -145,7 +145,7 @@ export function ConceptMatchPage() {
           .map((i) => ({
             itemNumber: i.itemNumber,
             rawText: i.rawText,
-            difficulty: i.tags?.difficulty ?? 3,
+            contentComplexity: i.tags?.contentComplexity ?? 3,
             concepts: i.tags?.concepts ?? [],
           })),
       });
@@ -315,7 +315,7 @@ export function ConceptMatchPage() {
         <>
           <TestConceptProfilePanel
             testConceptStats={intel.testConceptStats}
-            testDifficulty={intel.testDifficulty}
+            testComplexity={intel.testComplexity}
             onViewEvidence={handleViewEvidence}
           />
 

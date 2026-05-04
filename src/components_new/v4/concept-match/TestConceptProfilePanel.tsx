@@ -18,18 +18,18 @@ function DifficultyDots({ avg }: { avg: number }) {
 
 interface Props {
   testConceptStats: Record<string, ConceptStat>;
-  testDifficulty: number;
+  testComplexity: number;
   onViewEvidence: (concept: string) => void;
 }
 
-export function TestConceptProfilePanel({ testConceptStats, testDifficulty, onViewEvidence }: Props) {
+export function TestConceptProfilePanel({ testConceptStats, testComplexity, onViewEvidence }: Props) {
   const concepts = Object.entries(testConceptStats).sort(
     ([, a], [, b]) => b.count - a.count
   );
 
   const [sortKey, setSortKey] = useState<"count" | "diff">("count");
   const sorted = [...concepts].sort(([, a], [, b]) =>
-    sortKey === "count" ? b.count - a.count : b.avgDifficulty - a.avgDifficulty
+    sortKey === "count" ? b.count - a.count : b.averageContentComplexity - a.averageContentComplexity
   );
 
   return (
@@ -40,7 +40,7 @@ export function TestConceptProfilePanel({ testConceptStats, testDifficulty, onVi
       <div className="cm-overall">
         <div>
           <div className="cm-overall-label">Overall Test Difficulty</div>
-          <div className="cm-overall-value">{testDifficulty.toFixed(1)}</div>
+          <div className="cm-overall-value">{testComplexity.toFixed(1)}</div>
         </div>
         <div>
           <div className="cm-overall-label">Concepts Detected</div>
@@ -79,8 +79,8 @@ export function TestConceptProfilePanel({ testConceptStats, testDifficulty, onVi
             <tr key={concept}>
               <td>{concept}</td>
               <td>{stat.count}</td>
-              <td><DifficultyDots avg={stat.avgDifficulty} /></td>
-              <td>{stat.avgDifficulty.toFixed(1)}</td>
+              <td><DifficultyDots avg={stat.averageContentComplexity} /></td>
+              <td>{stat.averageContentComplexity.toFixed(1)}</td>
               <td>{stat.questionNumbers.join(", ")}</td>
               <td>
                 <button

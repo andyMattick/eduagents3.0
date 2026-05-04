@@ -9,7 +9,7 @@ export interface AssessmentItem {
   rawText: string;
   tags?: {
     concepts?: string[];
-    difficulty?: number; // 1–5
+    contentComplexity?: number; // 1-5
   };
 }
 
@@ -29,14 +29,14 @@ export interface ConceptMatchIntelRequest {
 export interface ConceptStat {
   count: number;
   difficulties: number[];
-  avgDifficulty: number;
+  averageContentComplexity: number;
   questionNumbers: number[];
 }
 
 export interface PrepConceptStat {
   count: number;
   difficulties: number[];
-  avgDifficulty: number;
+  averageContentComplexity: number;
 }
 
 export interface ConceptCoverage {
@@ -47,8 +47,8 @@ export interface ConceptCoverage {
 }
 
 export interface ConceptMatchIntelResponse {
-  prepDifficulty: number;
-  testDifficulty: number;
+  prepComplexity: number;
+  testComplexity: number;
   testConceptStats: Record<string, ConceptStat>;
   prepConceptStats: Record<string, PrepConceptStat>;
   conceptCoverage: ConceptCoverage;
@@ -83,7 +83,7 @@ export interface TeacherAction {
 export interface TestEvidenceItem {
   itemNumber: number;
   rawText: string;
-  difficulty: number;
+  contentComplexity: number;
   concepts: string[];
 }
 
