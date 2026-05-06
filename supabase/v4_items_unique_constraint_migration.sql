@@ -8,14 +8,26 @@
 -- Run this after v4_schema_repair_migration.sql.
 
 -- v4_items: unique per (document_id, item_number)
-ALTER TABLE public.v4_items
-  ADD CONSTRAINT v4_items_document_id_item_number_unique
-  UNIQUE (document_id, item_number);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'v4_items_document_id_item_number_unique'
+  ) THEN
+    ALTER TABLE public.v4_items
+      ADD CONSTRAINT v4_items_document_id_item_number_unique
+      UNIQUE (document_id, item_number);
+  END IF;
+END $$;
 
 -- v4_sections: unique per (document_id, section_id)
-ALTER TABLE public.v4_sections
-  ADD CONSTRAINT v4_sections_document_id_section_id_unique
-  UNIQUE (document_id, section_id);
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'v4_sections_document_id_section_id_unique'
+  ) THEN
+    ALTER TABLE public.v4_sections
+      ADD CONSTRAINT v4_sections_document_id_section_id_unique
+      UNIQUE (document_id, section_id);
+  END IF;
+END $$;
 
 -- Refresh the PostgREST schema cache so the new constraints are recognized.
 NOTIFY pgrst, 'reload schema';
