@@ -12466,10 +12466,13 @@ function segmentItemsFromNodes(analyzedDocument) {
 /**
  * Takes the output of segmentItemsFromNodes and produces a flat list of atomic
  * items for DB insertion. For standalone items, passes through unchanged. For
- * multipart items (same itemNumber with subLabels), emits only the sub-items
- * so that the unique (document_id, item_number) constraint is never violated.
- * Sub-items are encoded as itemNumber*100 + letterOffset (a=1, b=2, …) to keep
- * item_number unique while retaining the parent number for washover lookup.
+ * multipart items (same itemNumber with named sub-parts), folds all sub-parts
+ * into a SINGLE row with the parent item_number and concatenated text.
+ *
+ * This keeps item_number == the printed number on the PDF, which is required
+ * by: (a) the UNIQUE (document_id, item_number) DB constraint, (b) the washover
+ * layer that keys answer-key/rubric overrides by the printed number, and
+ * (c) the simulation engine that labels items "item-N".
  */
 function detectAndExpandMultipart(segmentedItems) {
   const byNumber = new Map();
@@ -12478,17 +12481,22 @@ function detectAndExpandMultipart(segmentedItems) {
     byNumber.get(item.itemNumber).push(item);
   }
   const result = [];
-  for (const entries of byNumber.values()) {
+  for (const [num, entries] of byNumber.entries()) {
     const subs = entries.filter((e) => e.subLabel != null);
     const mains = entries.filter((e) => e.subLabel == null);
     if (subs.length > 0) {
-      // Multipart: emit sub-items only (encoded); drop the unsplit parent entry
-      for (const sub of subs) {
-        result.push({
-          ...sub,
-          itemNumber: sub.itemNumber * 100 + (sub.subLabel.charCodeAt(0) - 96)
-        });
-      }
+      // Multipart: fold all named parts into one row with the parent item_number.
+      // Concatenate sub-part text in label order so computeBaseTraits sees the full stem.
+      const sortedSubs = [...subs].sort((a, b) => a.subLabel.localeCompare(b.subLabel));
+      const combinedText = sortedSubs.map((s) => `(${s.subLabel}) ${s.rawText}`).join(" ");
+      const allNodeIds = sortedSubs.flatMap((s) => s.nodeIds);
+      result.push({
+        itemNumber: num,
+        subLabel: null,
+        rawText: combinedText,
+        nodeIds: allNodeIds,
+        subParts: sortedSubs.map((s) => s.subLabel)
+      });
     } else {
       result.push(...mains);
     }
@@ -12548,7 +12556,7 @@ function extractItemsFromAnalysis(doc, _text, _documentId) {
           rubric: null,
           final: { ...base },
           sourceSpan: null,
-          segmentedLabel: seg.subLabel ? `${Math.floor(seg.itemNumber / 100)}${seg.subLabel}` : String(seg.itemNumber)
+          segmentedLabel: seg.subParts?.length ? `${seg.itemNumber}(${seg.subParts.join(",")})` : String(seg.itemNumber)
         },
         sourcePageNumbers
       };
