@@ -4073,9 +4073,10 @@ async function handler(req, res) {
     const primaryDocumentId = rows[0]?.document_id;
     const reviewedRows = primaryDocumentId ? await supabaseRest("v4_items", {
       method: "GET",
-      select: "id,item_number,metadata",
+      select: "id,item_number,stem,metadata",
       filters: {
-        document_id: `eq.${primaryDocumentId}`
+        document_id: `eq.${primaryDocumentId}`,
+        order: "item_number.asc"
       }
     }) : [];
     const reviewedEntries = Array.isArray(reviewedRows) ? reviewedRows.map(readReviewedStructure).filter(Boolean) : [];
@@ -4092,6 +4093,14 @@ async function handler(req, res) {
           partIndex: entry.partIndex,
           text: entry.text
         });
+      }
+    } else if (Array.isArray(reviewedRows) && reviewedRows.length > 0) {
+      console.log(`[shortcircuit] document=${primaryDocumentId} using ${reviewedRows.length} DB item(s) from v4_items (unreviewed)`);
+      for (const row of reviewedRows) {
+        const text = typeof row.stem === "string" ? row.stem.trim() : "";
+        if (row.item_number && text) {
+          rawItems.push({ itemNumber: row.item_number, itemId: row.id, text });
+        }
       }
     } else {
       let itemOffset = 0;
