@@ -10,6 +10,7 @@ import { classifyFragments } from "./classifyFragments";
 import { extractAnchoredProblems } from "./extractAnchoredProblems";
 import { parsePptxToCanonicalDocument } from "./parseOfficeDocuments";
 import { validateCanonicalDocument } from "./validateCanonicalDocument";
+import type { DocumentRole } from "../../schema/domain/DocumentSession";
 
 function cleanAzureExtract(extract: AzureExtractResult): AzureExtractResult {
 	return {
@@ -29,6 +30,7 @@ export async function analyzeRegisteredDocument(args: {
 	documentId: string;
 	sourceFileName: string;
 	sourceMimeType: string;
+	declaredRole?: DocumentRole;
 	rawBinary?: Buffer;
 	azureExtract?: AzureExtractResult;
 	canonicalDocument?: CanonicalDocument;
@@ -82,7 +84,7 @@ export async function analyzeRegisteredDocument(args: {
 			createdAt: new Date().toISOString(),
 		}));
 
-	const fragments = classifyFragments(canonicalDocument);
+	const fragments = classifyFragments(canonicalDocument, args.declaredRole);
 	const extractInput = azureExtract ?? canonicalDocumentToAzureExtract(canonicalDocument);
 	const { extractedProblems } = extractInput
 		? extractAnchoredProblems({ document: canonicalDocument, fragments, azureExtract: { ...extractInput, fileName: args.sourceFileName } })

@@ -137,7 +137,8 @@ async function handler(req, res) {
     if (!doc) {
       return res.status(404).json({ error: { code: "not_found", message: "Document not found" } });
     }
-    if (doc.owner_id !== callerId) {
+    const isUnowned = doc.owner_id == null;
+    if (!isUnowned && doc.owner_id !== callerId) {
       return res.status(403).json({ error: { code: "forbidden", message: "You do not own this document" } });
     }
     if (doc.is_public === isPublic) {
@@ -159,9 +160,9 @@ async function handler(req, res) {
       method: "PATCH",
       filters: {
         document_id: `eq.${documentId}`,
-        owner_id: `eq.${callerId}`
+        ...(isUnowned ? {} : { owner_id: `eq.${callerId}` })
       },
-      body: { is_public: isPublic },
+      body: { is_public: isPublic, owner_id: callerId },
       prefer: "return=minimal",
       timeoutMs: SUPABASE_TIMEOUT_MS
     });

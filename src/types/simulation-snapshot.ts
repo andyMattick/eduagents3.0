@@ -31,6 +31,18 @@ export interface ItemSnapshot {
   spikes: Spike[];
   cliffs: Cliff[];
   fatigue: number;
+  momentum?: number;
+  confidenceInterval?: [number, number];
+  predictedDifficultyCurve?: number[];
+  predictedTimeCurve?: number[];
+  predictedConfusionCurve?: number[];
+  predictedState?: {
+    fatigue: number;
+    confusion: number;
+    momentum: number;
+  };
+  profileNarrative?: string;
+  comparisonNarrative?: string;
 
   traitDeltas: Record<string, number>;
 }

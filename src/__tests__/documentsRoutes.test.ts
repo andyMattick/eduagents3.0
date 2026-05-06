@@ -106,6 +106,13 @@ describe("v4 documents routes", () => {
 					[documentIds[0]]: ["source-material"],
 					[documentIds[1]]: ["target-assessment"],
 				},
+				resourceLinks: [
+					{
+						documentId: documentIds[1],
+						resourceDocumentId: documentIds[0],
+						resourceType: "answer-key",
+					},
+				],
 			},
 		};
 		const sessionRes = createResponse();
@@ -114,6 +121,25 @@ describe("v4 documents routes", () => {
 		expect(sessionRes.statusCode).toBe(200);
 		expect(sessionRes.body.documentRoles[documentIds[0]]).toEqual(["notes"]);
 		expect(sessionRes.body.sessionRoles[documentIds[1]]).toEqual(["target-assessment"]);
+		expect(sessionRes.body.resourceLinks).toEqual([
+			{
+				documentId: documentIds[1],
+				resourceDocumentId: documentIds[0],
+				resourceType: "answer-key",
+			},
+		]);
+
+		const persistedSessionReq: any = { method: "GET", query: { sessionId } };
+		const persistedSessionRes = createResponse();
+		await sessionHandler(persistedSessionReq, persistedSessionRes);
+		expect(persistedSessionRes.statusCode).toBe(200);
+		expect(persistedSessionRes.body.session.resourceLinks).toEqual([
+			{
+				documentId: documentIds[1],
+				resourceDocumentId: documentIds[0],
+				resourceType: "answer-key",
+			},
+		]);
 
 		const analysisReq: any = { method: "GET", query: { sessionId } };
 		const analysisRes = createResponse();

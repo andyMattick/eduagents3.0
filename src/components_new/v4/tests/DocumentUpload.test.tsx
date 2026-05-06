@@ -635,4 +635,71 @@ describe("DocumentUpload", () => {
     expect(screen.getByText("Bloom levels")).toBeInTheDocument();
     expect(screen.getByLabelText("Bloom summary")).toHaveTextContent("Apply");
   });
+
+  it("sends explicit companion resource links when answer key and worked solutions are uploaded separately", async () => {
+    const documents = [
+      { documentId: "doc-1", sourceFileName: "assessment.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
+      { documentId: "doc-2", sourceFileName: "answer-key.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
+      { documentId: "doc-3", sourceFileName: "worked-solutions.pdf", sourceMimeType: "application/pdf", createdAt: "2025-01-01T00:00:00.000Z" },
+    ];
+    const analyzedDocuments = [buildAnalyzedDocument("doc-1", "assessment.pdf", "fractions")];
+    const session = {
+      sessionId: "session-1",
+      documentIds: ["doc-1", "doc-2", "doc-3"],
+      documentRoles: { "doc-1": ["test"], "doc-2": ["answer-key"], "doc-3": ["worked-solution"] },
+      sessionRoles: { "doc-1": ["target-assessment"], "doc-2": ["unit-member"], "doc-3": ["unit-member"] },
+      resourceLinks: [
+        { documentId: "doc-1", resourceDocumentId: "doc-2", resourceType: "answer-key" },
+        { documentId: "doc-1", resourceDocumentId: "doc-3", resourceType: "worked-solution" },
+      ],
+      createdAt: "2025-01-01T00:00:00.000Z",
+      updatedAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    let uploadCount = 0;
+    const fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/api/v4/documents/upload") {
+        const document = documents[uploadCount] ?? documents[documents.length - 1];
+        uploadCount += 1;
+        return jsonResponse({ documentId: document.documentId, documentIds: [document.documentId], sessionId: "session-1", registered: [document] });
+      }
+      if (input === "/api/v4/documents/session" && init?.method === "POST") {
+        return jsonResponse(session);
+      }
+      if (input === "/api/v4/documents/session?sessionId=session-1") {
+        return jsonResponse({ session, documents, analyzedDocuments });
+      }
+      if (input === "/api/v4/documents/session-analysis?sessionId=session-1") {
+        return jsonResponse(buildInstructionalAnalysisResponse("session-1", analyzedDocuments));
+      }
+      if (input === "/api/v4/documents/intent?sessionId=session-1") {
+        return jsonResponse({ sessionId: "session-1", products: [] });
+      }
+      throw new Error(`Unexpected fetch call: ${input}`);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    render(<DocumentUpload />);
+
+    fireEvent.change(screen.getByLabelText("Teaching materials"), {
+      target: { files: [new File(["pdf"], "assessment.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Optional: separate answer key"), {
+      target: { files: [new File(["pdf"], "answer-key.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Optional: separate worked solutions"), {
+      target: { files: [new File(["pdf"], "worked-solutions.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+
+    expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
+
+    const sessionRequest = fetchMock.mock.calls.find(([input, init]) => input === "/api/v4/documents/session" && init?.method === "POST");
+    expect(sessionRequest).toBeTruthy();
+    const payload = JSON.parse(String(sessionRequest?.[1]?.body ?? "{}"));
+    expect(payload.resourceLinks).toEqual([
+      { documentId: "doc-1", resourceDocumentId: "doc-2", resourceType: "answer-key" },
+      { documentId: "doc-1", resourceDocumentId: "doc-3", resourceType: "worked-solution" },
+    ]);
+  });
 });

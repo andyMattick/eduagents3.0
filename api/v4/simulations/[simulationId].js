@@ -486,6 +486,27 @@ function readNumeric(metadata, keys) {
   }
   return void 0;
 }
+function readObject(metadata, keys) {
+  if (!metadata) {
+    return void 0;
+  }
+  for (const key of keys) {
+    const parts = key.split(".");
+    let value = metadata;
+    for (const part of parts) {
+      if (value && typeof value === "object" && part in value) {
+        value = value[part];
+      } else {
+        value = void 0;
+        break;
+      }
+    }
+    if (value && typeof value === "object") {
+      return value;
+    }
+  }
+  return void 0;
+}
 function readVocabCounts(metadata) {
   if (!metadata) {
     return void 0;
@@ -513,7 +534,9 @@ function extractItemTraits(row) {
     bloomLevel: readNumeric(metadata, ["bloomLevel", "bloom_level", "bloomsLevel", "phaseB.bloomLevel", "phaseB.bloom_level", "phaseB.bloomsLevel", "metrics.bloom_level", "metrics.blooms_level"]),
     representationLoad: readNumeric(metadata, ["representationLoad", "representation_load", "phaseB.representationLoad", "phaseB.representation_load", "metrics.representation_load"]),
     symbolDensity: readNumeric(metadata, ["symbolDensity", "symbol_density", "metrics.symbol_density"]),
-    vocabCounts: readVocabCounts(metadata)
+    vocabCounts: readVocabCounts(metadata),
+    resources: readObject(metadata, ["resources", "phaseB.resources"]),
+    measurables: readObject(metadata, ["measurables", "phaseB.measurables"])
   };
 }
 async function loadItemTraits(documentId) {
@@ -540,20 +563,77 @@ function aggregateClass(results) {
       totalRecords: 0,
       averageConfusionScore: 0,
       averageTimeSeconds: 0,
-      averageBloomGap: 0
+      averageBloomGap: 0,
+      averagePScore: 0,
+      averagePartialCreditProbability: 0,
+      rubricItemsEvaluated: 0
     };
   }
   const sums = results.reduce((accumulator, result) => {
+    const prediction = result.traitsSnapshot?.itemPredictions;
+    const pScore = Number(prediction?.pScore ?? 0);
+    const partialCreditProbability = Number(prediction?.partialCreditProbability ?? 0);
+    const hasRubricSignal = prediction?.rubricNarrative || result.traitsSnapshot?.itemMeasurables?.rubric;
     accumulator.confusion += result.confusionScore;
     accumulator.time += result.timeSeconds;
     accumulator.bloomGap += result.bloomGap;
+    accumulator.pScore += pScore;
+    accumulator.partialCreditProbability += partialCreditProbability;
+    if (hasRubricSignal) {
+      accumulator.rubricItems += 1;
+    }
     return accumulator;
-  }, { confusion: 0, time: 0, bloomGap: 0 });
+  }, { confusion: 0, time: 0, bloomGap: 0, pScore: 0, partialCreditProbability: 0, rubricItems: 0 });
   return {
     totalRecords: total,
     averageConfusionScore: sums.confusion / total,
     averageTimeSeconds: sums.time / total,
-    averageBloomGap: sums.bloomGap / total
+    averageBloomGap: sums.bloomGap / total,
+    averagePScore: sums.pScore / total,
+    averagePartialCreditProbability: sums.partialCreditProbability / total,
+    rubricItemsEvaluated: sums.rubricItems
+  };
+}
+function buildRubricSummary(results) {
+  if (!Array.isArray(results) || results.length === 0) {
+    return {
+      available: false,
+      averagePScore: 0,
+      averagePartialCreditProbability: 0,
+      notes: "No rubric-aligned item predictions are available for this view."
+    };
+  }
+  let rubricCount = 0;
+  let pScoreSum = 0;
+  let partialCreditSum = 0;
+  for (const result of results) {
+    const prediction = result.traitsSnapshot?.itemPredictions;
+    const hasRubric = Boolean(prediction?.rubricNarrative || result.traitsSnapshot?.itemMeasurables?.rubric);
+    if (!hasRubric) {
+      continue;
+    }
+    rubricCount += 1;
+    pScoreSum += Number(prediction?.pScore ?? 0);
+    partialCreditSum += Number(prediction?.partialCreditProbability ?? 0);
+  }
+  if (rubricCount === 0) {
+    return {
+      available: false,
+      averagePScore: 0,
+      averagePartialCreditProbability: 0,
+      notes: "Rubric data was not detected in stored prediction snapshots."
+    };
+  }
+  const averagePScore = pScoreSum / rubricCount;
+  const averagePartialCreditProbability = partialCreditSum / rubricCount;
+  return {
+    available: true,
+    averagePScore,
+    averagePartialCreditProbability,
+    rubricItemsEvaluated: rubricCount,
+    notes: averagePartialCreditProbability >= 0.5
+      ? "Rubric modeling indicates substantial partial-credit opportunities across these responses."
+      : "Rubric modeling indicates most responses are likely all-or-nothing with limited partial-credit signals."
   };
 }
 function filterByProfileOrTrait(results, students, profile) {
@@ -569,7 +649,8 @@ function profileSummaryLabel(profiles, positiveTraits) {
   return `${profileText} | ${traitText}`;
 }
 function buildStudentRoster(classId, students, results) {
-  const roster = new Map(students.map((student) => [student.id, student]));
+  const resultStudentIds = new Set(results.map((result) => result.syntheticStudentId));
+  const roster = new Map(students.filter((student) => resultStudentIds.has(student.id)).map((student) => [student.id, student]));
   for (const result of results) {
     if (roster.has(result.syntheticStudentId) || !result.traitsSnapshot) {
       continue;
@@ -627,7 +708,18 @@ function studentSummary(results, itemTraits) {
       bloomLevel: traits.bloomLevel ?? 3 + result.bloomGap,
       representationLoad: traits.representationLoad ?? 0.5,
       symbolDensity: traits.symbolDensity,
-      vocabCounts: traits.vocabCounts
+      vocabCounts: traits.vocabCounts,
+      resources: traits.resources,
+      measurables: result.traitsSnapshot?.itemMeasurables ?? traits.measurables,
+      predictedDifficultyCurve: result.traitsSnapshot?.itemPredictions?.predictedDifficultyCurve,
+      predictedTimeCurve: result.traitsSnapshot?.itemPredictions?.predictedTimeCurve,
+      predictedConfusionCurve: result.traitsSnapshot?.itemPredictions?.predictedConfusionCurve,
+      predictedState: result.traitsSnapshot?.itemPredictions?.predictedState,
+      momentum: result.traitsSnapshot?.itemPredictions?.momentum,
+      confidenceInterval: result.traitsSnapshot?.itemPredictions?.confidenceInterval,
+      pScore: result.traitsSnapshot?.itemPredictions?.pScore,
+      partialCreditProbability: result.traitsSnapshot?.itemPredictions?.partialCreditProbability,
+      rubricNarrative: result.traitsSnapshot?.itemPredictions?.rubricNarrative
     };
     return accumulator;
   }, {});
@@ -664,6 +756,14 @@ function phaseBSummary(results, itemTraits) {
       partIndex: traits.partIndex ?? parsed.partIndex,
       logicalLabel: traits.logicalLabel ?? parsed.logicalLabel,
       isParent: traits.isParent,
+      resources: traits.resources,
+      measurables: result.traitsSnapshot?.itemMeasurables ?? traits.measurables,
+      predictedDifficultyCurve: result.traitsSnapshot?.itemPredictions?.predictedDifficultyCurve,
+      predictedTimeCurve: result.traitsSnapshot?.itemPredictions?.predictedTimeCurve,
+      predictedConfusionCurve: result.traitsSnapshot?.itemPredictions?.predictedConfusionCurve,
+      predictedState: result.traitsSnapshot?.itemPredictions?.predictedState,
+      momentum: result.traitsSnapshot?.itemPredictions?.momentum,
+      confidenceInterval: result.traitsSnapshot?.itemPredictions?.confidenceInterval,
       traits: {
         bloomLevel: traits.bloomLevel ?? 3 + result.bloomGap,
         linguisticLoad: traits.linguisticLoad ?? result.linguisticLoad,
@@ -714,6 +814,7 @@ async function handler(req, res) {
     const availableStudentIds = roster.map((student) => student.id);
     if (view === "class") {
         const predictedVsActual = await loadPredictedVsActualDelta(run.classId, run.documentId);
+        const rubricSummary = buildRubricSummary(results);
         const narrative = await buildNarrativePayload({
           simulationId,
           classId: run.classId,
@@ -728,8 +829,10 @@ async function handler(req, res) {
         documentId: run.documentId,
         view,
         summary: aggregateClass(results),
+          rubricSummary,
           students: roster,
           narrative,
+          rubricNarrative: rubricSummary.notes,
           suggestions: { hardestItems },
         availableStudentIds
       });
@@ -739,7 +842,7 @@ async function handler(req, res) {
       if (!profile) {
         return res.status(400).json({ error: { code: "invalid_request", message: "profile is required when view=profile" } });
       }
-      const scoped = filterByProfileOrTrait(results, students, profile);
+      const scoped = filterByProfileOrTrait(results, roster, profile);
       return res.status(200).json({
         simulationId,
         classId: run.classId,
@@ -767,6 +870,7 @@ async function handler(req, res) {
         });
       }
       const scoped = results.filter((result) => result.syntheticStudentId === studentId);
+      const rubricSummary = buildRubricSummary(scoped);
       return res.status(200).json({
         simulationId,
         classId: run.classId,
@@ -774,8 +878,10 @@ async function handler(req, res) {
         view,
         studentId,
         summary: aggregateClass(scoped),
+        rubricSummary,
         students: roster,
         items: studentSummary(scoped, itemTraits),
+        rubricNarrative: rubricSummary.notes,
         availableStudentIds
       });
     }

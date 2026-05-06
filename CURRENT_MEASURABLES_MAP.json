@@ -29,6 +29,7 @@
       "tests/e2e/simulate-assessment.e2e.test.ts",
       "tests/phase-1/snapshot.reproducibility.test.ts",
       "tests/phase-1/traits.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
@@ -165,6 +166,8 @@
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
       "tests/phase-1/traits.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
@@ -333,6 +336,8 @@
       "tests/e2e/simulate-assessment.e2e.test.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/guardrails.test.ts",
+      "tests/phase-2/recalibration.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
       "tests/phase-c/store.test.ts",
@@ -438,6 +443,8 @@
       "tests/e2e/simulate-assessment.e2e.test.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/guardrails.test.ts",
+      "tests/phase-2/recalibration.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
@@ -465,6 +472,7 @@
       "supabase/user_daily_simulations_and_system_events.sql",
       "supabase/user_daily_usage_pages_upgrade.sql",
       "supabase/v4_document_registry_migration.sql",
+      "supabase/v4_document_resource_links_migration.sql",
       "supabase/v4_items_migration.sql",
       "supabase/v4_rewrite_runs_migration.sql",
       "supabase/v4_schema_repair_migration.sql",
@@ -521,6 +529,8 @@
       "src/types/simulation-snapshot.ts",
       "src/types/simulator.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
@@ -565,6 +575,8 @@
       "tests/e2e/simulate-assessment.e2e.test.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
@@ -575,6 +587,34 @@
       "supabase/phase_c_actual_results_and_deltas_migration.sql",
       "supabase/phase_c_simulation_migration.sql",
       "supabase/schema.sql",
+      "scripts/audit-measurables.mjs"
+    ],
+    "correctAnswer": [
+      "src/components_new/v4/CreateDocumentFlow.tsx",
+      "src/components_new/v4/assessment/__tests__/e2e.test.ts",
+      "src/components_new/v4/assessment/assessmentTypes.ts",
+      "src/components_new/v4/assessment/builder/generatorOrchestrator.ts",
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/hooks/useUserFlow.tsx",
+      "src/prism-v4/schema/domain/Problem.ts",
+      "src/prism-v4/semantic/pipeline/runSemanticPipeline.ts",
+      "src/prism-v4/semantic/tests/semanticPipeline.test.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "src/types/teacherSystem.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs",
+      "scripts/report-legacy-patterns.mjs"
+    ],
+    "stepCount": [
+      "src/components_new/v4/CreateDocumentFlow.tsx",
+      "src/components_new/v4/assessment/assessmentTypes.ts",
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/prism-v4/schema/integration/IntentProduct.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
       "scripts/audit-measurables.mjs"
     ],
     "pCorrect": [
@@ -593,6 +633,7 @@
       "tests/e2e/simulate-assessment.e2e.test.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
       "tests/phase-c/store.test.ts",
@@ -617,6 +658,8 @@
       "src/types/simulation-snapshot.ts",
       "src/types/simulator.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
@@ -641,6 +684,7 @@
       "src/types/simulation-snapshot.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/schema.boundary.test.ts",
+      "tests/phase-2/recalibration.test.ts",
       "tests/phase-c/api-simulations.test.ts",
       "tests/phase-c/engine.test.ts",
       "tests/phase-c/store.test.ts",
@@ -679,12 +723,60 @@
       "src/types/assessmentTemplate.ts",
       "src/types/teacherSystem.ts",
       "src/types/universalPayloads.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
       "tests/phase-c/parent-item-filter.test.ts",
       "tests/phase-d/alignment.boundary.test.ts",
       "scripts/audit-measurables.mjs"
+    ],
+    "hasAnswerKey": [
+      "src/components_new/v4/ShortCircuitPage.tsx",
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "distractorCount": [
+      "src/components_new/v4/ShortCircuitPage.tsx",
+      "src/prism-v4/schema/SimulationItem.ts",
+      "src/prism-v4/segmentation/buildItemTree.test.ts",
+      "src/prism-v4/segmentation/buildItemTree.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "hasWorkedSolution": [
+      "src/components_new/v4/ShortCircuitPage.tsx",
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "measurables": [
+      "src/components_new/v4/ShortCircuitPage.tsx",
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/loadScore.ts",
+      "src/lib/phaseCApi.ts",
+      "src/lib/suggestionTargeting.ts",
+      "src/prism-v4/schema/SimulationItem.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "src/types/simulator.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
+      "scripts/audit-measurables.mjs",
+      "scripts/migrations/remove_old_measurables.ts"
     ],
     "representationLoad": [
       "src/components_new/v4/ShortCircuitPage.tsx",
@@ -697,6 +789,8 @@
       "src/simulation/phase-c/engine.ts",
       "src/simulation/phase-c/snapshot.ts",
       "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "tests/phase-2/resource-activation.test.ts",
       "tests/phase-b/analysis.boundary.test.ts",
       "tests/phase-c/engine.boundary.test.ts",
       "tests/phase-c/engine.test.ts",
@@ -704,18 +798,199 @@
       "tests/phase-d/alignment.boundary.test.ts",
       "scripts/audit-measurables.mjs"
     ],
+    "answerType": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "answerAmbiguityScore": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "answerFormatComplexity": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "stepDifficultyCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "stepTimeCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "stepCognitiveLoadCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "solutionPathFidelity": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "answerStepAlignment": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "solutionEfficiencyScore": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "conceptToAnswerAlignment": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "stepTypes": [
+      "src/components_new/v4/steps/__tests__/stepEngine.test.ts",
+      "src/components_new/v4/steps/learnerAdjustments.ts",
+      "src/components_new/v4/steps/scenarioAdjustments.ts",
+      "src/components_new/v4/steps/stepEngine.ts",
+      "src/components_new/v4/steps/structureParser.ts",
+      "src/prism-v4/semantic/learning/learningService.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "branchingFactor": [
+      "src/prism-v4/schema/SimulationItem.ts",
+      "src/prism-v4/segmentation/buildItemTree.test.ts",
+      "src/prism-v4/segmentation/buildItemTree.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
     "conceptDensity": [
       "src/prism-v4/schema/SimulationItem.ts",
       "src/prism-v4/segmentation/buildItemTree.test.ts",
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
       "scripts/audit-measurables.mjs"
     ],
     "surfaceDifficulty": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "distractorMapping": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/resource-activation.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "misconceptionIds": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "answerKeyDifficultyAdjustment": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "answerKeyPCorrectAdjustment": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "stepComplexity": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "transformationDensity": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "errorOpportunityCount": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/engine.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "conceptTransitionMap": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "hasAnswerKeyAndSteps": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "minimalStepComparison": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "misconceptionStepMapping": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "distractorStepMapping": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
       "scripts/audit-measurables.mjs"
     ],
     "itemLength": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
       "scripts/audit-measurables.mjs"
     ],
     "readingComplexity": [
+      "src/simulation/phase-b/index.ts",
+      "src/simulation/phase-c/types.ts",
+      "tests/phase-2/recalibration.test.ts",
       "scripts/audit-measurables.mjs"
     ]
   },

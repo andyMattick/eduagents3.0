@@ -22,9 +22,37 @@ type PhaseBItemMeasurables = {
   cognitiveLoad: number;
   bloomLevel: number;
   representationLoad: number;
+  surfaceDifficulty: number;
+  answerKeyDifficultyAdjustment: number;
+  answerKeyPCorrectAdjustment: number;
+  rubricStrictness: number;
+  rubricTolerance: number;
+  partialCreditEnabled: boolean;
+  requiredElementsCount: number;
+  qualityThreshold: number;
+  branchingFactor: number;
+  errorOpportunityCount: number;
+  stepDifficultyCurve: number[];
+  stepTimeCurve: number[];
+  stepCognitiveLoadCurve: number[];
   confusionScore: number;
   timeSeconds: number;
 };
+
+function estimateFromBase(measurable: Pick<PhaseBItemMeasurables, "linguisticLoad" | "representationLoad">): number {
+  return Math.max(0, 30 + (45 * measurable.linguisticLoad) + (15 * measurable.representationLoad));
+}
+
+function sum(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function average(values: number[], fallback = 0): number {
+  if (values.length === 0) {
+    return fallback;
+  }
+  return sum(values) / values.length;
+}
 
 function applyPhaseCCore(student: SyntheticStudent, measurable: PhaseBItemMeasurables) {
   const cfg = PHASE_C_CONFIG.formula;
@@ -33,9 +61,16 @@ function applyPhaseCCore(student: SyntheticStudent, measurable: PhaseBItemMeasur
   const bloomGap = Math.max(0, measurable.bloomLevel - student.traits.bloomMastery);
   const speedPenalty = Math.max(0, (cfg.baselineProcessingCenter - student.traits.processingSpeed) / cfg.processingPenaltyDivisor);
   const knowledgePenalty = Math.max(0, (cfg.baselineKnowledgeCenter - student.traits.backgroundKnowledge) / cfg.processingPenaltyDivisor);
+  const structuralConfusionLift = Math.min(
+    0.3,
+    (Math.max(measurable.branchingFactor - 1, 0) * 0.04)
+      + (measurable.errorOpportunityCount * 0.015),
+  );
+  const steppedConfusion = average(measurable.stepCognitiveLoadCurve, measurable.confusionScore);
 
   const confusionProfile = clamp(
-    measurable.confusionScore
+    steppedConfusion
+      + structuralConfusionLift
       + cfg.readingGapToConfusion * readingGap
       + cfg.vocabularyGapToConfusion * vocabularyGap
       + cfg.bloomGapToConfusion * bloomGap
@@ -74,12 +109,7 @@ function applyBiases(student: SyntheticStudent, confusionProfile: number, timePr
 }
 
 function computeDifficultyScore(measurable: PhaseBItemMeasurables): number {
-  return (
-    0.35 * measurable.linguisticLoad
-    + 0.35 * measurable.cognitiveLoad
-    + 0.20 * measurable.bloomLevel
-    + 0.10 * measurable.representationLoad
-  );
+  return measurable.surfaceDifficulty + measurable.answerKeyDifficultyAdjustment;
 }
 
 function computeAbilityScore(student: SyntheticStudent): number {
@@ -111,8 +141,31 @@ function measurableFromNormalizedItem(item: PhaseBNormalizedItemInput): PhaseBIt
   const cognitiveLoad = clamp(item.traits.cognitiveLoad, 0, 1);
   const bloomLevel = clamp(item.traits.bloomLevel, 1, 6);
   const representationLoad = clamp(item.traits.representationLoad, 0, 1);
-  const confusionScore = clamp((linguisticLoad + cognitiveLoad + representationLoad) / 3, 0, 1);
-  const timeSeconds = Math.max(0, 30 + (45 * linguisticLoad) + (15 * representationLoad));
+  const surfaceDifficulty = item.measurables?.base?.surfaceDifficulty
+    ?? ((0.35 * linguisticLoad) + (0.35 * cognitiveLoad) + (0.20 * bloomLevel) + (0.10 * representationLoad));
+
+  const stepDifficultyCurve = item.measurables?.steps?.stepDifficultyCurve ?? [];
+  const stepTimeCurve = item.measurables?.steps?.stepTimeCurve ?? [];
+  const stepCognitiveLoadCurve = item.measurables?.steps?.stepCognitiveLoadCurve ?? [];
+  const branchingFactor = item.measurables?.steps?.branchingFactor ?? 1;
+  const errorOpportunityCount = item.measurables?.steps?.errorOpportunityCount ?? 0;
+  const confusionScore = clamp(
+    average(stepCognitiveLoadCurve, (linguisticLoad + cognitiveLoad + representationLoad) / 3)
+      + Math.min((branchingFactor - 1) * 0.03, 0.12)
+      + Math.min(errorOpportunityCount * 0.01, 0.12),
+    0,
+    1,
+  );
+  const timeSeconds = stepTimeCurve.length > 0
+    ? Math.max(0, sum(stepTimeCurve))
+    : estimateFromBase({ linguisticLoad, representationLoad });
+  const answerKeyDifficultyAdjustment = item.measurables?.answerKey?.answerKeyDifficultyAdjustment ?? 0;
+  const answerKeyPCorrectAdjustment = item.measurables?.answerKey?.answerKeyPCorrectAdjustment ?? 0;
+  const rubricStrictness = item.measurables?.rubric?.rubricStrictness ?? 0;
+  const rubricTolerance = item.measurables?.rubric?.rubricTolerance ?? 0;
+  const partialCreditEnabled = item.measurables?.rubric?.partialCreditEnabled ?? false;
+  const requiredElementsCount = item.measurables?.rubric?.requiredElementsCount ?? 0;
+  const qualityThreshold = item.measurables?.rubric?.qualityThreshold ?? 0.65;
 
   return {
     itemId: item.itemId,
@@ -121,6 +174,19 @@ function measurableFromNormalizedItem(item: PhaseBNormalizedItemInput): PhaseBIt
     cognitiveLoad,
     bloomLevel,
     representationLoad,
+    surfaceDifficulty,
+    answerKeyDifficultyAdjustment,
+    answerKeyPCorrectAdjustment,
+    rubricStrictness,
+    rubricTolerance,
+    partialCreditEnabled,
+    requiredElementsCount,
+    qualityThreshold,
+    branchingFactor,
+    errorOpportunityCount,
+    stepDifficultyCurve,
+    stepTimeCurve,
+    stepCognitiveLoadCurve,
     confusionScore,
     timeSeconds,
   };
@@ -179,7 +245,19 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
       const difficultyScore = computeDifficultyScore(measurable);
       const abilityScore = computeAbilityScore(student);
       const traitBonus = computeTraitBonus(student);
-      const pCorrect = sigmoid(abilityScore + traitBonus - difficultyScore);
+      const pCorrect = clamp(
+        sigmoid(abilityScore + traitBonus - difficultyScore) + measurable.answerKeyPCorrectAdjustment,
+        0,
+        1,
+      );
+      const partialCreditProbability = measurable.partialCreditEnabled
+        ? clamp((1 - pCorrect) * (0.35 + (measurable.rubricTolerance * 0.5)) * (1 - (measurable.rubricStrictness * 0.4)), 0, 1)
+        : 0;
+      const pScore = clamp(
+        pCorrect + (partialCreditProbability * (0.45 + (1 - measurable.qualityThreshold) * 0.35)),
+        0,
+        1,
+      );
 
       results.push({
         id: randomUUID(),
@@ -194,6 +272,8 @@ export async function runPhaseCSimulation(input: RunSimulationInput): Promise<{
         difficultyScore,
         abilityScore,
         pCorrect,
+        pScore,
+        partialCreditProbability,
         traitsSnapshot: {
           traits: student.traits,
           profiles: student.profiles,

@@ -14,6 +14,50 @@
       "src/types/simulation-snapshot.ts",
       "scripts/audit-measurables.mjs"
     ],
+    "momentum": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "confidenceInterval": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "predictedState": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/lib/suggestionTargeting.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "src/types/simulator.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "predictedDifficultyCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "predictedTimeCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "scripts/audit-measurables.mjs"
+    ],
+    "predictedConfusionCurve": [
+      "src/components_new/v4/phase-c/SimulationResultsPage.tsx",
+      "src/lib/phaseCApi.ts",
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
+      "scripts/audit-measurables.mjs"
+    ],
     "fatigue": [
       "src/config/astronautScoringRules.ts",
       "src/lib/metricDefinitions.ts",
@@ -25,11 +69,6 @@
       "src/types/universalPayloads.ts",
       "tests/phase-1/regression.pinned.test.ts",
       "tests/phase-1/spikes-cliffs-fatigue.test.ts",
-      "scripts/audit-measurables.mjs"
-    ],
-    "predictedState": [
-      "src/lib/suggestionTargeting.ts",
-      "src/types/simulator.ts",
       "scripts/audit-measurables.mjs"
     ],
     "spikes": [
@@ -52,25 +91,14 @@
       "scripts/audit-measurables.mjs"
     ],
     "profileNarrative": [
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
       "src/types/simulator.ts",
       "scripts/audit-measurables.mjs"
     ],
-    "momentum": [
-      "scripts/audit-measurables.mjs"
-    ],
-    "confidenceInterval": [
-      "scripts/audit-measurables.mjs"
-    ],
-    "predictedDifficultyCurve": [
-      "scripts/audit-measurables.mjs"
-    ],
-    "predictedTimeCurve": [
-      "scripts/audit-measurables.mjs"
-    ],
-    "predictedConfusionCurve": [
-      "scripts/audit-measurables.mjs"
-    ],
     "comparisonNarrative": [
+      "src/simulation/phase-c/snapshot.ts",
+      "src/types/simulation-snapshot.ts",
       "scripts/audit-measurables.mjs"
     ]
   },

@@ -1,4 +1,5 @@
 import type { CanonicalDocument, FragmentSemanticRecord } from "../../schema/semantic";
+import type { DocumentRole } from "../../schema/domain/DocumentSession";
 import { isLikelyNoiseConcept, normalizeConceptLabel } from "../../semantic/utils/conceptUtils";
 
 function unique<T>(values: T[]) {
@@ -278,8 +279,17 @@ function inferContentType(nodeType: CanonicalDocument["nodes"][number]["nodeType
 	return "text";
 }
 
-function classifyRole(text: string, contentType: FragmentSemanticRecord["contentType"]): Pick<FragmentSemanticRecord, "isInstructional" | "instructionalRole" | "evidence" | "confidence"> {
+function classifyRole(text: string, contentType: FragmentSemanticRecord["contentType"], declaredRole?: DocumentRole): Pick<FragmentSemanticRecord, "isInstructional" | "instructionalRole" | "evidence" | "confidence"> {
 	const lower = text.toLowerCase();
+	if (declaredRole === "answer-key") {
+		return { isInstructional: true, instructionalRole: "note", confidence: 0.99, evidence: "Declared answer-key role override." };
+	}
+	if (declaredRole === "worked-solution") {
+		return { isInstructional: true, instructionalRole: "example", confidence: 0.99, evidence: "Declared worked-solution role override." };
+	}
+	if (declaredRole === "rubric") {
+		return { isInstructional: true, instructionalRole: "instruction", confidence: 0.99, evidence: "Declared rubric role override." };
+	}
 	if (!text.trim()) {
 		return { isInstructional: false, instructionalRole: "metadata", confidence: 0.98, evidence: "Empty text node." };
 	}
@@ -310,11 +320,11 @@ function classifyRole(text: string, contentType: FragmentSemanticRecord["content
 	return { isInstructional: true, instructionalRole: "explanation", confidence: 0.62, evidence: "Default instructional explanation classification." };
 }
 
-export function classifyFragments(document: CanonicalDocument): FragmentSemanticRecord[] {
+export function classifyFragments(document: CanonicalDocument, declaredRole?: DocumentRole): FragmentSemanticRecord[] {
 	return document.nodes.map((node) => {
 		const text = node.normalizedText ?? node.text ?? "";
 		const contentType = inferContentType(node.nodeType, text);
-		const classification = classifyRole(text, contentType);
+		const classification = classifyRole(text, contentType, declaredRole);
 		const learningTarget = extractLearningTarget(text, classification.instructionalRole);
 		const prerequisiteConcepts = extractPrerequisiteConcepts(text);
 		const scaffoldLevel = inferScaffoldLevel(text, classification.instructionalRole);

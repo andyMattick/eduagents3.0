@@ -12,9 +12,11 @@ type Props = {
   students?: SyntheticStudent[];
   userId?: string;
   selectedStudentId?: string;
+  sortMode?: "student-number" | "score-high-low" | "score-low-high";
+  onRowsChange?: (rows: StudentSummaryRow[]) => void;
 };
 
-type StudentSummaryRow = {
+export type StudentSummaryRow = {
   studentId: string;
   itemCount: number;
   totalTime: number;
@@ -91,7 +93,7 @@ function summarizeStudent(studentId: string, items: StudentItem[]): StudentSumma
   };
 }
 
-export function StudentSummaryTable({ simulationId, studentIds, students = [], userId, selectedStudentId }: Props) {
+export function StudentSummaryTable({ simulationId, studentIds, students = [], userId, selectedStudentId, sortMode = "student-number", onRowsChange }: Props) {
   const [rows, setRows] = useState<StudentSummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +154,19 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
       return [];
     }
 
+    if (sortMode === "score-high-low" || sortMode === "score-low-high") {
+      const direction = sortMode === "score-high-low" ? -1 : 1;
+      return [...rows].sort((left, right) => {
+        const byScore = (left.averagePCorrect - right.averagePCorrect) * direction;
+        if (byScore !== 0) {
+          return byScore;
+        }
+        const leftName = studentsById.get(left.studentId)?.displayName ?? left.studentId;
+        const rightName = studentsById.get(right.studentId)?.displayName ?? right.studentId;
+        return leftName.localeCompare(rightName, void 0, { numeric: true });
+      });
+    }
+
     const metadataOrderedIds = sortStudentsByProfile(
       students.filter((student) => rows.some((row) => row.studentId === student.id)),
     ).map((student) => student.id);
@@ -171,7 +186,11 @@ export function StudentSummaryTable({ simulationId, studentIds, students = [], u
       }
       return left.studentId.localeCompare(right.studentId);
     });
-  }, [rows, students]);
+  }, [rows, sortMode, students, studentsById]);
+
+  useEffect(() => {
+    onRowsChange?.(sortedRows);
+  }, [onRowsChange, sortedRows]);
 
   const summaryRange = useMemo(() => {
     if (sortedRows.length === 0) {

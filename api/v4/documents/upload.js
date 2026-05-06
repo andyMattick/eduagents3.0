@@ -12151,6 +12151,20 @@ async function saveItems(documentId, items) {
   }
   if (!v4ItemsTableSupported)
     return;
+  // Delete existing items for this document before re-inserting so re-uploads
+  // never accumulate duplicate rows (the unique constraint on (document_id, item_number)
+  // is needed for merge-duplicates, but delete-then-insert is more reliable).
+  try {
+    await supabaseRest("v4_items", {
+      method: "DELETE",
+      filters: { document_id: `eq.${documentId}` },
+      prefer: "return=minimal"
+    });
+  } catch (error) {
+    if (disableV4Table("v4_items", error))
+      return;
+    // Non-fatal: proceed with insert; duplicates will be handled by unique constraint.
+  }
   const rows = items.map((item) => ({
     document_id: documentId,
     item_number: item.itemNumber,
@@ -12165,7 +12179,7 @@ async function saveItems(documentId, items) {
     await supabaseRest("v4_items", {
       method: "POST",
       body: rows,
-      prefer: "resolution=merge-duplicates"
+      prefer: "resolution=merge-duplicates,return=minimal"
     });
   } catch (error) {
     if (disableV4Table("v4_items", error))
@@ -12291,13 +12305,25 @@ function classifyDocType(text) {
     return "problem";
   return "notes";
 }
+function declaredRoleToDocType(role) {
+  if (!role) {
+    return null;
+  }
+  if (role === "test") {
+    return "problem";
+  }
+  if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+    return "notes";
+  }
+  return null;
+}
 async function ingestDocument(input) {
-  const { documentId, analyzedDocument, azureExtract, rawText } = input;
+  const { documentId, analyzedDocument, azureExtract, rawText, declaredRole } = input;
   let text = rawText ?? "";
   if (!text && analyzedDocument) {
     text = flattenAnalyzedDocumentText(analyzedDocument);
   }
-  const docType = classifyDocType(text);
+  const docType = declaredRoleToDocType(declaredRole) ?? classifyDocType(text);
   setDocType(documentId, docType).catch(() => {
   });
   let items = [];
@@ -12321,42 +12347,87 @@ function flattenAnalyzedDocumentText(doc) {
   }
   return doc.problems.map((p) => p.text).join("\n");
 }
+function computeBaseTraits(problem) {
+  const bloomLevel = problem.bloomLevel ?? 2;
+  const cognitiveLoad = problem.cognitiveLoad ?? 0.5;
+  const linguisticLoad = problem.linguisticLoad ?? 0.5;
+  const representationLoad = problem.representationLoad ?? 0.4;
+  const stemText = problem.text ?? "";
+  const symbolDensity = Number(Math.min(1, ((stemText.match(/[=+\-*/^<>()[\]{}%$#@&|~]/g) ?? []).length / Math.max(stemText.length, 1)) * 10).toFixed(4));
+  const stepCount = Math.max(1, Math.min(10, ((stemText.match(/\b(?:step|first|then|next|finally|therefore|thus|because|so|since)\b/gi) ?? []).length) + 1));
+  const vocabularyCount = new Set(stemText.toLowerCase().split(/\s+/).filter((w) => w.length > 3)).size;
+  const difficultyScore = Number((bloomLevel / 6 * 0.3 + cognitiveLoad * 0.35 + linguisticLoad * 0.35).toFixed(4));
+  const confusionScore = Number(Math.min(1, cognitiveLoad * 0.5 + linguisticLoad * 0.3 + representationLoad * 0.2).toFixed(4));
+  const timeSeconds = Number(Math.max(20, 21 + 20 * linguisticLoad + 10 * representationLoad).toFixed(1));
+  return {
+    bloomLevel,
+    cognitiveLoad,
+    linguisticLoad,
+    representationLoad,
+    symbolDensity,
+    stepCount,
+    vocabularyCount,
+    stemLength: stemText.length,
+    itemType: problem.cognitiveDemand ?? "question",
+    distractorStructure: "open",
+    difficultyScore,
+    confusionScore,
+    timeSeconds,
+    pCorrectAdjustment: 0,
+    partialCreditEnabled: false,
+    requiredElementsCount: 0,
+    qualityThreshold: 0.65,
+    rubricStrictness: 0,
+    rubricTolerance: 0,
+    branchingFactor: 1,
+    errorOpportunityCount: Math.max(1, stepCount - 1),
+    misconceptionLikelihood: 0.15
+  };
+}
 function extractItemsFromAnalysis(doc, _text, _documentId) {
   if (!doc?.problems?.length)
     return [];
-  return doc.problems.map((problem, index) => ({
-    itemNumber: index + 1,
-    type: problem.cognitiveDemand ?? "question",
-    stem: problem.text ?? "",
-    choices: null,
-    answerKey: null,
-    metadata: {
-      extractedProblemId: problem.id,
-      concepts: problem.concepts ?? [],
-      representations: problem.representations ?? [],
-      difficulty: problem.difficulty ?? "medium",
-      misconceptions: problem.misconceptions ?? [],
-      cognitiveDemand: problem.cognitiveDemand ?? "recall",
-      bloomLevel: problem.bloomLevel ?? 2,
-      cognitiveLoad: problem.cognitiveLoad ?? 0.5,
-      linguisticLoad: problem.linguisticLoad ?? 0.5,
-      representationLoad: problem.representationLoad ?? 0.5,
-      phaseB: {
+  return doc.problems.map((problem, index) => {
+    const base = computeBaseTraits(problem);
+    return {
+      itemNumber: index + 1,
+      type: problem.cognitiveDemand ?? "question",
+      stem: problem.text ?? "",
+      choices: null,
+      answerKey: null,
+      metadata: {
+        extractedProblemId: problem.id,
+        concepts: problem.concepts ?? [],
+        representations: problem.representations ?? [],
+        difficulty: problem.difficulty ?? "medium",
+        misconceptions: problem.misconceptions ?? [],
+        cognitiveDemand: problem.cognitiveDemand ?? "recall",
         bloomLevel: problem.bloomLevel ?? 2,
         cognitiveLoad: problem.cognitiveLoad ?? 0.5,
         linguisticLoad: problem.linguisticLoad ?? 0.5,
-        representationLoad: problem.representationLoad ?? 0.5
+        representationLoad: problem.representationLoad ?? 0.5,
+        phaseB: {
+          bloomLevel: problem.bloomLevel ?? 2,
+          cognitiveLoad: problem.cognitiveLoad ?? 0.5,
+          linguisticLoad: problem.linguisticLoad ?? 0.5,
+          representationLoad: problem.representationLoad ?? 0.5
+        },
+        metrics: {
+          bloom_level: problem.bloomLevel ?? 2,
+          cognitive_load: problem.cognitiveLoad ?? 0.5,
+          linguistic_load: problem.linguisticLoad ?? 0.5,
+          representation_load: problem.representationLoad ?? 0.5
+        },
+        base,
+        answerKey: null,
+        worked: null,
+        rubric: null,
+        final: { ...base },
+        sourceSpan: problem.sourceSpan ?? null
       },
-      metrics: {
-        bloom_level: problem.bloomLevel ?? 2,
-        cognitive_load: problem.cognitiveLoad ?? 0.5,
-        linguistic_load: problem.linguisticLoad ?? 0.5,
-        representation_load: problem.representationLoad ?? 0.5
-      },
-      sourceSpan: problem.sourceSpan ?? null
-    },
-    sourcePageNumbers: problem.sourceSpan ? Array.from({ length: problem.sourceSpan.lastPage - problem.sourceSpan.firstPage + 1 }, (_, i) => problem.sourceSpan.firstPage + i) : []
-  }));
+      sourcePageNumbers: problem.sourceSpan ? Array.from({ length: problem.sourceSpan.lastPage - problem.sourceSpan.firstPage + 1 }, (_, i) => problem.sourceSpan.firstPage + i) : []
+    };
+  });
 }
 function extractSectionsFromAnalysis(_doc, azureExtract, rawText, _documentId) {
   let extract;

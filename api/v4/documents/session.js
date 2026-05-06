@@ -9675,9 +9675,82 @@ function fromSessionRow(row) {
     documentIds: row.document_ids ?? [],
     documentRoles: row.document_roles ?? {},
     sessionRoles: row.session_roles ?? {},
+    resourceLinks: [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+function normalizeResourceLinks(resourceLinks) {
+  if (!Array.isArray(resourceLinks)) {
+    return [];
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const normalized = [];
+  for (const link of resourceLinks) {
+    if (!link?.documentId || !link?.resourceDocumentId || !link?.resourceType) {
+      continue;
+    }
+    const key = `${link.documentId}:${link.resourceDocumentId}:${link.resourceType}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    normalized.push({
+      documentId: link.documentId,
+      resourceDocumentId: link.resourceDocumentId,
+      resourceType: link.resourceType,
+      contentText: typeof link.contentText === "string" ? link.contentText : void 0
+    });
+  }
+  return normalized;
+}
+function fromDocumentResourceLinkRow(row) {
+  return {
+    documentId: row.document_id,
+    resourceDocumentId: row.resource_document_id,
+    resourceType: row.resource_type,
+    contentText: typeof row.content_text === "string" ? row.content_text : void 0
+  };
+}
+function extractResourceDocumentText(document) {
+  const nodes = document?.canonical_document?.nodes;
+  if (Array.isArray(nodes) && nodes.length > 0) {
+    const text = nodes.map((node) => node?.normalizedText ?? node?.text ?? "").filter(Boolean).join("\n");
+    if (text.trim().length > 0) {
+      return text;
+    }
+  }
+  if (typeof document?.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
+    return document.azure_extract.content;
+  }
+  const paragraphs = document?.azure_extract?.paragraphs;
+  if (Array.isArray(paragraphs) && paragraphs.length > 0) {
+    return paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n");
+  }
+  const pages = document?.azure_extract?.pages;
+  if (Array.isArray(pages) && pages.length > 0) {
+    return pages.map((page) => page?.text ?? "").filter(Boolean).join("\n");
+  }
+  return "";
+}
+async function withResourceContentText(resourceLinks) {
+  const resourceIds = Array.from(new Set(resourceLinks.map((link) => link.resourceDocumentId).filter((id) => typeof id === "string" && id.trim().length > 0)));
+  if (resourceIds.length === 0) {
+    return resourceLinks;
+  }
+  const escapedIds = resourceIds.map((id) => `"${id}"`).join(",");
+  const documents = await supabaseRest(DOCUMENTS_TABLE, {
+    select: "document_id,canonical_document,azure_extract",
+    filters: { document_id: `in.(${escapedIds})` }
+  });
+  const contentByDocumentId = /* @__PURE__ */ new Map();
+  for (const document of documents ?? []) {
+    contentByDocumentId.set(document.document_id, extractResourceDocumentText(document));
+  }
+  return resourceLinks.map((link) => ({
+    ...link,
+    contentText: contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText
+  }));
 }
 function fromDocumentRow(row) {
   return {
@@ -9710,6 +9783,303 @@ async function updateDocumentSessionIds(sessionId, documentIds) {
     })
   ]);
 }
+function isDocumentResourceLinksSchemaError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("v4_document_resource_links") && (error.message.includes("42703") || error.message.includes("PGRST") || error.message.includes("does not exist"));
+}
+async function listDocumentResourceLinksStore(sessionId) {
+  if (!canUseSupabase()) {
+    return getDocumentSession(sessionId)?.resourceLinks ?? [];
+  }
+  let rows;
+  try {
+    rows = await supabaseRest("v4_document_resource_links", {
+      select: "session_id,document_id,resource_document_id,resource_type,content_text",
+      filters: { session_id: `eq.${sessionId}` }
+    });
+  } catch (error) {
+    if (!isDocumentResourceLinksSchemaError(error)) {
+      throw error;
+    }
+    return [];
+  }
+  return (rows ?? []).map((row) => fromDocumentResourceLinkRow(row));
+}
+// --- Washover pipeline: apply companion doc overrides to v4_items.metadata layers ---
+function washClamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function washParseAnswerKey(text) {
+  if (!text) return {};
+  const result = {};
+  for (const line of text.split("\n")) {
+    const m = line.match(/^[\s]*(\d+)[\s.)\-:]+(.+)$/i);
+    if (m?.[1] && m[2]) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n)) result[n] = m[2].trim();
+    }
+  }
+  return result;
+}
+function washParseWorkedSolutions(text) {
+  if (!text) return {};
+  const result = {};
+  let cur = null, steps = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
+    if (m) {
+      if (cur !== null && steps.length) result[cur] = steps;
+      cur = Number(m[1] ?? m[2]); steps = [];
+    } else if (cur !== null) {
+      const s = line.replace(/^[\s•\-*]+/, "").trim();
+      if (s) steps.push(s);
+    }
+  }
+  if (cur !== null && steps.length) result[cur] = steps;
+  return result;
+}
+function washParseRubric(text) {
+  if (!text) return {};
+  const result = {};
+  let cur = null, lines2 = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
+    if (m) {
+      if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
+      cur = Number(m[1] ?? m[2]); lines2 = [];
+      const rest = line.replace(m[0], "").trim();
+      if (rest) lines2.push(rest);
+    } else if (cur !== null) {
+      lines2.push(line.replace(/^[\s•\-*]+/, "").trim());
+    }
+  }
+  if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
+  return result;
+}
+function washBuildBaseFromMetadata(meta) {
+  if (!meta) meta = {};
+  const b = meta.bloomLevel ?? 2, cog = meta.cognitiveLoad ?? 0.5, ling = meta.linguisticLoad ?? 0.5, rep = meta.representationLoad ?? 0.4;
+  const diff = Number((b / 6 * 0.3 + cog * 0.35 + ling * 0.35).toFixed(4));
+  return {
+    bloomLevel: b, cognitiveLoad: cog, linguisticLoad: ling, representationLoad: rep,
+    symbolDensity: meta.symbolDensity ?? 0.1, stepCount: meta.stepCount ?? 2,
+    vocabularyCount: meta.vocabularyCount ?? 20, stemLength: meta.stemLength ?? 0,
+    itemType: meta.cognitiveDemand ?? meta.itemType ?? "question", distractorStructure: "open",
+    difficultyScore: diff, confusionScore: Number(washClamp(cog * 0.5 + ling * 0.3, 0, 1).toFixed(4)),
+    timeSeconds: Number(Math.max(20, 21 + 20 * ling + 10 * rep).toFixed(1)),
+    pCorrectAdjustment: 0, partialCreditEnabled: false, requiredElementsCount: 0,
+    qualityThreshold: 0.65, rubricStrictness: 0, rubricTolerance: 0,
+    branchingFactor: 1, errorOpportunityCount: 1, misconceptionLikelihood: 0.15
+  };
+}
+function washAnswerKeyLayer(answerText, base) {
+  if (!answerText) return null;
+  const a = answerText.trim();
+  const isMC = /^[a-e]$/i.test(a), isNum = /^-?\d+(\.\d+)?$/.test(a), isSym = /[=^\-+*/(){}[\]<>]/.test(a);
+  const ambig = /[|/,]|\bor\b/i.test(a) ? 0.5 : 0;
+  let fmt = isMC ? 0.1 : isNum ? 0.2 : isSym ? 0.55 : 0.45;
+  const len = a.length > 24 ? 0.25 : 0;
+  const diffAdj = Number((ambig * 0.18 + fmt * 0.12 + len * 0.05).toFixed(4));
+  const pAdj = Number(washClamp(-diffAdj * 0.55, -0.3, 0.2).toFixed(4));
+  return {
+    correctAnswer: a, difficultyScore: Number(washClamp((base.difficultyScore ?? 0.5) + diffAdj, 0, 1).toFixed(4)),
+    pCorrectAdjustment: pAdj, misconceptionLikelihood: Number(washClamp((base.misconceptionLikelihood ?? 0.15) + Math.abs(pAdj) * 0.5, 0, 1).toFixed(4)),
+    stepCount: a.length > 20 ? (base.stepCount ?? 2) + 1 : (base.stepCount ?? 2)
+  };
+}
+function washWorkedLayer(steps, base) {
+  if (!steps?.length) return null;
+  const baseDiff = base.difficultyScore ?? 0.5;
+  let symCount = 0, charCount = 0;
+  const stepDiff = [], stepTime = [], stepCog = [];
+  steps.forEach((step, idx) => {
+    const words = step.split(/\s+/).filter(Boolean).length;
+    const syms = (step.match(/[=+\-*/^<>()[\]{}]/g) ?? []).length;
+    symCount += syms; charCount += Math.max(step.length, 1);
+    const lower = step.toLowerCase();
+    let sc = /infer|conclude|deduce|imply|therefore/.test(lower) ? 0.75 : /define|concept|why|because/.test(lower) ? 0.68 : /calculate|compute|solve/.test(lower) ? 0.45 : /first|next|then|step/.test(lower) ? 0.55 : 0.4;
+    const pos = Math.min(idx / Math.max(steps.length - 1, 1), 1) * 0.15;
+    stepDiff.push(Number(washClamp(baseDiff + sc * 0.35 + pos, 0, 1).toFixed(4)));
+    stepTime.push(Number(Math.max(8, words * 2.1 + syms * 1.8 + sc * 9).toFixed(4)));
+    stepCog.push(Number(washClamp(sc * 0.8 + syms * 0.03, 0, 1).toFixed(4)));
+  });
+  const branching = Math.max(1, Math.min(6, Math.round(steps.length / 2)));
+  return {
+    reasoningComplexity: Number(Math.max(...stepDiff, 0).toFixed(4)),
+    cognitiveSteps: steps.length, stepCount: steps.length,
+    representationLoad: Number(washClamp((base.representationLoad ?? 0.4) + branching * 0.04, 0, 1).toFixed(4)),
+    timeOnTaskAdjustment: Number((stepTime.reduce((a, b) => a + b, 0) / Math.max(stepTime.length, 1) * 0.3).toFixed(4)),
+    bloomGapAdjustment: branching >= 3 ? 1 : 0,
+    stepDifficultyCurve: stepDiff, stepTimeCurve: stepTime, stepCognitiveLoadCurve: stepCog,
+    branchingFactor: branching, errorOpportunityCount: Math.max(1, steps.length - 1 + (branching - 1))
+  };
+}
+function washRubricLayer(rubricText, base) {
+  if (!rubricText) return null;
+  const norm = String(rubricText).trim().toLowerCase();
+  if (!norm) return null;
+  const strict = (norm.match(/strict|must include|required|deduct|penalty/g) ?? []).length;
+  const tol = (norm.match(/partial credit|attempt|alternative|equivalent|accept/g) ?? []).length;
+  const reqEl = Math.max((norm.match(/required|criterion|criteria|must include/g) ?? []).length, 0);
+  const partial = /partial credit|partial|attempt/.test(norm);
+  const qt = Number(washClamp(0.55 + strict * 0.03 - tol * 0.02, 0.35, 0.95).toFixed(4));
+  const rs = Number(washClamp(strict * 0.12 + reqEl * 0.06 + qt * 0.5, 0, 1).toFixed(4));
+  const rt = Number(washClamp(tol * 0.14 + (1 - rs) * 0.35, 0, 1).toFixed(4));
+  return {
+    rubricDifficulty: Number(washClamp((base.difficultyScore ?? 0.5) + rs * 0.2, 0, 1).toFixed(4)),
+    masteryThreshold: qt, partialCreditEnabled: partial, requiredElementsCount: reqEl,
+    rubricStrictness: rs, rubricTolerance: rt, bloomAlignment: base.bloomLevel ?? 2
+  };
+}
+function washMergeTraits(base, ak, worked, rubric) {
+  const final = { ...base };
+  if (ak) {
+    if (ak.difficultyScore != null) final.difficultyScore = ak.difficultyScore;
+    if (ak.stepCount != null) final.stepCount = ak.stepCount;
+    if (ak.misconceptionLikelihood != null) final.misconceptionLikelihood = ak.misconceptionLikelihood;
+    if (ak.pCorrectAdjustment != null) final.pCorrectAdjustment = (final.pCorrectAdjustment ?? 0) + ak.pCorrectAdjustment;
+  }
+  if (worked) {
+    if (worked.representationLoad != null) final.representationLoad = worked.representationLoad;
+    if (worked.stepCount != null) final.stepCount = worked.stepCount;
+    if (worked.cognitiveSteps != null) final.cognitiveSteps = worked.cognitiveSteps;
+    if (worked.bloomGapAdjustment) final.bloomLevel = washClamp((final.bloomLevel ?? 2) + worked.bloomGapAdjustment, 1, 6);
+    if (worked.timeOnTaskAdjustment != null) final.timeOnTaskAdjustment = worked.timeOnTaskAdjustment;
+    if (worked.stepDifficultyCurve != null) final.stepDifficultyCurve = worked.stepDifficultyCurve;
+    if (worked.stepTimeCurve != null) final.stepTimeCurve = worked.stepTimeCurve;
+    if (worked.stepCognitiveLoadCurve != null) final.stepCognitiveLoadCurve = worked.stepCognitiveLoadCurve;
+    if (worked.branchingFactor != null) final.branchingFactor = worked.branchingFactor;
+    if (worked.errorOpportunityCount != null) final.errorOpportunityCount = worked.errorOpportunityCount;
+  }
+  if (rubric) {
+    if (rubric.rubricDifficulty != null) final.difficultyScore = rubric.rubricDifficulty;
+    if (rubric.rubricStrictness != null) final.rubricStrictness = rubric.rubricStrictness;
+    if (rubric.rubricTolerance != null) final.rubricTolerance = rubric.rubricTolerance;
+    if (rubric.partialCreditEnabled != null) final.partialCreditEnabled = rubric.partialCreditEnabled;
+    if (rubric.requiredElementsCount != null) final.requiredElementsCount = rubric.requiredElementsCount;
+    if (rubric.masteryThreshold != null) final.qualityThreshold = rubric.masteryThreshold;
+    if (rubric.bloomAlignment != null) final.bloomLevel = rubric.bloomAlignment;
+  }
+  for (const k of Object.keys(final)) { if (final[k] === undefined) delete final[k]; }
+  return final;
+}
+async function applyWashoverToItems(sessionId) {
+  if (!canUseSupabase()) return;
+  let links;
+  try {
+    links = await supabaseRest("v4_document_resource_links", {
+      select: "document_id,resource_document_id,resource_type,content_text",
+      filters: { session_id: `eq.${sessionId}` }
+    });
+  } catch { return; }
+  if (!Array.isArray(links) || links.length === 0) return;
+  const byDoc = new Map();
+  for (const link of links) {
+    if (!link.document_id) continue;
+    if (!byDoc.has(link.document_id)) byDoc.set(link.document_id, []);
+    byDoc.get(link.document_id).push(link);
+  }
+  for (const [testDocId, docLinks] of byDoc.entries()) {
+    let items;
+    try {
+      items = await supabaseRest("v4_items", {
+        select: "id,item_number,metadata",
+        filters: { document_id: `eq.${testDocId}`, order: "item_number.asc" }
+      });
+    } catch { continue; }
+    if (!Array.isArray(items) || items.length === 0) continue;
+    const akText = docLinks.filter((l) => l.resource_type === "answer-key").map((l) => l.content_text ?? "").join("\n");
+    const wkText = docLinks.filter((l) => l.resource_type === "worked-solution").map((l) => l.content_text ?? "").join("\n");
+    const rbText = docLinks.filter((l) => l.resource_type === "rubric").map((l) => l.content_text ?? "").join("\n");
+    const akByItem = washParseAnswerKey(akText);
+    const wkByItem = washParseWorkedSolutions(wkText);
+    const rbByItem = washParseRubric(rbText);
+    for (const item of items) {
+      const n = item.item_number;
+      const existingMeta = item.metadata ?? {};
+      const base = existingMeta.base ?? washBuildBaseFromMetadata(existingMeta);
+      const akLayer = akByItem[n] ? washAnswerKeyLayer(akByItem[n], base) : null;
+      const wkLayer = wkByItem[n]?.length ? washWorkedLayer(wkByItem[n], base) : null;
+      const rbLayer = rbByItem[n] ? washRubricLayer(rbByItem[n], base) : null;
+      const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
+      const updatedMeta = { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, final: finalTraits };
+      await supabaseRest("v4_items", {
+        method: "PATCH",
+        filters: { id: `eq.${item.id}` },
+        body: { metadata: updatedMeta, updated_at: new Date().toISOString() },
+        prefer: "return=minimal"
+      }).catch(() => {});
+    }
+  }
+}
+// --- End washover pipeline ---
+async function replaceDocumentResourceLinksStore(sessionId, resourceLinks) {
+  if (!canUseSupabase()) {
+    const existing = getDocumentSession(sessionId);
+    if (!existing) {
+      return;
+    }
+    upsertDocumentSession({
+      ...existing,
+      resourceLinks,
+      createdAt: existing.createdAt
+    });
+    return;
+  }
+  try {
+    await supabaseRest("v4_document_resource_links", {
+      method: "DELETE",
+      filters: { session_id: `eq.${sessionId}` },
+      prefer: "return=minimal"
+    });
+  } catch (error) {
+    if (!isDocumentResourceLinksSchemaError(error)) {
+      throw error;
+    }
+    return;
+  }
+  if (resourceLinks.length === 0) {
+    return;
+  }
+  let linksWithContent = resourceLinks;
+  try {
+    linksWithContent = await withResourceContentText(resourceLinks);
+  } catch {
+    linksWithContent = resourceLinks;
+  }
+  try {
+    await supabaseRest("v4_document_resource_links", {
+      method: "POST",
+      body: linksWithContent.map((link) => ({
+        session_id: sessionId,
+        document_id: link.documentId,
+        resource_document_id: link.resourceDocumentId,
+        resource_type: link.resourceType,
+        content_text: link.contentText ?? null
+      })),
+      prefer: "resolution=merge-duplicates,return=minimal"
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("content_text")) {
+      await supabaseRest("v4_document_resource_links", {
+        method: "POST",
+        body: resourceLinks.map((link) => ({
+          session_id: sessionId,
+          document_id: link.documentId,
+          resource_document_id: link.resourceDocumentId,
+          resource_type: link.resourceType
+        })),
+        prefer: "resolution=merge-duplicates,return=minimal"
+      });
+      return;
+    }
+    if (!isDocumentResourceLinksSchemaError(error)) {
+      throw error;
+    }
+  }
+}
 async function invalidatePrismSessionSnapshot(sessionId) {
   if (!sessionId) {
     return;
@@ -9740,7 +10110,14 @@ async function getDocumentSessionStore(sessionId) {
     filters: { session_id: `eq.${sessionId}` }
   });
   const row = Array.isArray(rows) ? rows[0] : void 0;
-  return row ? fromSessionRow(row) : null;
+  if (!row) {
+    return null;
+  }
+  const resourceLinks = await listDocumentResourceLinksStore(sessionId);
+  return {
+    ...fromSessionRow(row),
+    resourceLinks
+  };
 }
 async function upsertDocumentSessionStore(session) {
   if (!canUseSupabase()) {
@@ -9756,6 +10133,7 @@ async function upsertDocumentSessionStore(session) {
     documentIds: session.documentIds,
     documentRoles: session.documentRoles,
     sessionRoles: session.sessionRoles,
+    resourceLinks: normalizeResourceLinks(session.resourceLinks ?? existing?.resourceLinks),
     createdAt: existing?.createdAt ?? session.createdAt ?? now2(),
     updatedAt: now2()
   };
@@ -9765,6 +10143,8 @@ async function upsertDocumentSessionStore(session) {
     prefer: "resolution=merge-duplicates,return=minimal"
   });
   await updateDocumentSessionIds(nextSession.sessionId, nextSession.documentIds);
+  await replaceDocumentResourceLinksStore(nextSession.sessionId, nextSession.resourceLinks ?? []);
+  applyWashoverToItems(nextSession.sessionId).catch((err) => console.warn("[session] washover non-fatal:", err instanceof Error ? err.message : err));
   markCollectionAnalysisStale(nextSession.sessionId);
   invalidatePrismSessionContext(nextSession.sessionId);
   await invalidatePrismSessionSnapshot(nextSession.sessionId);
@@ -9836,6 +10216,7 @@ async function handler(req, res) {
       documentIds: payload.documentIds,
       documentRoles: payload.documentRoles,
       sessionRoles: payload.sessionRoles,
+      resourceLinks: normalizeResourceLinks(payload.resourceLinks ?? existing?.resourceLinks),
       createdAt: existing?.createdAt
     });
     return res.status(200).json(session);

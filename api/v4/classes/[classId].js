@@ -197,6 +197,72 @@ async function listSimulationRunsForClass(classId) {
   }
   return Array.from(simulationRunsMemory.values()).filter((run) => run.classId === classId).sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
+async function deleteClassCascade(classId) {
+  if (canUseSupabase()) {
+    try {
+      const runs = await supabaseRest("simulation_runs", {
+        method: "GET",
+        select: "id",
+        filters: {
+          class_id: `eq.${classId}`
+        }
+      });
+      const runIds = Array.isArray(runs) ? runs.map((run) => run.id).filter((value) => typeof value === "string" && value.length > 0) : [];
+      if (runIds.length > 0) {
+        await supabaseRest("simulation_results", {
+          method: "DELETE",
+          filters: {
+            simulation_id: `in.(${runIds.join(",")})`
+          },
+          prefer: "return=minimal"
+        });
+      }
+      await supabaseRest("synthetic_students", {
+        method: "DELETE",
+        filters: {
+          class_id: `eq.${classId}`
+        },
+        prefer: "return=minimal"
+      });
+      await supabaseRest("simulation_runs", {
+        method: "DELETE",
+        filters: {
+          class_id: `eq.${classId}`
+        },
+        prefer: "return=minimal"
+      });
+      try {
+        await supabaseRest("simulations", {
+          method: "DELETE",
+          filters: {
+            class_id: `eq.${classId}`
+          },
+          prefer: "return=minimal"
+        });
+      } catch {
+      }
+      await supabaseRest("classes", {
+        method: "DELETE",
+        filters: {
+          id: `eq.${classId}`
+        },
+        prefer: "return=minimal"
+      });
+    } catch (error) {
+      if (!isSupabaseSchemaCacheError(error)) {
+        throw error;
+      }
+      disableSupabaseForPhaseC(error);
+    }
+  }
+  studentsMemory.delete(classId);
+  classesMemory.delete(classId);
+  for (const [simulationId, run] of simulationRunsMemory.entries()) {
+    if (run.classId === classId) {
+      simulationRunsMemory.delete(simulationId);
+    }
+  }
+}
 var runtime = "nodejs";
 function resolveClassId(req) {
   const value = Array.isArray(req.query.classId) ? req.query.classId[0] : req.query.classId;
@@ -209,12 +275,24 @@ function countBy(values) {
   }, {});
 }
 async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
   const classId = resolveClassId(req);
   if (!classId) {
     return res.status(400).json({ error: "classId is required" });
+  }
+  if (req.method === "DELETE") {
+    try {
+      const classRecord = await getClassById(classId);
+      if (!classRecord) {
+        return res.status(404).json({ error: "Class not found" });
+      }
+      await deleteClassCascade(classId);
+      return res.status(200).json({ success: true });
+    } catch (error) {
+      return res.status(500).json({ error: error instanceof Error ? error.message : "Class deletion failed" });
+    }
+  }
+  if (req.method !== "GET") {
+    return res.status(405).json({ error: "Method not allowed" });
   }
   try {
     const classRecord = await getClassById(classId);

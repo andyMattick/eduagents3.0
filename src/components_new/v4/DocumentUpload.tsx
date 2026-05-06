@@ -12,6 +12,7 @@ import { DocumentSubmit } from "../../components/studentPortal/DocumentSubmit";
 import { DocumentStatusBadge } from "./DocumentStatusBadge";
 import { DocumentPicker } from "./DocumentPicker";
 import { ProductViewer } from "./ProductViewer";
+import { IngestionLayersModal } from "./IngestionLayersModal";
 import "./v4.css";
 
 const DEBUG_UPLOAD_TRACE = import.meta.env.DEV;
@@ -153,6 +154,9 @@ export function DocumentUpload() {
     clearSession,
   } = useInstructionalSession();
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [answerKeyFiles, setAnswerKeyFiles] = useState<File[]>([]);
+  const [workedSolutionFiles, setWorkedSolutionFiles] = useState<File[]>([]);
+  const [rubricFiles, setRubricFiles] = useState<File[]>([]);
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
@@ -161,6 +165,7 @@ export function DocumentUpload() {
   const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageTodayResponse | null>(null);
   const uploadInFlightRef = useRef(false);
   const lastUploadAttemptKeyRef = useRef<string | null>(null);
+  const [layersModal, setLayersModal] = useState<{ documentId: string; documentName: string } | null>(null);
 
   useEffect(() => {
     if (!user?.id) {
@@ -194,7 +199,9 @@ export function DocumentUpload() {
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const uploadAttemptKey = selectedFiles
+    const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles];
+
+    const uploadAttemptKey = allUploadFiles
       .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
       .sort()
       .join("|");
@@ -207,18 +214,18 @@ export function DocumentUpload() {
     }
 
     if (uploadInFlightRef.current || isUploading) {
-      logUploadTrace("ignored submit while upload in flight", { isUploading, selectedFileCount: selectedFiles.length });
-      warnUploadGuard("upload:in-flight", { isUploading, selectedFileCount: selectedFiles.length });
+      logUploadTrace("ignored submit while upload in flight", { isUploading, selectedFileCount: allUploadFiles.length });
+      warnUploadGuard("upload:in-flight", { isUploading, selectedFileCount: allUploadFiles.length });
       return;
     }
 
     if (uploadAttemptKey.length > 0 && lastUploadAttemptKeyRef.current === uploadAttemptKey) {
-      logUploadTrace("ignored duplicate submit", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
-      warnUploadGuard("upload:duplicate-submit", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
+      logUploadTrace("ignored duplicate submit", { uploadAttemptKey, selectedFileCount: allUploadFiles.length });
+      warnUploadGuard("upload:duplicate-submit", { uploadAttemptKey, selectedFileCount: allUploadFiles.length });
       return;
     }
 
-    if (selectedFiles.length === 0) {
+    if (allUploadFiles.length === 0) {
       setError("Choose one or more PDF files before building the workspace.");
       warnUploadGuard("upload:no-files-selected");
       return;
@@ -227,12 +234,12 @@ export function DocumentUpload() {
     uploadInFlightRef.current = true;
     lastUploadAttemptKeyRef.current = uploadAttemptKey;
     setError(null);
-    logUploadTrace("upload started", { uploadAttemptKey, selectedFileCount: selectedFiles.length });
+    logUploadTrace("upload started", { uploadAttemptKey, selectedFileCount: allUploadFiles.length });
 
     try {
-      const nextWorkspace = await createSessionFromFiles(selectedFiles);
+      const nextWorkspace = await createSessionFromFiles(selectedFiles, { answerKeyFiles, workedSolutionFiles, rubricFiles });
       if (!nextWorkspace) {
-        warnUploadGuard("upload:no-workspace-returned", { selectedFileCount: selectedFiles.length });
+        warnUploadGuard("upload:no-workspace-returned", { selectedFileCount: allUploadFiles.length });
         return;
       }
 
@@ -353,8 +360,26 @@ export function DocumentUpload() {
     setError(null);
   }
 
+  function handleAnswerKeyFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setAnswerKeyFiles(Array.from(event.target.files ?? []));
+    setError(null);
+  }
+
+  function handleWorkedSolutionFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setWorkedSolutionFiles(Array.from(event.target.files ?? []));
+    setError(null);
+  }
+
+  function handleRubricFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setRubricFiles(Array.from(event.target.files ?? []));
+    setError(null);
+  }
+
   function resetSession() {
     setSelectedFiles([]);
+    setAnswerKeyFiles([]);
+    setWorkedSolutionFiles([]);
+    setRubricFiles([]);
     setUploadInputKey((current) => current + 1);
     clearSession();
     setSelectedDocumentIds([]);
@@ -390,7 +415,8 @@ export function DocumentUpload() {
     }
   }
 
-  const uploadBlockedReason = getUploadBlockedReason(selectedFiles.length, isUploading, uploadUsageToday?.remainingPages ?? null);
+  const totalSelectedFiles = selectedFiles.length + answerKeyFiles.length + workedSolutionFiles.length + rubricFiles.length;
+  const uploadBlockedReason = getUploadBlockedReason(totalSelectedFiles, isUploading, uploadUsageToday?.remainingPages ?? null);
   const uploadUsagePct = uploadUsageToday && uploadUsageToday.maxPagesPerDay > 0
     ? Math.min(100, Math.round(uploadUsageToday.pagesUploaded / uploadUsageToday.maxPagesPerDay * 100))
     : 0;
@@ -442,6 +468,42 @@ export function DocumentUpload() {
               />
             </label>
 
+            <label className="v4-upload-field" htmlFor="v4-upload-answer-key">
+              <span>Optional: separate answer key</span>
+              <input
+                key={`${uploadInputKey}-answer-key`}
+                id="v4-upload-answer-key"
+                type="file"
+                multiple
+                accept=".pdf,application/pdf,.doc,.docx,.txt,text/plain"
+                onChange={handleAnswerKeyFileChange}
+              />
+            </label>
+
+            <label className="v4-upload-field" htmlFor="v4-upload-worked-solution">
+              <span>Optional: separate worked solutions</span>
+              <input
+                key={`${uploadInputKey}-worked-solution`}
+                id="v4-upload-worked-solution"
+                type="file"
+                multiple
+                accept=".pdf,application/pdf,.doc,.docx,.txt,text/plain"
+                onChange={handleWorkedSolutionFileChange}
+              />
+            </label>
+
+            <label className="v4-upload-field" htmlFor="v4-upload-rubric">
+              <span>Optional: separate rubric</span>
+              <input
+                key={`${uploadInputKey}-rubric`}
+                id="v4-upload-rubric"
+                type="file"
+                multiple
+                accept=".pdf,application/pdf,.doc,.docx,.txt,text/plain"
+                onChange={handleRubricFileChange}
+              />
+            </label>
+
             <div className="v4-upload-actions">
               <button className="v4-button" type="submit" disabled={Boolean(uploadBlockedReason)} title={uploadBlockedReason ?? undefined}>
                 {isUploading ? "Creating workspace..." : "Create workspace"}
@@ -451,14 +513,17 @@ export function DocumentUpload() {
                   Start new session
                 </button>
               )}
-              {selectedFiles.length > 0 && <span className="v4-upload-name">{selectedFiles.length} file(s) selected</span>}
+              {totalSelectedFiles > 0 && <span className="v4-upload-name">{totalSelectedFiles} file(s) selected</span>}
             </div>
 
             {uploadBlockedReason && !error && <p className="v4-body-copy">{uploadBlockedReason}</p>}
 
-            {selectedFiles.length > 0 && (
+            {totalSelectedFiles > 0 && (
               <ul className="v4-inline-list" aria-label="Selected files">
                 {selectedFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                {answerKeyFiles.map((file) => <li key={`${file.name}-${file.size}-answer`}>[Answer Key] {file.name}</li>)}
+                {workedSolutionFiles.map((file) => <li key={`${file.name}-${file.size}-solution`}>[Worked Solution] {file.name}</li>)}
+                {rubricFiles.map((file) => <li key={`${file.name}-${file.size}-rubric`}>[Rubric] {file.name}</li>)}
               </ul>
             )}
 
@@ -525,6 +590,14 @@ export function DocumentUpload() {
                           />
                           <span>Share with all teachers</span>
                         </label>
+                        <button
+                          type="button"
+                          className="v4-button v4-button-secondary"
+                          style={{ fontSize: "0.78rem", padding: "0.25rem 0.65rem" }}
+                          onClick={() => setLayersModal({ documentId: document.documentId, documentName: document.sourceFileName })}
+                        >
+                          View Ingestion Layers
+                        </button>
                       </div>
                       <div className="v4-document-summary">
                         <p>{describeAnalyzedDocument(analyzed)}</p>
@@ -563,6 +636,13 @@ export function DocumentUpload() {
           </div>
         )}
       </div>
+      {layersModal && (
+        <IngestionLayersModal
+          documentId={layersModal.documentId}
+          documentName={layersModal.documentName}
+          onClose={() => setLayersModal(null)}
+        />
+      )}
     </div>
   );
 }

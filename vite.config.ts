@@ -108,6 +108,7 @@ type LocalApiRoute = {
 const localPrismRoutes: LocalApiRoute[] = [
   { pattern: /^\/documents\/upload$/, modulePath: '/api/v4/documents/upload.js', readRawBody: true },
   { pattern: /^\/documents$/, modulePath: '/api/v4/documents/index.js' },
+  { pattern: /^\/documents\/usage-today$/, modulePath: '/api/v4/documents/usage-today.js' },
   { pattern: /^\/documents\/session$/, modulePath: '/api/v4/documents/session.js' },
   { pattern: /^\/documents\/session-analysis$/, modulePath: '/api/v4/documents/session-analysis.js' },
   {
@@ -118,6 +119,11 @@ const localPrismRoutes: LocalApiRoute[] = [
   { pattern: /^\/documents\/intent$/, modulePath: '/api/v4/documents/intent.js' },
   { pattern: /^\/documents\/analyze$/, modulePath: '/api/v4/documents/analyze.js' },
   { pattern: /^\/documents\/status$/, modulePath: '/api/v4/documents/status.js' },
+  {
+    pattern: /^\/documents\/([^/]+)\/item-layers$/,
+    modulePath: '/api/v4/documents/[documentId]/item-layers.js',
+    queryFromMatch: (match) => ({ documentId: decodeURIComponent(match[1] ?? '') }),
+  },
   { pattern: /^\/sessions\/assessment-preview$/, modulePath: '/api/v4/sessions/assessment-preview.js' },
   { pattern: /^\/sessions\/builder-plan$/, modulePath: '/api/v4/sessions/builder-plan.js' },
   { pattern: /^\/sessions\/blueprint$/, modulePath: '/api/v4/sessions/blueprint.js' },
@@ -168,6 +174,7 @@ const localPrismRoutes: LocalApiRoute[] = [
     queryFromMatch: (match) => ({ classId: decodeURIComponent(match[1] ?? '') }),
   },
   { pattern: /^\/simulations\/run$/, modulePath: '/api/v4/simulations/run.js' },
+  { pattern: /^\/simulations\/usage-today$/, modulePath: '/api/v4/simulations/usage-today.js' },
   {
     pattern: /^\/simulations\/([^/]+)$/,
     modulePath: '/api/v4/simulations/[simulationId].js',

@@ -10501,8 +10501,17 @@ function inferContentType(nodeType, text) {
   }
   return "text";
 }
-function classifyRole(text, contentType) {
+function classifyRole(text, contentType, declaredRole) {
   const lower = text.toLowerCase();
+  if (declaredRole === "answer-key") {
+    return { isInstructional: true, instructionalRole: "note", confidence: 0.99, evidence: "Declared answer-key role override." };
+  }
+  if (declaredRole === "worked-solution") {
+    return { isInstructional: true, instructionalRole: "example", confidence: 0.99, evidence: "Declared worked-solution role override." };
+  }
+  if (declaredRole === "rubric") {
+    return { isInstructional: true, instructionalRole: "instruction", confidence: 0.99, evidence: "Declared rubric role override." };
+  }
   if (!text.trim()) {
     return { isInstructional: false, instructionalRole: "metadata", confidence: 0.98, evidence: "Empty text node." };
   }
@@ -10532,11 +10541,11 @@ function classifyRole(text, contentType) {
   }
   return { isInstructional: true, instructionalRole: "explanation", confidence: 0.62, evidence: "Default instructional explanation classification." };
 }
-function classifyFragments(document) {
+function classifyFragments(document, declaredRole) {
   return document.nodes.map((node) => {
     const text = node.normalizedText ?? node.text ?? "";
     const contentType = inferContentType(node.nodeType, text);
-    const classification = classifyRole(text, contentType);
+    const classification = classifyRole(text, contentType, declaredRole);
     const learningTarget = extractLearningTarget(text, classification.instructionalRole);
     const prerequisiteConcepts = extractPrerequisiteConcepts(text);
     const scaffoldLevel = inferScaffoldLevel(text, classification.instructionalRole);
@@ -11548,7 +11557,7 @@ async function analyzeRegisteredDocument(args) {
     nodes: [],
     createdAt: new Date().toISOString()
   }));
-  const fragments = classifyFragments(canonicalDocument);
+  const fragments = classifyFragments(canonicalDocument, args.declaredRole);
   const extractInput = azureExtract ?? canonicalDocumentToAzureExtract(canonicalDocument);
   const { extractedProblems } = extractInput ? extractAnchoredProblems({ document: canonicalDocument, fragments, azureExtract: { ...extractInput, fileName: args.sourceFileName } }) : { extractedProblems: [] };
   const insights = buildAnalyzedDocumentInsights({
@@ -12711,6 +12720,7 @@ async function loadBasePrismSessionContext(sessionId) {
         documentId: document.documentId,
         sourceFileName: document.sourceFileName,
         sourceMimeType: document.sourceMimeType,
+        declaredRole: session.documentRoles[document.documentId]?.[0],
         rawBinary: document.rawBinary,
         azureExtract: document.azureExtract,
         canonicalDocument: document.canonicalDocument

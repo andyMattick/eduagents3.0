@@ -108,6 +108,7 @@ export function upsertDocumentSession(session: Omit<DocumentSession, "createdAt"
 	const existing = sessions.get(session.sessionId);
 	const next: DocumentSession = {
 		...session,
+		resourceLinks: session.resourceLinks ?? existing?.resourceLinks ?? [],
 		createdAt: existing?.createdAt ?? session.createdAt ?? now(),
 		updatedAt: now(),
 	};
@@ -121,6 +122,7 @@ export function createDocumentSession(documentIds: string[]) {
 		documentIds,
 		documentRoles: Object.fromEntries(documentIds.map((documentId) => [documentId, ["unknown"]])),
 		sessionRoles: Object.fromEntries(documentIds.map((documentId) => [documentId, ["source-material"]])),
+		resourceLinks: [],
 	});
 }
 

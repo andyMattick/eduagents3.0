@@ -9883,13 +9883,25 @@ function classifyDocType(text) {
     return "problem";
   return "notes";
 }
+function declaredRoleToDocType(role) {
+  if (!role) {
+    return null;
+  }
+  if (role === "test") {
+    return "problem";
+  }
+  if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+    return "notes";
+  }
+  return null;
+}
 async function ingestDocument(input) {
-  const { documentId, analyzedDocument, azureExtract, rawText } = input;
+  const { documentId, analyzedDocument, azureExtract, rawText, declaredRole } = input;
   let text = rawText ?? "";
   if (!text && analyzedDocument) {
     text = flattenAnalyzedDocumentText(analyzedDocument);
   }
-  const docType = classifyDocType(text);
+  const docType = declaredRoleToDocType(declaredRole) ?? classifyDocType(text);
   setDocType(documentId, docType).catch(() => {
   });
   let items = [];

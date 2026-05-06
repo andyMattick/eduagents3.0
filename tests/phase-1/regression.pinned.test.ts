@@ -6,19 +6,19 @@ describe("Pinned regression values", () => {
   const snapshot = simulateAssessment({ seed: "phase1-regression" });
 
   it("pins pCorrect", () => {
-    expect(snapshot.items[0].pCorrect).toBeCloseTo(0.68, 2);
+    expect(snapshot.items[0].pCorrect).toBeCloseTo(0.6533, 4);
   });
 
   it("pins confusion", () => {
-    expect(snapshot.items[0].confusion).toBeCloseTo(0.23, 2);
+    expect(snapshot.items[0].confusion).toBeCloseTo(0.7049, 4);
   });
 
   it("pins timeSeconds", () => {
-    expect(snapshot.items[0].timeSeconds).toBeCloseTo(43, 1);
+    expect(snapshot.items[0].timeSeconds).toBeCloseTo(45.5128, 4);
   });
 
   it("pins difficulty", () => {
-    expect(snapshot.items[0].difficulty).toBeCloseTo(0.63, 2);
+    expect(snapshot.items[0].difficulty).toBeCloseTo(0.6741, 4);
   });
 
   it("pins bloom", () => {

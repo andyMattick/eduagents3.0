@@ -23,7 +23,7 @@ import {
 	upsertDocumentSession,
 	type RegisteredDocument,
 } from "./registry";
-import type { DocumentSession, DocumentRole, SessionRole } from "../schema/domain";
+import type { DocumentResourceLink, DocumentSession, DocumentRole, SessionRole } from "../schema/domain";
 import type { BuiltIntentType, IntentPayloadByType, IntentProduct, IntentRequest } from "../schema/integration";
 import type { AnalyzedDocument, DocumentCollectionAnalysis, InstructionalUnit } from "../schema/semantic";
 import type { CanonicalDocument, CanonicalItem } from "../schema/semantic";
@@ -49,6 +49,7 @@ const INTENT_PRODUCTS_TABLE = "prism_v4_intent_products";
 const BLUEPRINTS_TABLE = "prism_v4_blueprints";
 const BLUEPRINT_VERSIONS_TABLE = "prism_v4_blueprint_versions";
 const STUDIO_OUTPUTS_TABLE = "prism_v4_outputs";
+const DOCUMENT_RESOURCE_LINKS_TABLE = "v4_document_resource_links";
 
 export interface PrismSessionContext {
 	session: DocumentSession;
@@ -221,6 +222,16 @@ type SessionSnapshotRow = {
 	session_id: string;
 	snapshot_json: PersistedPrismSessionContext;
 	created_at: string;
+};
+
+type DocumentResourceLinkRow = {
+	session_id: string;
+	document_id: string;
+	resource_document_id: string;
+	resource_type: DocumentResourceLink["resourceType"];
+	content_text?: string | null;
+	created_at?: string;
+	updated_at?: string;
 };
 
 type IntentProductRow = {
@@ -481,9 +492,115 @@ function fromSessionRow(row: SessionRow): DocumentSession {
 		documentIds: row.document_ids ?? [],
 		documentRoles: row.document_roles ?? {},
 		sessionRoles: row.session_roles ?? {},
+		resourceLinks: [],
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
+}
+
+function normalizeResourceLinks(resourceLinks: DocumentSession["resourceLinks"] | undefined): DocumentResourceLink[] {
+	if (!Array.isArray(resourceLinks)) {
+		return [];
+	}
+
+	const seen = new Set<string>();
+	const normalized: DocumentResourceLink[] = [];
+	for (const link of resourceLinks) {
+		if (!link?.documentId || !link?.resourceDocumentId || !link?.resourceType) {
+			continue;
+		}
+
+		const key = `${link.documentId}:${link.resourceDocumentId}:${link.resourceType}`;
+		if (seen.has(key)) {
+			continue;
+		}
+
+		seen.add(key);
+		normalized.push({
+			documentId: link.documentId,
+			resourceDocumentId: link.resourceDocumentId,
+			resourceType: link.resourceType,
+			contentText: typeof link.contentText === "string" ? link.contentText : undefined,
+		});
+	}
+
+	return normalized;
+}
+
+function toDocumentResourceLinkRows(sessionId: string, resourceLinks: DocumentResourceLink[]): DocumentResourceLinkRow[] {
+	return resourceLinks.map((link) => ({
+		session_id: sessionId,
+		document_id: link.documentId,
+		resource_document_id: link.resourceDocumentId,
+		resource_type: link.resourceType,
+		content_text: link.contentText ?? null,
+	}));
+}
+
+function fromDocumentResourceLinkRow(row: DocumentResourceLinkRow): DocumentResourceLink {
+	return {
+		documentId: row.document_id,
+		resourceDocumentId: row.resource_document_id,
+		resourceType: row.resource_type,
+		contentText: typeof row.content_text === "string" ? row.content_text : undefined,
+	};
+}
+
+function extractResourceDocumentText(document: Pick<DocumentRow, "canonical_document" | "azure_extract">): string {
+	const nodes = document.canonical_document?.nodes;
+	if (Array.isArray(nodes) && nodes.length > 0) {
+		const text = nodes
+			.map((node) => node?.normalizedText ?? node?.text ?? "")
+			.filter(Boolean)
+			.join("\n");
+		if (text.trim().length > 0) {
+			return text;
+		}
+	}
+
+	if (typeof document.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
+		return document.azure_extract.content;
+	}
+
+	const paragraphs = document.azure_extract?.paragraphs;
+	if (Array.isArray(paragraphs) && paragraphs.length > 0) {
+		return paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n");
+	}
+
+	const pages = document.azure_extract?.pages;
+	if (Array.isArray(pages) && pages.length > 0) {
+		return pages.map((page) => page?.text ?? "").filter(Boolean).join("\n");
+	}
+
+	return "";
+}
+
+async function withResourceContentText(resourceLinks: DocumentResourceLink[]): Promise<DocumentResourceLink[]> {
+	const resourceIds = Array.from(new Set(resourceLinks
+		.map((link) => link.resourceDocumentId)
+		.filter((id) => typeof id === "string" && id.trim().length > 0)));
+
+	if (resourceIds.length === 0) {
+		return resourceLinks;
+	}
+
+	const escapedIds = resourceIds.map((id) => `"${id}"`).join(",");
+	const documents = await supabaseRest(DOCUMENTS_TABLE, {
+		select: "document_id,canonical_document,azure_extract",
+		filters: {
+			document_id: `in.(${escapedIds})`,
+		},
+	}) as DocumentRow[];
+
+	const contentByDocumentId = new Map<string, string>();
+	for (const document of documents ?? []) {
+		contentByDocumentId.set(document.document_id, extractResourceDocumentText(document));
+	}
+
+	return resourceLinks.map((link) => ({
+		...link,
+		contentText: contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText,
+	}));
 }
 
 function toDocumentRow(document: RegisteredDocument, sessionId: string | null, ownerId: string | null = null): DocumentRow {
@@ -672,6 +789,7 @@ function applyPrismSessionContextToRegistry(context: PrismSessionContext) {
 		documentIds: context.session.documentIds,
 		documentRoles: context.session.documentRoles,
 		sessionRoles: context.session.sessionRoles,
+		resourceLinks: context.session.resourceLinks,
 		createdAt: context.session.createdAt,
 	});
 
@@ -719,6 +837,97 @@ async function updateDocumentSessionIds(sessionId: string, documentIds: string[]
 			prefer: "return=minimal",
 		}),
 	]);
+}
+
+function isDocumentResourceLinksSchemaError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	return error.message.includes("v4_document_resource_links") && (error.message.includes("42703") || error.message.includes("PGRST") || error.message.includes("does not exist"));
+}
+
+async function listDocumentResourceLinksStore(sessionId: string): Promise<DocumentResourceLink[]> {
+	if (!canUseSupabase()) {
+		return getDocumentSession(sessionId)?.resourceLinks ?? [];
+	}
+
+	let rows: DocumentResourceLinkRow[] | null;
+	try {
+		rows = await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
+			select: "session_id,document_id,resource_document_id,resource_type",
+			filters: { session_id: `eq.${sessionId}` },
+		}) as DocumentResourceLinkRow[] | null;
+	} catch (error) {
+		if (!isDocumentResourceLinksSchemaError(error)) {
+			throw error;
+		}
+		return [];
+	}
+
+	return (rows ?? []).map((row) => fromDocumentResourceLinkRow(row));
+}
+
+async function replaceDocumentResourceLinksStore(sessionId: string, resourceLinks: DocumentResourceLink[]) {
+	if (!canUseSupabase()) {
+		const existing = getDocumentSession(sessionId);
+		if (!existing) {
+			return;
+		}
+
+		upsertDocumentSession({
+			...existing,
+			resourceLinks,
+			createdAt: existing.createdAt,
+		});
+		return;
+	}
+
+	try {
+		await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
+			method: "DELETE",
+			filters: { session_id: `eq.${sessionId}` },
+			prefer: "return=minimal",
+		});
+	} catch (error) {
+		if (!isDocumentResourceLinksSchemaError(error)) {
+			throw error;
+		}
+		return;
+	}
+
+	if (resourceLinks.length === 0) {
+		return;
+	}
+
+	let linksWithContent = resourceLinks;
+	try {
+		linksWithContent = await withResourceContentText(resourceLinks);
+	} catch {
+		linksWithContent = resourceLinks;
+	}
+
+	try {
+		await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
+			method: "POST",
+			body: toDocumentResourceLinkRows(sessionId, linksWithContent),
+			prefer: "resolution=merge-duplicates,return=minimal",
+		});
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("content_text")) {
+			await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
+				method: "POST",
+				body: toDocumentResourceLinkRows(sessionId, resourceLinks).map((row) => {
+					const { content_text, ...rest } = row;
+					return rest;
+				}),
+				prefer: "resolution=merge-duplicates,return=minimal",
+			});
+			return;
+		}
+		if (!isDocumentResourceLinksSchemaError(error)) {
+			throw error;
+		}
+	}
 }
 
 export async function savePrismSessionSnapshot(sessionId: string, context: PrismSessionContext) {
@@ -849,7 +1058,15 @@ export async function getDocumentSessionStore(sessionId: string) {
 		filters: { session_id: `eq.${sessionId}` },
 	});
 	const row = Array.isArray(rows) ? rows[0] as SessionRow | undefined : undefined;
-	return row ? fromSessionRow(row) : null;
+	if (!row) {
+		return null;
+	}
+
+	const resourceLinks = await listDocumentResourceLinksStore(sessionId);
+	return {
+		...fromSessionRow(row),
+		resourceLinks,
+	};
 }
 
 export async function createDocumentSessionStore(documentIds: string[], sessionId = createId("session")) {
@@ -859,6 +1076,7 @@ export async function createDocumentSessionStore(documentIds: string[], sessionI
 			documentIds,
 			documentRoles: defaultDocumentRoles(documentIds),
 			sessionRoles: defaultSessionRoles(documentIds),
+			resourceLinks: [],
 		});
 		markCollectionAnalysisStale(sessionId);
 		invalidatePrismSessionContext(sessionId);
@@ -871,6 +1089,7 @@ export async function createDocumentSessionStore(documentIds: string[], sessionI
 		documentIds,
 		documentRoles: defaultDocumentRoles(documentIds),
 		sessionRoles: defaultSessionRoles(documentIds),
+		resourceLinks: [],
 		createdAt: now(),
 		updatedAt: now(),
 	};
@@ -896,6 +1115,7 @@ export async function ensureSessionDocumentsStore(sessionId: string, documentIds
 				documentIds,
 				documentRoles: defaultDocumentRoles(documentIds),
 				sessionRoles: defaultSessionRoles(documentIds),
+				resourceLinks: [],
 			});
 			markCollectionAnalysisStale(sessionId);
 			invalidatePrismSessionContext(sessionId);
@@ -930,6 +1150,7 @@ export async function ensureSessionDocumentsStore(sessionId: string, documentIds
 			...defaultSessionRoles(mergedDocumentIds),
 			...existing.sessionRoles,
 		},
+		resourceLinks: existing.resourceLinks ?? [],
 		updatedAt: now(),
 	};
 
@@ -960,6 +1181,7 @@ export async function upsertDocumentSessionStore(session: Omit<DocumentSession, 
 		documentIds: session.documentIds,
 		documentRoles: session.documentRoles,
 		sessionRoles: session.sessionRoles,
+		resourceLinks: normalizeResourceLinks(session.resourceLinks ?? existing?.resourceLinks),
 		createdAt: existing?.createdAt ?? session.createdAt ?? now(),
 		updatedAt: now(),
 	};
@@ -970,6 +1192,7 @@ export async function upsertDocumentSessionStore(session: Omit<DocumentSession, 
 		prefer: "resolution=merge-duplicates,return=minimal",
 	});
 	await updateDocumentSessionIds(nextSession.sessionId, nextSession.documentIds);
+	await replaceDocumentResourceLinksStore(nextSession.sessionId, nextSession.resourceLinks ?? []);
 	markCollectionAnalysisStale(nextSession.sessionId);
 	invalidatePrismSessionContext(nextSession.sessionId);
 	await invalidatePrismSessionSnapshot(nextSession.sessionId);

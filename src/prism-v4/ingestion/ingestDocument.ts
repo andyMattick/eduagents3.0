@@ -32,6 +32,7 @@ import {
 } from "../../../api/v4/simulator/shared";
 import { classifyDocType, type DocType } from "./classifyDocType";
 import type { AnalyzedDocument, AzureExtractResult } from "../schema/semantic";
+import type { DocumentRole } from "../schema/domain/DocumentSession";
 
 export type IngestionSource = "teacher-upload" | "student-portal" | "created" | "api" | "backfill";
 
@@ -45,6 +46,7 @@ export interface IngestionResult {
 export interface IngestDocumentInput {
 	source: IngestionSource;
 	documentId: string;
+	declaredRole?: DocumentRole;
 	/** Plain text — required when source != "teacher-upload" */
 	rawText?: string;
 	/**
@@ -58,7 +60,7 @@ export interface IngestDocumentInput {
 }
 
 export async function ingestDocument(input: IngestDocumentInput): Promise<IngestionResult> {
-	const { documentId, analyzedDocument, azureExtract, rawText } = input;
+	const { documentId, analyzedDocument, azureExtract, rawText, declaredRole } = input;
 
 	// -------------------------------------------------------------------------
 	// 1. Acquire canonical text for doc-type classification
@@ -71,7 +73,7 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Ingest
 	// -------------------------------------------------------------------------
 	// 2. Classify doc type
 	// -------------------------------------------------------------------------
-	const docType = classifyDocType(text);
+	const docType = declaredRoleToDocType(declaredRole) ?? classifyDocType(text);
 
 	// Non-blocking: write doc_type to prism_v4_documents
 	setDocType(documentId, docType).catch(() => {/* non-fatal */});
@@ -113,6 +115,19 @@ export async function ingestDocument(input: IngestDocumentInput): Promise<Ingest
 	await Promise.all([persistItems, persistSections, persistAnalysis]);
 
 	return { documentId, docType, items, sections };
+}
+
+function declaredRoleToDocType(role: DocumentRole | undefined): DocType | null {
+	if (!role) {
+		return null;
+	}
+	if (role === "test") {
+		return "problem";
+	}
+	if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+		return "notes";
+	}
+	return null;
 }
 
 // ---------------------------------------------------------------------------

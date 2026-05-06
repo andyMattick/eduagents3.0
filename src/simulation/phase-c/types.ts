@@ -109,8 +109,84 @@ export type SimulationResult = {
   difficultyScore: number;
   abilityScore: number;
   pCorrect: number;
+  pScore?: number;
+  partialCreditProbability?: number;
   traitsSnapshot?: SimulationTraitsSnapshot;
 };
+
+export interface RubricMeasurables {
+  hasRubric: boolean;
+  rubricStrictness: number;
+  rubricTolerance: number;
+  partialCreditEnabled: boolean;
+  requiredElementsCount: number;
+  qualityThreshold: number;
+}
+
+export interface BaseMeasurables {
+  linguisticLoad: number;
+  cognitiveLoad: number;
+  bloomEstimate: number;
+  conceptDensity: number;
+  representationLoad: number;
+  itemLength: number;
+  readingComplexity: number;
+  surfaceDifficulty: number;
+}
+
+export interface AnswerKeyMeasurables {
+  hasAnswerKey: boolean;
+  correctAnswer: string;
+  answerType: "numeric" | "symbolic" | "mc" | "text";
+  distractorCount?: number;
+  distractorMapping?: Record<string, string>;
+  misconceptionIds?: string[];
+  answerAmbiguityScore: number;
+  answerFormatComplexity: number;
+  answerKeyDifficultyAdjustment: number;
+  answerKeyPCorrectAdjustment: number;
+}
+
+export type StepType = "computational" | "inferential" | "conceptual" | "procedural" | "interpretive";
+
+export interface StepMeasurables {
+  hasWorkedSolution: boolean;
+  stepCount: number;
+  stepTypes: Record<StepType, number>;
+  stepComplexity: number;
+  branchingFactor: number;
+  transformationDensity: number;
+  errorOpportunityCount: number;
+  stepDifficultyCurve: number[];
+  stepTimeCurve: number[];
+  stepCognitiveLoadCurve: number[];
+  conceptTransitionMap: string[];
+}
+
+export interface CombinedMeasurables {
+  hasAnswerKeyAndSteps: boolean;
+  solutionPathFidelity: number;
+  answerStepAlignment: number;
+  minimalStepComparison: number;
+  solutionEfficiencyScore: number;
+  misconceptionStepMapping: Record<string, number[]>;
+  distractorStepMapping: Record<string, number[]>;
+  conceptToAnswerAlignment: number;
+}
+
+export interface ItemMeasurables {
+  base: BaseMeasurables;
+  answerKey?: AnswerKeyMeasurables;
+  steps?: StepMeasurables;
+  rubric?: RubricMeasurables;
+  combined?: CombinedMeasurables;
+}
+
+export interface ItemResources {
+  hasAnswerKey: boolean;
+  hasWorkedSolution: boolean;
+  hasRubric?: boolean;
+}
 
 export type CreateClassInput = {
   teacherId?: string;
@@ -134,6 +210,8 @@ export type PhaseBNormalizedItemInput = {
   itemId: string;
   itemNumber?: number;
   logicalLabel?: string;
+  resources?: ItemResources;
+  measurables?: ItemMeasurables;
   traits: {
     bloomLevel: number;
     linguisticLoad: number;

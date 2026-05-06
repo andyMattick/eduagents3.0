@@ -6,7 +6,7 @@ describe("Spikes, cliffs, fatigue", () => {
   const snapshot = simulateAssessment({ seed: "phase1-regression" });
 
   it("detects spikes", () => {
-    expect(snapshot.items[3].spikes.length).toBe(1);
+    expect(snapshot.items[4].spikes.length).toBe(1);
   });
 
   it("detects cliffs", () => {

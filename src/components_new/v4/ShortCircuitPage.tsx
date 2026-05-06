@@ -9,14 +9,15 @@
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
-import { StudentSummaryTable } from "./StudentSummaryTable";
+import { StudentSummaryTable, type StudentSummaryRow } from "./StudentSummaryTable";
 import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
-import { createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import { bindDocumentsToSessionApi, createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
 import { getClassDetailApi, getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass, type SyntheticStudent } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
 import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
 import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
 import { sortStudentsByProfile } from "./phase-c/studentRoster";
+import { IngestionLayersModal } from "./IngestionLayersModal";
 import "./v4.css";
 
 const ACCEPTED_EXTENSIONS = ".pdf,.doc,.docx,.ppt,.pptx";
@@ -32,6 +33,8 @@ type SimulationSectionView = {
   itemTrees: SimulationItemTree[];
 };
 
+type StudentSortMode = "student-number" | "score-high-low" | "score-low-high";
+
 type PhaseCView = Awaited<ReturnType<typeof getSimulationViewApi>>;
 
 type StudentResultRow = {
@@ -41,8 +44,16 @@ type StudentResultRow = {
   timeSeconds?: number;
   bloomGap?: number;
   pCorrect?: number;
+  pScore?: number;
+  partialCreditProbability?: number;
+  rubricNarrative?: string;
   difficultyScore?: number;
   abilityScore?: number;
+  resources?: {
+    hasAnswerKey?: boolean;
+    hasWorkedSolution?: boolean;
+    hasRubric?: boolean;
+  };
 };
 
 type SimulationUsageToday = {
@@ -62,6 +73,7 @@ type VerificationItemType = "mc" | "free_response" | "multipart_parent" | "multi
 
 type VerificationItem = {
   id: string;
+  persistedItemId?: string;
   itemNumber: number | null;
   logicalLabel: string;
   groupId: number;
@@ -234,6 +246,8 @@ export function ShortCircuitPage() {
   const [phaseCSimulationId, setPhaseCSimulationId] = useState<string | null>(null);
   const [phaseCClassView, setPhaseCClassView] = useState<PhaseCView | null>(null);
   const [phaseCStudentView, setPhaseCStudentView] = useState<PhaseCView | null>(null);
+  const [studentSortMode, setStudentSortMode] = useState<StudentSortMode>("student-number");
+  const [studentSummaryRows, setStudentSummaryRows] = useState<StudentSummaryRow[]>([]);
   const [phaseCStudents, setPhaseCStudents] = useState<SyntheticStudent[]>([]);
   const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageToday | null>(null);
   const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageToday | null>(null);
@@ -253,7 +267,14 @@ export function ShortCircuitPage() {
   const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [visibilityError, setVisibilityError] = useState<string | null>(null);
   const [visibilityMessage, setVisibilityMessage] = useState<string | null>(null);
+  const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
+  const [workedSolutionFile, setWorkedSolutionFile] = useState<File | null>(null);
+  const [rubricFile, setRubricFile] = useState<File | null>(null);
+  const [showLayersModal, setShowLayersModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const answerKeyInputRef = useRef<HTMLInputElement>(null);
+  const workedSolutionInputRef = useRef<HTMLInputElement>(null);
+  const rubricInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
     setPhase("upload");
@@ -291,6 +312,12 @@ export function ShortCircuitPage() {
     setVisibilitySaving(false);
     setVisibilityError(null);
     setVisibilityMessage(null);
+    setAnswerKeyFile(null);
+    setWorkedSolutionFile(null);
+    setRubricFile(null);
+    if (answerKeyInputRef.current) answerKeyInputRef.current.value = "";
+    if (workedSolutionInputRef.current) workedSolutionInputRef.current.value = "";
+    if (rubricInputRef.current) rubricInputRef.current.value = "";
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -305,6 +332,48 @@ export function ShortCircuitPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const nextFile = e.target.files?.[0];
     if (nextFile) handleFile(nextFile);
+  };
+
+  const handleAnswerKeyInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = e.target.files?.[0];
+    if (!nextFile) {
+      setAnswerKeyFile(null);
+      return;
+    }
+    if (!DROP_RE.test(nextFile.name)) {
+      setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
+      return;
+    }
+    setAnswerKeyFile(nextFile);
+    setUploadError(null);
+  };
+
+  const handleWorkedSolutionInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = e.target.files?.[0];
+    if (!nextFile) {
+      setWorkedSolutionFile(null);
+      return;
+    }
+    if (!DROP_RE.test(nextFile.name)) {
+      setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
+      return;
+    }
+    setWorkedSolutionFile(nextFile);
+    setUploadError(null);
+  };
+
+  const handleRubricInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = e.target.files?.[0];
+    if (!nextFile) {
+      setRubricFile(null);
+      return;
+    }
+    if (!DROP_RE.test(nextFile.name)) {
+      setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
+      return;
+    }
+    setRubricFile(nextFile);
+    setUploadError(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -392,9 +461,59 @@ export function ShortCircuitPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const { sessionId, registered } = await createStudioSessionFromFilesApi([file], user?.id);
+      const uploadFiles = [file, answerKeyFile, workedSolutionFile, rubricFile].filter((entry): entry is File => Boolean(entry));
+      const { sessionId, registered, nextFileMap } = await createStudioSessionFromFilesApi(uploadFiles, user?.id);
       setSessionId(sessionId);
-      const nextDocumentId = registered[0]?.documentId ?? null;
+      const getDocumentIdForFile = (target: File | null): string | null => {
+        if (!target) return null;
+        for (const doc of registered) {
+          if (nextFileMap[doc.documentId] === target) {
+            return doc.documentId;
+          }
+        }
+        return null;
+      };
+      const primaryDocumentId = getDocumentIdForFile(file) ?? registered[0]?.documentId ?? null;
+      const answerKeyDocumentId = getDocumentIdForFile(answerKeyFile);
+      const workedSolutionDocumentId = getDocumentIdForFile(workedSolutionFile);
+      const rubricDocumentId = getDocumentIdForFile(rubricFile);
+
+      if (sessionId && registered.length > 0) {
+        const documentRoles: Record<string, string[]> = {};
+        const sessionRoles: Record<string, string[]> = {};
+        for (const doc of registered) {
+          const mappedFile = nextFileMap[doc.documentId];
+          const role = mappedFile === file
+            ? "test"
+            : mappedFile === answerKeyFile
+              ? "answer-key"
+              : mappedFile === workedSolutionFile
+                ? "worked-solution"
+                : mappedFile === rubricFile
+                  ? "rubric"
+                : "unknown";
+          documentRoles[doc.documentId] = [role];
+          sessionRoles[doc.documentId] = [role === "test" ? "target-assessment" : "unit-member"];
+        }
+
+        const resourceLinks = primaryDocumentId
+          ? [
+            ...(answerKeyDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: answerKeyDocumentId, resourceType: "answer-key" as const }] : []),
+            ...(workedSolutionDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: workedSolutionDocumentId, resourceType: "worked-solution" as const }] : []),
+            ...(rubricDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: rubricDocumentId, resourceType: "rubric" as const }] : []),
+          ]
+          : [];
+
+        await bindDocumentsToSessionApi({
+          sessionId,
+          documentIds: registered.map((entry) => entry.documentId),
+          documentRoles,
+          sessionRoles,
+          resourceLinks,
+        });
+      }
+
+      const nextDocumentId = primaryDocumentId;
       setDocumentId(nextDocumentId);
       setIsPublicDocument(false);
       setVisibilityError(null);
@@ -415,7 +534,10 @@ export function ShortCircuitPage() {
         }
       }
 
-      await runPhaseB({ nextSessionId: sessionId, nextDocumentId });
+      const phaseBOk = await runPhaseB({ nextSessionId: sessionId, nextDocumentId });
+      if (phaseBOk && selectedClassId) {
+        await handleRunPhaseC();
+      }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed. Please try again.");
     } finally {
@@ -576,6 +698,8 @@ export function ShortCircuitPage() {
         linguisticLoad: item.linguisticLoad,
         cognitiveLoad: (item as { cognitiveLoad?: number }).cognitiveLoad,
         representationLoad: (item as { representationLoad?: number }).representationLoad,
+        resources: (item as { resources?: { hasAnswerKey?: boolean; hasWorkedSolution?: boolean } }).resources,
+        measurables: (item as { measurables?: Record<string, unknown> }).measurables,
       })).filter((item) => Boolean(item.logicalLabel));
 
       const output = await runSimulationUnifiedApi({
@@ -646,6 +770,7 @@ export function ShortCircuitPage() {
     const nextItems: VerificationItem[] = graphItems.map((item, index) => {
       const verification: VerificationItem = {
         id: String(item.logicalLabel ?? item.itemNumber ?? `item-${index}`),
+        persistedItemId: (item as { itemId?: string }).itemId,
         itemNumber: typeof item.itemNumber === "number" ? item.itemNumber : null,
         logicalLabel: String(item.logicalLabel ?? item.itemNumber ?? index + 1),
         groupId: typeof item.logicalNumber === "number" ? item.logicalNumber : (typeof item.itemNumber === "number" ? item.itemNumber : index + 1),
@@ -677,6 +802,25 @@ export function ShortCircuitPage() {
       return [];
     }
 
+    if (studentSortMode === "score-high-low" || studentSortMode === "score-low-high") {
+      const direction = studentSortMode === "score-high-low" ? -1 : 1;
+      const availableSet = new Set(availableIds);
+      const summaryRows = studentSummaryRows.filter((row) => availableSet.has(row.studentId));
+      const sortedByScore = [...summaryRows].sort((left, right) => {
+        const byScore = (left.averagePCorrect - right.averagePCorrect) * direction;
+        if (byScore !== 0) {
+          return byScore;
+        }
+        const leftStudent = phaseCStudents.find((student) => student.id === left.studentId);
+        const rightStudent = phaseCStudents.find((student) => student.id === right.studentId);
+        const leftName = leftStudent?.displayName ?? left.studentId;
+        const rightName = rightStudent?.displayName ?? right.studentId;
+        return leftName.localeCompare(rightName, void 0, { numeric: true });
+      }).map((row) => row.studentId);
+      const missingIds = availableIds.filter((studentId) => !sortedByScore.includes(studentId));
+      return [...sortedByScore, ...missingIds];
+    }
+
     const availableSet = new Set(availableIds);
     const orderedKnownIds = sortStudentsByProfile(
       phaseCStudents.filter((student) => availableSet.has(student.id)),
@@ -685,7 +829,7 @@ export function ShortCircuitPage() {
       .filter((studentId) => !orderedKnownIds.includes(studentId))
       .sort((left, right) => left.localeCompare(right));
     return [...orderedKnownIds, ...missingIds];
-  }, [phaseCClassView?.availableStudentIds, phaseCStudents]);
+  }, [phaseCClassView?.availableStudentIds, phaseCStudents, studentSortMode, studentSummaryRows]);
 
   const simulationsRunToday = simulationUsageToday?.simulationsRun ?? 0;
   const simulationsLimit = simulationUsageToday?.maxSimulationsPerDay ?? 10;
@@ -704,6 +848,74 @@ export function ShortCircuitPage() {
   const selectedPhaseCStudent = useMemo(() => {
     return phaseCStudents.find((student) => student.id === selectedStudentId) ?? null;
   }, [phaseCStudents, selectedStudentId]);
+
+  const selectedStudentRubricPanel = useMemo(() => {
+    if (!selectedPhaseCStudent || phaseCItems.length === 0) {
+      return null;
+    }
+
+    let rubricRows = 0;
+    let pScoreCount = 0;
+    let pScoreSum = 0;
+    let partialCreditCount = 0;
+    let partialCreditSum = 0;
+    let hasWorkedSolutions = false;
+    let hasAnswerKey = false;
+    const rubricNarrativeSnippets: string[] = [];
+
+    for (const item of phaseCItems) {
+      const hasRubricSignal = Boolean(
+        item.resources?.hasRubric
+          || (typeof item.rubricNarrative === "string" && item.rubricNarrative.trim().length > 0)
+          || typeof item.pScore === "number"
+          || typeof item.partialCreditProbability === "number",
+      );
+      if (hasRubricSignal) {
+        rubricRows += 1;
+      }
+
+      if (typeof item.pScore === "number" && Number.isFinite(item.pScore)) {
+        pScoreCount += 1;
+        pScoreSum += item.pScore;
+      }
+
+      if (typeof item.partialCreditProbability === "number" && Number.isFinite(item.partialCreditProbability)) {
+        partialCreditCount += 1;
+        partialCreditSum += item.partialCreditProbability;
+      }
+
+      if (item.resources?.hasWorkedSolution) {
+        hasWorkedSolutions = true;
+      }
+      if (item.resources?.hasAnswerKey) {
+        hasAnswerKey = true;
+      }
+
+      if (typeof item.rubricNarrative === "string" && item.rubricNarrative.trim().length > 0) {
+        const snippet = item.rubricNarrative.trim();
+        if (!rubricNarrativeSnippets.includes(snippet)) {
+          rubricNarrativeSnippets.push(snippet);
+        }
+      }
+    }
+
+    let companionStatus = "No worked problems or answer keys were linked for this student run.";
+    if (hasWorkedSolutions && hasAnswerKey) {
+      companionStatus = "Worked problems and answer keys were linked and used for this student run.";
+    } else if (hasWorkedSolutions) {
+      companionStatus = "Worked problems were linked for this student run (no answer key detected).";
+    } else if (hasAnswerKey) {
+      companionStatus = "Answer keys were linked for this student run (no worked problems detected).";
+    }
+
+    return {
+      rubricRows,
+      avgPScore: pScoreCount > 0 ? pScoreSum / pScoreCount : null,
+      avgPartialCredit: partialCreditCount > 0 ? partialCreditSum / partialCreditCount : null,
+      companionStatus,
+      narrative: rubricNarrativeSnippets[0] ?? null,
+    };
+  }, [phaseCItems, selectedPhaseCStudent]);
 
   useEffect(() => {
     if (orderedPhaseCStudentIds.length === 0) {
@@ -785,6 +997,7 @@ export function ShortCircuitPage() {
       const secondItem = {
         ...target,
         id: `${target.id}-split`,
+        persistedItemId: undefined,
         logicalLabel: `${target.logicalLabel}-2`,
         text: second,
       };
@@ -814,7 +1027,7 @@ export function ShortCircuitPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: verificationItems.map((item) => ({
-            id: item.id,
+            id: item.persistedItemId ?? item.id,
             itemNumber: item.itemNumber,
             logicalLabel: item.logicalLabel,
             groupId: item.groupId,
@@ -838,8 +1051,14 @@ export function ShortCircuitPage() {
         if (!ok) {
           throw new Error("Structure saved, but reload failed. Please retry analysis.");
         }
+        if (phaseCSimulationId && selectedClassId) {
+          setPhaseCSimulationId(null);
+          setPhaseCClassView(null);
+          setPhaseCStudentView(null);
+          await handleRunPhaseC();
+        }
         setVerificationDismissed(false);
-        setStructureSaveMessage("Structure saved and reloaded.");
+        setStructureSaveMessage("Structure saved, reloaded, and simulation refreshed.");
       } else {
         setStructureSaveMessage("Structure saved.");
         setVerificationDismissed(true);
@@ -926,6 +1145,53 @@ export function ShortCircuitPage() {
               </>
             )}
           </div>
+          <div style={{ display: "grid", gap: "0.5rem", marginBottom: "1rem" }}>
+            <input
+              ref={answerKeyInputRef}
+              type="file"
+              accept={ACCEPTED_EXTENSIONS}
+              style={{ display: "none" }}
+              onChange={handleAnswerKeyInputChange}
+            />
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => answerKeyInputRef.current?.click()}
+              style={{ width: "100%" }}
+            >
+              {answerKeyFile ? `Answer Key: ${answerKeyFile.name}` : "Optional: upload separate answer key"}
+            </button>
+            <input
+              ref={workedSolutionInputRef}
+              type="file"
+              accept={ACCEPTED_EXTENSIONS}
+              style={{ display: "none" }}
+              onChange={handleWorkedSolutionInputChange}
+            />
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => workedSolutionInputRef.current?.click()}
+              style={{ width: "100%" }}
+            >
+              {workedSolutionFile ? `Worked Solution: ${workedSolutionFile.name}` : "Optional: upload separate worked solution"}
+            </button>
+            <input
+              ref={rubricInputRef}
+              type="file"
+              accept={ACCEPTED_EXTENSIONS}
+              style={{ display: "none" }}
+              onChange={handleRubricInputChange}
+            />
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => rubricInputRef.current?.click()}
+              style={{ width: "100%" }}
+            >
+              {rubricFile ? `Rubric: ${rubricFile.name}` : "Optional: upload separate rubric"}
+            </button>
+          </div>
           {uploadError && (
             <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: "8px", padding: "0.6rem 0.85rem", color: "#dc2626", fontSize: "0.82rem", marginBottom: "1rem" }}>
               {uploadError}
@@ -983,7 +1249,17 @@ export function ShortCircuitPage() {
                 {file?.name} · {graphItems.length} graphed item{graphItems.length !== 1 ? "s" : ""}
               </p>
             </div>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              {documentId && (
+                <button
+                  type="button"
+                  className="v4-button v4-button-secondary"
+                  style={{ fontSize: "0.78rem", padding: "0.25rem 0.65rem" }}
+                  onClick={() => setShowLayersModal(true)}
+                >
+                  View Ingestion Layers
+                </button>
+              )}
               <button type="button" onClick={startOver} className="v4-shortcircuit-startover">
                 Start over
               </button>
@@ -1249,6 +1525,38 @@ export function ShortCircuitPage() {
                   </div>
                 </div>
 
+                {(typeof phaseCClassView.summary.averagePScore === "number" || typeof phaseCClassView.summary.averagePartialCreditProbability === "number") && (
+                  <div className="phasec-grid-4" style={{ marginTop: "0.6rem" }}>
+                    {typeof phaseCClassView.summary.averagePScore === "number" && (
+                      <div className="phasec-stat-card">
+                        <p className="phasec-stat-label">Avg pScore</p>
+                        <p className="phasec-stat-value">{phaseCClassView.summary.averagePScore.toFixed(3)}</p>
+                      </div>
+                    )}
+                    {typeof phaseCClassView.summary.averagePartialCreditProbability === "number" && (
+                      <div className="phasec-stat-card">
+                        <p className="phasec-stat-label">Avg partial credit</p>
+                        <p className="phasec-stat-value">{phaseCClassView.summary.averagePartialCreditProbability.toFixed(3)}</p>
+                      </div>
+                    )}
+                    {typeof phaseCClassView.summary.rubricItemsEvaluated === "number" && (
+                      <div className="phasec-stat-card">
+                        <p className="phasec-stat-label">Rubric rows</p>
+                        <p className="phasec-stat-value">{phaseCClassView.summary.rubricItemsEvaluated}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {(phaseCClassView.rubricNarrative || phaseCClassView.rubricSummary?.notes) && (
+                  <div style={{ marginTop: "0.75rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.75rem", background: "rgba(252,248,239,0.9)" }}>
+                    <p className="phasec-stat-label" style={{ marginBottom: "0.35rem" }}>Rubric narrative</p>
+                    <p className="phasec-copy" style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>
+                      {phaseCClassView.rubricNarrative ?? phaseCClassView.rubricSummary?.notes}
+                    </p>
+                  </div>
+                )}
+
                 {phaseCClassView.narrative?.text && (
                   <div style={{ marginTop: "1rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.8rem", background: "rgba(255,251,245,0.9)" }}>
                     <p className="phasec-stat-label" style={{ marginBottom: "0.35rem" }}>Teacher narrative</p>
@@ -1283,10 +1591,22 @@ export function ShortCircuitPage() {
                   students={phaseCStudents}
                   userId={user?.id}
                   selectedStudentId={selectedStudentId}
+                  sortMode={studentSortMode}
+                  onRowsChange={setStudentSummaryRows}
                 />
 
                 {(phaseCClassView.availableStudentIds?.length ?? 0) > 0 && (
-                  <div style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+                    <label htmlFor="phasec-student-sort" style={{ fontWeight: 600 }}>Sort students by:</label>
+                    <select
+                      id="phasec-student-sort"
+                      value={studentSortMode}
+                      onChange={(event) => setStudentSortMode(event.target.value as StudentSortMode)}
+                    >
+                      <option value="student-number">Student Number</option>
+                      <option value="score-high-low">Predicted Score (High to Low)</option>
+                      <option value="score-low-high">Predicted Score (Low to High)</option>
+                    </select>
                     <label htmlFor="phasec-student-select" style={{ fontWeight: 600 }}>Student - Individual Problems:</label>
                     <select
                       id="phasec-student-select"
@@ -1323,6 +1643,33 @@ export function ShortCircuitPage() {
                     <p className="phasec-copy" style={{ marginTop: 0 }}>
                       <strong>Summary:</strong> {selectedPhaseCStudent.profileSummaryLabel || "-"}
                     </p>
+
+                    {selectedStudentRubricPanel && (
+                      <div style={{ marginTop: "0.35rem", border: "1px solid rgba(86,57,32,0.16)", borderRadius: "10px", padding: "0.7rem", background: "rgba(255,251,245,0.9)" }}>
+                        <p className="phasec-stat-label" style={{ marginBottom: "0.3rem" }}>Rubric snapshot</p>
+                        <p className="phasec-copy" style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+                          <strong>Rubric-evaluated rows:</strong> {selectedStudentRubricPanel.rubricRows}
+                        </p>
+                        {selectedStudentRubricPanel.avgPScore !== null && (
+                          <p className="phasec-copy" style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+                            <strong>Avg pScore:</strong> {selectedStudentRubricPanel.avgPScore.toFixed(3)}
+                          </p>
+                        )}
+                        {selectedStudentRubricPanel.avgPartialCredit !== null && (
+                          <p className="phasec-copy" style={{ marginTop: 0, marginBottom: "0.25rem" }}>
+                            <strong>Avg partial credit probability:</strong> {selectedStudentRubricPanel.avgPartialCredit.toFixed(3)}
+                          </p>
+                        )}
+                        <p className="phasec-copy" style={{ marginTop: 0, marginBottom: selectedStudentRubricPanel.narrative ? "0.25rem" : 0 }}>
+                          <strong>Companion evidence:</strong> {selectedStudentRubricPanel.companionStatus}
+                        </p>
+                        {selectedStudentRubricPanel.narrative && (
+                          <p className="phasec-copy" style={{ marginTop: 0 }}>
+                            <strong>Rubric narrative:</strong> {selectedStudentRubricPanel.narrative}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1368,6 +1715,13 @@ export function ShortCircuitPage() {
             )}
           </div>
         </div>
+      )}
+      {showLayersModal && documentId && (
+        <IngestionLayersModal
+          documentId={documentId}
+          documentName={file?.name}
+          onClose={() => setShowLayersModal(false)}
+        />
       )}
     </div>
   );

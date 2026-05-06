@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 
-import type { DocumentRole, DocumentSession, SessionRole } from "../prism-v4/schema/domain";
+import type { DocumentResourceLink, DocumentRole, DocumentSession, SessionRole } from "../prism-v4/schema/domain";
 import type { IntentRequest, IntentType } from "../prism-v4/schema/integration/IntentRequest";
 import type { AnalyzedDocument } from "../prism-v4/schema/semantic";
 import type { IntentProduct } from "../prism-v4/schema/integration";
@@ -76,6 +76,68 @@ type SessionPayload = {
 	analyzedDocuments: AnalyzedDocument[];
 };
 
+function buildResourceLinks(args: {
+	registered: RegisteredDocumentSummary[];
+	selectedFiles: File[];
+	answerKeyFiles: File[];
+	workedSolutionFiles: File[];
+	rubricFiles: File[];
+	nextFileMap: Record<string, File>;
+}): DocumentResourceLink[] {
+	if (args.answerKeyFiles.length === 0 && args.workedSolutionFiles.length === 0 && args.rubricFiles.length === 0) {
+		return [];
+	}
+
+	const primaryFiles = new Set(args.selectedFiles.map((file) => fileIdentity(file)));
+	const answerKeyFiles = new Set(args.answerKeyFiles.map((file) => fileIdentity(file)));
+	const workedSolutionFiles = new Set(args.workedSolutionFiles.map((file) => fileIdentity(file)));
+	const rubricFiles = new Set(args.rubricFiles.map((file) => fileIdentity(file)));
+
+	const primaryDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? primaryFiles.has(fileIdentity(file)) : false;
+	});
+	const answerKeyDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? answerKeyFiles.has(fileIdentity(file)) : false;
+	});
+	const workedSolutionDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? workedSolutionFiles.has(fileIdentity(file)) : false;
+	});
+	const rubricDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? rubricFiles.has(fileIdentity(file)) : false;
+	});
+
+	const resourceLinks: DocumentResourceLink[] = [];
+	for (const primary of primaryDocuments) {
+		for (const answerKey of answerKeyDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: answerKey.documentId,
+				resourceType: "answer-key",
+			});
+		}
+		for (const workedSolution of workedSolutionDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: workedSolution.documentId,
+				resourceType: "worked-solution",
+			});
+		}
+		for (const rubric of rubricDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: rubric.documentId,
+				resourceType: "rubric",
+			});
+		}
+	}
+
+	return resourceLinks;
+}
+
 type ProductsPayload = {
 	sessionId: string;
 	products: IntentProduct[];
@@ -83,6 +145,15 @@ type ProductsPayload = {
 
 function guessDocumentRole(file: File): DocumentRole {
 	const lowerName = file.name.toLowerCase();
+	if (lowerName.includes("answer key") || lowerName.includes("answer_key") || lowerName.includes("answer-key")) {
+		return "answer-key";
+	}
+	if (lowerName.includes("worked solution") || lowerName.includes("worked_solution") || lowerName.includes("worked-solution") || lowerName.includes("solutions")) {
+		return "worked-solution";
+	}
+	if (lowerName.includes("rubric") || lowerName.includes("criteria") || lowerName.includes("scoring guide")) {
+		return "rubric";
+	}
 	if (lowerName.includes("slide") || file.type.includes("presentation")) {
 		return "slides";
 	}
@@ -102,6 +173,10 @@ function guessDocumentRole(file: File): DocumentRole {
 		return "article";
 	}
 	return "unknown";
+}
+
+function fileIdentity(file: File): string {
+	return `${file.name}:${file.size}:${file.lastModified}`;
 }
 
 function guessSessionRole(role: DocumentRole): SessionRole {
@@ -184,8 +259,15 @@ export function useInstructionalSession() {
 		return nextWorkspace;
 	}
 
-	async function createSessionFromFiles(selectedFiles: File[]) {
-		if (selectedFiles.length === 0) {
+	async function createSessionFromFiles(
+		selectedFiles: File[],
+		extraFiles?: { answerKeyFiles?: File[]; workedSolutionFiles?: File[]; rubricFiles?: File[] },
+	) {
+		const answerKeyFiles = extraFiles?.answerKeyFiles ?? [];
+		const workedSolutionFiles = extraFiles?.workedSolutionFiles ?? [];
+		const rubricFiles = extraFiles?.rubricFiles ?? [];
+		const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles];
+		if (allUploadFiles.length === 0) {
 			setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
 			return null;
 		}
@@ -197,8 +279,18 @@ export function useInstructionalSession() {
 			const registered: RegisteredDocumentSummary[] = [];
 			const nextFileMap: Record<string, File> = {};
 			let sessionId: string | null = null;
+			const forcedRoles = new Map<string, DocumentRole>();
+			for (const file of answerKeyFiles) {
+				forcedRoles.set(fileIdentity(file), "answer-key");
+			}
+			for (const file of workedSolutionFiles) {
+				forcedRoles.set(fileIdentity(file), "worked-solution");
+			}
+			for (const file of rubricFiles) {
+				forcedRoles.set(fileIdentity(file), "rubric");
+			}
 
-			for (const file of selectedFiles) {
+			for (const file of allUploadFiles) {
 				const buffer = await file.arrayBuffer();
 				const uploadPayload: UploadDocumentResponse = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
 					method: "POST",
@@ -221,13 +313,23 @@ export function useInstructionalSession() {
 
 			const documentRoles = Object.fromEntries(registered.map((entry) => {
 				const file = nextFileMap[entry.documentId];
-				const role = file ? guessDocumentRole(file) : "unknown";
+				const role = file
+					? (forcedRoles.get(fileIdentity(file)) ?? guessDocumentRole(file))
+					: "unknown";
 				return [entry.documentId, [role]];
 			}));
 			const sessionRoles = Object.fromEntries(registered.map((entry) => {
 				const role = documentRoles[entry.documentId]?.[0] ?? "unknown";
 				return [entry.documentId, [guessSessionRole(role)]];
 			}));
+			const resourceLinks = buildResourceLinks({
+				registered,
+				selectedFiles,
+				answerKeyFiles,
+				workedSolutionFiles,
+				rubricFiles,
+				nextFileMap,
+			});
 
 			await fetchJson("/api/v4/documents/session", {
 				method: "POST",
@@ -237,6 +339,7 @@ export function useInstructionalSession() {
 					documentIds: registered.map((entry) => entry.documentId),
 					documentRoles,
 					sessionRoles,
+					resourceLinks,
 				}),
 			});
 

@@ -22,15 +22,6 @@ const DEFAULT_PROFILE_PERCENTAGES: ProfilePercentages = {
   attention504: 10,
 };
 
-const SNAPSHOT_ITEMS = [
-  { itemId: "item-1", bloomLevel: 3, linguisticLoad: 0.72, cognitiveLoad: 0.62, representationLoad: 0.45 },
-  { itemId: "item-2", bloomLevel: 4, linguisticLoad: 0.62, cognitiveLoad: 0.58, representationLoad: 0.42 },
-  { itemId: "item-3", bloomLevel: 4, linguisticLoad: 0.7, cognitiveLoad: 0.64, representationLoad: 0.48 },
-  { itemId: "item-4", bloomLevel: 5, linguisticLoad: 0.72, cognitiveLoad: 0.66, representationLoad: 0.52 },
-  { itemId: "item-5", bloomLevel: 6, linguisticLoad: 1, cognitiveLoad: 1, representationLoad: 1 },
-  { itemId: "item-6", bloomLevel: 6, linguisticLoad: 0.94, cognitiveLoad: 0.9, representationLoad: 0.76 },
-] as const;
-
 function hashSeed(seed: string): number {
   let hash = 2166136261;
   for (let index = 0; index < seed.length; index += 1) {
@@ -57,6 +48,13 @@ function sigmoid(value: number): number {
 
 function computeDifficulty(linguisticLoad: number, cognitiveLoad: number, bloomLevel: number, representationLoad: number): number {
   return (0.35 * linguisticLoad) + (0.35 * cognitiveLoad) + (0.2 * (bloomLevel / 6)) + (0.1 * representationLoad);
+}
+
+function mean(values: number[], fallback = 0): number {
+  if (values.length === 0) {
+    return fallback;
+  }
+  return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function computeAbility(traits: TraitVector): number {
@@ -103,28 +101,137 @@ function buildTraitSnapshot(traitDeltas: Record<string, number>): TraitSnapshot[
   return Object.entries(traitDeltas).map(([name, delta]) => ({ name, delta }));
 }
 
-function itemMeasurables(seed: string) {
-  const rng = createRng(`${seed}:items`);
-  return SNAPSHOT_ITEMS.map((item, index) => {
-    const jitter = (rng() - 0.5) * 0.06;
-    const linguisticLoad = clamp(item.linguisticLoad + jitter, 0, 1);
-    const cognitiveLoad = clamp(item.cognitiveLoad + jitter, 0, 1);
-    const representationLoad = clamp(item.representationLoad + jitter, 0, 1);
-    const bloomLevel = clamp(item.bloomLevel + (index % 2 === 0 ? 0 : 0.15), 1, 6);
+/**
+ * Compute answer key measurables from raw answer text.
+ * Returns difficulty adjustment and p-correct adjustment based on answer complexity.
+ */
+function computeAnswerKeyAdjustments(answer: string): { answerKeyDifficultyAdjustment: number; answerKeyPCorrectAdjustment: number } {
+  const normalized = answer.trim();
+  if (!normalized) {
+    return { answerKeyDifficultyAdjustment: 0, answerKeyPCorrectAdjustment: 0 };
+  }
 
-    const confusionScore = clamp((linguisticLoad + cognitiveLoad + representationLoad) / 9, 0, 1);
-    const timeSeconds = Math.max(0, 21 + (20 * linguisticLoad) + (10 * representationLoad));
+  // Detect answer type
+  const isMultipleChoice = /^[a-e]$/i.test(normalized);
+  const isNumeric = /^-?\d+(\.\d+)?$/.test(normalized);
+  const isSymbolic = /[=^\-+*/(){}[\]<>]/.test(normalized);
 
+  // Ambiguity: multiple answers separated by | or /
+  const ambiguityScore = /[|/,]|\bor\b/i.test(normalized) ? 0.5 : 0;
+
+  // Format complexity
+  let formatComplexity = 0;
+  if (isNumeric) formatComplexity = 0.2;
+  else if (isMultipleChoice) formatComplexity = 0.1;
+  else if (isSymbolic) formatComplexity = 0.55;
+  else formatComplexity = 0.45;
+
+  // Length penalty
+  const lengthPenalty = normalized.length > 24 ? 0.25 : 0;
+
+  const answerKeyDifficultyAdjustment = Number(((ambiguityScore * 0.18) + (formatComplexity * 0.12) + (lengthPenalty * 0.05)).toFixed(4));
+  const answerKeyPCorrectAdjustment = Number(clamp(-answerKeyDifficultyAdjustment * 0.55, -0.3, 0.2).toFixed(4));
+
+  return { answerKeyDifficultyAdjustment, answerKeyPCorrectAdjustment };
+}
+
+/**
+ * Compute worked solution measurables from step texts.
+ * Returns step difficulty curves and branching factor.
+ */
+function computeWorkedSolutionAdjustments(
+  steps: string[],
+  baseDifficulty: number,
+): {
+  stepDifficultyCurve: number[];
+  stepTimeCurve: number[];
+  stepCognitiveLoadCurve: number[];
+  branchingFactor: number;
+  errorOpportunityCount: number;
+} {
+  if (!steps || steps.length === 0) {
     return {
-      itemId: item.itemId,
-      bloomLevel,
-      linguisticLoad,
-      cognitiveLoad,
-      representationLoad,
-      confusionScore,
-      timeSeconds,
+      stepDifficultyCurve: [],
+      stepTimeCurve: [],
+      stepCognitiveLoadCurve: [],
+      branchingFactor: 1,
+      errorOpportunityCount: 0,
     };
+  }
+
+  let symbolCount = 0;
+  let characterCount = 0;
+
+  const stepDifficultyCurve: number[] = [];
+  const stepTimeCurve: number[] = [];
+  const stepCognitiveLoadCurve: number[] = [];
+
+  steps.forEach((step, index) => {
+    const words = step.split(/\s+/).filter(Boolean).length;
+    const symbols = (step.match(/[=+\-*/^<>()[\]{}]/g) ?? []).length;
+    symbolCount += symbols;
+    characterCount += Math.max(step.length, 1);
+
+    // Determine step type based on keywords
+    const lower = step.toLowerCase();
+    let stepTypeComplexity = 0.4;
+    if (/calculate|compute|solve|simplify|substitute|evaluate/.test(lower)) {
+      stepTypeComplexity = 0.45;
+    } else if (/infer|conclude|deduce|imply|therefore/.test(lower)) {
+      stepTypeComplexity = 0.75;
+    } else if (/define|concept|principle|why|because/.test(lower)) {
+      stepTypeComplexity = 0.68;
+    } else if (/first|next|then|step|procedure|algorithm/.test(lower)) {
+      stepTypeComplexity = 0.55;
+    }
+
+    const positionLift = Math.min(index / Math.max(steps.length - 1, 1), 1) * 0.15;
+    stepDifficultyCurve.push(Number(clamp(baseDifficulty + stepTypeComplexity * 0.35 + positionLift, 0, 1).toFixed(4)));
+    stepTimeCurve.push(Number(Math.max(8, (words * 2.1) + (symbols * 1.8) + (stepTypeComplexity * 9)).toFixed(4)));
+    stepCognitiveLoadCurve.push(Number(clamp((stepTypeComplexity * 0.8) + (symbols * 0.03), 0, 1).toFixed(4)));
   });
+
+  const transformationDensity = characterCount > 0 ? symbolCount / characterCount : 0;
+  const branchingFactor = Math.max(1, Math.min(6, Math.round(steps.length / 2)));
+  const errorOpportunityCount = Math.max(1, steps.length - 1 + (branchingFactor - 1));
+
+  return {
+    stepDifficultyCurve,
+    stepTimeCurve,
+    stepCognitiveLoadCurve,
+    branchingFactor,
+    errorOpportunityCount,
+  };
+}
+
+type ItemMeasurable = {
+  itemId: string;
+  bloomLevel: number;
+  linguisticLoad: number;
+  cognitiveLoad: number;
+  representationLoad: number;
+  confusionScore: number;
+  timeSeconds: number;
+  stepDifficultyCurve: number[];
+  stepTimeCurve: number[];
+  stepCognitiveLoadCurve: number[];
+  answerKeyDifficultyAdjustment: number;
+  answerKeyPCorrectAdjustment: number;
+  branchingFactor: number;
+  errorOpportunityCount: number;
+};
+
+/**
+ * @deprecated Item traits now come from v4_items.metadata.final via the ingestion washover pipeline.
+ * The runtime handler (api/v4/simulations/run.js) loads traits directly from the database using
+ * loadItemTraitsFromDb(documentId). This stub exists only to satisfy the TypeScript build.
+ */
+function itemMeasurables(
+  _seed?: string,
+  _answerKeyByItem?: Record<number, string>,
+  _workedSolutionByItem?: Record<number, string[]>,
+): ItemMeasurable[] {
+  return [];
 }
 
 function simulateItem(
@@ -132,7 +239,7 @@ function simulateItem(
   baseTraitDeltas: Record<string, number>,
   index: number,
   previous: ItemSnapshot | null,
-  measurable: ReturnType<typeof itemMeasurables>[number],
+  measurable: ItemMeasurable,
 ): ItemSnapshot {
   const cfg = PHASE_C_CONFIG.formula;
 
@@ -145,7 +252,7 @@ function simulateItem(
     measurable.cognitiveLoad,
     measurable.bloomLevel,
     measurable.representationLoad,
-  );
+  ) + measurable.answerKeyDifficultyAdjustment;
 
   for (const student of students) {
     const readingGap = Math.max(0, measurable.linguisticLoad - student.traits.readingLevel);
@@ -155,7 +262,9 @@ function simulateItem(
     const knowledgePenalty = Math.max(0, (cfg.baselineKnowledgeCenter - student.traits.backgroundKnowledge) / cfg.processingPenaltyDivisor);
 
     const confusionProfile = clamp(
-      measurable.confusionScore
+      mean(measurable.stepCognitiveLoadCurve, measurable.confusionScore)
+        + Math.min((measurable.branchingFactor - 1) * 0.04, 0.2)
+        + Math.min(measurable.errorOpportunityCount * 0.01, 0.1)
         + (cfg.readingGapToConfusion * readingGap)
         + (cfg.vocabularyGapToConfusion * vocabularyGap)
         + (cfg.bloomGapToConfusion * bloomGap)
@@ -167,7 +276,7 @@ function simulateItem(
 
     const timeProfile = Math.max(
       0,
-      measurable.timeSeconds * (
+      measurable.stepTimeCurve.reduce((total, value) => total + value, 0) * (
         1
         + (cfg.readingGapToTime * readingGap)
         + (cfg.vocabularyGapToTime * vocabularyGap)
@@ -181,7 +290,7 @@ function simulateItem(
     const timeSeconds = Math.max(timeProfile * (1 + student.biases.timeBias), 0);
     const ability = computeAbility(student.traits);
     const traitBonus = computeTraitBonus(student.biases.confusionBias, student.biases.timeBias);
-    const pCorrect = sigmoid(ability + traitBonus - difficulty);
+    const pCorrect = clamp(sigmoid(ability + traitBonus - difficulty) + measurable.answerKeyPCorrectAdjustment, 0, 1);
 
     pCorrectTotal += pCorrect;
     confusionTotal += confusion;
@@ -194,6 +303,14 @@ function simulateItem(
   const timeSeconds = timeTotal / studentCount;
 
   const fatigue = clamp(0.12 + (index * 0.02), 0, 1);
+  const momentum = Number((previous ? pCorrect - previous.pCorrect : 0).toFixed(4));
+  const z95 = 1.96;
+  const pStdErr = Math.sqrt((pCorrect * Math.max(1 - pCorrect, 0)) / studentCount);
+  const ciLow = clamp(pCorrect - (z95 * pStdErr), 0, 1);
+  const ciHigh = clamp(pCorrect + (z95 * pStdErr), 0, 1);
+  const predictedDifficultyCurve = measurable.stepDifficultyCurve.map((value) => Number(clamp(value + Math.max(0, -momentum) * 0.1, 0, 1).toFixed(4)));
+  const predictedTimeCurve = measurable.stepTimeCurve.map((value, stepIndex) => Number((value * (1 + (fatigue * 0.08) + (stepIndex * 0.01))).toFixed(4)));
+  const predictedConfusionCurve = measurable.stepCognitiveLoadCurve.map((value) => Number(clamp(value + (fatigue * 0.15), 0, 1).toFixed(4)));
 
   const spikes: Spike[] = [];
   const cliffs: Cliff[] = [];
@@ -221,11 +338,31 @@ function simulateItem(
     spikes,
     cliffs,
     fatigue: Number(fatigue.toFixed(4)),
+    momentum,
+    confidenceInterval: [Number(ciLow.toFixed(4)), Number(ciHigh.toFixed(4))],
+    predictedDifficultyCurve,
+    predictedTimeCurve,
+    predictedConfusionCurve,
+    predictedState: {
+      fatigue: Number(fatigue.toFixed(4)),
+      confusion: Number(confusion.toFixed(4)),
+      momentum,
+    },
+    profileNarrative: `Item ${measurable.itemId} projects ${confusion > 0.35 ? "heightened" : "stable"} confusion with momentum ${momentum >= 0 ? "improving" : "declining"}.`,
+    comparisonNarrative: previous
+      ? `Compared with ${previous.itemId}, projected difficulty moved by ${Number((difficulty - previous.difficulty).toFixed(4))}.`
+      : "Baseline projection item.",
     traitDeltas: { ...baseTraitDeltas },
   };
 }
 
-export function simulateAssessment(input: { seed: string; studentCount?: number }): SimulationSnapshot {
+export function simulateAssessment(input: {
+  seed: string;
+  documentId?: string;
+  studentCount?: number;
+  answerKeyByItem?: Record<number, string>;
+  workedSolutionByItem?: Record<number, string[]>;
+}): SimulationSnapshot {
   const students = generateSyntheticStudents({
     classId: `phase1-${input.seed}`,
     classLevel: "Standard",
@@ -248,7 +385,7 @@ export function simulateAssessment(input: { seed: string; studentCount?: number 
   }));
 
   const baseTraitDeltas = buildTraitDeltas(classStudents);
-  const measurables = itemMeasurables(input.seed);
+  const measurables = itemMeasurables(input.seed, input.answerKeyByItem, input.workedSolutionByItem);
   const items: ItemSnapshot[] = [];
 
   for (let index = 0; index < measurables.length; index += 1) {

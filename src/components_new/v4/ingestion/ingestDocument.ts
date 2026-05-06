@@ -11,6 +11,7 @@ import {
   V4Item,
   V4Section
 } from "@/api/v4/simulator/shared";
+import type { DocumentRole } from "@/prism-v4/schema/domain/DocumentSession";
 
 export type IngestionSource =
   | "teacher-upload"
@@ -30,6 +31,7 @@ export interface IngestionResult {
 export async function ingestDocument(input: {
   source: IngestionSource;
   documentId: string;
+  declaredRole?: DocumentRole;
   rawText?: string;
   fileBlobId?: string;
   metadata?: Record<string, unknown>;
@@ -49,7 +51,7 @@ export async function ingestDocument(input: {
   }
 
   // 2. Classify doc type
-  const docType = await classifyDocType(text);
+  const docType = declaredRoleToDocType(input.declaredRole) ?? await classifyDocType(text);
   await setDocType(documentId, docType);
 
   // 3. Segment structure
@@ -100,4 +102,17 @@ export async function ingestDocument(input: {
     sections,
     analysis: analyzed
   };
+}
+
+function declaredRoleToDocType(role: DocumentRole | undefined): "problem" | "notes" | "mixed" | null {
+  if (!role) {
+    return null;
+  }
+  if (role === "test") {
+    return "problem";
+  }
+  if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+    return "notes";
+  }
+  return null;
 }

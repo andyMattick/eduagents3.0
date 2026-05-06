@@ -3885,6 +3885,91 @@ function assignLogicalLabels(itemTrees) {
   });
   return itemTrees;
 }
+function readReviewedStructure(row) {
+  const metadata = row?.metadata ?? {};
+  const phaseB = metadata.phaseB ?? {};
+  const structure = phaseB.structure ?? null;
+  if (!structure || typeof structure !== "object") {
+    return null;
+  }
+  if (typeof structure.reviewedAt !== "string" || structure.reviewedAt.length === 0) {
+    return null;
+  }
+  if (structure.type === "ignore") {
+    return null;
+  }
+  const text = typeof structure.text === "string" ? structure.text.trim() : "";
+  if (!text) {
+    return null;
+  }
+  return {
+    itemId: typeof row.id === "string" ? row.id : void 0,
+    itemNumber: typeof structure.itemNumber === "number" && Number.isFinite(structure.itemNumber) ? structure.itemNumber : typeof row.item_number === "number" ? row.item_number : 0,
+    logicalLabel: typeof structure.logicalLabel === "string" && structure.logicalLabel.trim().length > 0 ? structure.logicalLabel.trim() : void 0,
+    groupId: typeof structure.groupId === "number" && Number.isFinite(structure.groupId) ? structure.groupId : void 0,
+    isParent: structure.isParent === true,
+    partIndex: typeof structure.partIndex === "number" && Number.isFinite(structure.partIndex) ? structure.partIndex : 0,
+    text
+  };
+}
+function buildItemTreesFromReviewedEntries(entries) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const entry of [...entries].sort((left, right) => {
+    const byItem = (left.itemNumber ?? 0) - (right.itemNumber ?? 0);
+    if (byItem !== 0) {
+      return byItem;
+    }
+    return (left.partIndex ?? 0) - (right.partIndex ?? 0);
+  })) {
+    const groupKey = entry.groupId ?? entry.itemNumber ?? 0;
+    const bucket = groups.get(groupKey) ?? { parent: null, children: [] };
+    if ((entry.partIndex ?? 0) > 0 || entry.isParent === false) {
+      bucket.children.push(entry);
+    } else if (!bucket.parent) {
+      bucket.parent = entry;
+    } else {
+      bucket.children.push(entry);
+    }
+    groups.set(groupKey, bucket);
+  }
+  const trees = [];
+  for (const [groupKey, bucket] of [...groups.entries()].sort((left, right) => left[0] - right[0])) {
+    const parentSource = bucket.parent ?? bucket.children[0];
+    if (!parentSource) {
+      continue;
+    }
+    const parentLogicalNumber = parentSource.groupId ?? groupKey;
+    const parentItem = {
+      ...parentSource,
+      logicalNumber: parentLogicalNumber,
+      logicalLabel: parentSource.logicalLabel ?? String(parentLogicalNumber)
+    };
+    if (bucket.children.length > 0) {
+      const subItems = bucket.children.map((child, index) => ({
+        ...child,
+        itemId: child.itemId,
+        logicalNumber: parentLogicalNumber,
+        logicalLabel: child.logicalLabel ?? `${parentLogicalNumber}${String.fromCharCode(97 + index)}`,
+        groupId: String(parentLogicalNumber),
+        partIndex: (child.partIndex ?? 0) > 0 ? child.partIndex : index + 1
+      }));
+      trees.push({
+        item: {
+          ...parentItem,
+          isMultiPartItem: true,
+          isMultipleChoice: false,
+          subQuestionCount: subItems.length,
+          distractorCount: 0,
+          branchingFactor: subItems.length
+        },
+        subItems
+      });
+      continue;
+    }
+    trees.push(buildItemTree(parentItem));
+  }
+  return assignLogicalLabels(trees);
+}
 var VALID_PROFILES = /* @__PURE__ */ new Set([
   "average",
   "adhd",
@@ -3930,11 +4015,43 @@ async function handler(req, res) {
   }
   const requestedProfiles = profileArr.map(String);
   try {
-    const filters = hasSessionId ? { session_id: `eq.${sessionId}` } : { document_id: `eq.${documentId}` };
-    const rows = await supabaseRest("prism_v4_documents", {
+    const filters = hasDocumentId ? { document_id: `eq.${documentId}` } : { session_id: `eq.${sessionId}` };
+    let rows = await supabaseRest("prism_v4_documents", {
       select: "document_id,source_file_name,azure_extract,canonical_document",
       filters
     });
+    if (hasSessionId) {
+      const sessionRows = await supabaseRest("prism_v4_sessions", {
+        select: "document_roles",
+        filters: { session_id: `eq.${sessionId}` }
+      });
+      const roleMap = sessionRows?.[0]?.document_roles ?? {};
+      if (hasDocumentId) {
+        const selectedRoles = Array.isArray(roleMap?.[documentId]) ? roleMap[documentId] : [];
+        if (selectedRoles.length > 0 && !selectedRoles.includes("test")) {
+          return res.status(422).json({
+            error: {
+              code: "invalid_request",
+              message: "Only documents declared with role 'test' can be segmented for Phase B."
+            }
+          });
+        }
+      }
+      const testRows = (rows ?? []).filter((row) => {
+        const roles = Array.isArray(roleMap?.[row.document_id]) ? roleMap[row.document_id] : [];
+        return roles.includes("test");
+      });
+      if (testRows.length > 0) {
+        rows = testRows;
+      } else if (!hasDocumentId) {
+        return res.status(422).json({
+          error: {
+            code: "invalid_request",
+            message: "No test-role document found in this session."
+          }
+        });
+      }
+    }
     if (!rows || rows.length === 0) {
       return res.status(404).json({
         error: {
@@ -3952,19 +4069,43 @@ async function handler(req, res) {
       const chars = r.azure_extract?.content?.length ?? 0;
       console.log(`[shortcircuit] doc[${i}] id=${r.document_id} file=${r.source_file_name ?? "?"} paras=${paras} pages=${pages} content=${chars}chars`);
     });
-    const rawItems = [];
     const segmentationDiagnostics = [];
-    let itemOffset = 0;
-    for (const row of rows) {
-      const azure = buildAzureExtractFromRow(row);
-      const segmented = await segmentTextWithDiagnostics(azure);
-      const docItems = segmented.items;
-      segmentationDiagnostics.push(segmented.diagnostics);
-      console.log(`[shortcircuit] doc=${row.document_id} \u2192 ${docItems.length} segment(s)`);
-      for (const item of docItems) {
-        rawItems.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
+    const primaryDocumentId = rows[0]?.document_id;
+    const reviewedRows = primaryDocumentId ? await supabaseRest("v4_items", {
+      method: "GET",
+      select: "id,item_number,metadata",
+      filters: {
+        document_id: `eq.${primaryDocumentId}`
       }
-      itemOffset += docItems.length;
+    }) : [];
+    const reviewedEntries = Array.isArray(reviewedRows) ? reviewedRows.map(readReviewedStructure).filter(Boolean) : [];
+    const rawItems = [];
+    if (reviewedEntries.length > 0) {
+      console.log(`[shortcircuit] document=${primaryDocumentId} using ${reviewedEntries.length} reviewed structure item(s)`);
+      for (const entry of reviewedEntries) {
+        rawItems.push({
+          itemId: entry.itemId,
+          itemNumber: entry.itemNumber,
+          logicalLabel: entry.logicalLabel,
+          groupId: entry.groupId,
+          isParent: entry.isParent,
+          partIndex: entry.partIndex,
+          text: entry.text
+        });
+      }
+    } else {
+      let itemOffset = 0;
+      for (const row of rows) {
+        const azure = buildAzureExtractFromRow(row);
+        const segmented = await segmentTextWithDiagnostics(azure);
+        const docItems = segmented.items;
+        segmentationDiagnostics.push(segmented.diagnostics);
+        console.log(`[shortcircuit] doc=${row.document_id} \u2192 ${docItems.length} segment(s)`);
+        for (const item of docItems) {
+          rawItems.push({ itemNumber: itemOffset + item.itemNumber, text: item.text });
+        }
+        itemOffset += docItems.length;
+      }
     }
     console.log(`[shortcircuit] total rawItems after segmentation: ${rawItems.length}`);
     if (rawItems.length === 0) {
@@ -3988,7 +4129,12 @@ async function handler(req, res) {
       items.push({
         itemNumber: seg.itemNumber,
         text: seg.text,
-        ...m
+        ...m,
+        itemId: seg.itemId,
+        logicalLabel: seg.logicalLabel,
+        groupId: seg.groupId,
+        isParent: seg.isParent,
+        partIndex: seg.partIndex
       });
     }
     console.log(`[shortcircuit] done: ${items.length}/${rawItems.length} items with measurables`);
@@ -3998,7 +4144,7 @@ async function handler(req, res) {
       });
     }
     const itemsWithDefaults = items.map(applyPhaseADefaults);
-    const baseItemTrees = itemsWithDefaults.map((item) => buildItemTree(item));
+    const baseItemTrees = reviewedEntries.length > 0 ? buildItemTreesFromReviewedEntries(itemsWithDefaults) : itemsWithDefaults.map((item) => buildItemTree(item));
     const instructionsByItem = /* @__PURE__ */ new Map();
     for (const section of sectioning.sections) {
       for (const itemNumber of section.itemNumbers) {

@@ -70,6 +70,9 @@ export type SimulationSummary = {
   averageConfusionScore: number;
   averageTimeSeconds: number;
   averageBloomGap: number;
+  averagePScore?: number;
+  averagePartialCreditProbability?: number;
+  rubricItemsEvaluated?: number;
 };
 
 export type UploadUsageTodayResponse = {
@@ -229,6 +232,13 @@ export function regenerateClassApi(classId: string, seed?: string, userId?: stri
   });
 }
 
+export function deleteClassApi(classId: string, userId?: string) {
+  return fetchJson<{ success: true }>(`/api/v4/classes/${encodeURIComponent(classId)}`, {
+    method: "DELETE",
+    headers: buildAuthHeaders(userId),
+  });
+}
+
 export function getUploadUsageTodayApi(userId?: string) {
   return fetchJson<UploadUsageTodayResponse>("/api/v4/documents/usage-today", {
     headers: buildAuthHeaders(userId),
@@ -241,7 +251,7 @@ export function getSimulationUsageTodayApi(userId?: string) {
   });
 }
 
-export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class"; phaseBItems?: Array<{ itemId?: string; itemNumber?: number; logicalLabel: string; bloomLevel?: number; ingestionBloomLevel?: number; linguisticLoad?: number; cognitiveLoad?: number; representationLoad?: number }> }, userId?: string) {
+export function runSimulationUnifiedApi(input: { classId: string; documentId: string; selectedProfileIds?: string[]; mode: "class"; answerKeyText?: string; workedSolutionText?: string; rubricText?: string; rubricByItem?: Record<string, string>; phaseBItems?: Array<{ itemId?: string; itemNumber?: number; logicalLabel: string; bloomLevel?: number; ingestionBloomLevel?: number; linguisticLoad?: number; cognitiveLoad?: number; representationLoad?: number; resources?: { hasAnswerKey?: boolean; hasWorkedSolution?: boolean; hasRubric?: boolean }; measurables?: Record<string, unknown> }> }, userId?: string) {
   return fetchJson<{
     simulationId: string;
     classId: string;
@@ -266,6 +276,14 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
     documentId: string;
     view: "class" | "profile" | "student" | "phase-b";
     summary: SimulationSummary;
+    rubricSummary?: {
+      available: boolean;
+      averagePScore: number;
+      averagePartialCreditProbability: number;
+      rubricItemsEvaluated?: number;
+      notes?: string;
+    };
+    rubricNarrative?: string;
     narrative?: {
       provider?: string;
       text?: string;
@@ -299,6 +317,9 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
       difficultyScore?: number;
       abilityScore?: number;
       pCorrect?: number;
+      pScore?: number;
+      partialCreditProbability?: number;
+      rubricNarrative?: string;
       linguisticLoad?: number;
       cognitiveLoad?: number;
       bloomLevel?: number;
@@ -330,6 +351,24 @@ export function getSimulationViewApi(simulationId: string, view: "class" | "prof
           level3: number;
         };
       };
+      resources?: {
+        hasAnswerKey?: boolean;
+        hasWorkedSolution?: boolean;
+        hasRubric?: boolean;
+      };
+      measurables?: {
+        base?: Record<string, unknown>;
+        answerKey?: Record<string, unknown>;
+        steps?: Record<string, unknown>;
+        rubric?: Record<string, unknown>;
+        combined?: Record<string, unknown>;
+      };
+      predictedDifficultyCurve?: number[];
+      predictedTimeCurve?: number[];
+      predictedConfusionCurve?: number[];
+      predictedState?: Record<string, unknown>;
+      momentum?: number;
+      confidenceInterval?: [number, number];
     }>;
     availableStudentIds?: string[];
   }>(`/api/v4/simulations/${encodeURIComponent(simulationId)}?${query.toString()}`, {

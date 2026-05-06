@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { getClassDetailApi, getSimulationUsageTodayApi, regenerateClassApi, type SimulationUsageTodayResponse } from "../../../lib/phaseCApi";
+import { deleteClassApi, getClassDetailApi, getSimulationUsageTodayApi, regenerateClassApi, type SimulationUsageTodayResponse } from "../../../lib/phaseCApi";
 import { useAuth } from "../../Auth/useAuth";
 
 import { StudentProfileTooltip } from "./StudentProfileTooltip";
@@ -24,6 +24,7 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageTodayResponse | null>(null);
 
   const [data, setData] = useState<Awaited<ReturnType<typeof getClassDetailApi>> | null>(null);
@@ -101,6 +102,24 @@ export function ClassDetailPage({ classId, navigate }: Props) {
     }
   }
 
+  async function handleDeleteClass() {
+    const confirmed = window.confirm("Delete this class and all associated synthetic students and simulation results?");
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteClassApi(classId, user?.id);
+      navigate("/classes");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Class deletion failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading) {
     return <div className="phasec-shell"><p>Loading class...</p></div>;
   }
@@ -127,6 +146,14 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       <div className="phasec-row">
         <button className="phasec-button-secondary" disabled={regenerating || regenerateBlocked} onClick={() => void handleRegenerate()}>
           {regenerating ? "Regenerating..." : "Regenerate students"}
+        </button>
+        <button
+          className="phasec-button-secondary"
+          disabled={deleting}
+          onClick={() => void handleDeleteClass()}
+          style={{ background: deleting ? "#9ca3af" : "#b42318", borderColor: deleting ? "#9ca3af" : "#b42318", color: "#fff" }}
+        >
+          {deleting ? "Deleting..." : "Delete class"}
         </button>
       </div>
 

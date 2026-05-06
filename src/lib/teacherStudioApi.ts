@@ -219,6 +219,11 @@ export function bindDocumentsToSessionApi(args: {
 	documentIds: string[];
 	documentRoles: Record<string, string[]>;
 	sessionRoles: Record<string, string[]>;
+	resourceLinks?: Array<{
+		documentId: string;
+		resourceDocumentId: string;
+		resourceType: "answer-key" | "worked-solution" | "rubric";
+	}>;
 }) {
 	return fetchJson<{ ok?: boolean }>("/api/v4/documents/session", {
 		method: "POST",

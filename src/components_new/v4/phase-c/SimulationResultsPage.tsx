@@ -58,6 +58,22 @@ type StudentItem = {
       level3: number;
     };
   };
+  resources?: {
+    hasAnswerKey?: boolean;
+    hasWorkedSolution?: boolean;
+  };
+  measurables?: {
+    base?: Record<string, unknown>;
+    answerKey?: Record<string, unknown>;
+    steps?: Record<string, unknown>;
+    combined?: Record<string, unknown>;
+  };
+  predictedDifficultyCurve?: number[];
+  predictedTimeCurve?: number[];
+  predictedConfusionCurve?: number[];
+  predictedState?: Record<string, unknown>;
+  momentum?: number;
+  confidenceInterval?: [number, number];
 };
 
 type NormalizedStudentItem = StudentItem & {
@@ -494,6 +510,89 @@ function PhaseBImmeasurablesCharts({ items }: { items: NormalizedStudentItem[] }
   );
 }
 
+function formatNumber(value: unknown, digits = 3): string {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toFixed(digits);
+  }
+  return "-";
+}
+
+function renderCurve(values: unknown): string {
+  if (!Array.isArray(values) || values.length === 0) {
+    return "-";
+  }
+  return values
+    .filter((value) => typeof value === "number" && Number.isFinite(value))
+    .map((value) => (value as number).toFixed(3))
+    .join(" | ");
+}
+
+function Phase2ItemInsights({ items }: { items: NormalizedStudentItem[] }) {
+  const phase2Items = items.filter((item) => Boolean(item.measurables?.answerKey || item.measurables?.steps || item.measurables?.combined));
+
+  if (phase2Items.length === 0) {
+    return (
+      <div className="phasec-card" style={{ marginTop: "1rem" }}>
+        <p className="phasec-empty">This item set has no answer key or worked solution measurables. Phase 2 insights are unavailable.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: "1rem" }}>
+      <h3>Answer Key &amp; Solution Insights</h3>
+      {phase2Items.map((item) => {
+        const answerKey = item.measurables?.answerKey as Record<string, unknown> | undefined;
+        const steps = item.measurables?.steps as Record<string, unknown> | undefined;
+        const combined = item.measurables?.combined as Record<string, unknown> | undefined;
+
+        return (
+          <details key={`${item.itemId}-phase2`} style={{ marginBottom: "0.75rem", border: "1px solid rgba(0,0,0,0.08)", borderRadius: "0.5rem", padding: "0.6rem" }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>Item {item.logicalLabel ?? item.itemLabel}</summary>
+
+            {answerKey && (
+              <div style={{ marginTop: "0.5rem" }}>
+                <h4 style={{ margin: "0 0 0.35rem" }}>Answer Key</h4>
+                <p>Correct answer: {String(answerKey.correctAnswer ?? "-")}</p>
+                <p>Answer type: {String(answerKey.answerType ?? "-")}</p>
+                <p>Ambiguity score: {formatNumber(answerKey.answerAmbiguityScore)}</p>
+                <p>Format complexity: {formatNumber(answerKey.answerFormatComplexity)}</p>
+              </div>
+            )}
+
+            {steps && (
+              <div style={{ marginTop: "0.5rem" }}>
+                <h4 style={{ margin: "0 0 0.35rem" }}>Worked Solution Steps</h4>
+                <p>Step count: {String(steps.stepCount ?? "-")}</p>
+                <p>Step difficulty curve: {renderCurve(steps.stepDifficultyCurve)}</p>
+                <p>Step time curve: {renderCurve(steps.stepTimeCurve)}</p>
+                <p>Step cognitive load curve: {renderCurve(steps.stepCognitiveLoadCurve)}</p>
+              </div>
+            )}
+
+            {combined && (
+              <div style={{ marginTop: "0.5rem" }}>
+                <h4 style={{ margin: "0 0 0.35rem" }}>Combined Reasoning</h4>
+                <p>Solution path fidelity: {formatNumber(combined.solutionPathFidelity)}</p>
+                <p>Answer-step alignment: {formatNumber(combined.answerStepAlignment)}</p>
+                <p>Efficiency score: {formatNumber(combined.solutionEfficiencyScore)}</p>
+                <p>Concept-to-answer alignment: {formatNumber(combined.conceptToAnswerAlignment)}</p>
+              </div>
+            )}
+
+            <div style={{ marginTop: "0.5rem" }}>
+              <h4 style={{ margin: "0 0 0.35rem" }}>Predicted Curves</h4>
+              <p>Predicted difficulty: {renderCurve(item.predictedDifficultyCurve)}</p>
+              <p>Predicted time: {renderCurve(item.predictedTimeCurve)}</p>
+              <p>Predicted confusion: {renderCurve(item.predictedConfusionCurve)}</p>
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SimulationResultsPage({ simulationId }: Props) {
   const [tab, setTab] = useState<Tab>("class");
   const [loading, setLoading] = useState(true);
@@ -612,6 +711,8 @@ export function SimulationResultsPage({ simulationId }: Props) {
           {showPhaseBTraits
             ? <PhaseBImmeasurablesCharts items={normalizedItems} />
             : <p className="phasec-empty">Phase B trait graphs are currently unavailable for this student view.</p>}
+
+          <Phase2ItemInsights items={normalizedItems} />
 
           {normalizedItems.length > 0 && (
             <table className="phasec-table">
