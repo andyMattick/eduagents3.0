@@ -10144,7 +10144,7 @@ async function upsertDocumentSessionStore(session) {
   });
   await updateDocumentSessionIds(nextSession.sessionId, nextSession.documentIds);
   await replaceDocumentResourceLinksStore(nextSession.sessionId, nextSession.resourceLinks ?? []);
-  applyWashoverToItems(nextSession.sessionId).catch((err) => console.warn("[session] washover non-fatal:", err instanceof Error ? err.message : err));
+  await applyWashoverToItems(nextSession.sessionId).catch((err) => console.warn("[session] washover non-fatal:", err instanceof Error ? err.message : err));
   markCollectionAnalysisStale(nextSession.sessionId);
   invalidatePrismSessionContext(nextSession.sessionId);
   await invalidatePrismSessionSnapshot(nextSession.sessionId);
