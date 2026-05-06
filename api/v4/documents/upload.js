@@ -12384,7 +12384,177 @@ function computeBaseTraits(problem) {
     misconceptionLikelihood: 0.15
   };
 }
+// ─── Item Segmentation (replaces reliance on Azure problems[]) ────────────────
+/**
+ * Walks the canonical document nodes (paragraph/heading/listItem/caption) and
+ * segments them into item groups keyed by the printed item number. Returns an
+ * array of { rawText, itemNumber, subLabel, nodeIds } entries. Nodes that do not
+ * start a new item are appended as continuation text to the current group.
+ */
+function segmentItemsFromNodes(analyzedDocument) {
+  const allNodes = analyzedDocument?.document?.nodes ?? [];
+  const nodes = allNodes
+    .filter((n) => !n.parentId && ["paragraph", "heading", "listItem", "caption"].includes(n.nodeType))
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  if (nodes.length === 0) return [];
+  // Patterns — checked in specificity order
+  const RE_SUBNUMLET = /^(\d{1,3})([a-z])[.\)]\s+/i;        // "2a. " or "2b) "
+  const RE_SUBNUMPAR = /^(\d{1,3})\s*\(([a-z])\)\s*/i;      // "2(a) "
+  const RE_TOP       = /^(\d{1,3})[.\)]\s+/;                 // "1. " or "1) "
+  const RE_QUESTION  = /^(?:Question|Q\.?)\s*(\d{1,3})[:.)]?\s*/i; // "Question 1"
+  const RE_SUBLETTER = /^([a-f])[.\)]\s+/;                   // "a. " bare sub-item (a–f only)
+  const groups = [];
+  let currentGroup = null;
+  let lastTopLevelNumber = null;
+  for (const node of nodes) {
+    const text = (node.normalizedText ?? node.text ?? "").trim();
+    if (!text) continue;
+    let matched = false;
+    // 1. Sub-item with parent number: "2a. " or "2(a) "
+    const mSubNumLet = text.match(RE_SUBNUMLET);
+    const mSubNumPar = !mSubNumLet ? text.match(RE_SUBNUMPAR) : null;
+    const mSub = mSubNumLet ?? mSubNumPar;
+    if (mSub) {
+      const itemNum = parseInt(mSub[1], 10);
+      const subLabel = mSub[2].toLowerCase();
+      lastTopLevelNumber = itemNum;
+      currentGroup = { rawText: text, itemNumber: itemNum, subLabel, nodeIds: [node.id] };
+      groups.push(currentGroup);
+      matched = true;
+    }
+    // 2. Top-level numbered item: "1. " or "1) "
+    if (!matched) {
+      const mTop = text.match(RE_TOP);
+      if (mTop) {
+        const itemNum = parseInt(mTop[1], 10);
+        lastTopLevelNumber = itemNum;
+        currentGroup = { rawText: text, itemNumber: itemNum, subLabel: null, nodeIds: [node.id] };
+        groups.push(currentGroup);
+        matched = true;
+      }
+    }
+    // 3. "Question N" pattern
+    if (!matched) {
+      const mQ = text.match(RE_QUESTION);
+      if (mQ) {
+        const itemNum = parseInt(mQ[1], 10);
+        lastTopLevelNumber = itemNum;
+        currentGroup = { rawText: text, itemNumber: itemNum, subLabel: null, nodeIds: [node.id] };
+        groups.push(currentGroup);
+        matched = true;
+      }
+    }
+    // 4. Bare sub-item letter: "a. " — only when inside a numbered item
+    if (!matched && lastTopLevelNumber !== null) {
+      const mLetter = text.match(RE_SUBLETTER);
+      if (mLetter) {
+        const subLabel = mLetter[1].toLowerCase();
+        currentGroup = { rawText: text, itemNumber: lastTopLevelNumber, subLabel, nodeIds: [node.id] };
+        groups.push(currentGroup);
+        matched = true;
+      }
+    }
+    // 5. Continuation: append to current group
+    if (!matched && currentGroup) {
+      currentGroup.rawText += " " + text;
+      currentGroup.nodeIds.push(node.id);
+    }
+    // Pre-item content (headers, instructions before first item): skip
+  }
+  return groups;
+}
+/**
+ * Takes the output of segmentItemsFromNodes and produces a flat list of atomic
+ * items for DB insertion. For standalone items, passes through unchanged. For
+ * multipart items (same itemNumber with subLabels), emits only the sub-items
+ * so that the unique (document_id, item_number) constraint is never violated.
+ * Sub-items are encoded as itemNumber*100 + letterOffset (a=1, b=2, …) to keep
+ * item_number unique while retaining the parent number for washover lookup.
+ */
+function detectAndExpandMultipart(segmentedItems) {
+  const byNumber = new Map();
+  for (const item of segmentedItems) {
+    if (!byNumber.has(item.itemNumber)) byNumber.set(item.itemNumber, []);
+    byNumber.get(item.itemNumber).push(item);
+  }
+  const result = [];
+  for (const entries of byNumber.values()) {
+    const subs = entries.filter((e) => e.subLabel != null);
+    const mains = entries.filter((e) => e.subLabel == null);
+    if (subs.length > 0) {
+      // Multipart: emit sub-items only (encoded); drop the unsplit parent entry
+      for (const sub of subs) {
+        result.push({
+          ...sub,
+          itemNumber: sub.itemNumber * 100 + (sub.subLabel.charCodeAt(0) - 96)
+        });
+      }
+    } else {
+      result.push(...mains);
+    }
+  }
+  result.sort((a, b) => a.itemNumber - b.itemNumber);
+  return result;
+}
+// ─── End Item Segmentation ────────────────────────────────────────────────────
 function extractItemsFromAnalysis(doc, _text, _documentId) {
+  // Attempt node-based segmentation — preserves printed item numbers
+  const segmented = segmentItemsFromNodes(doc);
+  const atomicItems = segmented.length > 0 ? detectAndExpandMultipart(segmented) : [];
+  if (atomicItems.length > 0) {
+    // Build node lookup for page number recovery
+    const allNodes = doc.document?.nodes ?? [];
+    const nodeById = new Map(allNodes.map((n) => [n.id, n]));
+    const surfaces = doc.document?.surfaces ?? [];
+    const surfaceToPage = new Map(surfaces.map((s) => [s.id, s.index + 1]));
+    return atomicItems.map((seg) => {
+      const pseudoProblem = { text: seg.rawText };
+      const base = computeBaseTraits(pseudoProblem);
+      const sourcePageNumbers = [...new Set(
+        seg.nodeIds.map((id) => nodeById.get(id)).filter(Boolean).map((n) => surfaceToPage.get(n.surfaceId) ?? null).filter(Boolean)
+      )];
+      return {
+        itemNumber: seg.itemNumber,
+        type: "question",
+        stem: seg.rawText,
+        choices: null,
+        answerKey: null,
+        metadata: {
+          extractedProblemId: null,
+          concepts: [],
+          representations: [],
+          difficulty: "medium",
+          misconceptions: [],
+          cognitiveDemand: "recall",
+          bloomLevel: base.bloomLevel,
+          cognitiveLoad: base.cognitiveLoad,
+          linguisticLoad: base.linguisticLoad,
+          representationLoad: base.representationLoad,
+          phaseB: {
+            bloomLevel: base.bloomLevel,
+            cognitiveLoad: base.cognitiveLoad,
+            linguisticLoad: base.linguisticLoad,
+            representationLoad: base.representationLoad
+          },
+          metrics: {
+            bloom_level: base.bloomLevel,
+            cognitive_load: base.cognitiveLoad,
+            linguistic_load: base.linguisticLoad,
+            representation_load: base.representationLoad
+          },
+          base,
+          answerKey: null,
+          worked: null,
+          rubric: null,
+          final: { ...base },
+          sourceSpan: null,
+          segmentedLabel: seg.subLabel ? `${Math.floor(seg.itemNumber / 100)}${seg.subLabel}` : String(seg.itemNumber)
+        },
+        sourcePageNumbers
+      };
+    });
+  }
+  // Fallback: use Azure's problems[] (original behavior for unusual documents)
   if (!doc?.problems?.length)
     return [];
   return doc.problems.map((problem, index) => {
