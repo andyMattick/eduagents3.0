@@ -167,7 +167,13 @@ function guessDocumentRole(file: File): DocumentRole {
 	if (lowerName.includes("rubric") || lowerName.includes("criteria") || lowerName.includes("scoring guide")) {
 		return "rubric";
 	}
-	if (lowerName.includes("prep") || lowerName.includes("preparation") || lowerName.includes("study guide")) {
+	if (lowerName.includes("quiz") || lowerName.includes("test") || lowerName.includes("assessment")) {
+		return "test";
+	}
+	if (lowerName.includes("worksheet") || lowerName.includes("practice")) {
+		return "worksheet";
+	}
+	if (lowerName.includes("prep doc") || lowerName.includes("prep-doc") || lowerName.includes("preparation") || lowerName.includes("study guide")) {
 		return "prep-doc";
 	}
 	if (lowerName.includes("slide") || file.type.includes("presentation")) {
@@ -178,12 +184,6 @@ function guessDocumentRole(file: File): DocumentRole {
 	}
 	if (lowerName.includes("review")) {
 		return "review";
-	}
-	if (lowerName.includes("quiz") || lowerName.includes("test") || lowerName.includes("assessment")) {
-		return "test";
-	}
-	if (lowerName.includes("worksheet") || lowerName.includes("practice")) {
-		return "worksheet";
 	}
 	if (lowerName.includes("article") || lowerName.includes("reading")) {
 		return "article";

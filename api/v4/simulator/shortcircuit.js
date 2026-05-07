@@ -289,12 +289,15 @@ function findLastAttachableSubItem(subItems) {
   }
   return null;
 }
+function normalizeInlineSubItemBreaks(text) {
+  return String(text ?? "").replace(/([.!?;:])\s+(\([a-z]\)|[a-z][.)])\s+/gi, "$1\n$2 ").replace(/(\d)\s+(\([a-z]\)|[a-z][.)])\s+/gi, "$1\n$2 ");
+}
 function extractSubItemsWithNesting(text) {
   const parentStem = getParentStem(text);
   if (parentLooksLikeMCStem(parentStem)) {
     return [];
   }
-  const lines = text.split(/\r?\n/).map((line) => line.replace(/\s+$/, ""));
+  const lines = normalizeInlineSubItemBreaks(text).split(/\r?\n/).map((line) => line.replace(/\s+$/, ""));
   const subItems = [];
   let currentSubItem = null;
   for (const line of lines) {

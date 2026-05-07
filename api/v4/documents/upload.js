@@ -12584,7 +12584,52 @@ function extractItemsFromAnalysis(doc, _text, _documentId) {
   const problemCount = doc?.problems?.length ?? 0;
   console.log("[canonical-check] FALLBACK TRIGGERED");
   console.log("[canonical-check] doc.problems.length", problemCount);
-  throw new Error(`Canonical segmentation produced no items (nodeCount=${nodeCount}, segmentedCount=${segmented.length}, atomicCount=0, azureProblemCount=${problemCount}); fallback disabled.`);
+  // Preserve pre-prep behavior: fallback to Azure problems if canonical nodes do not yield items.
+  if (!doc?.problems?.length)
+    return [];
+  return doc.problems.map((problem, index) => {
+    const base = computeBaseTraits(problem);
+    return {
+      itemNumber: index + 1,
+      type: problem.cognitiveDemand ?? "question",
+      stem: problem.text ?? "",
+      choices: null,
+      answerKey: null,
+      metadata: {
+        extractedProblemId: problem.id,
+        concepts: problem.concepts ?? [],
+        representations: problem.representations ?? [],
+        difficulty: problem.difficulty ?? "medium",
+        misconceptions: problem.misconceptions ?? [],
+        cognitiveDemand: problem.cognitiveDemand ?? "recall",
+        bloomLevel: problem.bloomLevel ?? 2,
+        cognitiveLoad: problem.cognitiveLoad ?? 0.5,
+        linguisticLoad: problem.linguisticLoad ?? 0.5,
+        representationLoad: problem.representationLoad ?? 0.5,
+        phaseB: {
+          bloomLevel: problem.bloomLevel ?? 2,
+          cognitiveLoad: problem.cognitiveLoad ?? 0.5,
+          linguisticLoad: problem.linguisticLoad ?? 0.5,
+          representationLoad: problem.representationLoad ?? 0.5
+        },
+        metrics: {
+          bloom_level: problem.bloomLevel ?? 2,
+          cognitive_load: problem.cognitiveLoad ?? 0.5,
+          linguistic_load: problem.linguisticLoad ?? 0.5,
+          representation_load: problem.representationLoad ?? 0.5
+        },
+        base,
+        answerKey: null,
+        worked: null,
+        rubric: null,
+        final: { ...base },
+        sourceSpan: problem.sourceSpan ?? null,
+        fallbackUsed: true,
+        fallbackReason: `canonical-empty nodes=${nodeCount} groups=${segmented.length} atomic=0`
+      },
+      sourcePageNumbers: problem.sourceSpan ? Array.from({ length: problem.sourceSpan.lastPage - problem.sourceSpan.firstPage + 1 }, (_, i) => problem.sourceSpan.firstPage + i) : []
+    };
+  });
 }
 function extractSectionsFromAnalysis(_doc, azureExtract, rawText, _documentId) {
   let extract;

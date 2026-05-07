@@ -9956,6 +9956,89 @@ function washCountOccurrences(text, keyword) {
   }
   return count;
 }
+var WASH_PREP_STOPWORDS = /* @__PURE__ */ new Set([
+  "about",
+  "after",
+  "again",
+  "also",
+  "because",
+  "before",
+  "between",
+  "could",
+  "describe",
+  "determine",
+  "does",
+  "each",
+  "explain",
+  "find",
+  "from",
+  "have",
+  "into",
+  "just",
+  "level",
+  "mean",
+  "name",
+  "null",
+  "alternative",
+  "appropriate",
+  "part",
+  "question",
+  "reject",
+  "state",
+  "test",
+  "that",
+  "their",
+  "there",
+  "these",
+  "they",
+  "this",
+  "those",
+  "what",
+  "when",
+  "where",
+  "which",
+  "with",
+  "would",
+  "your"
+]);
+function washPrepKeywords(text) {
+  const tokens = String(text ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 4 && !WASH_PREP_STOPWORDS.has(token));
+  return [...new Set(tokens)];
+}
+function washBuildFallbackPrepByItem(prepTexts, testItems) {
+  const combined = (prepTexts ?? []).join("\n\n");
+  const prepBloom = washDetectBloomLevel(combined);
+  const prepRepresentations = washDetectRepresentations(combined);
+  const hasWorkedSignal = /step\s*\d|worked\s+example|example\s*\d|\bsolution\b/i.test(combined);
+  const result = {};
+  for (const item of testItems ?? []) {
+    const n = item.itemNumber;
+    const keywords = washPrepKeywords(item.stem ?? "").slice(0, 12);
+    const matchedKeywords = keywords.filter((keyword) => washCountOccurrences(combined, keyword) > 0);
+    const conceptMatch = keywords.length === 0 ? 0 : matchedKeywords.length / keywords.length;
+    const repsRequired = item.representations ?? [];
+    const representationAlignment = repsRequired.length === 0 || repsRequired.some((rep) => prepRepresentations.some((prepRep) => washConceptsMatch(prepRep, rep))) ? "aligned" : "mismatch";
+    const bloomRequired = typeof item.bloomLevel === "number" ? item.bloomLevel : 2;
+    const bloomAlignment = prepBloom >= bloomRequired ? "aligned" : "below";
+    let strength = "none";
+    if (conceptMatch >= 0.35) {
+      strength = "partial";
+    } else if (conceptMatch > 0) {
+      strength = "weak";
+    }
+    result[n] = {
+      strength,
+      conceptMatch,
+      bloomAlignment,
+      representationAlignment,
+      stepAlignment: hasWorkedSignal ? "aligned" : "mismatch",
+      coveredConcepts: matchedKeywords.slice(0, 5),
+      evidence: matchedKeywords.slice(0, 5).map((keyword) => `Prep doc keyword match — "${keyword}"`),
+      inferredOnly: true
+    };
+  }
+  return result;
+}
 function washDetectBloomLevel(text) {
   const t = String(text ?? "").toLowerCase();
   const verbs = {
@@ -10181,7 +10264,7 @@ async function applyWashoverToItems(sessionId) {
     let items;
     try {
       items = await supabaseRest("v4_items", {
-        select: "id,item_number,metadata",
+        select: "id,item_number,stem,metadata",
         filters: { document_id: `eq.${testDocId}`, order: "item_number.asc" }
       });
     } catch { continue; }
@@ -10197,20 +10280,23 @@ async function applyWashoverToItems(sessionId) {
       const meta = row.metadata ?? {};
       return {
         itemNumber: row.item_number,
+        stem: typeof row.stem === "string" ? row.stem : "",
         concepts: Array.isArray(meta.concepts) ? meta.concepts : [],
         representations: Array.isArray(meta.representations) ? meta.representations : [],
         bloomLevel: meta.base?.bloomLevel ?? meta.bloomLevel ?? 2
       };
     });
     const allTestConcepts = [...new Set(testItems.flatMap((i) => i.concepts ?? []))];
-    const prepCoverageMap = prepTexts.length > 0 ? washExtractPrepCoverage(prepTexts, allTestConcepts) : null;
-    const prepByItem = prepCoverageMap ? washAlignPrepToTest(prepCoverageMap, testItems) : {};
-    const hasValidPrepCoverage = Boolean(
+    const prepCoverageMap = prepTexts.length > 0 && allTestConcepts.length > 0 ? washExtractPrepCoverage(prepTexts, allTestConcepts) : null;
+    const conceptPrepByItem = prepCoverageMap ? washAlignPrepToTest(prepCoverageMap, testItems) : {};
+    const hasConceptPrepCoverage = Boolean(
       prepCoverageMap &&
       Array.isArray(prepCoverageMap.conceptsTaught) &&
       prepCoverageMap.conceptsTaught.length > 0 &&
-      Object.values(prepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0)
+      Object.values(conceptPrepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0)
     );
+    const prepByItem = hasConceptPrepCoverage ? conceptPrepByItem : prepTexts.length > 0 ? washBuildFallbackPrepByItem(prepTexts, testItems) : {};
+    const hasAnyPrepCoverage = prepTexts.length > 0 && Object.keys(prepByItem).length > 0;
     for (const item of items) {
       const n = item.item_number;
       const existingMeta = item.metadata ?? {};
@@ -10219,8 +10305,8 @@ async function applyWashoverToItems(sessionId) {
       const wkLayer = wkByItem[n]?.length ? washWorkedLayer(wkByItem[n], base) : null;
       const rbLayer = rbByItem[n] ? washRubricLayer(rbByItem[n], base) : null;
       const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
-      const prepAlignment = hasValidPrepCoverage ? prepByItem[n] ?? null : null;
-      const prepDelta = prepAlignment ? washComputePrepDeltas(prepAlignment) : null;
+      const prepAlignment = hasAnyPrepCoverage ? prepByItem[n] ?? null : null;
+      const prepDelta = prepAlignment && !prepAlignment.inferredOnly ? washComputePrepDeltas(prepAlignment) : null;
       const prepLayer = prepAlignment ? {
         strength: prepAlignment.strength,
         conceptMatch: prepAlignment.conceptMatch,
@@ -10229,6 +10315,7 @@ async function applyWashoverToItems(sessionId) {
         stepAlignment: prepAlignment.stepAlignment,
         coveredConcepts: prepAlignment.coveredConcepts,
         evidence: prepAlignment.evidence,
+        inferredOnly: prepAlignment.inferredOnly === true,
         difficultyAdjustment: prepDelta?.difficultyAdjustment ?? 0,
         confusionAdjustment: prepDelta?.confusionAdjustment ?? 0,
         timeMultiplier: prepDelta?.timeMultiplier ?? 0,
