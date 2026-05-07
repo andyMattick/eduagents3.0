@@ -270,11 +270,13 @@ export function ShortCircuitPage() {
   const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
   const [workedSolutionFile, setWorkedSolutionFile] = useState<File | null>(null);
   const [rubricFile, setRubricFile] = useState<File | null>(null);
+  const [prepDocFile, setPrepDocFile] = useState<File | null>(null);
   const [showLayersModal, setShowLayersModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const answerKeyInputRef = useRef<HTMLInputElement>(null);
   const workedSolutionInputRef = useRef<HTMLInputElement>(null);
   const rubricInputRef = useRef<HTMLInputElement>(null);
+  const prepDocInputRef = useRef<HTMLInputElement>(null);
 
   const startOver = useCallback(() => {
     setPhase("upload");
@@ -315,9 +317,11 @@ export function ShortCircuitPage() {
     setAnswerKeyFile(null);
     setWorkedSolutionFile(null);
     setRubricFile(null);
+    setPrepDocFile(null);
     if (answerKeyInputRef.current) answerKeyInputRef.current.value = "";
     if (workedSolutionInputRef.current) workedSolutionInputRef.current.value = "";
     if (rubricInputRef.current) rubricInputRef.current.value = "";
+    if (prepDocInputRef.current) prepDocInputRef.current.value = "";
   }, []);
 
   const handleFile = useCallback((f: File) => {
@@ -373,6 +377,20 @@ export function ShortCircuitPage() {
       return;
     }
     setRubricFile(nextFile);
+    setUploadError(null);
+  };
+
+  const handlePrepDocInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextFile = e.target.files?.[0];
+    if (!nextFile) {
+      setPrepDocFile(null);
+      return;
+    }
+    if (!DROP_RE.test(nextFile.name)) {
+      setUploadError("Only PDF, Word, or PowerPoint files are accepted.");
+      return;
+    }
+    setPrepDocFile(nextFile);
     setUploadError(null);
   };
 
@@ -461,7 +479,7 @@ export function ShortCircuitPage() {
     setUploading(true);
     setUploadError(null);
     try {
-      const uploadFiles = [file, answerKeyFile, workedSolutionFile, rubricFile].filter((entry): entry is File => Boolean(entry));
+      const uploadFiles = [file, answerKeyFile, workedSolutionFile, rubricFile, prepDocFile].filter((entry): entry is File => Boolean(entry));
       const { sessionId, registered, nextFileMap } = await createStudioSessionFromFilesApi(uploadFiles, user?.id);
       setSessionId(sessionId);
       const getDocumentIdForFile = (target: File | null): string | null => {
@@ -477,6 +495,7 @@ export function ShortCircuitPage() {
       const answerKeyDocumentId = getDocumentIdForFile(answerKeyFile);
       const workedSolutionDocumentId = getDocumentIdForFile(workedSolutionFile);
       const rubricDocumentId = getDocumentIdForFile(rubricFile);
+      const prepDocDocumentId = getDocumentIdForFile(prepDocFile);
 
       if (sessionId && registered.length > 0) {
         const documentRoles: Record<string, string[]> = {};
@@ -491,6 +510,8 @@ export function ShortCircuitPage() {
                 ? "worked-solution"
                 : mappedFile === rubricFile
                   ? "rubric"
+                  : mappedFile === prepDocFile
+                    ? "prep-doc"
                 : "unknown";
           documentRoles[doc.documentId] = [role];
           sessionRoles[doc.documentId] = [role === "test" ? "target-assessment" : "unit-member"];
@@ -501,6 +522,7 @@ export function ShortCircuitPage() {
             ...(answerKeyDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: answerKeyDocumentId, resourceType: "answer-key" as const }] : []),
             ...(workedSolutionDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: workedSolutionDocumentId, resourceType: "worked-solution" as const }] : []),
             ...(rubricDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: rubricDocumentId, resourceType: "rubric" as const }] : []),
+            ...(prepDocDocumentId ? [{ documentId: primaryDocumentId, resourceDocumentId: prepDocDocumentId, resourceType: "prep-doc" as const }] : []),
           ]
           : [];
 
@@ -1190,6 +1212,21 @@ export function ShortCircuitPage() {
               style={{ width: "100%" }}
             >
               {rubricFile ? `Rubric: ${rubricFile.name}` : "Optional: upload separate rubric"}
+            </button>
+            <input
+              ref={prepDocInputRef}
+              type="file"
+              accept={ACCEPTED_EXTENSIONS}
+              style={{ display: "none" }}
+              onChange={handlePrepDocInputChange}
+            />
+            <button
+              type="button"
+              className="v4-button v4-button-secondary"
+              onClick={() => prepDocInputRef.current?.click()}
+              style={{ width: "100%" }}
+            >
+              {prepDocFile ? `Prep Doc: ${prepDocFile.name}` : "Optional: upload prep document"}
             </button>
           </div>
           {uploadError && (

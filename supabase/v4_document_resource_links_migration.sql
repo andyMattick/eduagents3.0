@@ -6,7 +6,7 @@ create table if not exists public.v4_document_resource_links (
   session_id text not null,
   document_id text not null,
   resource_document_id text not null,
-  resource_type text not null check (resource_type in ('answer-key', 'worked-solution', 'rubric')),
+  resource_type text not null check (resource_type in ('answer-key', 'worked-solution', 'rubric', 'prep-doc')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -37,7 +37,7 @@ alter table public.v4_document_resource_links
 
 alter table public.v4_document_resource_links
   add constraint v4_document_resource_links_resource_type_check
-  check (resource_type in ('answer-key', 'worked-solution', 'rubric'));
+  check (resource_type in ('answer-key', 'worked-solution', 'rubric', 'prep-doc'));
 
 create unique index if not exists v4_document_resource_links_unique
   on public.v4_document_resource_links (session_id, document_id, resource_document_id, resource_type);

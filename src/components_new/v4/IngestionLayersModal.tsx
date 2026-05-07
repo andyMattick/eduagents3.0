@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
 
+type PrepLayer = {
+  strength: "strong" | "partial" | "weak" | "none";
+  conceptMatch: number;
+  bloomAlignment: "aligned" | "below";
+  representationAlignment: "aligned" | "mismatch";
+  stepAlignment: "aligned" | "mismatch";
+  coveredConcepts: string[];
+  difficultyAdjustment: number;
+  confusionAdjustment: number;
+  timeMultiplier: number;
+  bloomAdjustment: number;
+} | null;
+
 type ItemLayer = {
   id: string;
   itemNumber: number;
@@ -10,6 +23,7 @@ type ItemLayer = {
     answerKey: Record<string, unknown> | null;
     worked: Record<string, unknown> | null;
     rubric: Record<string, unknown> | null;
+    prep: PrepLayer;
     final: Record<string, unknown> | null;
   };
 };
@@ -23,6 +37,16 @@ type Props = {
   documentId: string;
   documentName?: string;
   onClose: () => void;
+};
+
+const PREP_STRENGTH_META: Record<
+  NonNullable<PrepLayer>["strength"],
+  { label: string; bg: string; fg: string }
+> = {
+  strong:  { label: "Strong",  bg: "#dcfce7", fg: "#166534" },
+  partial: { label: "Partial", bg: "#fef9c3", fg: "#854d0e" },
+  weak:    { label: "Weak",    bg: "#ffedd5", fg: "#9a3412" },
+  none:    { label: "None",    bg: "#fee2e2", fg: "#991b1b" },
 };
 
 const DISPLAY_LABELS: Record<string, string> = {
@@ -158,6 +182,64 @@ function OverrideLayerPanel({
           {keys.map((k) => (
             <DiffRow key={k} label={DISPLAY_LABELS[k] ?? k} prev={prevObj[k]} next={layer[k]} />
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrepLayerPanel({ prep }: { prep: PrepLayer }) {
+  const [open, setOpen] = useState(true);
+  if (!prep) {
+    return (
+      <div style={{ borderLeft: "3px solid #0d9488", paddingLeft: "0.75rem", marginBottom: "0.75rem", opacity: 0.5 }}>
+        <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#64748b" }}>Layer 5 — Prep-Doc Washover</span>
+        <p style={{ fontSize: "0.78rem", color: "#94a3b8", margin: "0.2rem 0 0" }}>
+          No prep coverage analysed. Upload a prep companion document to enable Layer 5 coverage.
+        </p>
+      </div>
+    );
+  }
+  const meta = PREP_STRENGTH_META[prep.strength] ?? PREP_STRENGTH_META.none;
+  return (
+    <div style={{ borderLeft: "3px solid #0d9488", paddingLeft: "0.75rem", marginBottom: "0.75rem" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem", color: "#1e3a5f", padding: 0, marginBottom: "0.4rem" }}
+      >
+        {open ? "▾" : "▸"} Layer 5 — Prep-Doc Washover
+      </button>
+      {open && (
+        <div>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.4rem" }}>
+            <span style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b" }}>Coverage strength:</span>
+            <span style={{
+              display: "inline-block", padding: "0.12rem 0.5rem", borderRadius: "9999px",
+              fontSize: "0.72rem", fontWeight: 600, background: meta.bg, color: meta.fg,
+            }}>{meta.label}</span>
+          </div>
+          {[
+            ["Concept Match",            `${(prep.conceptMatch * 100).toFixed(0)}%`],
+            ["Bloom Alignment",          prep.bloomAlignment],
+            ["Representation Alignment", prep.representationAlignment],
+            ["Step Alignment",           prep.stepAlignment],
+            ["Difficulty Adjustment",    `${prep.difficultyAdjustment > 0 ? "+" : ""}${(prep.difficultyAdjustment * 100).toFixed(0)}%`],
+            ["Confusion Adjustment",     `${prep.confusionAdjustment > 0 ? "+" : ""}${(prep.confusionAdjustment * 100).toFixed(0)}%`],
+            ["Time Multiplier",          `${prep.timeMultiplier > 0 ? "+" : ""}${(prep.timeMultiplier * 100).toFixed(0)}%`],
+            ["Bloom Adjustment",         `${prep.bloomAdjustment > 0 ? "+" : ""}${prep.bloomAdjustment.toFixed(2)}`],
+          ].map(([label, value]) => (
+            <div key={label} style={{ display: "flex", gap: "0.5rem", fontSize: "0.82rem", padding: "0.15rem 0" }}>
+              <span style={{ color: "#64748b", minWidth: "11rem", flexShrink: 0 }}>{label}:</span>
+              <span style={{ color: "#0f172a", fontWeight: 500 }}>{value}</span>
+            </div>
+          ))}
+          {prep.coveredConcepts.length > 0 && (
+            <div style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "#475569" }}>
+              <span style={{ fontWeight: 600 }}>Covered concepts: </span>
+              {prep.coveredConcepts.join(", ")}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -309,6 +391,7 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
                   layer={selectedItem.metadata.rubric}
                   prev={selectedItem.metadata.worked ?? selectedItem.metadata.answerKey ?? selectedItem.metadata.base}
                 />
+                <PrepLayerPanel prep={selectedItem.metadata.prep ?? null} />
                 <FinalLayerPanel final={selectedItem.metadata.final} base={selectedItem.metadata.base} />
               </>
             )}

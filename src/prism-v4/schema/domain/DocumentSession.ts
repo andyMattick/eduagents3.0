@@ -8,6 +8,7 @@ export type DocumentRole =
 	| "answer-key"
 	| "worked-solution"
 	| "rubric"
+	| "prep-doc"
 	| "mixed"
 	| "unknown";
 
@@ -18,7 +19,7 @@ export type SessionRole =
 	| "unit-member"
 	| "comparison-target";
 
-export type DocumentResourceType = "answer-key" | "worked-solution" | "rubric";
+export type DocumentResourceType = "answer-key" | "worked-solution" | "rubric" | "prep-doc";
 
 export interface DocumentResourceLink {
 	documentId: string;

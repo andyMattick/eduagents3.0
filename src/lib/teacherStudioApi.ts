@@ -222,7 +222,7 @@ export function bindDocumentsToSessionApi(args: {
 	resourceLinks?: Array<{
 		documentId: string;
 		resourceDocumentId: string;
-		resourceType: "answer-key" | "worked-solution" | "rubric";
+		resourceType: "answer-key" | "worked-solution" | "rubric" | "prep-doc";
 	}>;
 }) {
 	return fetchJson<{ ok?: boolean }>("/api/v4/documents/session", {

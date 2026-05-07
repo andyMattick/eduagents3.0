@@ -9933,6 +9933,202 @@ function washRubricLayer(rubricText, base) {
     rubricStrictness: rs, rubricTolerance: rt, bloomAlignment: base.bloomLevel ?? 2
   };
 }
+function washConceptsMatch(a, b) {
+  const al = String(a ?? "").toLowerCase().trim();
+  const bl = String(b ?? "").toLowerCase().trim();
+  if (!al || !bl) return false;
+  return al === bl || al.includes(bl) || bl.includes(al);
+}
+function washFindCoverageKey(coverageMap, concept) {
+  return (coverageMap?.conceptsTaught ?? []).find((taught) => washConceptsMatch(taught, concept));
+}
+function washCountOccurrences(text, keyword) {
+  const lc = String(text ?? "").toLowerCase();
+  const kw = String(keyword ?? "").toLowerCase();
+  if (!kw) return 0;
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const idx = lc.indexOf(kw, pos);
+    if (idx === -1) break;
+    count += 1;
+    pos = idx + kw.length;
+  }
+  return count;
+}
+function washDetectBloomLevel(text) {
+  const t = String(text ?? "").toLowerCase();
+  const verbs = {
+    6: ["creat", "design", "compos", "formulat", "generat", "construct", "produc"],
+    5: ["evaluat", "assess", "judg", "justif", "critiqu", "defend", "apprais"],
+    4: ["analyz", "break down", "examin", "differentiat", "infer", "diagnost", "distinguis"],
+    3: ["solv", "calculat", "apply", "demonstrat", "comput", "execut", "operat"],
+    2: ["explain", "describ", "summariz", "compar", "contrast", "classif", "interpret", "paraphras"],
+    1: ["defin", "list", "recall", "name", "identif", "memoriz", "state", "recogniz"]
+  };
+  for (let level = 6; level >= 1; level--) {
+    if (verbs[level].some((v) => t.includes(v))) return level;
+  }
+  return 1;
+}
+function washDetectRepresentations(text) {
+  const t = String(text ?? "").toLowerCase();
+  const mapping = {
+    "fraction bar": ["fraction bar", "fraction strip", "fraction model", "fraction diagram"],
+    "number line": ["number line"],
+    table: ["table", "t-chart", "data table"],
+    diagram: ["diagram", "drawing", "figure", "sketch", "picture", "visual"],
+    graph: ["graph", "plot", "coordinate plane", "coordinate grid", "axes"],
+    symbolic: ["equation", "expression", "formula", "symbol", "variable", "algebraic"],
+    verbal: ["word problem", "in words", "written form"],
+    "area model": ["area model", "rectangle model", "grid model"],
+    "bar model": ["bar model", "tape diagram", "strip diagram"]
+  };
+  const found = [];
+  for (const [label, cues] of Object.entries(mapping)) {
+    if (cues.some((cue) => t.includes(cue))) found.push(label);
+  }
+  return found;
+}
+function washExtractPrepCoverage(prepTexts, testConcepts) {
+  const combined = (prepTexts ?? []).join("\n\n");
+  const conceptsTaught = [];
+  const bloomTaughtByConcept = {};
+  const representationsUsedByConcept = {};
+  const stepsTaughtByConcept = {};
+  const coverageIntensityByConcept = {};
+  const hasWorkedExample = /step\s*\d|worked\s+example|example\s*\d|\bsolution\b|let'?s\s+solve/i.test(combined);
+  const toIntensity = (occ, worked) => {
+    if (occ === 0) return "none";
+    if (occ >= 5 || occ >= 3 && worked) return "heavy";
+    if (occ >= 2 || worked) return "medium";
+    return "light";
+  };
+  for (const concept of testConcepts ?? []) {
+    let occ = washCountOccurrences(combined, concept);
+    if (occ === 0) {
+      const words = String(concept ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+      const counts = words.map((w) => washCountOccurrences(combined, w));
+      const minCount = counts.length ? Math.min(...counts) : 0;
+      if (minCount > 0) occ = 1;
+    }
+    const intensity = toIntensity(occ, hasWorkedExample && occ > 0);
+    coverageIntensityByConcept[concept] = intensity;
+    if (intensity === "none") continue;
+    conceptsTaught.push(concept);
+    const idx = combined.toLowerCase().indexOf(String(concept ?? "").toLowerCase());
+    const ctx = idx === -1 ? combined.slice(0, 1200) : combined.slice(Math.max(0, idx - 500), Math.min(combined.length, idx + String(concept ?? "").length + 500));
+    bloomTaughtByConcept[concept] = washDetectBloomLevel(ctx);
+    representationsUsedByConcept[concept] = washDetectRepresentations(ctx);
+    const stepMatches = ctx.match(/step\s*\d[^.!?]{0,160}[.!?]/gi) ?? [];
+    stepsTaughtByConcept[concept] = stepMatches.slice(0, 4).map((s) => s.trim());
+  }
+  return {
+    conceptsTaught,
+    bloomTaughtByConcept,
+    representationsUsedByConcept,
+    stepsTaughtByConcept,
+    coverageIntensityByConcept
+  };
+}
+function washAlignPrepToTest(coverageMap, testItems) {
+  const byItem = {};
+  for (const item of testItems ?? []) {
+    const n = item.itemNumber;
+    const conceptsRequired = item.concepts ?? [];
+    const bloomRequired = typeof item.bloomLevel === "number" ? item.bloomLevel : 2;
+    const repsRequired = item.representations ?? [];
+    const coveredConcepts = conceptsRequired.filter((c) => washFindCoverageKey(coverageMap, c));
+    const conceptMatch = conceptsRequired.length === 0 ? 0 : coveredConcepts.length / conceptsRequired.length;
+    const taughtBlooms = coveredConcepts.map((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.bloomTaughtByConcept[key] ?? 1 : 1;
+    });
+    const maxBloomTaught = taughtBlooms.length ? Math.max(...taughtBlooms) : 0;
+    const bloomAlignment = conceptMatch === 0 || maxBloomTaught < bloomRequired ? "below" : "aligned";
+    const repsCovered = coveredConcepts.flatMap((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.representationsUsedByConcept[key] ?? [] : [];
+    });
+    const repOverlap = repsRequired.filter((r) => repsCovered.some((ar) => washConceptsMatch(ar, r)));
+    const representationAlignment = repsRequired.length === 0 || repOverlap.length > 0 ? "aligned" : "mismatch";
+    const hasSteps = coveredConcepts.some((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key && (coverageMap.stepsTaughtByConcept[key] ?? []).length > 0;
+    });
+    const stepAlignment = hasSteps ? "aligned" : "mismatch";
+    const intensities = coveredConcepts.map((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.coverageIntensityByConcept[key] ?? "none" : "none";
+    });
+    let strength;
+    if (conceptMatch === 0) {
+      strength = "none";
+    } else if (conceptMatch >= 1 && bloomAlignment === "aligned" && representationAlignment === "aligned" && stepAlignment === "aligned") {
+      strength = "strong";
+    } else if (conceptMatch >= 0.5 && (bloomAlignment === "aligned" || representationAlignment === "aligned")) {
+      strength = "partial";
+    } else {
+      strength = "weak";
+    }
+    if (strength === "strong" && intensities.length && intensities.every((i) => i === "light")) strength = "partial";
+    if (strength === "partial" && intensities.length && intensities.every((i) => i === "light")) strength = "weak";
+    byItem[n] = {
+      strength,
+      conceptMatch,
+      bloomAlignment,
+      representationAlignment,
+      stepAlignment,
+      coveredConcepts,
+      evidence: coveredConcepts.map((c) => `Prep doc — \"${c}\"`)
+    };
+  }
+  return byItem;
+}
+function washComputePrepDeltas(alignment) {
+  const base = {
+    strong: { difficultyDelta: -0.15, confusionDelta: -0.2, timeDelta: -0.1, bloomDelta: -0.2 },
+    partial: { difficultyDelta: -0.05, confusionDelta: -0.1, timeDelta: -0.05, bloomDelta: -0.1 },
+    weak: { difficultyDelta: 0.05, confusionDelta: 0.1, timeDelta: 0.05, bloomDelta: 0.05 },
+    none: { difficultyDelta: 0.15, confusionDelta: 0.2, timeDelta: 0.1, bloomDelta: 0.2 }
+  }[alignment?.strength ?? "none"];
+  let difficultyDelta = base.difficultyDelta;
+  let confusionDelta = base.confusionDelta;
+  let timeDelta = base.timeDelta;
+  let bloomDelta = base.bloomDelta;
+  if (alignment?.bloomAlignment === "below") {
+    difficultyDelta += 0.05;
+    confusionDelta += 0.05;
+    bloomDelta += 0.1;
+  }
+  if (alignment?.representationAlignment === "mismatch") {
+    confusionDelta += 0.05;
+    timeDelta += 0.05;
+  }
+  if (alignment?.stepAlignment === "mismatch") {
+    difficultyDelta += 0.05;
+    timeDelta += 0.05;
+  }
+  return {
+    difficultyAdjustment: difficultyDelta,
+    confusionAdjustment: confusionDelta,
+    timeMultiplier: timeDelta,
+    bloomAdjustment: bloomDelta
+  };
+}
+function washMergePrepIntoFinal(existingFinal, delta) {
+  const f = { ...(existingFinal ?? {}) };
+  const difficultyScore = typeof f.difficultyScore === "number" ? f.difficultyScore : 0.5;
+  const confusionScore = typeof f.confusionScore === "number" ? f.confusionScore : 0.5;
+  const timeSeconds = typeof f.timeSeconds === "number" ? f.timeSeconds : 60;
+  const bloomLevel = typeof f.bloomLevel === "number" ? f.bloomLevel : 2;
+  f.difficultyScore = washClamp(difficultyScore + (delta?.difficultyAdjustment ?? 0), 0, 1);
+  f.confusionScore = washClamp(confusionScore + (delta?.confusionAdjustment ?? 0), 0, 1);
+  f.timeSeconds = Math.max(5, timeSeconds * (1 + (delta?.timeMultiplier ?? 0)));
+  f.bloomLevel = washClamp(bloomLevel + (delta?.bloomAdjustment ?? 0), 1, 6);
+  for (const k of Object.keys(f)) if (f[k] === void 0) delete f[k];
+  return f;
+}
 function washMergeTraits(base, ak, worked, rubric) {
   const final = { ...base };
   if (ak) {
@@ -9993,9 +10189,28 @@ async function applyWashoverToItems(sessionId) {
     const akText = docLinks.filter((l) => l.resource_type === "answer-key").map((l) => l.content_text ?? "").join("\n");
     const wkText = docLinks.filter((l) => l.resource_type === "worked-solution").map((l) => l.content_text ?? "").join("\n");
     const rbText = docLinks.filter((l) => l.resource_type === "rubric").map((l) => l.content_text ?? "").join("\n");
+    const prepTexts = docLinks.filter((l) => l.resource_type === "prep-doc").map((l) => l.content_text ?? "").filter((t) => String(t).trim().length > 0);
     const akByItem = washParseAnswerKey(akText);
     const wkByItem = washParseWorkedSolutions(wkText);
     const rbByItem = washParseRubric(rbText);
+    const testItems = items.map((row) => {
+      const meta = row.metadata ?? {};
+      return {
+        itemNumber: row.item_number,
+        concepts: Array.isArray(meta.concepts) ? meta.concepts : [],
+        representations: Array.isArray(meta.representations) ? meta.representations : [],
+        bloomLevel: meta.base?.bloomLevel ?? meta.bloomLevel ?? 2
+      };
+    });
+    const allTestConcepts = [...new Set(testItems.flatMap((i) => i.concepts ?? []))];
+    const prepCoverageMap = prepTexts.length > 0 ? washExtractPrepCoverage(prepTexts, allTestConcepts) : null;
+    const prepByItem = prepCoverageMap ? washAlignPrepToTest(prepCoverageMap, testItems) : {};
+    const hasValidPrepCoverage = Boolean(
+      prepCoverageMap &&
+      Array.isArray(prepCoverageMap.conceptsTaught) &&
+      prepCoverageMap.conceptsTaught.length > 0 &&
+      Object.values(prepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0)
+    );
     for (const item of items) {
       const n = item.item_number;
       const existingMeta = item.metadata ?? {};
@@ -10004,7 +10219,23 @@ async function applyWashoverToItems(sessionId) {
       const wkLayer = wkByItem[n]?.length ? washWorkedLayer(wkByItem[n], base) : null;
       const rbLayer = rbByItem[n] ? washRubricLayer(rbByItem[n], base) : null;
       const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
-      const updatedMeta = { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, final: finalTraits };
+      const prepAlignment = hasValidPrepCoverage ? prepByItem[n] ?? null : null;
+      const prepDelta = prepAlignment ? washComputePrepDeltas(prepAlignment) : null;
+      const prepLayer = prepAlignment ? {
+        strength: prepAlignment.strength,
+        conceptMatch: prepAlignment.conceptMatch,
+        bloomAlignment: prepAlignment.bloomAlignment,
+        representationAlignment: prepAlignment.representationAlignment,
+        stepAlignment: prepAlignment.stepAlignment,
+        coveredConcepts: prepAlignment.coveredConcepts,
+        evidence: prepAlignment.evidence,
+        difficultyAdjustment: prepDelta?.difficultyAdjustment ?? 0,
+        confusionAdjustment: prepDelta?.confusionAdjustment ?? 0,
+        timeMultiplier: prepDelta?.timeMultiplier ?? 0,
+        bloomAdjustment: prepDelta?.bloomAdjustment ?? 0
+      } : null;
+      const mergedFinalTraits = prepDelta ? washMergePrepIntoFinal(finalTraits, prepDelta) : finalTraits;
+      const updatedMeta = { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, prep: prepLayer, final: mergedFinalTraits };
       await supabaseRest("v4_items", {
         method: "PATCH",
         filters: { id: `eq.${item.id}` },

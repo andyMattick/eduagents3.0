@@ -124,7 +124,7 @@ function declaredRoleToDocType(role: DocumentRole | undefined): DocType | null {
 	if (role === "test") {
 		return "problem";
 	}
-	if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+	if (role === "answer-key" || role === "worked-solution" || role === "rubric" || role === "prep-doc") {
 		return "notes";
 	}
 	return null;

@@ -82,9 +82,10 @@ function buildResourceLinks(args: {
 	answerKeyFiles: File[];
 	workedSolutionFiles: File[];
 	rubricFiles: File[];
+	prepDocFiles: File[];
 	nextFileMap: Record<string, File>;
 }): DocumentResourceLink[] {
-	if (args.answerKeyFiles.length === 0 && args.workedSolutionFiles.length === 0 && args.rubricFiles.length === 0) {
+	if (args.answerKeyFiles.length === 0 && args.workedSolutionFiles.length === 0 && args.rubricFiles.length === 0 && args.prepDocFiles.length === 0) {
 		return [];
 	}
 
@@ -92,6 +93,7 @@ function buildResourceLinks(args: {
 	const answerKeyFiles = new Set(args.answerKeyFiles.map((file) => fileIdentity(file)));
 	const workedSolutionFiles = new Set(args.workedSolutionFiles.map((file) => fileIdentity(file)));
 	const rubricFiles = new Set(args.rubricFiles.map((file) => fileIdentity(file)));
+	const prepDocFiles = new Set(args.prepDocFiles.map((file) => fileIdentity(file)));
 
 	const primaryDocuments = args.registered.filter((entry) => {
 		const file = args.nextFileMap[entry.documentId];
@@ -108,6 +110,10 @@ function buildResourceLinks(args: {
 	const rubricDocuments = args.registered.filter((entry) => {
 		const file = args.nextFileMap[entry.documentId];
 		return file ? rubricFiles.has(fileIdentity(file)) : false;
+	});
+	const prepDocDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? prepDocFiles.has(fileIdentity(file)) : false;
 	});
 
 	const resourceLinks: DocumentResourceLink[] = [];
@@ -133,6 +139,13 @@ function buildResourceLinks(args: {
 				resourceType: "rubric",
 			});
 		}
+		for (const prepDoc of prepDocDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: prepDoc.documentId,
+				resourceType: "prep-doc",
+			});
+		}
 	}
 
 	return resourceLinks;
@@ -153,6 +166,9 @@ function guessDocumentRole(file: File): DocumentRole {
 	}
 	if (lowerName.includes("rubric") || lowerName.includes("criteria") || lowerName.includes("scoring guide")) {
 		return "rubric";
+	}
+	if (lowerName.includes("prep") || lowerName.includes("preparation") || lowerName.includes("study guide")) {
+		return "prep-doc";
 	}
 	if (lowerName.includes("slide") || file.type.includes("presentation")) {
 		return "slides";
@@ -261,12 +277,13 @@ export function useInstructionalSession() {
 
 	async function createSessionFromFiles(
 		selectedFiles: File[],
-		extraFiles?: { answerKeyFiles?: File[]; workedSolutionFiles?: File[]; rubricFiles?: File[] },
+		extraFiles?: { answerKeyFiles?: File[]; workedSolutionFiles?: File[]; rubricFiles?: File[]; prepDocFiles?: File[] },
 	) {
 		const answerKeyFiles = extraFiles?.answerKeyFiles ?? [];
 		const workedSolutionFiles = extraFiles?.workedSolutionFiles ?? [];
 		const rubricFiles = extraFiles?.rubricFiles ?? [];
-		const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles];
+		const prepDocFiles = extraFiles?.prepDocFiles ?? [];
+		const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles, ...prepDocFiles];
 		if (allUploadFiles.length === 0) {
 			setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
 			return null;
@@ -288,6 +305,9 @@ export function useInstructionalSession() {
 			}
 			for (const file of rubricFiles) {
 				forcedRoles.set(fileIdentity(file), "rubric");
+			}
+			for (const file of prepDocFiles) {
+				forcedRoles.set(fileIdentity(file), "prep-doc");
 			}
 
 			for (const file of allUploadFiles) {
@@ -328,6 +348,7 @@ export function useInstructionalSession() {
 				answerKeyFiles,
 				workedSolutionFiles,
 				rubricFiles,
+				prepDocFiles,
 				nextFileMap,
 			});
 

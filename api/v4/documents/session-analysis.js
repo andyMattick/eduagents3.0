@@ -10512,6 +10512,9 @@ function classifyRole(text, contentType, declaredRole) {
   if (declaredRole === "rubric") {
     return { isInstructional: true, instructionalRole: "instruction", confidence: 0.99, evidence: "Declared rubric role override." };
   }
+  if (declaredRole === "prep-doc") {
+    return { isInstructional: true, instructionalRole: "note", confidence: 0.99, evidence: "Declared prep-doc role override." };
+  }
   if (!text.trim()) {
     return { isInstructional: false, instructionalRole: "metadata", confidence: 0.98, evidence: "Empty text node." };
   }

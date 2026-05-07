@@ -12312,7 +12312,7 @@ function declaredRoleToDocType(role) {
   if (role === "test") {
     return "problem";
   }
-  if (role === "answer-key" || role === "worked-solution" || role === "rubric") {
+  if (role === "answer-key" || role === "worked-solution" || role === "rubric" || role === "prep-doc") {
     return "notes";
   }
   return null;
@@ -12324,16 +12324,26 @@ async function ingestDocument(input) {
     text = flattenAnalyzedDocumentText(analyzedDocument);
   }
   const docType = declaredRoleToDocType(declaredRole) ?? classifyDocType(text);
+  const analysisNodesLength = analyzedDocument?.document?.nodes?.length ?? analyzedDocument?.nodes?.length ?? 0;
+  const analysisBlocksLength = analyzedDocument?.document?.blocks?.length ?? analyzedDocument?.blocks?.length ?? 0;
+  const analysisSpansLength = analyzedDocument?.document?.spans?.length ?? analyzedDocument?.spans?.length ?? 0;
+  console.log("[canonical-check] docType:", docType);
+  console.log("[canonical-check] analysis.nodes.length", analysisNodesLength);
+  console.log("[canonical-check] analysis.blocks.length", analysisBlocksLength);
+  console.log("[canonical-check] analysis.spans.length", analysisSpansLength);
   setDocType(documentId, docType).catch(() => {
   });
   let items = [];
   let sections = [];
   if (docType === "problem" || docType === "mixed") {
     items = extractItemsFromAnalysis(analyzedDocument, text, documentId);
+  } else {
+    console.log("[canonical-check] canonical segmentation skipped for docType", docType);
   }
   if (docType === "notes" || docType === "mixed") {
     sections = extractSectionsFromAnalysis(analyzedDocument, azureExtract, text, documentId);
   }
+  console.log("[canonical-check] items to save:", items.length);
   const persistItems = items.length > 0 ? saveItems(documentId, items).catch((err) => console.warn("[ingestDocument] saveItems non-fatal:", err instanceof Error ? err.message : err)) : Promise.resolve();
   const persistSections = sections.length > 0 ? saveSections(documentId, sections).catch((err) => console.warn("[ingestDocument] saveSections non-fatal:", err instanceof Error ? err.message : err)) : Promise.resolve();
   const persistAnalysis = saveAnalysis(documentId, docType, analyzedDocument ?? {}).catch((err) => console.warn("[ingestDocument] saveAnalysis non-fatal:", err instanceof Error ? err.message : err));
@@ -12508,7 +12518,15 @@ function detectAndExpandMultipart(segmentedItems) {
 function extractItemsFromAnalysis(doc, _text, _documentId) {
   // Attempt node-based segmentation — preserves printed item numbers
   const segmented = segmentItemsFromNodes(doc);
-  const atomicItems = segmented.length > 0 ? detectAndExpandMultipart(segmented) : [];
+  console.log("[canonical-check] groups.length", segmented.length);
+  let atomicItems = [];
+  try {
+    atomicItems = segmented.length > 0 ? detectAndExpandMultipart(segmented) : [];
+  } catch (err) {
+    console.error("[canonical-check] Segmentation error:", err);
+    throw err;
+  }
+  console.log("[canonical-check] atomicItems.length", atomicItems.length);
   if (atomicItems.length > 0) {
     // Build node lookup for page number recovery
     const allNodes = doc.document?.nodes ?? [];
@@ -12562,50 +12580,11 @@ function extractItemsFromAnalysis(doc, _text, _documentId) {
       };
     });
   }
-  // Fallback: use Azure's problems[] (original behavior for unusual documents)
-  if (!doc?.problems?.length)
-    return [];
-  return doc.problems.map((problem, index) => {
-    const base = computeBaseTraits(problem);
-    return {
-      itemNumber: index + 1,
-      type: problem.cognitiveDemand ?? "question",
-      stem: problem.text ?? "",
-      choices: null,
-      answerKey: null,
-      metadata: {
-        extractedProblemId: problem.id,
-        concepts: problem.concepts ?? [],
-        representations: problem.representations ?? [],
-        difficulty: problem.difficulty ?? "medium",
-        misconceptions: problem.misconceptions ?? [],
-        cognitiveDemand: problem.cognitiveDemand ?? "recall",
-        bloomLevel: problem.bloomLevel ?? 2,
-        cognitiveLoad: problem.cognitiveLoad ?? 0.5,
-        linguisticLoad: problem.linguisticLoad ?? 0.5,
-        representationLoad: problem.representationLoad ?? 0.5,
-        phaseB: {
-          bloomLevel: problem.bloomLevel ?? 2,
-          cognitiveLoad: problem.cognitiveLoad ?? 0.5,
-          linguisticLoad: problem.linguisticLoad ?? 0.5,
-          representationLoad: problem.representationLoad ?? 0.5
-        },
-        metrics: {
-          bloom_level: problem.bloomLevel ?? 2,
-          cognitive_load: problem.cognitiveLoad ?? 0.5,
-          linguistic_load: problem.linguisticLoad ?? 0.5,
-          representation_load: problem.representationLoad ?? 0.5
-        },
-        base,
-        answerKey: null,
-        worked: null,
-        rubric: null,
-        final: { ...base },
-        sourceSpan: problem.sourceSpan ?? null
-      },
-      sourcePageNumbers: problem.sourceSpan ? Array.from({ length: problem.sourceSpan.lastPage - problem.sourceSpan.firstPage + 1 }, (_, i) => problem.sourceSpan.firstPage + i) : []
-    };
-  });
+  const nodeCount = doc?.document?.nodes?.length ?? 0;
+  const problemCount = doc?.problems?.length ?? 0;
+  console.log("[canonical-check] FALLBACK TRIGGERED");
+  console.log("[canonical-check] doc.problems.length", problemCount);
+  throw new Error(`Canonical segmentation produced no items (nodeCount=${nodeCount}, segmentedCount=${segmented.length}, atomicCount=0, azureProblemCount=${problemCount}); fallback disabled.`);
 }
 function extractSectionsFromAnalysis(_doc, azureExtract, rawText, _documentId) {
   let extract;
