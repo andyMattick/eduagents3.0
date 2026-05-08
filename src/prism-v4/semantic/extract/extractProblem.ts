@@ -35,6 +35,7 @@ interface TopLevelMatch {
 interface SubpartMatch {
 	problemNumber?: number;
 	partLabel: string;
+	kind: "letter" | "roman";
 	body: string;
 }
 
@@ -43,7 +44,9 @@ interface InlineSubpartParseResult {
 	parts: ProblemPartDraft[];
 }
 
-const INLINE_SUBPART_BOUNDARY = /\s+(?=(?:\d+[a-z][.)]|\([a-z]\)|[a-z][.)]|\d+[a-z])\s+)/i;
+const ROMAN_SUBPART_TOKEN = "(?:i{1,3}|iv|v|vi{1,3}|ix|x)";
+const INLINE_SUBPART_BOUNDARY = new RegExp(`\\s+(?=(?:\\d+[a-zA-Z][.):\\-—]|\\([a-zA-Z]\\)|[a-zA-Z][.):\\-—]|[a-zA-Z]\\s+(?=[A-Z])|\\d+[a-zA-Z]|\\((?:${ROMAN_SUBPART_TOKEN})\\)|(?:${ROMAN_SUBPART_TOKEN})[.):\\-—]|(?:${ROMAN_SUBPART_TOKEN})\\s+(?=[A-Z])))`);
+const LEADING_PARENT_INLINE_MARKER = new RegExp(`^\\s*(\\(|\\[)?((?:[a-hA-H])|(?:${ROMAN_SUBPART_TOKEN}))(\\)|\\]|\\.)\\s*`, "i");
 
 function looksLikeProblemBoundary(text: string) {
 	return /^(?:\d+[.)\]]|q\s*\d+[.)\]]|question\s*\d+[:.]|[A-Z][.)])\s+/i.test(text);
@@ -62,22 +65,41 @@ function matchTopLevelProblem(text: string): TopLevelMatch | null {
 }
 
 function matchSubpart(text: string): SubpartMatch | null {
-	const match = text.match(/^(?:(\d+)([a-z])[.)]|\(([a-z])\)|([a-z])[.)]|(\d+)([a-z]))\s+(.*)$/);
-	if (!match) {
-		return null;
+	const numberedLetter = text.match(/^(\d+)([a-hA-H])(?:[.):\-—]|\s)\s*(.*)$/);
+	if (numberedLetter) {
+		return {
+			problemNumber: Number(numberedLetter[1]),
+			partLabel: numberedLetter[2].toLowerCase(),
+			kind: "letter",
+			body: normalizeWhitespace(numberedLetter[3] ?? ""),
+		};
 	}
 
-	const numberedProblem = match[1] ?? match[5];
-	const partLabel = (match[2] ?? match[3] ?? match[4] ?? match[6] ?? "").toLowerCase();
-	if (!partLabel) {
-		return null;
+	const letter = text.match(/^(?:\(([a-hA-H])\)|([a-hA-H])[.):\-—]|([a-hA-H])\s+(?=[A-Z]))\s*(.*)$/);
+	if (letter) {
+		const token = (letter[1] ?? letter[2] ?? letter[3] ?? "").toLowerCase();
+		if (token) {
+			return {
+				partLabel: token,
+				kind: "letter",
+				body: normalizeWhitespace(letter[4] ?? ""),
+			};
+		}
 	}
 
-	return {
-		problemNumber: numberedProblem ? Number(numberedProblem) : undefined,
-		partLabel,
-		body: normalizeWhitespace(match[7] ?? ""),
-	};
+	const roman = text.match(new RegExp(`^(?:\\((${ROMAN_SUBPART_TOKEN})\\)|(${ROMAN_SUBPART_TOKEN})(?:[.):\\-—]|\\s+(?=[A-Z])))\\s*(.*)$`, "i"));
+	if (roman) {
+		const token = (roman[1] ?? roman[2] ?? "").toLowerCase();
+		if (token) {
+			return {
+				partLabel: token,
+				kind: "roman",
+				body: normalizeWhitespace(roman[3] ?? ""),
+			};
+		}
+	}
+
+	return null;
 }
 
 function alphabetIndex(partLabel: string) {
@@ -100,7 +122,12 @@ function toProblemPartDraft(subpart: SubpartMatch, pageNumber: number): ProblemP
 }
 
 function splitInlineSubparts(text: string, pageNumber: number): InlineSubpartParseResult | null {
-	const segments = text
+	const normalized = normalizeWhitespace(text);
+	if (!normalized) {
+		return null;
+	}
+
+	const segments = normalized
 		.split(INLINE_SUBPART_BOUNDARY)
 		.map((segment) => normalizeWhitespace(segment))
 		.filter((segment) => segment.length > 0);
@@ -114,7 +141,20 @@ function splitInlineSubparts(text: string, pageNumber: number): InlineSubpartPar
 	for (const segment of segments) {
 		const subpart = matchSubpart(segment);
 		if (subpart) {
-			result.parts.push(toProblemPartDraft(subpart, pageNumber));
+			if (subpart.kind === "letter") {
+				result.parts.push(toProblemPartDraft(subpart, pageNumber));
+			} else if (result.parts.length > 0) {
+				const tail = result.parts[result.parts.length - 1]!;
+				const romanPrefix = `${subpart.partLabel})`;
+				const romanText = [romanPrefix, subpart.body].filter(Boolean).join(" ").trim();
+				if (romanText.length > 0) {
+					tail.textLines.push(romanText);
+				}
+			} else {
+				const romanPrefix = `${subpart.partLabel})`;
+				const romanText = [romanPrefix, subpart.body].filter(Boolean).join(" ").trim();
+				result.leadingText = result.leadingText ? `${result.leadingText}\n${romanText}` : romanText;
+			}
 			continue;
 		}
 
@@ -127,6 +167,10 @@ function splitInlineSubparts(text: string, pageNumber: number): InlineSubpartPar
 	}
 
 	return result.parts.length > 0 ? result : null;
+}
+
+function stripLeadingInlineMarker(text: string): string {
+	return normalizeWhitespace(text.replace(LEADING_PARENT_INLINE_MARKER, "").trim());
 }
 
 function looksLikeHeader(text: string, role?: string) {
@@ -303,7 +347,11 @@ function extractHierarchicalProblems(blocks: ParagraphBlock[], fileName: string)
 				teacherLabel: `${topLevel.problemNumber}.`,
 				pageNumber: block.pageNumber,
 				lastPageNumber: block.pageNumber,
-				stemLines: inlineSubparts?.leadingText ? [inlineSubparts.leadingText] : topLevel.body ? [topLevel.body] : [],
+				stemLines: inlineSubparts?.leadingText
+					? [inlineSubparts.leadingText]
+					: topLevel.body
+						? [stripLeadingInlineMarker(topLevel.body)]
+						: [],
 				parts: inlineSubparts?.parts ?? [],
 			};
 			groups.push(currentGroup);

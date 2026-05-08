@@ -12403,21 +12403,42 @@ function computeBaseTraits(problem) {
  */
 function segmentItemsFromNodes(analyzedDocument) {
   const allNodes = analyzedDocument?.document?.nodes ?? [];
-  const nodes = allNodes
-    .filter((n) => !n.parentId && ["paragraph", "heading", "listItem", "caption"].includes(n.nodeType))
+  const paragraphNodes = allNodes
+    .filter((n) => n.nodeType === "paragraph")
     .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  if (paragraphNodes.length === 0) return [];
+  const INLINE_BOUNDARY_RE = /\s+(?=(?:\d{1,3}[a-hA-H][\).:\-—]|\d{1,3}\s*\([a-hA-H]\)|\([a-hA-H]\)|[a-hA-H][\).:\-—]|[a-hA-H]\s+(?=[A-Z])|\((?:i{1,3}|iv|v|vi{1,3}|ix|x)\)|(?:i{1,3}|iv|v|vi{1,3}|ix|x)[\).:\-—]|(?:i{1,3}|iv|v|vi{1,3}|ix|x)\s+(?=[A-Z])))/g;
+  const nodes = [];
+  for (const node of paragraphNodes) {
+    const baseText = (node.normalizedText ?? node.text ?? "").trim();
+    if (!baseText) continue;
+    const segments = baseText
+      .split(INLINE_BOUNDARY_RE)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    const selectedSegments = segments.length > 1 ? segments : [baseText];
+    for (const segment of selectedSegments) {
+      nodes.push({
+        id: node.id,
+        surfaceId: node.surfaceId,
+        orderIndex: node.orderIndex,
+        text: segment
+      });
+    }
+  }
   if (nodes.length === 0) return [];
   // Patterns — checked in specificity order
   const RE_SUBNUMLET = /^(\d{1,3})([a-z])[.\)]\s+/i;        // "2a. " or "2b) "
   const RE_SUBNUMPAR = /^(\d{1,3})\s*\(([a-z])\)\s*/i;      // "2(a) "
   const RE_TOP       = /^(\d{1,3})[.\)]\s+/;                 // "1. " or "1) "
   const RE_QUESTION  = /^(?:Question|Q\.?)\s*(\d{1,3})[:.)]?\s*/i; // "Question 1"
-  const RE_SUBLETTER = /^([a-f])[.\)]\s+/;                   // "a. " bare sub-item (a–f only)
+  const RE_SUBLETTER = /^(?:\(([a-hA-H])\)|([a-hA-H])[\).:\-—]|([a-hA-H])\s+(?=[A-Z]))\s*/; // "(a)", "a)", "a :", OCR "a "
+  const RE_SUBROMAN = /^(?:\((i{1,3}|iv|v|vi{1,3}|ix|x)\)|((?:i{1,3}|iv|v|vi{1,3}|ix|x))[\).:\-—]|((?:i{1,3}|iv|v|vi{1,3}|ix|x))\s+(?=[A-Z]))\s*/i;
   const groups = [];
   let currentGroup = null;
   let lastTopLevelNumber = null;
   for (const node of nodes) {
-    const text = (node.normalizedText ?? node.text ?? "").trim();
+    const text = (node.text ?? "").trim();
     if (!text) continue;
     let matched = false;
     // 1. Sub-item with parent number: "2a. " or "2(a) "
@@ -12458,9 +12479,20 @@ function segmentItemsFromNodes(analyzedDocument) {
     if (!matched && lastTopLevelNumber !== null) {
       const mLetter = text.match(RE_SUBLETTER);
       if (mLetter) {
-        const subLabel = mLetter[1].toLowerCase();
+        const subLabel = (mLetter[1] ?? mLetter[2] ?? mLetter[3] ?? "").toLowerCase();
         currentGroup = { rawText: text, itemNumber: lastTopLevelNumber, subLabel, nodeIds: [node.id] };
         groups.push(currentGroup);
+        matched = true;
+      }
+    }
+    // 4b. Bare roman marker belongs to current lettered sub-item as nested text
+    if (!matched && currentGroup && currentGroup.subLabel != null) {
+      const mRoman = text.match(RE_SUBROMAN);
+      if (mRoman) {
+        const romanLabel = (mRoman[1] ?? mRoman[2] ?? mRoman[3] ?? "").toLowerCase();
+        const rest = text.replace(RE_SUBROMAN, "").trim();
+        currentGroup.rawText = `${currentGroup.rawText} ${romanLabel}) ${rest}`.trim();
+        currentGroup.nodeIds.push(node.id);
         matched = true;
       }
     }
@@ -12485,6 +12517,8 @@ function segmentItemsFromNodes(analyzedDocument) {
  * (c) the simulation engine that labels items "item-N".
  */
 function detectAndExpandMultipart(segmentedItems) {
+  const PARENT_INLINE_STRIP_RE = /^\s*(\(|\[)?((?:[a-hA-H])|(?:i{1,3}|iv|v|vi{1,3}|ix|x))(\)|\]|\.)\s*/i;
+  const cleanParentMarker = (text) => String(text ?? "").replace(PARENT_INLINE_STRIP_RE, "").trim();
   const byNumber = new Map();
   for (const item of segmentedItems) {
     if (!byNumber.has(item.itemNumber)) byNumber.set(item.itemNumber, []);
@@ -12498,7 +12532,12 @@ function detectAndExpandMultipart(segmentedItems) {
       // Multipart: fold all named parts into one row with the parent item_number.
       // Concatenate sub-part text in label order so computeBaseTraits sees the full stem.
       const sortedSubs = [...subs].sort((a, b) => a.subLabel.localeCompare(b.subLabel));
-      const combinedText = sortedSubs.map((s) => `(${s.subLabel}) ${s.rawText}`).join(" ");
+      const combinedText = sortedSubs
+        .map((s) => {
+          const cleaned = cleanParentMarker(s.rawText);
+          return `(${s.subLabel}) ${cleaned}`.trim();
+        })
+        .join(" ");
       const allNodeIds = sortedSubs.flatMap((s) => s.nodeIds);
       result.push({
         itemNumber: num,
@@ -12508,7 +12547,10 @@ function detectAndExpandMultipart(segmentedItems) {
         subParts: sortedSubs.map((s) => s.subLabel)
       });
     } else {
-      result.push(...mains);
+      result.push(...mains.map((entry) => ({
+        ...entry,
+        rawText: cleanParentMarker(entry.rawText)
+      })));
     }
   }
   result.sort((a, b) => a.itemNumber - b.itemNumber);

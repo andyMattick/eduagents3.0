@@ -186,4 +186,51 @@ describe("extractProblems", () => {
     expect(problems[3]?.partText).toBe("Floor debate");
     expect(problems[4]?.partText).toBe("Introduction in Congress");
   });
+
+  it("keeps roman inline markers under lettered parts without creating phantom parent markers", () => {
+    const problems = extractProblems({
+      fileName: "roman-inline.pdf",
+      content: "4. (a) Solve the equation (i) show substitution (ii) simplify fully (b) Verify your result with a graph",
+      pages: [{ pageNumber: 1, text: "quiz" }],
+      paragraphs: [
+        { text: "4. (a) Solve the equation (i) show substitution (ii) simplify fully (b) Verify your result with a graph", pageNumber: 1 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    const root = problems.find((problem) => problem.problemId === "p4");
+    const partA = problems.find((problem) => problem.problemId === "p4a");
+    const partB = problems.find((problem) => problem.problemId === "p4b");
+
+    expect(root).toBeDefined();
+    expect(root?.cleanedText).not.toContain("(a)");
+    expect(partA).toBeDefined();
+    expect(partA?.partLabel).toBe("a");
+    expect(partA?.partText).toContain("i)");
+    expect(partA?.partText).toContain("ii)");
+    expect(partB).toBeDefined();
+    expect(partB?.partLabel).toBe("b");
+  });
+
+  it("supports OCR whitespace markers for letter and roman inline labels", () => {
+    const problems = extractProblems({
+      fileName: "ocr-whitespace-inline.pdf",
+      content: "6. a Solve for x i Show substitution ii Simplify b Verify graphically",
+      pages: [{ pageNumber: 1, text: "quiz" }],
+      paragraphs: [
+        { text: "6. a Solve for x i Show substitution ii Simplify b Verify graphically", pageNumber: 1 },
+      ],
+      tables: [],
+      readingOrder: [],
+    });
+
+    const partA = problems.find((problem) => problem.problemId === "p6a");
+    const partB = problems.find((problem) => problem.problemId === "p6b");
+
+    expect(partA).toBeDefined();
+    expect(partA?.partText).toContain("i)");
+    expect(partA?.partText).toContain("ii)");
+    expect(partB).toBeDefined();
+  });
 });
