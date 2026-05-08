@@ -546,6 +546,97 @@ function fromDocumentResourceLinkRow(row: DocumentResourceLinkRow): DocumentReso
 	};
 }
 
+function flattenAzureTables(azureExtract: DocumentRow["azure_extract"] | undefined | null): string {
+	const tables = azureExtract?.tables;
+	if (!Array.isArray(tables) || tables.length === 0) {
+		return "";
+	}
+
+	const sections: string[] = [];
+	for (const table of tables) {
+		const cells = Array.isArray(table?.cells) ? table.cells : [];
+		if (cells.length === 0) {
+			continue;
+		}
+
+		const rowIndexes = Array.from(new Set(cells
+			.map((cell) => (typeof cell?.rowIndex === "number" ? cell.rowIndex : -1))
+			.filter((index) => index >= 0)))
+			.sort((a, b) => a - b);
+
+		if (rowIndexes.length === 0) {
+			continue;
+		}
+
+		const lines: string[] = [];
+		for (const rowIndex of rowIndexes) {
+			const rowCells = cells
+				.filter((cell) => cell?.rowIndex === rowIndex)
+				.sort((left, right) => (left?.columnIndex ?? 0) - (right?.columnIndex ?? 0));
+			const rowText = rowCells
+				.map((cell) => (typeof cell?.content === "string" ? cell.content : ""))
+				.map((value) => value.trim())
+				.filter((value) => value.length > 0)
+				.join(" | ");
+			if (rowText.length > 0) {
+				lines.push(rowText);
+			}
+		}
+
+		if (lines.length > 0) {
+			sections.push(lines.join("\n"));
+		}
+	}
+
+	return sections.join("\n\n");
+}
+
+function normalizeResourceDocumentText(rawText: string): string {
+	if (rawText.trim().length === 0) {
+		return "";
+	}
+
+	const normalized = rawText
+		.replace(/\r\n?/g, "\n")
+		.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+		.replace(/[ \t]+\n/g, "\n")
+		.replace(/\u00a0/g, " ");
+
+	const lines = normalized.split("\n");
+	const cleaned: string[] = [];
+	let previousWasBlank = true;
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (trimmed.length === 0) {
+			if (!previousWasBlank) {
+				cleaned.push("");
+			}
+			previousWasBlank = true;
+			continue;
+		}
+
+		const letters = (trimmed.match(/[A-Za-z]/g) ?? []).length;
+		const symbols = (trimmed.match(/[^A-Za-z0-9\s]/g) ?? []).length;
+		if (letters === 0 && symbols > 6) {
+			continue;
+		}
+		if (/^page\s+\d+(\s+of\s+\d+)?$/i.test(trimmed)) {
+			continue;
+		}
+
+		cleaned.push(trimmed);
+		previousWasBlank = false;
+	}
+
+	const compacted = cleaned.join("\n")
+		.replace(/\n{3,}/g, "\n\n")
+		.replace(/[ \t]{2,}/g, " ")
+		.trim();
+
+	return compacted;
+}
+
 function extractResourceDocumentText(document: Pick<DocumentRow, "canonical_document" | "azure_extract">): string {
 	const nodes = document.canonical_document?.nodes;
 	if (Array.isArray(nodes) && nodes.length > 0) {
@@ -554,22 +645,38 @@ function extractResourceDocumentText(document: Pick<DocumentRow, "canonical_docu
 			.filter(Boolean)
 			.join("\n");
 		if (text.trim().length > 0) {
-			return text;
+			return normalizeResourceDocumentText(text);
 		}
 	}
 
+	const azureSections: string[] = [];
 	if (typeof document.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
-		return document.azure_extract.content;
+		azureSections.push(document.azure_extract.content);
 	}
 
 	const paragraphs = document.azure_extract?.paragraphs;
 	if (Array.isArray(paragraphs) && paragraphs.length > 0) {
-		return paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n");
+		const paragraphText = paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n\n");
+		if (paragraphText.trim().length > 0) {
+			azureSections.push(paragraphText);
+		}
 	}
 
 	const pages = document.azure_extract?.pages;
 	if (Array.isArray(pages) && pages.length > 0) {
-		return pages.map((page) => page?.text ?? "").filter(Boolean).join("\n");
+		const pageText = pages.map((page) => page?.text ?? "").filter(Boolean).join("\n\n");
+		if (pageText.trim().length > 0) {
+			azureSections.push(pageText);
+		}
+	}
+
+	const tableText = flattenAzureTables(document.azure_extract);
+	if (tableText.trim().length > 0) {
+		azureSections.push(tableText);
+	}
+
+	if (azureSections.length > 0) {
+		return normalizeResourceDocumentText(azureSections.join("\n\n"));
 	}
 
 	return "";

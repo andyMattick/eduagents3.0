@@ -9712,24 +9712,97 @@ function fromDocumentResourceLinkRow(row) {
     contentText: typeof row.content_text === "string" ? row.content_text : void 0
   };
 }
+function flattenAzureTables(azureExtract) {
+  const tables = azureExtract?.tables;
+  if (!Array.isArray(tables) || tables.length === 0) {
+    return "";
+  }
+  const sections = [];
+  for (const table of tables) {
+    const cells = Array.isArray(table?.cells) ? table.cells : [];
+    if (cells.length === 0) {
+      continue;
+    }
+    const rowIndexes = Array.from(new Set(cells.map((cell) => typeof cell?.rowIndex === "number" ? cell.rowIndex : -1).filter((index) => index >= 0))).sort((a, b) => a - b);
+    if (rowIndexes.length === 0) {
+      continue;
+    }
+    const lines = [];
+    for (const rowIndex of rowIndexes) {
+      const rowCells = cells.filter((cell) => cell?.rowIndex === rowIndex).sort((left, right) => (left?.columnIndex ?? 0) - (right?.columnIndex ?? 0));
+      const rowText = rowCells.map((cell) => typeof cell?.content === "string" ? cell.content : "").map((value) => value.trim()).filter((value) => value.length > 0).join(" | ");
+      if (rowText.length > 0) {
+        lines.push(rowText);
+      }
+    }
+    if (lines.length > 0) {
+      sections.push(lines.join("\n"));
+    }
+  }
+  return sections.join("\n\n");
+}
+function normalizeResourceDocumentText(rawText) {
+  if (rawText.trim().length === 0) {
+    return "";
+  }
+  const normalized = rawText.replace(/\r\n?/g, "\n").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").replace(/[ \t]+\n/g, "\n").replace(/\u00a0/g, " ");
+  const lines = normalized.split("\n");
+  const cleaned = [];
+  let previousWasBlank = true;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+      if (!previousWasBlank) {
+        cleaned.push("");
+      }
+      previousWasBlank = true;
+      continue;
+    }
+    const letters = (trimmed.match(/[A-Za-z]/g) ?? []).length;
+    const symbols = (trimmed.match(/[^A-Za-z0-9\s]/g) ?? []).length;
+    if (letters === 0 && symbols > 6) {
+      continue;
+    }
+    if (/^page\s+\d+(\s+of\s+\d+)?$/i.test(trimmed)) {
+      continue;
+    }
+    cleaned.push(trimmed);
+    previousWasBlank = false;
+  }
+  return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
+}
 function extractResourceDocumentText(document) {
   const nodes = document?.canonical_document?.nodes;
   if (Array.isArray(nodes) && nodes.length > 0) {
     const text = nodes.map((node) => node?.normalizedText ?? node?.text ?? "").filter(Boolean).join("\n");
     if (text.trim().length > 0) {
-      return text;
+      return normalizeResourceDocumentText(text);
     }
   }
+  const azureSections = [];
   if (typeof document?.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
-    return document.azure_extract.content;
+    azureSections.push(document.azure_extract.content);
   }
   const paragraphs = document?.azure_extract?.paragraphs;
   if (Array.isArray(paragraphs) && paragraphs.length > 0) {
-    return paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n");
+    const paragraphText = paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n\n");
+    if (paragraphText.trim().length > 0) {
+      azureSections.push(paragraphText);
+    }
   }
   const pages = document?.azure_extract?.pages;
   if (Array.isArray(pages) && pages.length > 0) {
-    return pages.map((page) => page?.text ?? "").filter(Boolean).join("\n");
+    const pageText = pages.map((page) => page?.text ?? "").filter(Boolean).join("\n\n");
+    if (pageText.trim().length > 0) {
+      azureSections.push(pageText);
+    }
+  }
+  const tableText = flattenAzureTables(document?.azure_extract);
+  if (tableText.trim().length > 0) {
+    azureSections.push(tableText);
+  }
+  if (azureSections.length > 0) {
+    return normalizeResourceDocumentText(azureSections.join("\n\n"));
   }
   return "";
 }
@@ -10254,6 +10327,55 @@ async function applyWashoverToItems(sessionId) {
     });
   } catch { return; }
   if (!Array.isArray(links) || links.length === 0) return;
+  const missingResourceIds = Array.from(new Set(links.filter((link) => {
+    const text = typeof link.content_text === "string" ? link.content_text : "";
+    return text.trim().length === 0;
+  }).map((link) => typeof link.resource_document_id === "string" ? link.resource_document_id : "").filter((id) => id.length > 0)));
+  if (missingResourceIds.length > 0) {
+    try {
+      const escapedIds = missingResourceIds.map((id) => `"${id}"`).join(",");
+      const resourceDocs = await supabaseRest("prism_v4_documents", {
+        method: "GET",
+        select: "document_id,canonical_document,azure_extract",
+        filters: { document_id: `in.(${escapedIds})` }
+      });
+      const contentByResourceId = /* @__PURE__ */ new Map();
+      for (const doc of resourceDocs ?? []) {
+        if (typeof doc?.document_id !== "string") continue;
+        const text = extractResourceDocumentText(doc);
+        if (text.trim().length > 0) {
+          contentByResourceId.set(doc.document_id, text);
+        }
+      }
+      let didPopulate = false;
+      for (const link of links) {
+        const existing = typeof link.content_text === "string" ? link.content_text : "";
+        if (existing.trim().length > 0) {
+          continue;
+        }
+        const next = contentByResourceId.get(link.resource_document_id);
+        if (typeof next === "string" && next.trim().length > 0) {
+          link.content_text = next;
+          didPopulate = true;
+        }
+      }
+      if (didPopulate) {
+        await supabaseRest("v4_document_resource_links", {
+          method: "POST",
+          body: links.map((link) => ({
+            session_id: sessionId,
+            document_id: link.document_id,
+            resource_document_id: link.resource_document_id,
+            resource_type: link.resource_type,
+            content_text: typeof link.content_text === "string" && link.content_text.trim().length > 0 ? link.content_text : null
+          })),
+          prefer: "resolution=merge-duplicates,return=minimal"
+        }).catch(() => {
+        });
+      }
+    } catch {
+    }
+  }
   const byDoc = new Map();
   for (const link of links) {
     if (!link.document_id) continue;
@@ -10273,6 +10395,11 @@ async function applyWashoverToItems(sessionId) {
     const wkText = docLinks.filter((l) => l.resource_type === "worked-solution").map((l) => l.content_text ?? "").join("\n");
     const rbText = docLinks.filter((l) => l.resource_type === "rubric").map((l) => l.content_text ?? "").join("\n");
     const prepTexts = docLinks.filter((l) => l.resource_type === "prep-doc").map((l) => l.content_text ?? "").filter((t) => String(t).trim().length > 0);
+    console.log("prepTexts length:", prepTexts.length);
+    console.log("prepTexts preview:", prepTexts.map((text, index) => ({
+      index,
+      preview: String(text).replace(/\s+/g, " ").trim().slice(0, 120)
+    })));
     const akByItem = washParseAnswerKey(akText);
     const wkByItem = washParseWorkedSolutions(wkText);
     const rbByItem = washParseRubric(rbText);
