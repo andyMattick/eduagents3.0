@@ -11,7 +11,7 @@ export function LandingPage({ navigate }: LandingPageProps) {
 
       <div className="home-landing-cards">
         <button className="home-card" onClick={() => navigate("/upload")}>
-          <span className="home-card-icon">UP</span>
+          
           <span className="home-card-title">Upload a Document</span>
           <span className="home-card-desc">
             Upload a test or companion resource and run deterministic analysis.
@@ -19,7 +19,7 @@ export function LandingPage({ navigate }: LandingPageProps) {
         </button>
 
         <button className="home-card" onClick={() => navigate("/documents?view=grouped")}>
-          <span className="home-card-icon">DOCS</span>
+          
           <span className="home-card-title">Your Documents</span>
           <span className="home-card-desc">
             Browse all documents in grouped, collapsible sections with quick counts.

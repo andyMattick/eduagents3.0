@@ -158,12 +158,31 @@
   border: 1px solid rgba(86, 57, 32, 0.12);
   background: rgba(255, 255, 255, 0.86);
   border-radius: 10px;
+  padding: 0;
+}
+
+.documents-list-action {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
   padding: 0.6rem 0.75rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.documents-list-action:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.documents-list-action:focus-visible {
+  outline: 2px solid rgba(40, 93, 122, 0.7);
+  outline-offset: 1px;
 }
 
 .documents-file-name {
@@ -185,6 +204,13 @@
   border: 1px solid rgba(40, 93, 122, 0.3);
   padding: 0.16rem 0.45rem;
   background: rgba(40, 93, 122, 0.12);
+}
+
+.documents-open-hint {
+  font-size: 0.75rem;
+  color: #6b5040;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 640px) {

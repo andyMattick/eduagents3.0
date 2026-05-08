@@ -97,6 +97,11 @@ export function ClassBuilderPage({ navigate }: Props) {
       <div className="phasec-head">
         <p className="phasec-kicker">Classes</p>
         <h2>Create Class</h2>
+        <div className="phasec-row" style={{ marginTop: "0.5rem" }}>
+          <button className="phasec-button-secondary" onClick={() => navigate("/documents?view=grouped")}>
+            Back to Your Documents
+          </button>
+        </div>
       </div>
 
       <div className="phasec-stepper">Step {step} of 3</div>

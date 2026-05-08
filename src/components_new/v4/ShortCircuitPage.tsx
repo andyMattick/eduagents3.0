@@ -272,6 +272,7 @@ export function ShortCircuitPage() {
   const [rubricFile, setRubricFile] = useState<File | null>(null);
   const [prepDocFile, setPrepDocFile] = useState<File | null>(null);
   const [showLayersModal, setShowLayersModal] = useState(false);
+  const [queryLoadedDocumentId, setQueryLoadedDocumentId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const answerKeyInputRef = useRef<HTMLInputElement>(null);
   const workedSolutionInputRef = useRef<HTMLInputElement>(null);
@@ -579,6 +580,42 @@ export function ShortCircuitPage() {
     setShowPublicPicker(false);
     await runPhaseB({ nextDocumentId: doc.documentId, nextSessionId: null });
   }, [runPhaseB]);
+
+  useEffect(() => {
+    const requestedDocumentId = new URLSearchParams(window.location.search).get("documentId");
+    if (!requestedDocumentId || requestedDocumentId === queryLoadedDocumentId) {
+      return;
+    }
+
+    setQueryLoadedDocumentId(requestedDocumentId);
+    setSessionId(null);
+    setDocumentId(requestedDocumentId);
+    setIsPublicDocument(false);
+    setVisibilityError(null);
+    setVisibilityMessage(null);
+    setRunError(null);
+    setUploadError(null);
+
+    void fetch("/api/v4/documents", { credentials: "include" })
+      .then(async (res) => {
+        const payload = await res.json().catch(() => null);
+        if (!res.ok || !payload || !Array.isArray(payload.documents)) {
+          return null;
+        }
+        const match = payload.documents.find((entry: { documentId?: string }) => entry.documentId === requestedDocumentId);
+        return match as { sourceFileName?: string } | null;
+      })
+      .then((match) => {
+        const fallbackName = `Document ${requestedDocumentId.slice(0, 8)}`;
+        setFile(new File([], match?.sourceFileName ?? fallbackName, { type: "application/pdf" }));
+      })
+      .catch(() => {
+        const fallbackName = `Document ${requestedDocumentId.slice(0, 8)}`;
+        setFile(new File([], fallbackName, { type: "application/pdf" }));
+      });
+
+    void runPhaseB({ nextDocumentId: requestedDocumentId, nextSessionId: null });
+  }, [queryLoadedDocumentId, runPhaseB]);
 
   const toggleDocumentVisibility = useCallback(async () => {
     if (!documentId || visibilitySaving) {

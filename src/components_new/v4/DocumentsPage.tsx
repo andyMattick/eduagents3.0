@@ -206,13 +206,23 @@ export function DocumentsPage({ navigate }: DocumentsPageProps) {
                       <ul className="documents-list">
                         {sectionDocs.map((doc) => (
                           <li key={doc.documentId} className="documents-list-row">
-                            <div>
-                              <p className="documents-file-name">{doc.sourceFileName}</p>
-                              <p className="documents-file-meta">
-                                {formatDocType(doc.docType)} · Added {new Date(doc.createdAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <span className="documents-id-chip">{doc.documentId.slice(0, 8)}</span>
+                            <button
+                              type="button"
+                              className="documents-list-action"
+                              onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
+                              aria-label={`Open ${doc.sourceFileName} in simulation`}
+                            >
+                              <div>
+                                <p className="documents-file-name">{doc.sourceFileName}</p>
+                                <p className="documents-file-meta">
+                                  {formatDocType(doc.docType)} · Added {new Date(doc.createdAt).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                                <span className="documents-id-chip">{doc.documentId.slice(0, 8)}</span>
+                                <span className="documents-open-hint">Open</span>
+                              </div>
+                            </button>
                           </li>
                         ))}
                       </ul>
