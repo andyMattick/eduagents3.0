@@ -5,9 +5,9 @@ interface LandingPageProps {
 export function LandingPage({ navigate }: LandingPageProps) {
   return (
     <div className="home-landing">
-      <p className="home-landing-kicker">Teacher Studio</p>
-      <h2 className="home-landing-heading">What would you like to do?</h2>
-      <p className="home-landing-sub">Start by uploading a document or continue from your grouped document library.</p>
+      <p className="home-landing-kicker">Educational Intelligence</p>
+      
+      <p className="home-landing-heading">Start by uploading a document or continue from your grouped document library.</p>
 
       <div className="home-landing-cards">
         <button className="home-card" onClick={() => navigate("/upload")}>

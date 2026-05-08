@@ -12503,6 +12503,23 @@ function segmentItemsFromNodes(analyzedDocument) {
     }
     // Pre-item content (headers, instructions before first item): skip
   }
+  // --- Segmentation validator (dev) ---
+  if (process.env.SEGMENTATION_DEBUG === "true") {
+    console.log("=== SEGMENTATION VALIDATOR ===");
+    const byNum = new Map();
+    for (const g of groups) {
+      if (!byNum.has(g.itemNumber)) byNum.set(g.itemNumber, { parent: null, subs: [] });
+      if (g.subLabel == null) byNum.get(g.itemNumber).parent = g;
+      else byNum.get(g.itemNumber).subs.push(g);
+    }
+    for (const [num, { parent, subs }] of [...byNum.entries()].sort((a, b) => a[0] - b[0])) {
+      console.log(`\nItem ${num}`);
+      if (parent) console.log(`  Parent: ${parent.rawText.slice(0, 120)}`);
+      if (subs.length === 0) console.log("  (single item)");
+      for (const sub of subs) console.log(`  ${sub.subLabel}) ${sub.rawText.slice(0, 100)}`);
+    }
+    console.log("\n=== END VALIDATION ===");
+  }
   return groups;
 }
 /**
@@ -12529,24 +12546,27 @@ function detectAndExpandMultipart(segmentedItems) {
     const subs = entries.filter((e) => e.subLabel != null);
     const mains = entries.filter((e) => e.subLabel == null);
     if (subs.length > 0) {
-      // Multipart: fold all named parts into one row with the parent item_number.
-      // Concatenate sub-part text in label order so computeBaseTraits sees the full stem.
+      // Multipart: fold all named sub-parts into one row, prepending any numbered parent scenario text.
+      // The parent scenario paragraph (mains[0]) is preserved as the stem prefix so the full
+      // context is visible to computeBaseTraits and the washover layer.
       const sortedSubs = [...subs].sort((a, b) => a.subLabel.localeCompare(b.subLabel));
-      const combinedText = sortedSubs
-        .map((s) => {
-          const cleaned = cleanParentMarker(s.rawText);
-          return `(${s.subLabel}) ${cleaned}`.trim();
-        })
+      const subText = sortedSubs
+        .map((s) => `(${s.subLabel}) ${cleanParentMarker(s.rawText)}`.trim())
         .join(" ");
-      const allNodeIds = sortedSubs.flatMap((s) => s.nodeIds);
+      const parentStem = mains.length > 0 ? cleanParentMarker(mains[0].rawText) : "";
+      const fullText = parentStem ? `${parentStem} ${subText}` : subText;
+      const allNodeIds = [
+        ...mains.flatMap((m) => m.nodeIds),
+        ...sortedSubs.flatMap((s) => s.nodeIds)
+      ];
       result.push({
         itemNumber: num,
         subLabel: null,
-        rawText: combinedText,
+        rawText: fullText,
         nodeIds: allNodeIds,
         subParts: sortedSubs.map((s) => s.subLabel)
       });
-    } else {
+    } else if (mains.length > 0) {
       result.push(...mains.map((entry) => ({
         ...entry,
         rawText: cleanParentMarker(entry.rawText)
