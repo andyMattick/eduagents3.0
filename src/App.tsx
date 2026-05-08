@@ -11,6 +11,9 @@ import { UserFlowProvider } from './hooks/useUserFlow';
 import { LegacyDocumentCreation } from './components_new/v4/LegacyDocumentCreation';
 import { TeacherStudioView } from './components_new/v4/TeacherStudioView';
 import { ShortCircuitPage } from './components_new/v4/ShortCircuitPage';
+import { LandingPage } from './components_new/v4/LandingPage';
+import { DocumentsPage } from './components_new/v4/DocumentsPage';
+import { SimulationPage } from './components_new/v4/SimulationPage';
 import { ClassBuilderPage } from './components_new/v4/phase-c/ClassBuilderPage';
 import { ClassesListPage } from './components_new/v4/phase-c/ClassesListPage';
 import { ClassDetailPage } from './components_new/v4/phase-c/ClassDetailPage';
@@ -21,7 +24,7 @@ console.log("ENV CHECK", import.meta.env);
 
 type AuthPage = 'signin' | 'signup';
 
-const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/classes', '/classes/new']);
+const ACTIVE_V4_PATHS = new Set(['/', '/v4/semantic', '/studio', '/legacy', '/sim', '/shortcircuit', '/simulation', '/upload', '/documents', '/classes', '/classes/new']);
 
 function isAllowedV4Path(pathname: string) {
   return ACTIVE_V4_PATHS.has(pathname)
@@ -39,36 +42,6 @@ export interface AssignmentContext {
     | 'generate-new-version'
     | 'view rubric';
 }
-
-// ---------------------------------------------------------------------------
-// Home landing page — entry point for both main flows
-// ---------------------------------------------------------------------------
-function HomeLanding({ navigate }: { navigate: (path: string) => void }) {
-  return (
-    <div className="home-landing">
-      <p className="home-landing-kicker">Teacher Studio</p>
-      <h2 className="home-landing-heading">What would you like to do?</h2>
-      <p className="home-landing-sub">Choose a workflow below to get started.</p>
-
-      <div className="home-landing-cards">
-        <button className="home-card" onClick={() => navigate("/classes")}>
-          <span className="home-card-icon">🧩</span>
-          <span className="home-card-title">Class Builder</span>
-          <span className="home-card-desc">
-            Build a realistic class of synthetic students with profile overlays and randomized positive traits, then run document simulations.
-          </span>
-        </button>
-        <button className="home-card" onClick={() => navigate("/sim")}>
-          <span className="home-card-icon">📊</span>
-          <span className="home-card-title">Instructional Intelligence</span>
-          <span className="home-card-desc">
-            Upload a document and see how each student profile will experience your material — per-item metrics, Bloom's levels, and cumulative load by profile.
-          </span>
-        </button>
-      </div>
-    </div>
-  );
-}
 /* ------------------------------
    Teacher App (with theme toggle)
 --------------------------------*/
@@ -78,7 +51,7 @@ function TeacherAppContent() {
 
   const navigate = (path: string) => {
     window.history.pushState({}, '', path);
-    setPathname(path);
+    setPathname(window.location.pathname);
   };
 
   useEffect(() => {
@@ -99,7 +72,9 @@ function TeacherAppContent() {
 
   // Derive page title for the header
   const pageTitle =
-    pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
+    pathname === '/upload' ? 'Upload a Document' :
+    pathname === '/documents' ? 'Your Documents' :
+    pathname === '/simulation' || pathname === '/sim' || pathname === '/shortcircuit' ? 'Instructional Intelligence' :
     pathname === '/classes' ? 'My Classes' :
     pathname === '/classes/new' || pathname.startsWith('/classes/') ? 'Class Builder' :
     pathname.startsWith('/simulations/') && pathname.endsWith('/phase-c') ? 'Phase C Student Simulation' :
@@ -141,9 +116,13 @@ function TeacherAppContent() {
 
       <main className="app-content app-content--v4">
         {pathname === '/'
-          ? <HomeLanding navigate={navigate} />
+          ? <LandingPage navigate={navigate} />
           : pathname === '/legacy'
           ? <LegacyDocumentCreation />
+          : pathname === '/upload'
+          ? <ShortCircuitPage />
+          : pathname === '/documents'
+          ? <DocumentsPage navigate={navigate} />
           : pathname === '/classes'
           ? <ClassesListPage navigate={navigate} />
           : pathname === '/classes/new'
@@ -156,9 +135,9 @@ function TeacherAppContent() {
           ? <PhaseCResultsPage simulationId={decodeURIComponent(simulationLegacyMatch[1])} navigate={navigate} />
           : pathname === '/studio'
           ? <TeacherStudioView />
-          : pathname === '/sim' || pathname === '/shortcircuit'
-          ? <ShortCircuitPage />
-          : <HomeLanding navigate={navigate} />}
+          : pathname === '/simulation' || pathname === '/sim' || pathname === '/shortcircuit'
+          ? <SimulationPage navigate={navigate} />
+          : <LandingPage navigate={navigate} />}
       </main>
     </div>
   );

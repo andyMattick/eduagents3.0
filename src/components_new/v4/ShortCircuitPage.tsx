@@ -1487,7 +1487,19 @@ export function ShortCircuitPage() {
           </div>
 
           <div className="v4-shortcircuit-result-card">
-            <h3 className="v4-shortcircuit-tree-title">Student Simulation</h3>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+              <h3 className="v4-shortcircuit-tree-title" style={{ marginBottom: 0 }}>Student Simulation</h3>
+              <button
+                type="button"
+                className="v4-button v4-button-secondary"
+                onClick={() => {
+                  window.history.pushState({}, "", "/classes/new");
+                  window.dispatchEvent(new PopStateEvent("popstate"));
+                }}
+              >
+                Create a Class
+              </button>
+            </div>
             <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
               Run Phase C directly from this page and inspect real student-level outputs inline.
             </p>

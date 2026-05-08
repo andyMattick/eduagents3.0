@@ -92,7 +92,7 @@ async function handler(req, res) {
     }
     const rows = await supabaseRest("prism_v4_documents", {
       method: "GET",
-      select: "document_id,source_file_name,created_at",
+      select: "document_id,source_file_name,created_at,doc_type",
       filters: {
         order: "created_at.desc",
         limit: "100"
@@ -101,7 +101,8 @@ async function handler(req, res) {
     const documents = (rows ?? []).map((row) => ({
       documentId: row.document_id,
       sourceFileName: row.source_file_name ?? row.document_id,
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      docType: row.doc_type ?? null
     }));
     return res.status(200).json({ documents });
   } catch (error) {
