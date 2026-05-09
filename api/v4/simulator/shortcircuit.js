@@ -484,8 +484,14 @@ function buildItemTree(item) {
   const text = item.text;
   const writingMode = detectWritingMode(text);
   const reasoningSteps = estimateReasoningSteps(text);
-  if (detectMultiPart(text)) {
-    const subItemsRaw = extractSubItemsWithNesting(text);
+  // Trust item.isMultiPartItem if already set by LLM segmentation.
+  // Only run regex-based detection when the item has NOT been marked by LLM.
+  const alreadyLLMMultipart = item.isMultiPartItem === true;
+  const shouldDetectMultipart = !alreadyLLMMultipart && detectMultiPart(text);
+  if (alreadyLLMMultipart || shouldDetectMultipart) {
+    // For LLM-marked items the sub-items were already built in the metrics loop above.
+    // For regex-detected items, extract sub-items the old way.
+    const subItemsRaw = alreadyLLMMultipart ? [] : extractSubItemsWithNesting(text);
     const subItems = subItemsRaw.map((sub) => {
       const fullText = buildSubItemFullText(sub).trim();
       const built = buildSubItem(item, sub.itemNumber, fullText);
@@ -507,7 +513,8 @@ function buildItemTree(item) {
       subItems
     };
   }
-  if (detectMultipleChoice(text)) {
+  // MC detection only runs when no sub-items were found by LLM or regex.
+  if (!alreadyLLMMultipart && detectMultipleChoice(text)) {
     const distractors = extractDistractors(text);
     return {
       item: {
@@ -4083,6 +4090,14 @@ async function handler(req, res) {
       }
     }) : [];
     const reviewedEntries = Array.isArray(reviewedRows) ? reviewedRows.map(readReviewedStructure).filter(Boolean) : [];
+
+    // ── Path 0: LLM-segmented canonical_document.items ───────────────────────
+    // If the document was processed through LLM segmentation (buildCanonicalItems),
+    // the items with their sub-parts are stored in canonical_document.items.
+    // Use them directly instead of re-segmenting the flattened azure extract.
+    const canonicalItems = rows[0]?.canonical_document?.items;
+    const hasCanonicalItems = Array.isArray(canonicalItems) && canonicalItems.length > 0;
+
     const rawItems = [];
     if (reviewedEntries.length > 0) {
       console.log(`[shortcircuit] document=${primaryDocumentId} using ${reviewedEntries.length} reviewed structure item(s)`);
@@ -4095,6 +4110,27 @@ async function handler(req, res) {
           isParent: entry.isParent,
           partIndex: entry.partIndex,
           text: entry.text
+        });
+      }
+    } else if (hasCanonicalItems) {
+      // ── Path 0b: Build rawItems + immediate itemTrees from LLM-segmented canonical items ──
+      // canonical_document.items was populated by registryStore.buildCanonicalItems (LLM).
+      // Each item has { id, label, stem, subItems: [{id, label, text, ...}] }.
+      // We build metrics for parent + sub-items here without any regex segmentation.
+      console.log(`[shortcircuit] document=${primaryDocumentId} using ${canonicalItems.length} LLM-segmented canonical item(s) from canonical_document.items`);
+      for (let ci = 0; ci < canonicalItems.length; ci++) {
+        const canonical = canonicalItems[ci];
+        const itemNumber = ci + 1;
+        const parentText = typeof canonical.stem === "string" ? canonical.stem.trim() : "";
+        if (!parentText) continue;
+        console.log(`[shortcircuit] canonical item ${itemNumber}: stem="${parentText.slice(0, 80)}" subItems=${canonical.subItems?.length ?? 0}`);
+        console.log(`[shortcircuit] canonical item ${itemNumber} raw subItems:`, JSON.stringify(canonical.subItems ?? []));
+        rawItems.push({
+          itemNumber,
+          itemId: canonical.id,
+          text: parentText,
+          // Carry sub-items through so they survive the metrics step
+          _canonicalSubItems: canonical.subItems ?? []
         });
       }
     } else if (Array.isArray(reviewedRows) && reviewedRows.length > 0) {
@@ -4128,6 +4164,13 @@ async function handler(req, res) {
       return res.status(422).json({ error: { code: "invalid_request", message: "Segmentation produced no items." } });
     }
     const sectioning = buildSections(rawItems.map((seg) => ({ itemNumber: seg.itemNumber, text: seg.text })));
+    // Build a lookup from itemNumber → _canonicalSubItems (from LLM path)
+    const canonicalSubItemsMap = new Map();
+    for (const seg of rawItems) {
+      if (seg._canonicalSubItems && seg._canonicalSubItems.length > 0) {
+        canonicalSubItemsMap.set(seg.itemNumber, seg._canonicalSubItems);
+      }
+    }
     const items = [];
     for (const seg of sectioning.itemBlocks) {
       console.log(`[shortcircuit] item ${seg.itemNumber}: running semantic pipeline (${seg.text.length} chars)`);
@@ -4137,8 +4180,10 @@ async function handler(req, res) {
         continue;
       }
       const m = vectorToMeasurables(vec, seg.text);
-      console.log(`[shortcircuit] item ${seg.itemNumber}: linguistic=${m.linguisticLoad.toFixed(2)} confusion=${m.confusionScore.toFixed(2)} steps=${m.steps}`);
-      items.push({
+      const llmSubItems = canonicalSubItemsMap.get(seg.itemNumber) ?? [];
+      const isLLMMultipart = llmSubItems.length > 0;
+      console.log(`[shortcircuit] item ${seg.itemNumber}: linguistic=${m.linguisticLoad.toFixed(2)} confusion=${m.confusionScore.toFixed(2)} steps=${m.steps} llmSubItems=${llmSubItems.length}`);
+      const built = {
         itemNumber: seg.itemNumber,
         text: seg.text,
         ...m,
@@ -4146,8 +4191,13 @@ async function handler(req, res) {
         logicalLabel: seg.logicalLabel,
         groupId: seg.groupId,
         isParent: seg.isParent,
-        partIndex: seg.partIndex
-      });
+        partIndex: seg.partIndex,
+        // Trust LLM structure — mark as multipart if LLM returned sub-items
+        isMultiPartItem: isLLMMultipart,
+        isMultipleChoice: isLLMMultipart ? false : m.distractorDensity > 0,
+        _llmSubItems: llmSubItems
+      };
+      items.push(built);
     }
     console.log(`[shortcircuit] done: ${items.length}/${rawItems.length} items with measurables`);
     if (items.length === 0) {
@@ -4156,7 +4206,47 @@ async function handler(req, res) {
       });
     }
     const itemsWithDefaults = items.map(applyPhaseADefaults);
-    const baseItemTrees = reviewedEntries.length > 0 ? buildItemTreesFromReviewedEntries(itemsWithDefaults) : itemsWithDefaults.map((item) => buildItemTree(item));
+    const baseItemTrees = reviewedEntries.length > 0
+      ? buildItemTreesFromReviewedEntries(itemsWithDefaults)
+      : itemsWithDefaults.map((item) => {
+          // If LLM segmentation identified sub-items, build the tree directly from
+          // LLM structure instead of running regex-based detection.
+          const llmSubs = item._llmSubItems;
+          if (Array.isArray(llmSubs) && llmSubs.length > 0) {
+            const writingMode = detectWritingMode(item.text);
+            const reasoningSteps = estimateReasoningSteps(item.text);
+            const subItems = llmSubs.map((sub, subIdx) => {
+              const subText = typeof sub.text === "string" ? sub.text.trim() : "";
+              const built = buildSubItem(item, subIdx + 1, subText);
+              built.letter = typeof sub.letter === "string" ? sub.letter : String.fromCharCode(97 + subIdx);
+              built.subSubParts = [];
+              const logicalNum = item.logicalNumber ?? item.itemNumber;
+              built.logicalLabel = `${logicalNum}${built.letter}`;
+              built.groupId = String(item.itemNumber);
+              built.partIndex = subIdx + 1;
+              console.log(`[shortcircuit] LLM sub-item ${item.itemNumber}${built.letter}: "${subText.slice(0, 60)}"`);
+              return built;
+            });
+            console.log(`[shortcircuit] item ${item.itemNumber}: built as multipart with ${subItems.length} LLM sub-items → final CanonicalItem structure:`, JSON.stringify({ stem: item.text.slice(0, 60), subItems: subItems.map(s => ({ letter: s.letter, text: (s.text || "").slice(0, 40) })) }));
+            return {
+              item: {
+                ...item,
+                isMultiPartItem: true,
+                isMultipleChoice: false,
+                subQuestionCount: subItems.length,
+                distractorCount: 0,
+                branchingFactor: subItems.length,
+                writingMode,
+                reasoningSteps
+              },
+              subItems,
+              userOverride: null
+            };
+          }
+          // Single item or MC — let buildItemTree handle it
+          // (it will trust item.isMultiPartItem = false and skip regex if already determined)
+          return buildItemTree(item);
+        });
     const instructionsByItem = /* @__PURE__ */ new Map();
     for (const section of sectioning.sections) {
       for (const itemNumber of section.itemNumbers) {

@@ -178,8 +178,16 @@ export function buildItemTree(item: SimulationItem, userOverride?: ItemClassific
   const reasoningSteps = estimateReasoningSteps(text);
 
   // Teacher override takes precedence over auto-classification.
-  const treatAsMultipart = userOverride === "multipart" || (userOverride == null && detectMultiPart(text));
-  const treatAsMC = !treatAsMultipart && (userOverride === "multiple-choice" || (userOverride == null && detectMultipleChoice(text)));
+  // When no override is set, trust item.isMultiPartItem if it was already set by LLM segmentation,
+  // so we do NOT re-run regex-based detectMultiPart against a stem that no longer contains sub-items.
+  const alreadyMarkedMultipart = userOverride == null && item.isMultiPartItem === true;
+  const treatAsMultipart =
+    userOverride === "multipart" || alreadyMarkedMultipart || (userOverride == null && !item.isMultiPartItem && detectMultiPart(text));
+
+  // MC detection only runs when there are no sub-items (LLM or regex found none).
+  const treatAsMC =
+    !treatAsMultipart &&
+    (userOverride === "multiple-choice" || (userOverride == null && !item.isMultiPartItem && detectMultipleChoice(text)));
 
   if (treatAsMultipart) {
     const subItemsRaw = extractSubItemsWithNesting(text);

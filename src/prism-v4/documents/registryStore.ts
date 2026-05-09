@@ -3,7 +3,7 @@ import { analyzeRegisteredDocument, buildDocumentCollectionAnalysis, groupFragme
 import { canonicalDocumentToAzureExtract } from "./analysis/canonicalize";
 import { withPreferredContentHash } from "./contentHash";
 import { buildInstructionalUnitOverrideId, getProblemOverride } from "../teacherFeedback";
-import { segmentText } from "../segmentation/segmentLines";
+import { segmentParentBlockWithLLM } from "../segmentation/llmSegmentation";
 import {
 	addDocumentToSession,
 	buildDefaultCollectionAnalysis,
@@ -129,90 +129,84 @@ function inferBloom(text: string): { level: number; label: string } {
 	return { level: 2, label: "Understand" };
 }
 
-function flattenNodesToLines(document: CanonicalDocument): string[] {
-	return [...document.nodes]
-		.sort((left, right) => left.orderIndex - right.orderIndex)
-		.map((node) => (node.normalizedText ?? node.text ?? "").trim())
-		.filter((line) => line.length > 0);
-}
 
-function buildCanonicalItems(document: CanonicalDocument): CanonicalItem[] {
-	const lines = flattenNodesToLines(document);
-	if (lines.length === 0) {
+async function buildCanonicalItems(document: CanonicalDocument): Promise<CanonicalItem[]> {
+	const paragraphs = [...document.nodes]
+		.filter((n) => n.nodeType === "paragraph")
+		.sort((a, b) => a.orderIndex - b.orderIndex);
+
+	if (paragraphs.length === 0) {
 		return [];
 	}
 
-	const segmentedItems = segmentLinesByParent(lines);
-	if (segmentedItems.length === 0) {
+	// Group paragraph nodes into numbered parent blocks
+	type ParentBlock = { idGuess: string; lines: string[] };
+	const blocks: ParentBlock[] = [];
+	let current: ParentBlock | null = null;
+
+	for (const p of paragraphs) {
+		const text = (p.normalizedText ?? p.text ?? "").trim();
+		if (!text) continue;
+		const m = text.match(/^([0-9]+)\./);
+		if (m) {
+			if (current) blocks.push(current);
+			current = { idGuess: m[1], lines: [text] };
+		} else if (current) {
+			current.lines.push(text);
+		}
+	}
+	if (current) blocks.push(current);
+
+	if (blocks.length === 0) {
 		return [];
 	}
 
-	return segmentedItems.map((item, index) => {
-		const numericId = item.id && item.id.trim().length > 0 ? item.id.trim() : String(index + 1);
+	const items: CanonicalItem[] = [];
+
+	for (let index = 0; index < blocks.length; index++) {
+		const block = blocks[index];
+		const blockText = block.lines.join("\n");
+
+		console.log(`[buildCanonicalItems] block ${index + 1}/${blocks.length} — sending to OpenAI:\n"""\n${blockText}\n"""`);
+
+		let segmented: { parent: string; subItems: { letter: string; text: string }[] };
+		try {
+			segmented = await segmentParentBlockWithLLM(blockText);
+			console.log(`[buildCanonicalItems] block ${index + 1} — OpenAI response:`, JSON.stringify(segmented));
+		} catch (err) {
+			// Fallback: treat entire block as a single item with no sub-items
+			console.warn("[buildCanonicalItems] LLM segmentation failed for block, using fallback:", err);
+			segmented = { parent: blockText, subItems: [] };
+		}
+
+		const numericId = block.idGuess || String(index + 1);
 		const itemId = `item-${numericId}`;
-		const subItems = item.subItems.map((sub) => {
+
+		const subItems = segmented.subItems.map((sub) => {
 			const subBloom = inferBloom(sub.text);
 			return {
 				id: `${itemId}${sub.letter}`,
-				label: sub.label,
+				label: `${sub.letter})`,
 				text: sub.text,
 				bloomLevel: subBloom.level,
 				bloomLabel: subBloom.label,
-				subSubParts: sub.subSubParts.map((part) => ({
-					label: part.label,
-					text: part.text,
-				})),
+				subSubParts: [] as { label: string; text: string }[],
 			};
 		});
 
-		const itemBloom = inferBloom([item.stem, ...subItems.map((sub) => sub.text)].join(" "));
-		return {
+		const itemBloom = inferBloom([segmented.parent, ...subItems.map((sub) => sub.text)].join(" "));
+		const canonicalItem: CanonicalItem = {
 			id: itemId,
-			label: item.label,
-			stem: item.stem,
+			label: `${numericId}.`,
+			stem: segmented.parent,
 			bloomLevel: itemBloom.level,
 			bloomLabel: itemBloom.label,
 			subItems,
 		};
-	});
-}
-
-function segmentLinesByParent(lines: string[]) {
-	const items = [] as ReturnType<typeof segmentText>;
-	let currentBlock: string[] = [];
-	let hasActiveParent = false;
-
-	const flushCurrentBlock = () => {
-		if (currentBlock.length === 0) {
-			return;
-		}
-
-		const segmented = segmentText(currentBlock.join("\n"));
-		if (segmented.length > 0) {
-			items.push(segmented[0]);
-		}
-
-		currentBlock = [];
-	};
-
-	for (const line of lines) {
-		if (/^[0-9]+\./.test(line)) {
-			if (hasActiveParent) {
-				flushCurrentBlock();
-			}
-			hasActiveParent = true;
-			currentBlock.push(line);
-			continue;
-		}
-
-		if (hasActiveParent) {
-			currentBlock.push(line);
-		}
+		console.log(`[buildCanonicalItems] block ${index + 1} — final CanonicalItem:`, JSON.stringify(canonicalItem));
+		items.push(canonicalItem);
 	}
 
-	if (hasActiveParent) {
-		flushCurrentBlock();
-	}
 	return items;
 }
 
@@ -1475,7 +1469,7 @@ export async function saveAnalyzedDocumentStore(
 	const invalidateSnapshot = options.invalidateSnapshot ?? true;
 	const enrichedDocument: CanonicalDocument = {
 		...analyzedDocument.document,
-		items: buildCanonicalItems(analyzedDocument.document),
+		items: await buildCanonicalItems(analyzedDocument.document),
 	};
 	const normalized = withPreferredContentHash({
 		...analyzedDocument,
