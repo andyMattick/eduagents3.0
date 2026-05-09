@@ -169,15 +169,8 @@ async function buildCanonicalItems(document: CanonicalDocument): Promise<Canonic
 
 		console.log(`[buildCanonicalItems] block ${index + 1}/${blocks.length} — sending to OpenAI:\n"""\n${blockText}\n"""`);
 
-		let segmented: { parent: string; subItems: { letter: string; text: string }[] };
-		try {
-			segmented = await segmentParentBlockWithLLM(blockText);
-			console.log(`[buildCanonicalItems] block ${index + 1} — OpenAI response:`, JSON.stringify(segmented));
-		} catch (err) {
-			// Fallback: treat entire block as a single item with no sub-items
-			console.warn("[buildCanonicalItems] LLM segmentation failed for block, using fallback:", err);
-			segmented = { parent: blockText, subItems: [] };
-		}
+		const segmented = await segmentParentBlockWithLLM(blockText);
+		console.log(`[buildCanonicalItems] block ${index + 1} — OpenAI response:`, JSON.stringify(segmented));
 
 		const numericId = block.idGuess || String(index + 1);
 		const itemId = `item-${numericId}`;

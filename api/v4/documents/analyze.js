@@ -11454,6 +11454,159 @@ function cleanAzureExtract(extract) {
     readingOrder: extract.readingOrder?.map((entry) => cleanText(entry)).filter(Boolean)
   };
 }
+var BLOOMS_KEYWORDS = {
+  create: ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+  evaluate: ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+  analyze: ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+  apply: ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out", "find"],
+  understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate", "state", "name"],
+  remember: ["identify", "list", "define", "recall", "label", "match", "select", "recognize", "repeat", "choose", "underline", "point", "circle", "highlight"]
+};
+function inferBloom(text) {
+  const lower = String(text ?? "").toLowerCase();
+  const hit = (keywords) => keywords.some((keyword) => lower.includes(keyword));
+  if (hit(BLOOMS_KEYWORDS.create))
+    return { level: 6, label: "Create" };
+  if (hit(BLOOMS_KEYWORDS.evaluate))
+    return { level: 5, label: "Evaluate" };
+  if (hit(BLOOMS_KEYWORDS.analyze))
+    return { level: 4, label: "Analyze" };
+  if (hit(BLOOMS_KEYWORDS.apply))
+    return { level: 3, label: "Apply" };
+  if (hit(BLOOMS_KEYWORDS.understand))
+    return { level: 2, label: "Understand" };
+  if (hit(BLOOMS_KEYWORDS.remember))
+    return { level: 1, label: "Remember" };
+  return { level: 2, label: "Understand" };
+}
+function getAzureOpenAIConfigOrThrow() {
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+  const missing = [];
+  if (!apiKey)
+    missing.push("AZURE_OPENAI_API_KEY");
+  if (!endpoint)
+    missing.push("AZURE_OPENAI_ENDPOINT");
+  if (!deployment)
+    missing.push("AZURE_OPENAI_DEPLOYMENT");
+  if (!apiVersion)
+    missing.push("AZURE_OPENAI_API_VERSION");
+  if (missing.length > 0) {
+    throw new Error(`Azure OpenAI segmentation configuration missing: ${missing.join(", ")}`);
+  }
+  return { apiKey, endpoint, deployment, apiVersion };
+}
+var SEGMENTATION_PROMPT = `You are a structure extractor.
+
+Given a block of text from a teacher-written assessment, return JSON with:
+- "parent": the main question text (everything before the first sub-item)
+- "subItems": an array of { "letter", "text" } for each sub-question (a, b, c, ...)
+
+Rules:
+- Sub-items always start with a letter followed by ) or . or ) with optional parentheses, e.g. "a)", "b.", "(c)".
+- These are NOT multiple-choice answer choices.
+- Do not infer answers. Do not rewrite text.
+- Preserve the teacher's wording exactly.
+- If there are no sub-items, "subItems" must be an empty array.
+
+Return ONLY valid JSON, no commentary.`;
+async function segmentParentBlockWithLLM(blockText) {
+  const cfg = getAzureOpenAIConfigOrThrow();
+  const base = cfg.endpoint.replace(/\/+$/, "");
+  const url = `${base}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+  const body = JSON.stringify({
+    messages: [
+      { role: "system", content: SEGMENTATION_PROMPT },
+      { role: "user", content: `Text:\n"""\n${blockText}\n"""` }
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0
+  });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": cfg.apiKey
+    },
+    body
+  });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "(no body)");
+    throw new Error(`Azure OpenAI segmentation request failed: ${response.status} ${errText}`);
+  }
+  const data = await response.json();
+  const raw = data.choices?.[0]?.message?.content ?? "";
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Azure OpenAI returned non-JSON segmentation response: ${String(raw).slice(0, 200)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || typeof parsed.parent !== "string" || !Array.isArray(parsed.subItems)) {
+    throw new Error("Invalid segmentation response shape from Azure OpenAI");
+  }
+  return parsed;
+}
+async function buildCanonicalItemsWithLLM(document) {
+  const paragraphs = [...(document.nodes ?? [])].filter((n) => n.nodeType === "paragraph").sort((a, b) => a.orderIndex - b.orderIndex);
+  if (paragraphs.length === 0) {
+    return [];
+  }
+  const blocks = [];
+  let current = null;
+  for (const p of paragraphs) {
+    const text = (p.normalizedText ?? p.text ?? "").trim();
+    if (!text)
+      continue;
+    const m = text.match(/^([0-9]+)\./);
+    if (m) {
+      if (current)
+        blocks.push(current);
+      current = { idGuess: m[1], lines: [text] };
+    } else if (current) {
+      current.lines.push(text);
+    }
+  }
+  if (current)
+    blocks.push(current);
+  if (blocks.length === 0)
+    return [];
+  const items = [];
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index];
+    const blockText = block.lines.join("\n");
+    console.log(`[buildCanonicalItems] block ${index + 1}/${blocks.length} — sending to Azure OpenAI:\n"""\n${blockText}\n"""`);
+    const segmented = await segmentParentBlockWithLLM(blockText);
+    console.log(`[buildCanonicalItems] block ${index + 1} — Azure OpenAI response:`, JSON.stringify(segmented));
+    const numericId = block.idGuess || String(index + 1);
+    const itemId = `item-${numericId}`;
+    const subItems = segmented.subItems.map((sub) => {
+      const subBloom = inferBloom(sub.text);
+      return {
+        id: `${itemId}${sub.letter}`,
+        label: `${sub.letter})`,
+        text: sub.text,
+        bloomLevel: subBloom.level,
+        bloomLabel: subBloom.label,
+        subSubParts: []
+      };
+    });
+    const itemBloom = inferBloom([segmented.parent, ...subItems.map((sub) => sub.text)].join(" "));
+    const canonicalItem = {
+      id: itemId,
+      label: `${numericId}.`,
+      stem: segmented.parent,
+      bloomLevel: itemBloom.level,
+      bloomLabel: itemBloom.label,
+      subItems
+    };
+    console.log(`[buildCanonicalItems] block ${index + 1} — final CanonicalItem:`, JSON.stringify(canonicalItem));
+    items.push(canonicalItem);
+  }
+  return items;
+}
 async function analyzeRegisteredDocument(args) {
   let azureExtract = args.azureExtract;
   let canonicalDocument = args.canonicalDocument;
@@ -11499,6 +11652,11 @@ async function analyzeRegisteredDocument(args) {
     nodes: [],
     createdAt: new Date().toISOString()
   }));
+  const llmItems = await buildCanonicalItemsWithLLM(canonicalDocument);
+  canonicalDocument = {
+    ...canonicalDocument,
+    items: llmItems
+  };
   const fragments = classifyFragments(canonicalDocument, args.declaredRole);
   const extractInput = azureExtract ?? canonicalDocumentToAzureExtract(canonicalDocument);
   const { extractedProblems } = extractInput ? extractAnchoredProblems({ document: canonicalDocument, fragments, azureExtract: { ...extractInput, fileName: args.sourceFileName } }) : { extractedProblems: [] };
@@ -12789,11 +12947,36 @@ function parseBody(body) {
   }
   return JSON.parse(body);
 }
+function validateAzureOpenAIConfig() {
+  const apiKey = process.env.AZURE_OPENAI_API_KEY;
+  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+  const missing = [];
+  if (!apiKey)
+    missing.push("AZURE_OPENAI_API_KEY");
+  if (!endpoint)
+    missing.push("AZURE_OPENAI_ENDPOINT");
+  if (!deployment)
+    missing.push("AZURE_OPENAI_DEPLOYMENT");
+  if (!apiVersion)
+    missing.push("AZURE_OPENAI_API_VERSION");
+  return {
+    ok: missing.length === 0,
+    missing
+  };
+}
 async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
   try {
+    const llmConfig = validateAzureOpenAIConfig();
+    if (!llmConfig.ok) {
+      return res.status(503).json({
+        error: `LLM segmentation is required before analysis. Missing Azure OpenAI config: ${llmConfig.missing.join(", ")}`
+      });
+    }
     const payload = parseBody(req.body ?? {});
     if (!payload.documentId) {
       return res.status(400).json({ error: "documentId is required" });

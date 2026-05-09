@@ -9,6 +9,13 @@ export type SegmentedParent = {
 	subItems: { letter: string; text: string }[];
 };
 
+type AzureOpenAIConfig = {
+	apiKey: string;
+	endpoint: string;
+	deployment: string;
+	apiVersion: string;
+};
+
 const SEGMENTATION_PROMPT = `You are a structure extractor.
 
 Given a block of text from a teacher-written assessment, return JSON with:
@@ -24,14 +31,45 @@ Rules:
 
 Return ONLY valid JSON, no commentary.`;
 
-export async function segmentParentBlockWithLLM(blockText: string): Promise<SegmentedParent> {
-	const apiKey = import.meta.env?.VITE_OPENAI_API_KEY ?? (typeof process !== "undefined" ? process.env.OPENAI_API_KEY : undefined);
-	if (!apiKey) {
-		throw new Error("OPENAI_API_KEY is not set; cannot run LLM segmentation");
+function getAzureOpenAIConfig(): AzureOpenAIConfig {
+	const apiKey =
+		import.meta.env?.VITE_AZURE_OPENAI_API_KEY
+		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_API_KEY : undefined);
+	const endpoint =
+		import.meta.env?.VITE_AZURE_OPENAI_ENDPOINT
+		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_ENDPOINT : undefined);
+	const deployment =
+		import.meta.env?.VITE_AZURE_OPENAI_DEPLOYMENT
+		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_DEPLOYMENT : undefined);
+	const apiVersion =
+		import.meta.env?.VITE_AZURE_OPENAI_API_VERSION
+		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_API_VERSION : undefined);
+
+	const missing = [
+		!apiKey ? "AZURE_OPENAI_API_KEY" : null,
+		!endpoint ? "AZURE_OPENAI_ENDPOINT" : null,
+		!deployment ? "AZURE_OPENAI_DEPLOYMENT" : null,
+		!apiVersion ? "AZURE_OPENAI_API_VERSION" : null,
+	].filter(Boolean);
+
+	if (missing.length > 0) {
+		throw new Error(`Azure OpenAI segmentation configuration missing: ${missing.join(", ")}`);
 	}
 
+	return {
+		apiKey: apiKey as string,
+		endpoint: endpoint as string,
+		deployment: deployment as string,
+		apiVersion: apiVersion as string,
+	};
+}
+
+export async function segmentParentBlockWithLLM(blockText: string): Promise<SegmentedParent> {
+	const config = getAzureOpenAIConfig();
+	const base = config.endpoint.replace(/\/+$/, "");
+	const url = `${base}/openai/deployments/${encodeURIComponent(config.deployment)}/chat/completions?api-version=${encodeURIComponent(config.apiVersion)}`;
+
 	const body = JSON.stringify({
-		model: "gpt-4.1-mini",
 		messages: [
 			{ role: "system", content: SEGMENTATION_PROMPT },
 			{ role: "user", content: `Text:\n"""\n${blockText}\n"""` },
@@ -40,18 +78,18 @@ export async function segmentParentBlockWithLLM(blockText: string): Promise<Segm
 		temperature: 0,
 	});
 
-	const response = await fetch("https://api.openai.com/v1/chat/completions", {
+	const response = await fetch(url, {
 		method: "POST",
 		headers: {
 			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
+			"api-key": config.apiKey,
 		},
 		body,
 	});
 
 	if (!response.ok) {
 		const errText = await response.text().catch(() => "(no body)");
-		throw new Error(`OpenAI segmentation request failed: ${response.status} ${errText}`);
+		throw new Error(`Azure OpenAI segmentation request failed: ${response.status} ${errText}`);
 	}
 
 	const data = await response.json() as {
