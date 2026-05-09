@@ -282,6 +282,7 @@ describe("DocumentUpload", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
 
     expect(await screen.findByRole("heading", { name: "Your workspace" })).toBeInTheDocument();
+    expect(screen.getByText("2 documents in workspace")).toBeInTheDocument();
     expect(screen.getByText("Pavilion Studio")).toBeInTheDocument();
     expect(screen.queryByText("Output Gallery")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Builder Plan" })).not.toBeInTheDocument();

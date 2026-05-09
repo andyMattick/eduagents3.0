@@ -15,6 +15,8 @@ import { bindDocumentsToSessionApi, createStudioSessionFromFilesApi } from "../.
 import { getClassDetailApi, getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass, type SyntheticStudent } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
 import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
+import type { ItemClassificationOverride } from "../../prism-v4/schema/SimulationItemTree";
+import { buildItemTree } from "../../prism-v4/segmentation/buildItemTree";
 import { StudentProfileTooltip } from "./phase-c/StudentProfileTooltip";
 import { sortStudentsByProfile } from "./phase-c/studentRoster";
 import { IngestionLayersModal } from "./IngestionLayersModal";
@@ -278,6 +280,27 @@ export function ShortCircuitPage() {
   const workedSolutionInputRef = useRef<HTMLInputElement>(null);
   const rubricInputRef = useRef<HTMLInputElement>(null);
   const prepDocInputRef = useRef<HTMLInputElement>(null);
+  // Teacher classification overrides: rebuilt trees are stored directly in itemTrees/sections state.
+
+  const applyClassificationOverride = useCallback((itemNumber: number, override: ItemClassificationOverride) => {
+    setItemTrees((prev) => {
+      if (!prev) return prev;
+      return prev.map((tree) => {
+        if (tree.item.itemNumber !== itemNumber) return tree;
+        return buildItemTree(tree.item, override);
+      });
+    });
+    setSections((prev) => {
+      if (!prev) return prev;
+      return prev.map((section) => ({
+        ...section,
+        itemTrees: section.itemTrees.map((tree) => {
+          if (tree.item.itemNumber !== itemNumber) return tree;
+          return buildItemTree(tree.item, override);
+        }),
+      }));
+    });
+  }, []);
 
   const startOver = useCallback(() => {
     setPhase("upload");
@@ -1422,10 +1445,14 @@ export function ShortCircuitPage() {
                       </div>
                     )}
                     <div className="v4-shortcircuit-tree-list">
-                      {section.itemTrees.map((tree) => (
+                      {section.itemTrees.map((tree) => {
+                        const hasOverride = tree.userOverride != null;
+                        const classLabel = tree.item.isMultiPartItem ? "multi-part" : tree.item.isMultipleChoice ? "multiple-choice" : "single";
+                        return (
                         <details key={`tree-${section.id}-${tree.item.itemNumber}`} className="v4-shortcircuit-tree-parent">
                           <summary>
-                            Item {tree.item.logicalLabel ?? tree.item.itemNumber} · {tree.item.isMultiPartItem ? "multi-part" : tree.item.isMultipleChoice ? "multiple-choice" : "single"}
+                            Item {tree.item.logicalLabel ?? tree.item.itemNumber} · {classLabel}
+                            {hasOverride && <span style={{ marginLeft: "0.4rem", fontSize: "0.75rem", color: "#7c3aed", fontWeight: 600 }}>(teacher override)</span>}
                             {tree.item.isMultiPartItem ? ` · ${tree.item.subQuestionCount} sub-item${tree.item.subQuestionCount !== 1 ? "s" : ""}` : ""}
                             {tree.item.isMultipleChoice ? ` · ${tree.item.distractorCount} distractor${tree.item.distractorCount !== 1 ? "s" : ""}` : ""}
                           </summary>
@@ -1448,8 +1475,41 @@ export function ShortCircuitPage() {
                               ))}
                             </ul>
                           )}
+                          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                            {tree.item.isMultipleChoice && (
+                              <button
+                                type="button"
+                                className="phasec-button-secondary"
+                                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                                onClick={() => applyClassificationOverride(tree.item.itemNumber, "multipart")}
+                              >
+                                Mark as multipart (A–{String.fromCharCode(64 + Math.max(tree.distractors?.length ?? 2, 2))})
+                              </button>
+                            )}
+                            {tree.item.isMultiPartItem && (
+                              <button
+                                type="button"
+                                className="phasec-button-secondary"
+                                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                                onClick={() => applyClassificationOverride(tree.item.itemNumber, "multiple-choice")}
+                              >
+                                Mark as multiple-choice
+                              </button>
+                            )}
+                            {hasOverride && (
+                              <button
+                                type="button"
+                                className="phasec-button-secondary"
+                                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem", color: "#6b7280" }}
+                                onClick={() => applyClassificationOverride(tree.item.itemNumber, tree.item.isMultiPartItem ? "multipart" : tree.item.isMultipleChoice ? "multiple-choice" : "single")}
+                              >
+                                Reset to auto
+                              </button>
+                            )}
+                          </div>
                         </details>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

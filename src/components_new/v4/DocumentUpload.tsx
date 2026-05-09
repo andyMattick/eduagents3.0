@@ -134,6 +134,10 @@ function getUploadBlockedReason(selectedFileCount: number, isUploading: boolean,
   return null;
 }
 
+function formatDocumentCountLabel(count: number) {
+  return `${count} document${count === 1 ? "" : "s"} in workspace`;
+}
+
 export function DocumentUpload() {
   const { user, isLoading: authLoading } = useAuth();
   const {
@@ -555,6 +559,7 @@ export function DocumentUpload() {
                 <div>
                   <p className="v4-kicker">Your Materials</p>
                   <h2>Your workspace</h2>
+                  <p className="v4-body-copy">{formatDocumentCountLabel(workspace.documents.length)}</p>
                 </div>
               </div>
               <p className="v4-body-copy">Choose which materials to use and pick one main source when a document needs to be built from a single file.</p>

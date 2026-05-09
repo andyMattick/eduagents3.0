@@ -1,5 +1,5 @@
 import type { SimulationItem } from "../schema/SimulationItem";
-import type { SimulationItemTree, SimulationSubItem } from "../schema/SimulationItemTree";
+import type { SimulationItemTree, SimulationSubItem, ItemClassificationOverride } from "../schema/SimulationItemTree";
 import { detectMultiPart } from "./detectMultiPart";
 import { detectMultipleChoice } from "./detectMultipleChoice";
 import { extractSubItemsWithNesting } from "./extractSubItems";
@@ -172,12 +172,16 @@ function buildSubItem(
   };
 }
 
-export function buildItemTree(item: SimulationItem): SimulationItemTree {
+export function buildItemTree(item: SimulationItem, userOverride?: ItemClassificationOverride | null): SimulationItemTree {
   const text = item.text;
   const writingMode = detectWritingMode(text);
   const reasoningSteps = estimateReasoningSteps(text);
 
-  if (detectMultiPart(text)) {
+  // Teacher override takes precedence over auto-classification.
+  const treatAsMultipart = userOverride === "multipart" || (userOverride == null && detectMultiPart(text));
+  const treatAsMC = !treatAsMultipart && (userOverride === "multiple-choice" || (userOverride == null && detectMultipleChoice(text)));
+
+  if (treatAsMultipart) {
     const subItemsRaw = extractSubItemsWithNesting(text);
     const subItems: SimulationSubItem[] = subItemsRaw.map((sub) => {
       const built = buildSubItem(item, {
@@ -206,10 +210,11 @@ export function buildItemTree(item: SimulationItem): SimulationItemTree {
         reasoningSteps,
       },
       subItems,
+      userOverride: userOverride ?? null,
     };
   }
 
-  if (detectMultipleChoice(text)) {
+  if (treatAsMC) {
     const distractors = extractDistractors(text);
     return {
       item: {
@@ -223,6 +228,7 @@ export function buildItemTree(item: SimulationItem): SimulationItemTree {
         reasoningSteps,
       },
       distractors,
+      userOverride: userOverride ?? null,
     };
   }
 
@@ -237,5 +243,6 @@ export function buildItemTree(item: SimulationItem): SimulationItemTree {
       writingMode,
       reasoningSteps,
     },
+    userOverride: userOverride ?? null,
   };
 }

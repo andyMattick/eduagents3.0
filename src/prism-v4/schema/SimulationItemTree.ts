@@ -24,9 +24,23 @@ export interface SimulationSubItem extends SimulationItem {
   subSubParts?: SubSubPartEntry[];
 }
 
+/**
+ * Teacher-supplied override for item classification.
+ * When set, segmentation respects this value instead of auto-detecting MC vs multipart.
+ * Stored in item metadata; used as labeled data for future rule refinement.
+ */
+export type ItemClassificationOverride = "multipart" | "multiple-choice" | "single";
+
 export interface SimulationItemTree {
   item: SimulationItem;
   /** Backward-compatible flat array; elements may carry subSubParts metadata. */
   subItems?: SimulationSubItem[];
   distractors?: { label: string; text: string }[];
+  /**
+   * Teacher-supplied classification override.
+   * `null` means no override; auto-classification is used.
+   * When present, `buildItemTree` and downstream consumers must respect this
+   * over their own auto-detected value.
+   */
+  userOverride?: ItemClassificationOverride | null;
 }

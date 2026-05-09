@@ -9867,10 +9867,17 @@ async function withResourceContentText(resourceLinks) {
     }
     documentById.set(document.document_id, document);
   }
-  return resourceLinks.map((link) => ({
-    ...link,
-    contentText: resolveResourceContentText(documentById.get(link.resourceDocumentId), link.resourceType) || link.contentText
-  }));
+  return resourceLinks.map((link) => {
+    const resolved = resolveResourceContentText(documentById.get(link.resourceDocumentId), link.resourceType) || link.contentText || "";
+    const normalized = typeof resolved === "string" ? resolved.trim() : "";
+    if (link.resourceType === "prep-doc" && normalized.length === 0) {
+      throw new Error(`Prep-doc ingestion failed: empty content_text (${link.resourceDocumentId})`);
+    }
+    return {
+      ...link,
+      contentText: normalized.length > 0 ? normalized : void 0
+    };
+  });
 }
 function fromDocumentRow(row) {
   return {
@@ -10416,6 +10423,11 @@ async function applyWashoverToItems(sessionId) {
           didPopulate = true;
         }
       }
+      const unresolvedPrepDocLinks = links.filter((link) => link?.resource_type === "prep-doc" && (typeof link?.content_text !== "string" || link.content_text.trim().length === 0));
+      if (unresolvedPrepDocLinks.length > 0) {
+        const missingIds = Array.from(new Set(unresolvedPrepDocLinks.map((link) => typeof link?.resource_document_id === "string" ? link.resource_document_id : "").filter((id) => id.length > 0)));
+        throw new Error(`Prep-doc ingestion failed: empty content_text for resource_document_id(s): ${missingIds.join(",")}`);
+      }
       if (didPopulate) {
         await supabaseRest("v4_document_resource_links", {
           method: "POST",
@@ -10430,7 +10442,10 @@ async function applyWashoverToItems(sessionId) {
         }).catch(() => {
         });
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("Prep-doc ingestion failed")) {
+        throw error;
+      }
     }
   }
   const byDoc = new Map();
@@ -10565,6 +10580,9 @@ async function replaceDocumentResourceLinksStore(sessionId, resourceLinks) {
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes("content_text")) {
+      if (resourceLinks.some((link) => link.resourceType === "prep-doc")) {
+        throw new Error("Prep-doc ingestion failed: content_text column unavailable for v4_document_resource_links");
+      }
       await supabaseRest("v4_document_resource_links", {
         method: "POST",
         body: resourceLinks.map((link) => ({

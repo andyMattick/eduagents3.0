@@ -743,10 +743,18 @@ async function withResourceContentText(resourceLinks: DocumentResourceLink[]): P
 		contentByDocumentId.set(document.document_id, extractResourceDocumentText(document));
 	}
 
-	return resourceLinks.map((link) => ({
-		...link,
-		contentText: contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText,
-	}));
+	return resourceLinks.map((link) => {
+		const raw = contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText ?? "";
+		const normalized = typeof raw === "string" ? raw.trim() : "";
+		if (link.resourceType === "prep-doc" && normalized.length === 0) {
+			throw new Error(`Prep-doc ingestion failed: empty content_text (${link.resourceDocumentId})`);
+		}
+
+		return {
+			...link,
+			contentText: normalized.length > 0 ? normalized : undefined,
+		};
+	});
 }
 
 function toDocumentRow(document: RegisteredDocument, sessionId: string | null, ownerId: string | null = null): DocumentRow {
@@ -1000,7 +1008,7 @@ async function listDocumentResourceLinksStore(sessionId: string): Promise<Docume
 	let rows: DocumentResourceLinkRow[] | null;
 	try {
 		rows = await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
-			select: "session_id,document_id,resource_document_id,resource_type",
+			select: "session_id,document_id,resource_document_id,resource_type,content_text",
 			filters: { session_id: `eq.${sessionId}` },
 		}) as DocumentResourceLinkRow[] | null;
 	} catch (error) {
@@ -1045,11 +1053,11 @@ async function replaceDocumentResourceLinksStore(sessionId: string, resourceLink
 		return;
 	}
 
-	let linksWithContent = resourceLinks;
-	try {
-		linksWithContent = await withResourceContentText(resourceLinks);
-	} catch {
-		linksWithContent = resourceLinks;
+	const linksWithContent = await withResourceContentText(resourceLinks);
+	const missingPrepDocContent = linksWithContent.filter((link) => link.resourceType === "prep-doc" && (typeof link.contentText !== "string" || link.contentText.trim().length === 0));
+	if (missingPrepDocContent.length > 0) {
+		const missingIds = missingPrepDocContent.map((link) => link.resourceDocumentId).filter((id, index, all) => all.indexOf(id) === index);
+		throw new Error(`Missing prep-doc content_text at ingestion for resource_document_id(s): ${missingIds.join(",")}`);
 	}
 
 	try {
@@ -1060,6 +1068,9 @@ async function replaceDocumentResourceLinksStore(sessionId: string, resourceLink
 		});
 	} catch (error) {
 		if (error instanceof Error && error.message.includes("content_text")) {
+			if (resourceLinks.some((link) => link.resourceType === "prep-doc")) {
+				throw new Error("Prep-doc ingestion failed: content_text column unavailable for v4_document_resource_links");
+			}
 			await supabaseRest(DOCUMENT_RESOURCE_LINKS_TABLE, {
 				method: "POST",
 				body: toDocumentResourceLinkRows(sessionId, resourceLinks).map((row) => {
