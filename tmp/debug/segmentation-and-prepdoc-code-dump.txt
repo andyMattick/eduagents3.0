@@ -1,0 +1,2183 @@
+]633;E;echo "===== FILE: src/prism-v4/segmentation/segmentLines.ts =====";74cacb8f-840a-42d3-a639-627be55fc4c9]633;C===== FILE: src/prism-v4/segmentation/segmentLines.ts =====
+/**
+ * segmentLines.ts — Deterministic hierarchical line walker for PRISM v4 ingestion.
+ *
+ * Produces a three-level item tree:
+ *   Parent item → Sub-item (lettered) → Sub-subpart (named/roman/numbered/lettered/bullet)
+ *
+ * Replaces the previous flat filter/map extraction strategy.
+ * `extractSubItems` is now a thin shim over this module.
+ */
+
+export interface SubSubPart {
+  /** Display label: "Type I", "i.", "(1)", "Consequence", "•", etc. */
+  label: string;
+  text: string;
+}
+
+export interface SegmentedSubItem {
+  /** Letter-derived id within its parent: "a", "b", "f", etc. */
+  letter: string;
+  /** Raw label as it appeared in the source: "a)", "b.", "(c)", etc. */
+  label: string;
+  text: string;
+  subSubParts: SubSubPart[];
+}
+
+export interface SegmentedItem {
+  /** Numeric id string: "1", "2", "12", etc. */
+  id: string;
+  /** Raw label as it appeared in the source: "1.", "12.", etc. */
+  label: string;
+  stem: string;
+  subItems: SegmentedSubItem[];
+}
+
+// ─── Regex patterns ────────────────────────────────────────────────────────────
+
+const PARENT_ITEM_RE = /^([0-9]+)\./;
+const SUB_ITEM_RE = /^\(?([a-zA-Z])\)?[.)]/;
+
+/**
+ * Sub-subpart patterns checked in priority order.
+ * First match wins.
+ */
+const SUB_SUB_PATTERNS: { label: string; re: RegExp }[] = [
+  // Named markers — check before roman/alphanumeric to avoid false positives
+  { label: "Type I",         re: /^Type\s+I(?!\s*[IVX])\b/i },
+  { label: "Type II",        re: /^Type\s+II\b/i },
+  { label: "Type III",       re: /^Type\s+III\b/i },
+  { label: "Consequence",    re: /^Consequence\b/i },
+  { label: "Reason",         re: /^Reason\b/i },
+  { label: "Explanation",    re: /^Explanation\b/i },
+  { label: "Interpretation", re: /^Interpretation\b/i },
+  { label: "Claim",          re: /^Claim\b/i },
+  { label: "Evidence",       re: /^Evidence\b/i },
+  // Roman numeral with period or paren
+  { label: "Roman",          re: /^(x{0,3}(?:ix|iv|v?i{0,3}))[.)]\s/i },
+  // Numbered: (1), 1), 1.
+  { label: "Numbered",       re: /^\([0-9]+\)\s/ },
+  { label: "Numbered",       re: /^[0-9]+[.)]\s/ },
+  // Single lettered: (a), a.  — narrower than sub-item to avoid confusion
+  { label: "Lettered",       re: /^\([a-z]\)\s/i },
+  { label: "Lettered",       re: /^[a-z]\.\s/i },
+  // Bullets
+  { label: "Bullet",         re: /^[•\-–—]\s+/ },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isBlank(line: string): boolean {
+  return line.trim().length === 0;
+}
+
+function matchSubSubPart(line: string): { label: string; rest: string } | null {
+  for (const { label, re } of SUB_SUB_PATTERNS) {
+    const m = line.match(re);
+    if (m) {
+      const matched = m[0];
+      // Use the literal matched text as label (trimmed) for display fidelity
+      return { label: matched.trim() || label, rest: line.slice(matched.length).trim() };
+    }
+  }
+  return null;
+}
+
+function flushEmptySubItems(subItems: SegmentedSubItem[]): SegmentedSubItem[] {
+  return subItems.filter((si) => {
+    const hasText = si.text.trim().length > 0;
+    const hasNested = si.subSubParts.some((ssp) => ssp.text.trim().length > 0);
+    return hasText || hasNested;
+  });
+}
+
+// ─── Main export ──────────────────────────────────────────────────────────────
+
+/**
+ * Walk lines and emit a three-level item hierarchy.
+ *
+ * - Lines are right-trimmed but otherwise preserved.
+ * - Blank lines are treated as conceptual boundaries; parsing continues.
+ * - Continuation lines (un-prefixed) are appended to the most recent
+ *   open text slot: sub-subpart > sub-item > parent stem.
+ */
+export function segmentLines(lines: string[]): SegmentedItem[] {
+  const items: SegmentedItem[] = [];
+
+  let currentItem: SegmentedItem | null = null;
+  let currentSubItem: SegmentedSubItem | null = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/, "");
+
+    if (isBlank(line)) {
+      // Blank lines close the active sub-subpart accumulation but not
+      // the structural parent; continuation can still follow.
+      continue;
+    }
+
+    // ── Parent item ───────────────────────────────────────────────────────
+    const parentMatch = line.match(PARENT_ITEM_RE);
+    if (parentMatch) {
+      if (currentItem) {
+        currentItem.subItems = flushEmptySubItems(currentItem.subItems);
+        items.push(currentItem);
+      }
+      const label = `${parentMatch[1]}.`;
+      currentItem = {
+        id: parentMatch[1],
+        label,
+        stem: line.slice(label.length).trim(),
+        subItems: [],
+      };
+      currentSubItem = null;
+      continue;
+    }
+
+    // ── Sub-item (lettered) ───────────────────────────────────────────────
+    const subItemMatch = line.match(SUB_ITEM_RE);
+    if (subItemMatch) {
+      // If there's no current parent item yet, create an implicit one from
+      // context accumulated so far (common when caller passes item text
+      // without a leading numeric prefix).
+      if (!currentItem) {
+        currentItem = { id: "", label: "", stem: "", subItems: [] };
+      }
+      const rawLabel = subItemMatch[0];          // e.g. "a)", "(b)", "c."
+      const letter = subItemMatch[1].toLowerCase();
+      currentSubItem = {
+        letter,
+        label: rawLabel,
+        text: line.slice(rawLabel.length).trim(),
+        subSubParts: [],
+      };
+      currentItem.subItems.push(currentSubItem);
+      continue;
+    }
+
+    // ── Sub-subpart ───────────────────────────────────────────────────────
+    const ssp = matchSubSubPart(line);
+    if (ssp && currentItem) {
+      let targetSubItem = currentSubItem;
+
+      // If no active sub-item, attach to the last non-empty sub-item.
+      if (!targetSubItem) {
+        targetSubItem = [...currentItem.subItems]
+          .reverse()
+          .find((si) => si.text.trim().length > 0 || si.subSubParts.some((nested) => nested.text.trim().length > 0))
+          ?? currentItem.subItems[currentItem.subItems.length - 1]
+          ?? null;
+      }
+
+      if (targetSubItem) {
+        targetSubItem.subSubParts.push({ label: ssp.label, text: ssp.rest });
+        currentSubItem = targetSubItem;
+        continue;
+      }
+    }
+
+    if (currentSubItem) {
+
+      // Continuation: append to deepest open slot
+      const lastSsp = currentSubItem.subSubParts[currentSubItem.subSubParts.length - 1];
+      if (lastSsp) {
+        lastSsp.text += (lastSsp.text ? " " : "") + line.trim();
+      } else {
+        currentSubItem.text += (currentSubItem.text ? " " : "") + line.trim();
+      }
+      continue;
+    }
+
+    // ── Stem continuation ─────────────────────────────────────────────────
+    // Also handles the first stem line that appears before any lettered sub-item
+    // when no numeric parent prefix exists.
+    if (!currentItem) {
+      currentItem = { id: "", label: "", stem: line.trim(), subItems: [] };
+    } else {
+      currentItem.stem += (currentItem.stem ? " " : "") + line.trim();
+    }
+  }
+
+  // Flush last item
+  if (currentItem) {
+    currentItem.subItems = flushEmptySubItems(currentItem.subItems);
+    items.push(currentItem);
+  }
+
+  return items;
+}
+
+/**
+ * Convenience: segment raw multi-line text into items.
+ */
+export function segmentText(text: string): SegmentedItem[] {
+  return segmentLines(text.split(/\r?\n/));
+}
+
+===== FILE: src/prism-v4/segmentation/subItemHeuristics.ts =====
+const LETTERED_LINE_REGEX = /^\s*\(?([a-hA-H])\)?[\.)](?:\s+|$)/;
+
+const MC_STEM_PHRASES = [
+  "which of the following",
+  "what is",
+  "which statement",
+  "which choice",
+  "which option",
+  "the correct answer",
+  "is closest to",
+  "is approximately",
+  "is most likely",
+  "is least likely",
+  "best describes",
+  "best explains",
+  "best represents",
+  "would most likely",
+  "would least likely",
+  "the value of",
+  "the result of",
+  "the effect of",
+  "the outcome of",
+  "the purpose of",
+  "the main idea",
+  "the central idea",
+  "the author most likely",
+  "the passage suggests",
+  "the graph shows",
+  "the table shows",
+  "the figure shows",
+] as const;
+
+const SUBITEM_VERB_REGEX = /\b(identify|determine|interpret|explain|calculate|find|solve|justify|evaluate|compare|describe|choose|select|compute|state|write|graph|prove|show|analyze|summarize|infer|support)\b/i;
+
+export function isLetteredLine(line: string): boolean {
+  return LETTERED_LINE_REGEX.test(line.trim());
+}
+
+export function stripLetteredPrefix(line: string): string {
+  return line.replace(LETTERED_LINE_REGEX, "").trim();
+}
+
+export function getParentStem(text: string): string {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.find((line) => !isLetteredLine(line)) ?? "";
+}
+
+export function parentLooksLikeMCStem(parentStem: string): boolean {
+  const normalized = parentStem.toLowerCase();
+  return MC_STEM_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+export function shouldTreatAsMultipartSubItem(line: string, parentStem: string): boolean {
+  const candidate = stripLetteredPrefix(line);
+  if (!candidate) {
+    return false;
+  }
+
+  if (parentLooksLikeMCStem(parentStem)) {
+    return false;
+  }
+
+  const wordCount = candidate.split(/\s+/).filter(Boolean).length;
+
+  if (SUBITEM_VERB_REGEX.test(candidate)) {
+    return true;
+  }
+
+  if (wordCount > 8) {
+    return true;
+  }
+
+  return false;
+}
+
+===== FILE: src/prism-v4/segmentation/detectMultiPart.ts =====
+import { getParentStem, isLetteredLine, shouldTreatAsMultipartSubItem } from "./subItemHeuristics";
+
+export function detectMultiPart(text: string): boolean {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const parentStem = getParentStem(text);
+
+  const subItemCount = lines
+    .filter((line) => isLetteredLine(line))
+    .filter((line) => shouldTreatAsMultipartSubItem(line, parentStem))
+    .length;
+
+  return subItemCount > 0;
+}
+===== FILE: src/prism-v4/segmentation/extractSubItems.ts =====
+import { segmentText } from "./segmentLines";
+import { generateItemId } from "./generateItemId";
+import { getParentStem, parentLooksLikeMCStem } from "./subItemHeuristics";
+
+type ExtractedSubItem = {
+  itemNumber: number;
+  text: string;
+  letter: string;
+  partIndex: number;
+  groupId: string;
+  logicalLabel: string;
+  itemId: string;
+  subSubParts: { label: string; text: string }[];
+};
+
+function partIndexFromLetter(letter: string): number {
+  const normalized = letter.trim().toLowerCase();
+  if (!/^[a-z]$/.test(normalized)) {
+    return 0;
+  }
+  return normalized.charCodeAt(0) - 96;
+}
+
+function extractStableSubItems(text: string): ExtractedSubItem[] {
+  const items = segmentText(text);
+  if (items.length === 0) return [];
+
+  const parent = items[0]!;
+  const groupId = parent.id.trim() || "unlabeled";
+
+  return parent.subItems
+    .filter((si) => si.text.trim().length > 0 || si.subSubParts.some((ssp) => ssp.text.trim().length > 0))
+    .map((si, index) => ({
+      itemNumber: index + 1,
+      text: buildSubItemFullText(si),
+      letter: si.letter,
+      partIndex: partIndexFromLetter(si.letter),
+      groupId,
+      logicalLabel: `${groupId}${si.letter}`,
+      itemId: generateItemId(groupId, si.letter),
+      subSubParts: si.subSubParts,
+    }));
+}
+
+/**
+ * Extract flat sub-items from a multi-line item text.
+ * Shim over segmentLines; preserves the { itemNumber, text } contract
+ * consumed by buildItemTree.
+ *
+ * If the text contains explicit parent-item numbering ("1.") we take
+ * sub-items from the first segmented item; otherwise we treat the whole
+ * block as a single un-numbered parent and return its sub-items.
+ */
+export function extractSubItems(text: string): Array<{ itemNumber: number; text: string; logicalLabel: string; itemId: string }> {
+  // Guard: if parent looks like an MC stem, delegate to legacy path to
+  // avoid treating answer choices as sub-items.
+  const parentStem = getParentStem(text);
+  if (parentLooksLikeMCStem(parentStem)) {
+    return [];
+  }
+
+  return extractStableSubItems(text).map((sub) => ({
+    itemNumber: sub.itemNumber,
+    text: sub.text,
+    logicalLabel: sub.logicalLabel,
+    itemId: sub.itemId,
+  }));
+}
+
+function buildSubItemFullText(si: { text: string; subSubParts: { label: string; text: string }[] }): string {
+  if (si.subSubParts.length === 0) {
+    return si.text;
+  }
+  const parts = si.subSubParts.map((ssp) => `${ssp.label} ${ssp.text}`.trim()).join(" ");
+  return si.text ? `${si.text} ${parts}` : parts;
+}
+
+/**
+ * Extended extraction that also returns nested sub-subpart structure.
+ * Used by buildItemTree when richer tree data is needed.
+ */
+export function extractSubItemsWithNesting(text: string): Array<{
+  itemNumber: number;
+  text: string;
+  letter: string;
+  partIndex: number;
+  groupId: string;
+  logicalLabel: string;
+  itemId: string;
+  subSubParts: Array<{ label: string; text: string }>;
+}> {
+  const parentStem = getParentStem(text);
+  if (parentLooksLikeMCStem(parentStem)) {
+    return [];
+  }
+
+  return extractStableSubItems(text).map((sub) => ({
+    itemNumber: sub.itemNumber,
+    text: sub.text,
+    letter: sub.letter,
+    partIndex: sub.partIndex,
+    groupId: sub.groupId,
+    logicalLabel: sub.logicalLabel,
+    itemId: sub.itemId,
+    subSubParts: sub.subSubParts,
+  }));
+}
+===== FILE: src/prism-v4/segmentation/buildItemTree.ts =====
+import type { SimulationItem } from "../schema/SimulationItem";
+import type { SimulationItemTree, SimulationSubItem } from "../schema/SimulationItemTree";
+import { detectMultiPart } from "./detectMultiPart";
+import { detectMultipleChoice } from "./detectMultipleChoice";
+import { extractSubItemsWithNesting } from "./extractSubItems";
+import { extractDistractors } from "./extractDistractors";
+import { detectWritingMode } from "./writingModeDetector";
+import { estimateReasoningSteps } from "./reasoningStepsEstimator";
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+function countSyllables(word: string): number {
+  const cleaned = word.toLowerCase().replace(/[^a-z]/g, "");
+  if (!cleaned) return 1;
+  const withoutTrailingE = cleaned.endsWith("e") ? cleaned.slice(0, -1) : cleaned;
+  const matches = withoutTrailingE.match(/[aeiouy]+/g);
+  return Math.max(1, matches ? matches.length : 1);
+}
+
+const BLOOMS_KEYWORDS = {
+  create: ["create", "design", "construct", "develop", "formulate", "compose", "invent", "generate", "produce", "plan", "build", "propose"],
+  evaluate: ["evaluate", "justify", "critique", "argue", "assess", "defend", "support", "judge", "recommend", "prioritize", "verify", "validate", "debate"],
+  analyze: ["analyze", "differentiate", "categorize", "examine", "investigate", "organize", "structure", "attribute", "diagram", "map", "inspect", "compare", "contrast"],
+  apply: ["apply", "use", "solve", "compute", "calculate", "demonstrate", "perform", "execute", "implement", "operate", "model", "show", "carry out", "find"],
+  understand: ["explain", "summarize", "describe", "interpret", "classify", "paraphrase", "outline", "discuss", "report", "restate", "illustrate", "state", "name"],
+  remember: ["identify", "list", "define", "recall", "label", "match", "select", "recognize", "repeat", "choose", "underline", "point", "circle", "highlight"],
+} as const;
+
+function computeBloomsLevel(text: string): { level: number; label: string } {
+  const lower = text.toLowerCase();
+  const hit = (keywords: readonly string[]) => keywords.some((keyword) => lower.includes(keyword));
+
+  if (hit(BLOOMS_KEYWORDS.create)) return { level: 6, label: "Create" };
+  if (hit(BLOOMS_KEYWORDS.evaluate)) return { level: 5, label: "Evaluate" };
+  if (hit(BLOOMS_KEYWORDS.analyze)) return { level: 4, label: "Analyze" };
+  if (hit(BLOOMS_KEYWORDS.apply)) return { level: 3, label: "Apply" };
+  if (hit(BLOOMS_KEYWORDS.understand)) return { level: 2, label: "Understand" };
+  if (hit(BLOOMS_KEYWORDS.remember)) return { level: 1, label: "Remember" };
+  return { level: 2, label: "Understand" };
+}
+
+function computeSubItemMetrics(parent: SimulationItem, text: string): Pick<SimulationItem,
+  "wordCount" |
+  "steps" |
+  "timeToProcessSeconds" |
+  "avgVocabLevel" |
+  "avgWordLength" |
+  "vocabCounts" |
+  "linguisticLoad" |
+  "misconceptionRisk" |
+  "distractorDensity" |
+  "confusionScore" |
+  "sentenceCount" |
+  "avgSentenceLength" |
+  "symbolDensity" |
+  "bloomsLevel" |
+  "bloomsLabel" |
+  "writingMode" |
+  "reasoningSteps" |
+  "expectedResponseLength"
+> {
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const wordCount = Math.max(words.length, 1);
+  const levels = words.map((word) => {
+    const syllables = countSyllables(word);
+    if (syllables <= 1) return 1;
+    if (syllables === 2) return 2;
+    return 3;
+  });
+
+  const vocabCounts = {
+    level1: levels.filter((level) => level === 1).length,
+    level2: levels.filter((level) => level === 2).length,
+    level3: levels.filter((level) => level === 3).length,
+  };
+
+  const avgVocabLevel = levels.length > 0
+    ? levels.reduce((sum, level) => sum + level, 0) / levels.length
+    : 1;
+  const avgWordLength = words.length > 0
+    ? words.reduce((sum, word) => sum + word.length, 0) / words.length
+    : 4;
+
+  const normalizedVocab = (avgVocabLevel - 1) / 2;
+  const normalizedWordLen = Math.min(avgWordLength / 10, 1);
+  const linguisticLoad = clamp01(0.6 * normalizedVocab + 0.4 * normalizedWordLen);
+
+  const reasoningSteps = Math.max(estimateReasoningSteps(text), 0);
+  const steps = Math.max(reasoningSteps, 1);
+  const timeToProcessSeconds = Math.max(5, Math.round(wordCount / 3.3 + steps * 8));
+
+  const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter(Boolean);
+  const sentenceCount = Math.max(sentences.length, 1);
+  const avgSentenceLength = Math.round((wordCount / sentenceCount) * 10) / 10;
+
+  const symbolCount = (text.match(/[+\-*/=<>()[\]{}\^%÷×∑∫√≤≥≠±]/g) ?? []).length;
+  const symbolDensity = Math.min(symbolCount / Math.max(text.length, 1), 1);
+
+  const misconceptionRisk = clamp01((parent.misconceptionRisk ?? 0) * (0.6 + 0.4 * linguisticLoad));
+  const distractorDensity = detectMultipleChoice(text) ? parent.distractorDensity : 0;
+  const stepsNorm = Math.min(steps / 5, 1);
+  const timeNorm = Math.min(timeToProcessSeconds / 30, 1);
+  const confusionScore = clamp01(
+    0.4 * linguisticLoad
+    + 0.2 * distractorDensity
+    + 0.15 * stepsNorm
+    + 0.15 * misconceptionRisk
+    + 0.1 * timeNorm,
+  );
+
+  const writingMode = detectWritingMode(text) || parent.writingMode;
+  const { level: bloomsLevel, label: bloomsLabel } = computeBloomsLevel(text);
+
+  return {
+    wordCount,
+    steps,
+    timeToProcessSeconds,
+    avgVocabLevel,
+    avgWordLength,
+    vocabCounts,
+    linguisticLoad,
+    misconceptionRisk,
+    distractorDensity,
+    confusionScore,
+    sentenceCount,
+    avgSentenceLength,
+    symbolDensity,
+    bloomsLevel,
+    bloomsLabel,
+    writingMode,
+    reasoningSteps,
+    expectedResponseLength: 0,
+  };
+}
+
+function buildSubItem(
+  parent: SimulationItem,
+  args: {
+    itemNumber: number;
+    text: string;
+    logicalLabel: string;
+    groupId: string;
+    partIndex: number;
+    itemId: string;
+  }
+): SimulationSubItem {
+  const subMetrics = computeSubItemMetrics(parent, args.text);
+  const logicalNumber = parent.logicalNumber ?? parent.itemNumber;
+
+  return {
+    ...parent,
+    ...subMetrics,
+    itemNumber: parent.itemNumber,
+    logicalNumber,
+    logicalLabel: args.logicalLabel,
+    text: args.text,
+    isMultiPartItem: false,
+    isMultipleChoice: false,
+    subQuestionCount: 0,
+    distractorCount: 0,
+    branchingFactor: 0,
+    itemId: args.itemId,
+    groupId: args.groupId,
+    partIndex: args.partIndex,
+  };
+}
+
+export function buildItemTree(item: SimulationItem): SimulationItemTree {
+  const text = item.text;
+  const writingMode = detectWritingMode(text);
+  const reasoningSteps = estimateReasoningSteps(text);
+
+  if (detectMultiPart(text)) {
+    const subItemsRaw = extractSubItemsWithNesting(text);
+    const subItems: SimulationSubItem[] = subItemsRaw.map((sub) => {
+      const built = buildSubItem(item, {
+        itemNumber: sub.itemNumber,
+        text: sub.text.trim(),
+        logicalLabel: sub.logicalLabel,
+        groupId: sub.groupId,
+        partIndex: sub.partIndex,
+        itemId: sub.itemId,
+      });
+      // Attach structured nesting data as metadata without breaking SimulationItem shape.
+      built.letter = sub.letter;
+      built.subSubParts = sub.subSubParts;
+      return built;
+    });
+
+    return {
+      item: {
+        ...item,
+        isMultiPartItem: true,
+        isMultipleChoice: false,
+        subQuestionCount: subItems.length,
+        distractorCount: 0,
+        branchingFactor: subItems.length,
+        writingMode,
+        reasoningSteps,
+      },
+      subItems,
+    };
+  }
+
+  if (detectMultipleChoice(text)) {
+    const distractors = extractDistractors(text);
+    return {
+      item: {
+        ...item,
+        isMultiPartItem: false,
+        isMultipleChoice: true,
+        subQuestionCount: 0,
+        distractorCount: distractors.length,
+        branchingFactor: 0,
+        writingMode,
+        reasoningSteps,
+      },
+      distractors,
+    };
+  }
+
+  return {
+    item: {
+      ...item,
+      isMultiPartItem: false,
+      isMultipleChoice: false,
+      subQuestionCount: 0,
+      distractorCount: 0,
+      branchingFactor: 0,
+      writingMode,
+      reasoningSteps,
+    },
+  };
+}
+===== FILE: src/prism-v4/documents/registryStore.ts (buildCanonicalItems block) =====
+function flattenNodesToLines(document: CanonicalDocument): string[] {
+	return [...document.nodes]
+		.sort((left, right) => left.orderIndex - right.orderIndex)
+		.map((node) => (node.normalizedText ?? node.text ?? "").trim())
+		.filter((line) => line.length > 0);
+}
+
+function buildCanonicalItems(document: CanonicalDocument): CanonicalItem[] {
+	const lines = flattenNodesToLines(document);
+	if (lines.length === 0) {
+		return [];
+	}
+
+	const segmented = segmentText(lines.join("\n"));
+	if (segmented.length === 0) {
+		return [];
+	}
+
+	return segmented.map((item, index) => {
+		const numericId = item.id && item.id.trim().length > 0 ? item.id.trim() : String(index + 1);
+		const itemId = `item-${numericId}`;
+		const subItems = item.subItems.map((sub) => {
+			const subBloom = inferBloom(sub.text);
+			return {
+				id: `${itemId}${sub.letter}`,
+				label: sub.label,
+				text: sub.text,
+				bloomLevel: subBloom.level,
+				bloomLabel: subBloom.label,
+				subSubParts: sub.subSubParts.map((part) => ({
+					label: part.label,
+					text: part.text,
+				})),
+			};
+		});
+
+		const itemBloom = inferBloom([item.stem, ...subItems.map((sub) => sub.text)].join(" "));
+		return {
+			id: itemId,
+			label: item.label,
+			stem: item.stem,
+			bloomLevel: itemBloom.level,
+			bloomLabel: itemBloom.label,
+			subItems,
+		};
+	});
+}
+
+type SessionRow = {
+	session_id: string;
+	document_ids: string[];
+	document_roles: Record<string, DocumentRole[]>;
+	session_roles: Record<string, SessionRole[]>;
+	active_blueprint_id?: string | null;
+	active_target?: TeacherStudioTarget | null;
+	output_ids?: string[] | null;
+	studio_state_version?: number | null;
+	created_at: string;
+	updated_at: string;
+};
+
+type DocumentRow = {
+	document_id: string;
+	session_id: string | null;
+	source_file_name: string;
+	source_mime_type: string;
+	created_at: string;
+	raw_binary_base64: string | null;
+	canonical_document: RegisteredDocument["canonicalDocument"] | null;
+	azure_extract: RegisteredDocument["azureExtract"] | null;
+	/** UUID of the authenticated teacher who created the document. */
+	owner_id: string | null;
+	/** Whether the document is publicly visible to all teachers. */
+	is_public: boolean;
+};
+
+type AnalyzedDocumentRow = {
+	document_id: string;
+	session_id: string | null;
+	analyzed_document: AnalyzedDocument;
+	updated_at: string;
+};
+
+type CollectionAnalysisRow = {
+	session_id: string;
+	analysis: DocumentCollectionAnalysis;
+	updated_at: string;
+};
+
+type SessionSnapshotRow = {
+	session_id: string;
+	snapshot_json: PersistedPrismSessionContext;
+	created_at: string;
+};
+
+type DocumentResourceLinkRow = {
+	session_id: string;
+	document_id: string;
+	resource_document_id: string;
+	resource_type: DocumentResourceLink["resourceType"];
+	content_text?: string | null;
+	created_at?: string;
+	updated_at?: string;
+};
+
+type IntentProductRow = {
+	product_id: string;
+	session_id: string;
+	intent_type: IntentProduct["intentType"];
+
+===== FILE: src/hooks/useInstructionalSession.ts (resource link creation + role mapping) =====
+function buildResourceLinks(args: {
+	registered: RegisteredDocumentSummary[];
+	selectedFiles: File[];
+	answerKeyFiles: File[];
+	workedSolutionFiles: File[];
+	rubricFiles: File[];
+	prepDocFiles: File[];
+	nextFileMap: Record<string, File>;
+}): DocumentResourceLink[] {
+	if (args.answerKeyFiles.length === 0 && args.workedSolutionFiles.length === 0 && args.rubricFiles.length === 0 && args.prepDocFiles.length === 0) {
+		return [];
+	}
+
+	const primaryFiles = new Set(args.selectedFiles.map((file) => fileIdentity(file)));
+	const answerKeyFiles = new Set(args.answerKeyFiles.map((file) => fileIdentity(file)));
+	const workedSolutionFiles = new Set(args.workedSolutionFiles.map((file) => fileIdentity(file)));
+	const rubricFiles = new Set(args.rubricFiles.map((file) => fileIdentity(file)));
+	const prepDocFiles = new Set(args.prepDocFiles.map((file) => fileIdentity(file)));
+
+	const primaryDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? primaryFiles.has(fileIdentity(file)) : false;
+	});
+	const answerKeyDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? answerKeyFiles.has(fileIdentity(file)) : false;
+	});
+	const workedSolutionDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? workedSolutionFiles.has(fileIdentity(file)) : false;
+	});
+	const rubricDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? rubricFiles.has(fileIdentity(file)) : false;
+	});
+	const prepDocDocuments = args.registered.filter((entry) => {
+		const file = args.nextFileMap[entry.documentId];
+		return file ? prepDocFiles.has(fileIdentity(file)) : false;
+	});
+
+	const resourceLinks: DocumentResourceLink[] = [];
+	for (const primary of primaryDocuments) {
+		for (const answerKey of answerKeyDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: answerKey.documentId,
+				resourceType: "answer-key",
+			});
+		}
+		for (const workedSolution of workedSolutionDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: workedSolution.documentId,
+				resourceType: "worked-solution",
+			});
+		}
+		for (const rubric of rubricDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: rubric.documentId,
+				resourceType: "rubric",
+			});
+		}
+		for (const prepDoc of prepDocDocuments) {
+			resourceLinks.push({
+				documentId: primary.documentId,
+				resourceDocumentId: prepDoc.documentId,
+				resourceType: "prep-doc",
+			});
+		}
+	}
+
+	return resourceLinks;
+}
+
+type ProductsPayload = {
+	sessionId: string;
+	products: IntentProduct[];
+};
+
+function guessDocumentRole(file: File): DocumentRole {
+	const lowerName = file.name.toLowerCase();
+	if (lowerName.includes("answer key") || lowerName.includes("answer_key") || lowerName.includes("answer-key")) {
+		return "answer-key";
+	}
+	if (lowerName.includes("worked solution") || lowerName.includes("worked_solution") || lowerName.includes("worked-solution") || lowerName.includes("solutions")) {
+		return "worked-solution";
+	}
+	if (lowerName.includes("rubric") || lowerName.includes("criteria") || lowerName.includes("scoring guide")) {
+		return "rubric";
+	}
+	if (lowerName.includes("quiz") || lowerName.includes("test") || lowerName.includes("assessment")) {
+		return "test";
+	}
+	if (lowerName.includes("worksheet") || lowerName.includes("practice")) {
+		return "worksheet";
+	}
+	if (lowerName.includes("prep doc") || lowerName.includes("prep-doc") || lowerName.includes("preparation") || lowerName.includes("study guide")) {
+		return "prep-doc";
+	}
+	if (lowerName.includes("slide") || file.type.includes("presentation")) {
+		return "slides";
+	}
+	if (lowerName.includes("note") || file.type.includes("wordprocessingml")) {
+		return "notes";
+	}
+	if (lowerName.includes("review")) {
+		return "review";
+	}
+	if (lowerName.includes("article") || lowerName.includes("reading")) {
+		return "article";
+	}
+		extraFiles?: { answerKeyFiles?: File[]; workedSolutionFiles?: File[]; rubricFiles?: File[]; prepDocFiles?: File[] },
+	) {
+		const answerKeyFiles = extraFiles?.answerKeyFiles ?? [];
+		const workedSolutionFiles = extraFiles?.workedSolutionFiles ?? [];
+		const rubricFiles = extraFiles?.rubricFiles ?? [];
+		const prepDocFiles = extraFiles?.prepDocFiles ?? [];
+		const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles, ...prepDocFiles];
+		if (allUploadFiles.length === 0) {
+			setError("Choose one or more PDF, DOCX, or PPTX files before building the workspace.");
+			return null;
+		}
+
+		setIsUploading(true);
+		setError(null);
+
+		try {
+			const registered: RegisteredDocumentSummary[] = [];
+			const nextFileMap: Record<string, File> = {};
+			let sessionId: string | null = null;
+			const forcedRoles = new Map<string, DocumentRole>();
+			for (const file of answerKeyFiles) {
+				forcedRoles.set(fileIdentity(file), "answer-key");
+			}
+			for (const file of workedSolutionFiles) {
+				forcedRoles.set(fileIdentity(file), "worked-solution");
+			}
+			for (const file of rubricFiles) {
+				forcedRoles.set(fileIdentity(file), "rubric");
+			}
+			for (const file of prepDocFiles) {
+				forcedRoles.set(fileIdentity(file), "prep-doc");
+			}
+
+			for (const file of allUploadFiles) {
+				const buffer = await file.arrayBuffer();
+				const uploadPayload: UploadDocumentResponse = await fetchJson<UploadDocumentResponse>("/api/v4/documents/upload", {
+					method: "POST",
+					headers: {
+						"Content-Type": file.type || "application/octet-stream",
+						"x-file-name": file.name,
+						...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+						...(sessionId ? { "x-session-id": sessionId } : {}),
+					},
+					body: buffer,
+				});
+				const uploaded = uploadPayload.registered[0];
+				if (!uploaded) {
+					throw new Error(`Upload completed without a registered document for ${file.name}.`);
+				}
+				registered.push(uploaded);
+				nextFileMap[uploaded.documentId] = file;
+				sessionId = sessionId ?? uploadPayload.sessionId;
+			}
+
+			const documentRoles = Object.fromEntries(registered.map((entry) => {
+				const file = nextFileMap[entry.documentId];
+				const role = file
+					? (forcedRoles.get(fileIdentity(file)) ?? guessDocumentRole(file))
+					: "unknown";
+				return [entry.documentId, [role]];
+			}));
+			const sessionRoles = Object.fromEntries(registered.map((entry) => {
+				const role = documentRoles[entry.documentId]?.[0] ?? "unknown";
+				return [entry.documentId, [guessSessionRole(role)]];
+			}));
+			const resourceLinks = buildResourceLinks({
+				registered,
+				selectedFiles,
+				answerKeyFiles,
+				workedSolutionFiles,
+				rubricFiles,
+				prepDocFiles,
+				nextFileMap,
+			});
+
+			await fetchJson("/api/v4/documents/session", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					sessionId,
+					documentIds: registered.map((entry) => entry.documentId),
+					documentRoles,
+					sessionRoles,
+					resourceLinks,
+				}),
+			});
+
+			if (!sessionId) {
+				throw new Error("Workspace creation did not return a sessionId.");
+			}
+
+
+===== FILE: src/simulation/phase-b/index.ts (override map loader + parsing + extraction) =====
+    ...baseItem,
+    itemId: `${row.id}::part-${partIndex}`,
+    partIndex,
+    logicalLabel: `${baseItem.groupId}${partIndexToSuffix(partIndex)}`,
+    isParent: false,
+  }));
+}
+
+function sortNormalizedItems(items: NormalizedPhaseBItem[]): NormalizedPhaseBItem[] {
+  return [...items].sort((a, b) => {
+    if (a.groupId !== b.groupId) {
+      return a.groupId.localeCompare(b.groupId, undefined, { numeric: true });
+    }
+    if (a.partIndex !== b.partIndex) {
+      return a.partIndex - b.partIndex;
+    }
+    const aNumber = a.itemNumber ?? Number.POSITIVE_INFINITY;
+    const bNumber = b.itemNumber ?? Number.POSITIVE_INFINITY;
+    return aNumber - bNumber;
+  });
+}
+
+function isSyntheticPartItem(item: NormalizedPhaseBItem): boolean {
+  return item.partIndex > 0 && item.itemId.includes("::part-");
+}
+
+function dedupeNormalizedItems(items: NormalizedPhaseBItem[]): NormalizedPhaseBItem[] {
+  const byGroupPart = new Map<string, NormalizedPhaseBItem>();
+
+  for (const item of items) {
+    if (item.partIndex <= 0) {
+      const parentKey = `${item.groupId}::0::${item.itemId}`;
+      byGroupPart.set(parentKey, item);
+      continue;
+    }
+
+    const key = `${item.groupId}::${item.partIndex}`;
+    const existing = byGroupPart.get(key);
+
+    if (!existing) {
+      byGroupPart.set(key, item);
+      continue;
+    }
+
+    // Prefer explicit child rows from ingestion over inferred synthetic rows.
+    if (isSyntheticPartItem(existing) && !isSyntheticPartItem(item)) {
+      byGroupPart.set(key, item);
+    }
+  }
+
+  return [...byGroupPart.values()];
+}
+
+export async function normalizeItemsPhaseB(documentId: string, overrides: PhaseBOverrideMaps = {}): Promise<{ items: NormalizedPhaseBItem[] }> {
+  const rows = await supabaseRest("v4_items", {
+    method: "GET",
+    select: "id,item_number,stem,answer_key,metadata",
+    filters: {
+      document_id: `eq.${documentId}`,
+      order: "item_number.asc",
+    },
+  }) as ItemRow[];
+
+  const normalizedRaw = (rows ?? []).flatMap((row) => toNormalizedItems(row, overrides));
+  const normalized = dedupeNormalizedItems(normalizedRaw);
+  const groupsWithChildren = new Set(
+    normalized
+      .filter((item) => item.partIndex > 0)
+      .map((item) => item.groupId),
+  );
+
+  // Keep standalone items (part 0 with no child parts) even when parent
+  // inference marks them as parent due to missing answer keys.
+  const withoutMultipartParents = normalized.filter((item) => !item.isParent || !groupsWithChildren.has(item.groupId));
+
+  // Some ingested docs may not carry answer keys on item rows. In that case,
+  // parent inference can mark every row as parent; preserve source order instead
+  // of returning an empty item list.
+  const effectiveItems = withoutMultipartParents.length > 0 ? withoutMultipartParents : normalized;
+
+  return {
+    items: sortNormalizedItems(effectiveItems),
+  };
+}
+
+function parseByItemNumber(rawText: string): Record<string, string> {
+  const byItem: Record<string, string> = {};
+  const lines = rawText
+    .split(/\r?\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const direct = line.match(/^(\d{1,3})[\).:\-]\s*(.+)$/i);
+    if (direct?.[1] && direct?.[2]) {
+      byItem[direct[1]] = direct[2].trim();
+      continue;
+    }
+    const prefixed = line.match(/^item\s*(\d{1,3})\s*[:\-]\s*(.+)$/i);
+    if (prefixed?.[1] && prefixed?.[2]) {
+      byItem[prefixed[1]] = prefixed[2].trim();
+    }
+  }
+
+  return byItem;
+}
+
+function extractDocumentText(document: Record<string, unknown> | undefined): string {
+  if (!document) {
+    return "";
+  }
+  const canonical = document.canonical_document as { nodes?: Array<{ text?: string; normalizedText?: string }> } | undefined;
+  if (canonical?.nodes && Array.isArray(canonical.nodes) && canonical.nodes.length > 0) {
+    return canonical.nodes
+      .map((node) => (typeof node.normalizedText === "string" && node.normalizedText.trim().length > 0 ? node.normalizedText : node.text ?? ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+  const azure = document.azure_extract as { content?: string; paragraphs?: Array<{ text?: string }>; pages?: Array<{ text?: string }> } | undefined;
+  if (typeof azure?.content === "string" && azure.content.trim().length > 0) {
+    return azure.content;
+  }
+  if (Array.isArray(azure?.paragraphs) && azure.paragraphs.length > 0) {
+    return azure.paragraphs.map((p) => p.text ?? "").filter(Boolean).join("\n");
+  }
+  if (Array.isArray(azure?.pages) && azure.pages.length > 0) {
+    return azure.pages.map((p) => p.text ?? "").filter(Boolean).join("\n");
+  }
+  return "";
+}
+
+async function loadOverrideMapsFromResourceLinks(documentId: string): Promise<PhaseBOverrideMaps> {
+  const links = await supabaseRest("v4_document_resource_links", {
+    method: "GET",
+    select: "resource_document_id,resource_type",
+    filters: { document_id: `eq.${documentId}` },
+  }) as Array<{ resource_document_id?: string; resource_type?: string }>;
+
+  const resourceIds = Array.from(new Set((links ?? [])
+    .map((link) => (typeof link.resource_document_id === "string" ? link.resource_document_id : ""))
+    .filter((value) => value.length > 0)));
+
+  if (resourceIds.length === 0) {
+    return {};
+  }
+
+  const escapedIds = resourceIds.map((id) => `"${id}"`).join(",");
+  const documents = await supabaseRest("prism_v4_documents", {
+    method: "GET",
+    select: "document_id,canonical_document,azure_extract",
+    filters: { document_id: `in.(${escapedIds})` },
+  }) as Array<Record<string, unknown> & { document_id?: string }>;
+
+  const docById = new Map<string, Record<string, unknown>>();
+  for (const document of documents ?? []) {
+    if (typeof document.document_id === "string" && document.document_id.length > 0) {
+      docById.set(document.document_id, document);
+    }
+  }
+
+  const answerKeyByItem: Record<string, string> = {};
+  const workedSolutionByItem: Record<string, string> = {};
+  const rubricByItem: Record<string, string> = {};
+
+  for (const link of links ?? []) {
+    const linkDocId = typeof link.resource_document_id === "string" ? link.resource_document_id : "";
+    const resourceType = typeof link.resource_type === "string" ? link.resource_type : "";
+    if (!linkDocId || !resourceType) {
+      continue;
+    }
+    const text = extractDocumentText(docById.get(linkDocId));
+    if (!text.trim()) {
+      continue;
+    }
+    const parsed = parseByItemNumber(text);
+    if (resourceType === "answer-key") {
+      Object.assign(answerKeyByItem, parsed);
+    } else if (resourceType === "worked-solution") {
+      Object.assign(workedSolutionByItem, parsed);
+    } else if (resourceType === "rubric") {
+      Object.assign(rubricByItem, parsed);
+    }
+  }
+
+  return {
+    answerKeyByItem: Object.keys(answerKeyByItem).length > 0 ? answerKeyByItem : undefined,
+    workedSolutionByItem: Object.keys(workedSolutionByItem).length > 0 ? workedSolutionByItem : undefined,
+    rubricByItem: Object.keys(rubricByItem).length > 0 ? rubricByItem : undefined,
+  };
+}
+
+export async function runPhaseB(documentId: string): Promise<{ items: NormalizedPhaseBItem[] }> {
+  const overrides = await loadOverrideMapsFromResourceLinks(documentId);
+  return normalizeItemsPhaseB(documentId, overrides);
+}
+
+===== FILE: api/v4/documents/session.js (resource text extraction + prep/answer/rubric/washed layers) =====
+    }
+    cleaned.push(trimmed);
+    previousWasBlank = false;
+  }
+  return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
+}
+function extractResourceDocumentText(document) {
+  const nodes = document?.canonical_document?.nodes;
+  if (Array.isArray(nodes) && nodes.length > 0) {
+    const text = nodes.map((node) => node?.normalizedText ?? node?.text ?? "").filter(Boolean).join("\n");
+    if (text.trim().length > 0) {
+      return normalizeResourceDocumentText(text);
+    }
+  }
+  const azureSections = [];
+  if (typeof document?.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
+    azureSections.push(document.azure_extract.content);
+  }
+  const paragraphs = document?.azure_extract?.paragraphs;
+  if (Array.isArray(paragraphs) && paragraphs.length > 0) {
+    const paragraphText = paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n\n");
+    if (paragraphText.trim().length > 0) {
+      azureSections.push(paragraphText);
+    }
+  }
+  const pages = document?.azure_extract?.pages;
+  if (Array.isArray(pages) && pages.length > 0) {
+    const pageText = pages.map((page) => page?.text ?? "").filter(Boolean).join("\n\n");
+    if (pageText.trim().length > 0) {
+      azureSections.push(pageText);
+    }
+  }
+  const tableText = flattenAzureTables(document?.azure_extract);
+  if (tableText.trim().length > 0) {
+    azureSections.push(tableText);
+  }
+  if (azureSections.length > 0) {
+    return normalizeResourceDocumentText(azureSections.join("\n\n"));
+  }
+  return "";
+}
+async function withResourceContentText(resourceLinks) {
+  const resourceIds = Array.from(new Set(resourceLinks.map((link) => link.resourceDocumentId).filter((id) => typeof id === "string" && id.trim().length > 0)));
+  if (resourceIds.length === 0) {
+    return resourceLinks;
+  }
+  const escapedIds = resourceIds.map((id) => `"${id}"`).join(",");
+  const documents = await supabaseRest(DOCUMENTS_TABLE, {
+    select: "document_id,canonical_document,azure_extract",
+    filters: { document_id: `in.(${escapedIds})` }
+  });
+  const contentByDocumentId = /* @__PURE__ */ new Map();
+  for (const document of documents ?? []) {
+    contentByDocumentId.set(document.document_id, extractResourceDocumentText(document));
+  }
+  return resourceLinks.map((link) => ({
+    ...link,
+    contentText: contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText
+  }));
+}
+function fromDocumentRow(row) {
+  return {
+    documentId: row.document_id,
+    sourceFileName: row.source_file_name,
+    sourceMimeType: row.source_mime_type,
+    createdAt: row.created_at,
+    rawBinary: row.raw_binary_base64 ? Buffer.from(row.raw_binary_base64, "base64") : void 0,
+    canonicalDocument: row.canonical_document ?? void 0,
+    azureExtract: row.azure_extract ?? void 0
+  };
+}
+async function updateDocumentSessionIds(sessionId, documentIds) {
+  if (!canUseSupabase() || documentIds.length === 0) {
+    return;
+  }
+  const filterValue = `in.(${documentIds.join(",")})`;
+  await Promise.all([
+    supabaseRest(DOCUMENTS_TABLE, {
+      method: "PATCH",
+      filters: { document_id: filterValue },
+      body: { session_id: sessionId },
+      prefer: "return=minimal"
+    }),
+    supabaseRest(ANALYZED_DOCUMENTS_TABLE, {
+      method: "PATCH",
+      filters: { document_id: filterValue },
+      body: { session_id: sessionId },
+      prefer: "return=minimal"
+    })
+  ]);
+}
+function isDocumentResourceLinksSchemaError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("v4_document_resource_links") && (error.message.includes("42703") || error.message.includes("PGRST") || error.message.includes("does not exist"));
+}
+async function listDocumentResourceLinksStore(sessionId) {
+  if (!canUseSupabase()) {
+    return getDocumentSession(sessionId)?.resourceLinks ?? [];
+  }
+  let rows;
+  try {
+    rows = await supabaseRest("v4_document_resource_links", {
+      select: "session_id,document_id,resource_document_id,resource_type,content_text",
+      filters: { session_id: `eq.${sessionId}` }
+    });
+  } catch (error) {
+    if (!isDocumentResourceLinksSchemaError(error)) {
+      throw error;
+    }
+    return [];
+  }
+  return (rows ?? []).map((row) => fromDocumentResourceLinkRow(row));
+}
+// --- Washover pipeline: apply companion doc overrides to v4_items.metadata layers ---
+function washClamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function washParseAnswerKey(text) {
+  if (!text) return {};
+  const result = {};
+  for (const line of text.split("\n")) {
+    const m = line.match(/^[\s]*(\d+)[\s.)\-:]+(.+)$/i);
+    if (m?.[1] && m[2]) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n)) result[n] = m[2].trim();
+    }
+  }
+  return result;
+}
+function washParseWorkedSolutions(text) {
+  if (!text) return {};
+  const result = {};
+  let cur = null, steps = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
+    if (m) {
+      if (cur !== null && steps.length) result[cur] = steps;
+      cur = Number(m[1] ?? m[2]); steps = [];
+    } else if (cur !== null) {
+      const s = line.replace(/^[\s•\-*]+/, "").trim();
+      if (s) steps.push(s);
+    }
+  }
+  if (cur !== null && steps.length) result[cur] = steps;
+  return result;
+}
+function washParseRubric(text) {
+  if (!text) return {};
+  const result = {};
+  let cur = null, lines2 = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
+    if (m) {
+      if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
+      cur = Number(m[1] ?? m[2]); lines2 = [];
+      const rest = line.replace(m[0], "").trim();
+      if (rest) lines2.push(rest);
+    } else if (cur !== null) {
+      lines2.push(line.replace(/^[\s•\-*]+/, "").trim());
+    }
+  }
+  if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
+  return result;
+}
+function washBuildBaseFromMetadata(meta) {
+  if (!meta) meta = {};
+  const b = meta.bloomLevel ?? 2, cog = meta.cognitiveLoad ?? 0.5, ling = meta.linguisticLoad ?? 0.5, rep = meta.representationLoad ?? 0.4;
+  const diff = Number((b / 6 * 0.3 + cog * 0.35 + ling * 0.35).toFixed(4));
+  return {
+    bloomLevel: b, cognitiveLoad: cog, linguisticLoad: ling, representationLoad: rep,
+    symbolDensity: meta.symbolDensity ?? 0.1, stepCount: meta.stepCount ?? 2,
+    vocabularyCount: meta.vocabularyCount ?? 20, stemLength: meta.stemLength ?? 0,
+    itemType: meta.cognitiveDemand ?? meta.itemType ?? "question", distractorStructure: "open",
+    difficultyScore: diff, confusionScore: Number(washClamp(cog * 0.5 + ling * 0.3, 0, 1).toFixed(4)),
+    timeSeconds: Number(Math.max(20, 21 + 20 * ling + 10 * rep).toFixed(1)),
+    pCorrectAdjustment: 0, partialCreditEnabled: false, requiredElementsCount: 0,
+    qualityThreshold: 0.65, rubricStrictness: 0, rubricTolerance: 0,
+    branchingFactor: 1, errorOpportunityCount: 1, misconceptionLikelihood: 0.15
+  };
+}
+function washAnswerKeyLayer(answerText, base) {
+  if (!answerText) return null;
+  const a = answerText.trim();
+  const isMC = /^[a-e]$/i.test(a), isNum = /^-?\d+(\.\d+)?$/.test(a), isSym = /[=^\-+*/(){}[\]<>]/.test(a);
+  const ambig = /[|/,]|\bor\b/i.test(a) ? 0.5 : 0;
+  let fmt = isMC ? 0.1 : isNum ? 0.2 : isSym ? 0.55 : 0.45;
+  const len = a.length > 24 ? 0.25 : 0;
+  const diffAdj = Number((ambig * 0.18 + fmt * 0.12 + len * 0.05).toFixed(4));
+  const pAdj = Number(washClamp(-diffAdj * 0.55, -0.3, 0.2).toFixed(4));
+  return {
+    correctAnswer: a, difficultyScore: Number(washClamp((base.difficultyScore ?? 0.5) + diffAdj, 0, 1).toFixed(4)),
+    pCorrectAdjustment: pAdj, misconceptionLikelihood: Number(washClamp((base.misconceptionLikelihood ?? 0.15) + Math.abs(pAdj) * 0.5, 0, 1).toFixed(4)),
+    stepCount: a.length > 20 ? (base.stepCount ?? 2) + 1 : (base.stepCount ?? 2)
+  };
+}
+function washWorkedLayer(steps, base) {
+  if (!steps?.length) return null;
+  const baseDiff = base.difficultyScore ?? 0.5;
+  let symCount = 0, charCount = 0;
+  const stepDiff = [], stepTime = [], stepCog = [];
+  steps.forEach((step, idx) => {
+    const words = step.split(/\s+/).filter(Boolean).length;
+    const syms = (step.match(/[=+\-*/^<>()[\]{}]/g) ?? []).length;
+    symCount += syms; charCount += Math.max(step.length, 1);
+    const lower = step.toLowerCase();
+    let sc = /infer|conclude|deduce|imply|therefore/.test(lower) ? 0.75 : /define|concept|why|because/.test(lower) ? 0.68 : /calculate|compute|solve/.test(lower) ? 0.45 : /first|next|then|step/.test(lower) ? 0.55 : 0.4;
+    const pos = Math.min(idx / Math.max(steps.length - 1, 1), 1) * 0.15;
+    stepDiff.push(Number(washClamp(baseDiff + sc * 0.35 + pos, 0, 1).toFixed(4)));
+    stepTime.push(Number(Math.max(8, words * 2.1 + syms * 1.8 + sc * 9).toFixed(4)));
+    stepCog.push(Number(washClamp(sc * 0.8 + syms * 0.03, 0, 1).toFixed(4)));
+  });
+  const branching = Math.max(1, Math.min(6, Math.round(steps.length / 2)));
+  return {
+    reasoningComplexity: Number(Math.max(...stepDiff, 0).toFixed(4)),
+    cognitiveSteps: steps.length, stepCount: steps.length,
+    representationLoad: Number(washClamp((base.representationLoad ?? 0.4) + branching * 0.04, 0, 1).toFixed(4)),
+    timeOnTaskAdjustment: Number((stepTime.reduce((a, b) => a + b, 0) / Math.max(stepTime.length, 1) * 0.3).toFixed(4)),
+    bloomGapAdjustment: branching >= 3 ? 1 : 0,
+    stepDifficultyCurve: stepDiff, stepTimeCurve: stepTime, stepCognitiveLoadCurve: stepCog,
+    branchingFactor: branching, errorOpportunityCount: Math.max(1, steps.length - 1 + (branching - 1))
+  };
+}
+function washRubricLayer(rubricText, base) {
+  if (!rubricText) return null;
+  const norm = String(rubricText).trim().toLowerCase();
+  if (!norm) return null;
+  const strict = (norm.match(/strict|must include|required|deduct|penalty/g) ?? []).length;
+  const tol = (norm.match(/partial credit|attempt|alternative|equivalent|accept/g) ?? []).length;
+  const reqEl = Math.max((norm.match(/required|criterion|criteria|must include/g) ?? []).length, 0);
+  const partial = /partial credit|partial|attempt/.test(norm);
+  const qt = Number(washClamp(0.55 + strict * 0.03 - tol * 0.02, 0.35, 0.95).toFixed(4));
+  const rs = Number(washClamp(strict * 0.12 + reqEl * 0.06 + qt * 0.5, 0, 1).toFixed(4));
+  const rt = Number(washClamp(tol * 0.14 + (1 - rs) * 0.35, 0, 1).toFixed(4));
+  return {
+    rubricDifficulty: Number(washClamp((base.difficultyScore ?? 0.5) + rs * 0.2, 0, 1).toFixed(4)),
+    masteryThreshold: qt, partialCreditEnabled: partial, requiredElementsCount: reqEl,
+    rubricStrictness: rs, rubricTolerance: rt, bloomAlignment: base.bloomLevel ?? 2
+  };
+}
+function washConceptsMatch(a, b) {
+  const al = String(a ?? "").toLowerCase().trim();
+  const bl = String(b ?? "").toLowerCase().trim();
+  if (!al || !bl) return false;
+  return al === bl || al.includes(bl) || bl.includes(al);
+}
+function washFindCoverageKey(coverageMap, concept) {
+  return (coverageMap?.conceptsTaught ?? []).find((taught) => washConceptsMatch(taught, concept));
+}
+function washCountOccurrences(text, keyword) {
+  const lc = String(text ?? "").toLowerCase();
+  const kw = String(keyword ?? "").toLowerCase();
+  if (!kw) return 0;
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    const idx = lc.indexOf(kw, pos);
+    if (idx === -1) break;
+    count += 1;
+    pos = idx + kw.length;
+  }
+  return count;
+}
+var WASH_PREP_STOPWORDS = /* @__PURE__ */ new Set([
+  "about",
+  "after",
+  "again",
+  "also",
+  "because",
+  "before",
+  "between",
+  "could",
+  "describe",
+  "determine",
+  "does",
+  "each",
+  "explain",
+  "find",
+  "from",
+  "have",
+  "into",
+  "just",
+  "level",
+  "mean",
+  "name",
+  "null",
+  "alternative",
+  "appropriate",
+  "part",
+  "question",
+  "reject",
+  "state",
+  "test",
+  "that",
+  "their",
+  "there",
+  "these",
+  "they",
+  "this",
+  "those",
+  "what",
+  "when",
+  "where",
+  "which",
+  "with",
+  "would",
+  "your"
+]);
+function washPrepKeywords(text) {
+  const tokens = String(text ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 4 && !WASH_PREP_STOPWORDS.has(token));
+  return [...new Set(tokens)];
+}
+function washBuildFallbackPrepByItem(prepTexts, testItems) {
+  const combined = (prepTexts ?? []).join("\n\n");
+  const prepBloom = washDetectBloomLevel(combined);
+  const prepRepresentations = washDetectRepresentations(combined);
+  const hasWorkedSignal = /step\s*\d|worked\s+example|example\s*\d|\bsolution\b/i.test(combined);
+  const result = {};
+  for (const item of testItems ?? []) {
+    const n = item.itemNumber;
+    const keywords = washPrepKeywords(item.stem ?? "").slice(0, 12);
+    const matchedKeywords = keywords.filter((keyword) => washCountOccurrences(combined, keyword) > 0);
+    const conceptMatch = keywords.length === 0 ? 0 : matchedKeywords.length / keywords.length;
+    const repsRequired = item.representations ?? [];
+    const representationAlignment = repsRequired.length === 0 || repsRequired.some((rep) => prepRepresentations.some((prepRep) => washConceptsMatch(prepRep, rep))) ? "aligned" : "mismatch";
+    const bloomRequired = typeof item.bloomLevel === "number" ? item.bloomLevel : 2;
+    const bloomAlignment = prepBloom >= bloomRequired ? "aligned" : "below";
+    let strength = "none";
+    if (conceptMatch >= 0.35) {
+      strength = "partial";
+    } else if (conceptMatch > 0) {
+      strength = "weak";
+    }
+    result[n] = {
+      strength,
+      conceptMatch,
+      bloomAlignment,
+      representationAlignment,
+      stepAlignment: hasWorkedSignal ? "aligned" : "mismatch",
+      coveredConcepts: matchedKeywords.slice(0, 5),
+      evidence: matchedKeywords.slice(0, 5).map((keyword) => `Prep doc keyword match — "${keyword}"`),
+      inferredOnly: true
+    };
+  }
+  return result;
+}
+function washDetectBloomLevel(text) {
+  const t = String(text ?? "").toLowerCase();
+  const verbs = {
+    6: ["creat", "design", "compos", "formulat", "generat", "construct", "produc"],
+    5: ["evaluat", "assess", "judg", "justif", "critiqu", "defend", "apprais"],
+    4: ["analyz", "break down", "examin", "differentiat", "infer", "diagnost", "distinguis"],
+    3: ["solv", "calculat", "apply", "demonstrat", "comput", "execut", "operat"],
+    2: ["explain", "describ", "summariz", "compar", "contrast", "classif", "interpret", "paraphras"],
+    1: ["defin", "list", "recall", "name", "identif", "memoriz", "state", "recogniz"]
+  };
+  for (let level = 6; level >= 1; level--) {
+    if (verbs[level].some((v) => t.includes(v))) return level;
+  }
+  return 1;
+}
+function washDetectRepresentations(text) {
+  const t = String(text ?? "").toLowerCase();
+  const mapping = {
+    "fraction bar": ["fraction bar", "fraction strip", "fraction model", "fraction diagram"],
+    "number line": ["number line"],
+    table: ["table", "t-chart", "data table"],
+    diagram: ["diagram", "drawing", "figure", "sketch", "picture", "visual"],
+    graph: ["graph", "plot", "coordinate plane", "coordinate grid", "axes"],
+    symbolic: ["equation", "expression", "formula", "symbol", "variable", "algebraic"],
+    verbal: ["word problem", "in words", "written form"],
+    "area model": ["area model", "rectangle model", "grid model"],
+    "bar model": ["bar model", "tape diagram", "strip diagram"]
+  };
+  const found = [];
+  for (const [label, cues] of Object.entries(mapping)) {
+    if (cues.some((cue) => t.includes(cue))) found.push(label);
+  }
+  return found;
+}
+function washExtractPrepCoverage(prepTexts, testConcepts) {
+  const combined = (prepTexts ?? []).join("\n\n");
+  const conceptsTaught = [];
+  const bloomTaughtByConcept = {};
+  const representationsUsedByConcept = {};
+  const stepsTaughtByConcept = {};
+  const coverageIntensityByConcept = {};
+  const hasWorkedExample = /step\s*\d|worked\s+example|example\s*\d|\bsolution\b|let'?s\s+solve/i.test(combined);
+  const toIntensity = (occ, worked) => {
+    if (occ === 0) return "none";
+    if (occ >= 5 || occ >= 3 && worked) return "heavy";
+    if (occ >= 2 || worked) return "medium";
+    return "light";
+  };
+  for (const concept of testConcepts ?? []) {
+    let occ = washCountOccurrences(combined, concept);
+    if (occ === 0) {
+      const words = String(concept ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+      const counts = words.map((w) => washCountOccurrences(combined, w));
+      const minCount = counts.length ? Math.min(...counts) : 0;
+      if (minCount > 0) occ = 1;
+    }
+    const intensity = toIntensity(occ, hasWorkedExample && occ > 0);
+    coverageIntensityByConcept[concept] = intensity;
+    if (intensity === "none") continue;
+    conceptsTaught.push(concept);
+    const idx = combined.toLowerCase().indexOf(String(concept ?? "").toLowerCase());
+    const ctx = idx === -1 ? combined.slice(0, 1200) : combined.slice(Math.max(0, idx - 500), Math.min(combined.length, idx + String(concept ?? "").length + 500));
+    bloomTaughtByConcept[concept] = washDetectBloomLevel(ctx);
+    representationsUsedByConcept[concept] = washDetectRepresentations(ctx);
+    const stepMatches = ctx.match(/step\s*\d[^.!?]{0,160}[.!?]/gi) ?? [];
+    stepsTaughtByConcept[concept] = stepMatches.slice(0, 4).map((s) => s.trim());
+  }
+  return {
+    conceptsTaught,
+    bloomTaughtByConcept,
+    representationsUsedByConcept,
+    stepsTaughtByConcept,
+    coverageIntensityByConcept
+  };
+}
+function washAlignPrepToTest(coverageMap, testItems) {
+  const byItem = {};
+  for (const item of testItems ?? []) {
+    const n = item.itemNumber;
+    const conceptsRequired = item.concepts ?? [];
+    const bloomRequired = typeof item.bloomLevel === "number" ? item.bloomLevel : 2;
+    const repsRequired = item.representations ?? [];
+    const coveredConcepts = conceptsRequired.filter((c) => washFindCoverageKey(coverageMap, c));
+    const conceptMatch = conceptsRequired.length === 0 ? 0 : coveredConcepts.length / conceptsRequired.length;
+    const taughtBlooms = coveredConcepts.map((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.bloomTaughtByConcept[key] ?? 1 : 1;
+    });
+    const maxBloomTaught = taughtBlooms.length ? Math.max(...taughtBlooms) : 0;
+    const bloomAlignment = conceptMatch === 0 || maxBloomTaught < bloomRequired ? "below" : "aligned";
+    const repsCovered = coveredConcepts.flatMap((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.representationsUsedByConcept[key] ?? [] : [];
+    });
+    const repOverlap = repsRequired.filter((r) => repsCovered.some((ar) => washConceptsMatch(ar, r)));
+    const representationAlignment = repsRequired.length === 0 || repOverlap.length > 0 ? "aligned" : "mismatch";
+    const hasSteps = coveredConcepts.some((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key && (coverageMap.stepsTaughtByConcept[key] ?? []).length > 0;
+    });
+    const stepAlignment = hasSteps ? "aligned" : "mismatch";
+    const intensities = coveredConcepts.map((c) => {
+      const key = washFindCoverageKey(coverageMap, c);
+      return key ? coverageMap.coverageIntensityByConcept[key] ?? "none" : "none";
+    });
+    let strength;
+    if (conceptMatch === 0) {
+      strength = "none";
+    } else if (conceptMatch >= 1 && bloomAlignment === "aligned" && representationAlignment === "aligned" && stepAlignment === "aligned") {
+      strength = "strong";
+    } else if (conceptMatch >= 0.5 && (bloomAlignment === "aligned" || representationAlignment === "aligned")) {
+      strength = "partial";
+    } else {
+      strength = "weak";
+    }
+    if (strength === "strong" && intensities.length && intensities.every((i) => i === "light")) strength = "partial";
+    if (strength === "partial" && intensities.length && intensities.every((i) => i === "light")) strength = "weak";
+    byItem[n] = {
+      strength,
+      conceptMatch,
+      bloomAlignment,
+      representationAlignment,
+      stepAlignment,
+      coveredConcepts,
+      evidence: coveredConcepts.map((c) => `Prep doc — \"${c}\"`)
+    };
+  }
+  return byItem;
+}
+function washComputePrepDeltas(alignment) {
+  const base = {
+    strong: { difficultyDelta: -0.15, confusionDelta: -0.2, timeDelta: -0.1, bloomDelta: -0.2 },
+    partial: { difficultyDelta: -0.05, confusionDelta: -0.1, timeDelta: -0.05, bloomDelta: -0.1 },
+    weak: { difficultyDelta: 0.05, confusionDelta: 0.1, timeDelta: 0.05, bloomDelta: 0.05 },
+    none: { difficultyDelta: 0.15, confusionDelta: 0.2, timeDelta: 0.1, bloomDelta: 0.2 }
+  }[alignment?.strength ?? "none"];
+  let difficultyDelta = base.difficultyDelta;
+  let confusionDelta = base.confusionDelta;
+  let timeDelta = base.timeDelta;
+  let bloomDelta = base.bloomDelta;
+  if (alignment?.bloomAlignment === "below") {
+    difficultyDelta += 0.05;
+    confusionDelta += 0.05;
+    bloomDelta += 0.1;
+  }
+  if (alignment?.representationAlignment === "mismatch") {
+    confusionDelta += 0.05;
+    timeDelta += 0.05;
+  }
+  if (alignment?.stepAlignment === "mismatch") {
+    difficultyDelta += 0.05;
+    timeDelta += 0.05;
+  }
+  return {
+    difficultyAdjustment: difficultyDelta,
+    confusionAdjustment: confusionDelta,
+    timeMultiplier: timeDelta,
+    bloomAdjustment: bloomDelta
+  };
+}
+function washMergePrepIntoFinal(existingFinal, delta) {
+  const f = { ...(existingFinal ?? {}) };
+  const difficultyScore = typeof f.difficultyScore === "number" ? f.difficultyScore : 0.5;
+  const confusionScore = typeof f.confusionScore === "number" ? f.confusionScore : 0.5;
+  const timeSeconds = typeof f.timeSeconds === "number" ? f.timeSeconds : 60;
+  const bloomLevel = typeof f.bloomLevel === "number" ? f.bloomLevel : 2;
+  f.difficultyScore = washClamp(difficultyScore + (delta?.difficultyAdjustment ?? 0), 0, 1);
+  f.confusionScore = washClamp(confusionScore + (delta?.confusionAdjustment ?? 0), 0, 1);
+  f.timeSeconds = Math.max(5, timeSeconds * (1 + (delta?.timeMultiplier ?? 0)));
+  f.bloomLevel = washClamp(bloomLevel + (delta?.bloomAdjustment ?? 0), 1, 6);
+  for (const k of Object.keys(f)) if (f[k] === void 0) delete f[k];
+  return f;
+}
+function washMergeTraits(base, ak, worked, rubric) {
+  const final = { ...base };
+  if (ak) {
+    if (ak.difficultyScore != null) final.difficultyScore = ak.difficultyScore;
+    if (ak.stepCount != null) final.stepCount = ak.stepCount;
+    if (ak.misconceptionLikelihood != null) final.misconceptionLikelihood = ak.misconceptionLikelihood;
+    if (ak.pCorrectAdjustment != null) final.pCorrectAdjustment = (final.pCorrectAdjustment ?? 0) + ak.pCorrectAdjustment;
+  }
+  if (worked) {
+    if (worked.representationLoad != null) final.representationLoad = worked.representationLoad;
+    if (worked.stepCount != null) final.stepCount = worked.stepCount;
+    if (worked.cognitiveSteps != null) final.cognitiveSteps = worked.cognitiveSteps;
+    if (worked.bloomGapAdjustment) final.bloomLevel = washClamp((final.bloomLevel ?? 2) + worked.bloomGapAdjustment, 1, 6);
+    if (worked.timeOnTaskAdjustment != null) final.timeOnTaskAdjustment = worked.timeOnTaskAdjustment;
+    if (worked.stepDifficultyCurve != null) final.stepDifficultyCurve = worked.stepDifficultyCurve;
+    if (worked.stepTimeCurve != null) final.stepTimeCurve = worked.stepTimeCurve;
+    if (worked.stepCognitiveLoadCurve != null) final.stepCognitiveLoadCurve = worked.stepCognitiveLoadCurve;
+    if (worked.branchingFactor != null) final.branchingFactor = worked.branchingFactor;
+    if (worked.errorOpportunityCount != null) final.errorOpportunityCount = worked.errorOpportunityCount;
+  }
+  if (rubric) {
+    if (rubric.rubricDifficulty != null) final.difficultyScore = rubric.rubricDifficulty;
+    if (rubric.rubricStrictness != null) final.rubricStrictness = rubric.rubricStrictness;
+    if (rubric.rubricTolerance != null) final.rubricTolerance = rubric.rubricTolerance;
+    if (rubric.partialCreditEnabled != null) final.partialCreditEnabled = rubric.partialCreditEnabled;
+    if (rubric.requiredElementsCount != null) final.requiredElementsCount = rubric.requiredElementsCount;
+    if (rubric.masteryThreshold != null) final.qualityThreshold = rubric.masteryThreshold;
+    if (rubric.bloomAlignment != null) final.bloomLevel = rubric.bloomAlignment;
+  }
+  for (const k of Object.keys(final)) { if (final[k] === undefined) delete final[k]; }
+  return final;
+}
+async function applyWashoverToItems(sessionId) {
+  if (!canUseSupabase()) return;
+  let links;
+  try {
+    links = await supabaseRest("v4_document_resource_links", {
+      select: "document_id,resource_document_id,resource_type,content_text",
+      filters: { session_id: `eq.${sessionId}` }
+    });
+  } catch { return; }
+  if (!Array.isArray(links) || links.length === 0) return;
+  const missingResourceIds = Array.from(new Set(links.filter((link) => {
+    const text = typeof link.content_text === "string" ? link.content_text : "";
+    return text.trim().length === 0;
+  }).map((link) => typeof link.resource_document_id === "string" ? link.resource_document_id : "").filter((id) => id.length > 0)));
+  if (missingResourceIds.length > 0) {
+    try {
+      const escapedIds = missingResourceIds.map((id) => `"${id}"`).join(",");
+      const resourceDocs = await supabaseRest("prism_v4_documents", {
+        method: "GET",
+        select: "document_id,canonical_document,azure_extract",
+        filters: { document_id: `in.(${escapedIds})` }
+      });
+      const contentByResourceId = /* @__PURE__ */ new Map();
+      for (const doc of resourceDocs ?? []) {
+        if (typeof doc?.document_id !== "string") continue;
+        const text = extractResourceDocumentText(doc);
+        if (text.trim().length > 0) {
+          contentByResourceId.set(doc.document_id, text);
+        }
+      }
+      let didPopulate = false;
+      for (const link of links) {
+        const existing = typeof link.content_text === "string" ? link.content_text : "";
+        if (existing.trim().length > 0) {
+          continue;
+        }
+        const next = contentByResourceId.get(link.resource_document_id);
+        if (typeof next === "string" && next.trim().length > 0) {
+          link.content_text = next;
+          didPopulate = true;
+        }
+      }
+      if (didPopulate) {
+        await supabaseRest("v4_document_resource_links", {
+          method: "POST",
+          body: links.map((link) => ({
+            session_id: sessionId,
+            document_id: link.document_id,
+            resource_document_id: link.resource_document_id,
+            resource_type: link.resource_type,
+            content_text: typeof link.content_text === "string" && link.content_text.trim().length > 0 ? link.content_text : null
+          })),
+          prefer: "resolution=merge-duplicates,return=minimal"
+        }).catch(() => {
+        });
+      }
+    } catch {
+    }
+  }
+  const byDoc = new Map();
+  for (const link of links) {
+    if (!link.document_id) continue;
+    if (!byDoc.has(link.document_id)) byDoc.set(link.document_id, []);
+    byDoc.get(link.document_id).push(link);
+  }
+  for (const [testDocId, docLinks] of byDoc.entries()) {
+    let items;
+    try {
+      items = await supabaseRest("v4_items", {
+        select: "id,item_number,stem,metadata",
+        filters: { document_id: `eq.${testDocId}`, order: "item_number.asc" }
+      });
+    } catch { continue; }
+    if (!Array.isArray(items) || items.length === 0) continue;
+    const akText = docLinks.filter((l) => l.resource_type === "answer-key").map((l) => l.content_text ?? "").join("\n");
+    const wkText = docLinks.filter((l) => l.resource_type === "worked-solution").map((l) => l.content_text ?? "").join("\n");
+    const rbText = docLinks.filter((l) => l.resource_type === "rubric").map((l) => l.content_text ?? "").join("\n");
+    const prepTexts = docLinks.filter((l) => l.resource_type === "prep-doc").map((l) => l.content_text ?? "").filter((t) => String(t).trim().length > 0);
+    console.log("prepTexts length:", prepTexts.length);
+    console.log("prepTexts preview:", prepTexts.map((text, index) => ({
+      index,
+      preview: String(text).replace(/\s+/g, " ").trim().slice(0, 120)
+    })));
+    const akByItem = washParseAnswerKey(akText);
+    const wkByItem = washParseWorkedSolutions(wkText);
+    const rbByItem = washParseRubric(rbText);
+    const testItems = items.map((row) => {
+      const meta = row.metadata ?? {};
+      return {
+        itemNumber: row.item_number,
+        stem: typeof row.stem === "string" ? row.stem : "",
+        concepts: Array.isArray(meta.concepts) ? meta.concepts : [],
+        representations: Array.isArray(meta.representations) ? meta.representations : [],
+        bloomLevel: meta.base?.bloomLevel ?? meta.bloomLevel ?? 2
+      };
+    });
+    const allTestConcepts = [...new Set(testItems.flatMap((i) => i.concepts ?? []))];
+    const prepCoverageMap = prepTexts.length > 0 && allTestConcepts.length > 0 ? washExtractPrepCoverage(prepTexts, allTestConcepts) : null;
+    const conceptPrepByItem = prepCoverageMap ? washAlignPrepToTest(prepCoverageMap, testItems) : {};
+    const hasConceptPrepCoverage = Boolean(
+      prepCoverageMap &&
+      Array.isArray(prepCoverageMap.conceptsTaught) &&
+      prepCoverageMap.conceptsTaught.length > 0 &&
+      Object.values(conceptPrepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0)
+    );
+    const prepByItem = hasConceptPrepCoverage ? conceptPrepByItem : prepTexts.length > 0 ? washBuildFallbackPrepByItem(prepTexts, testItems) : {};
+    const hasAnyPrepCoverage = prepTexts.length > 0 && Object.keys(prepByItem).length > 0;
+    for (const item of items) {
+      const n = item.item_number;
+      const existingMeta = item.metadata ?? {};
+      const base = existingMeta.base ?? washBuildBaseFromMetadata(existingMeta);
+      const akLayer = akByItem[n] ? washAnswerKeyLayer(akByItem[n], base) : null;
+      const wkLayer = wkByItem[n]?.length ? washWorkedLayer(wkByItem[n], base) : null;
+      const rbLayer = rbByItem[n] ? washRubricLayer(rbByItem[n], base) : null;
+      const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
+      const prepAlignment = hasAnyPrepCoverage ? prepByItem[n] ?? null : null;
+      const prepDelta = prepAlignment && !prepAlignment.inferredOnly ? washComputePrepDeltas(prepAlignment) : null;
+      const prepLayer = prepAlignment ? {
+        strength: prepAlignment.strength,
+        conceptMatch: prepAlignment.conceptMatch,
+        bloomAlignment: prepAlignment.bloomAlignment,
+        representationAlignment: prepAlignment.representationAlignment,
+        stepAlignment: prepAlignment.stepAlignment,
+        coveredConcepts: prepAlignment.coveredConcepts,
+        evidence: prepAlignment.evidence,
+        inferredOnly: prepAlignment.inferredOnly === true,
+        difficultyAdjustment: prepDelta?.difficultyAdjustment ?? 0,
+        confusionAdjustment: prepDelta?.confusionAdjustment ?? 0,
+        timeMultiplier: prepDelta?.timeMultiplier ?? 0,
+        bloomAdjustment: prepDelta?.bloomAdjustment ?? 0
+      } : null;
+      const mergedFinalTraits = prepDelta ? washMergePrepIntoFinal(finalTraits, prepDelta) : finalTraits;
+      const updatedMeta = { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, prep: prepLayer, final: mergedFinalTraits };
+      await supabaseRest("v4_items", {
+        method: "PATCH",
+        filters: { id: `eq.${item.id}` },
+        body: { metadata: updatedMeta, updated_at: new Date().toISOString() },
+        prefer: "return=minimal"
+      }).catch(() => {});
+    }
+  }
+}
+// --- End washover pipeline ---
+async function replaceDocumentResourceLinksStore(sessionId, resourceLinks) {
+  if (!canUseSupabase()) {
+    const existing = getDocumentSession(sessionId);
+    if (!existing) {
+      return;
+    }
+    upsertDocumentSession({
+      ...existing,
+      resourceLinks,
+      createdAt: existing.createdAt
+    });
+    return;
+  }
+  try {
+    await supabaseRest("v4_document_resource_links", {
+      method: "DELETE",
+      filters: { session_id: `eq.${sessionId}` },
+      prefer: "return=minimal"
+    });
+  } catch (error) {
+    if (!isDocumentResourceLinksSchemaError(error)) {
+      throw error;
+    }
+    return;
+  }
+  if (resourceLinks.length === 0) {
+    return;
+  }
+]633;E;echo;74cacb8f-840a-42d3-a639-627be55fc4c9]633;C
+===== FILE: src/prism-v4/segmentation/detectMultipleChoice.ts =====
+import { extractOptionsFromText } from "./optionParsing";
+
+export function detectMultipleChoice(text: string): boolean {
+  const labels = new Set<string>();
+
+  for (const parsed of extractOptionsFromText(text)) {
+    labels.add(parsed.label);
+  }
+
+  return labels.size >= 3;
+}
+===== FILE: src/prism-v4/segmentation/extractDistractors.ts =====
+import { extractOptionsFromText, optionDedupeKey } from "./optionParsing";
+
+export function extractDistractors(text: string): Array<{ label: string; text: string }> {
+  const seen = new Set<string>();
+  const options: Array<{ label: string; text: string }> = [];
+
+  for (const parsed of extractOptionsFromText(text)) {
+    const key = optionDedupeKey(parsed);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    options.push({ label: parsed.label, text: parsed.text });
+  }
+
+  return options;
+}
+===== FILE: src/prism-v4/segmentation/optionParsing.ts =====
+const OPTION_LINE_RE = /^\s*\(?([A-Ea-e])\)?[\.)](?:\s+|$)(.+)$/;
+const OPTION_TOKEN_RE = /(^|\s)\(?([A-Ea-e])\)?[\.)]\s*/g;
+
+export type ParsedOptionLine = {
+  label: string;
+  text: string;
+};
+
+function normalizeText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+export function parseOptionLine(line: string): ParsedOptionLine | null {
+  const match = line.match(OPTION_LINE_RE);
+  if (!match?.[1] || !match[2]) {
+    return null;
+  }
+
+  const label = match[1].toUpperCase();
+  const text = normalizeText(match[2]);
+  if (!text) {
+    return null;
+  }
+
+  return { label, text };
+}
+
+export function optionDedupeKey(option: ParsedOptionLine): string {
+  return `${option.label}::${normalizeText(option.text).toLowerCase()}`;
+}
+
+export function extractOptionsFromLine(line: string): ParsedOptionLine[] {
+  const normalizedLine = normalizeText(line);
+  if (!normalizedLine) {
+    return [];
+  }
+
+  const matches: Array<{ label: string; index: number; contentStart: number }> = [];
+  for (const match of normalizedLine.matchAll(OPTION_TOKEN_RE)) {
+    const raw = match[0] ?? "";
+    const label = match[2]?.toUpperCase();
+    const index = match.index ?? -1;
+    if (!label || index < 0) {
+      continue;
+    }
+    const contentStart = index + raw.length;
+    matches.push({ label, index, contentStart });
+  }
+
+  if (matches.length === 0) {
+    return [];
+  }
+
+  const options: ParsedOptionLine[] = [];
+  for (let i = 0; i < matches.length; i += 1) {
+    const current = matches[i];
+    if (!current) {
+      continue;
+    }
+    const next = matches[i + 1];
+    const end = next ? next.index : normalizedLine.length;
+    const text = normalizeText(normalizedLine.slice(current.contentStart, end));
+    if (!text) {
+      continue;
+    }
+    options.push({ label: current.label, text });
+  }
+
+  return options;
+}
+
+export function extractOptionsFromText(text: string): ParsedOptionLine[] {
+  return text
+    .split(/\r?\n/)
+    .flatMap((line) => extractOptionsFromLine(line));
+}
+
+===== FILE: src/prism-v4/segmentation/buildItemTree.test.ts =====
+import { describe, expect, it } from "vitest";
+
+import type { SimulationItem } from "../schema/SimulationItem";
+import { buildItemTree } from "./buildItemTree";
+
+function makeParentItem(text: string): SimulationItem {
+  return {
+    itemNumber: 4,
+    text,
+    linguisticLoad: 0.82,
+    avgVocabLevel: 2.8,
+    avgWordLength: 6.4,
+    vocabCounts: { level1: 2, level2: 9, level3: 14 },
+    misconceptionRisk: 0.7,
+    distractorDensity: 0.3,
+    steps: 5,
+    wordCount: 81,
+    timeToProcessSeconds: 120,
+    confusionScore: 0.88,
+    bloomsLevel: 5,
+    bloomsLabel: "Evaluate",
+    sentenceCount: 5,
+    avgSentenceLength: 16,
+    symbolDensity: 0.05,
+    branchingFactor: 0,
+    scaffoldLevel: 0,
+    ambiguityScore: 0,
+    planningLoad: 0,
+    writingMode: "Explain",
+    expectedResponseLength: 2,
+    conceptDensity: 0,
+    reasoningSteps: 3,
+    subQuestionCount: 0,
+    isMultiPartItem: false,
+    isMultipleChoice: false,
+    distractorCount: 0,
+    logicalNumber: 4,
+    logicalLabel: "4",
+  };
+}
+
+describe("buildItemTree multiparts", () => {
+  it("detects parent item correctly", () => {
+    const parentText = "1. Analyze the data and explain your reasoning.";
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(false);
+    expect(tree.item.isMultipleChoice).toBe(false);
+  });
+
+  it("detects multi-part sub-items correctly", () => {
+    const parentText = [
+      "3. Answer the following parts.",
+      "a) Identify the independent variable.",
+      "b) Describe the dependent variable.",
+    ].join("\n");
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    expect(tree.subItems?.length).toBe(2);
+  });
+
+  it("drops empty sub-items", () => {
+    const parentText = [
+      "3. Answer the following.",
+      "a) Identify the variable.",
+      "e)",  // empty — should be dropped
+      "f) Explain the consequence.",
+    ].join("\n");
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    // empty sub-item 'e)' with no text should not appear as a meaningful sub-item
+    const subItems = tree.subItems ?? [];
+    subItems.forEach((sub) => {
+      expect(sub.text.trim().length).toBeGreaterThan(0);
+    });
+    expect(subItems.map((sub) => sub.logicalLabel)).toEqual(["3a", "3f"]);
+  });
+
+  it("handles continuation lines appended to sub-item text", () => {
+    const parentText = [
+      "2. Evaluate the following scenario.",
+      "a) Determine whether the hypothesis is supported by the evidence presented in the study.",
+      "This line continues the previous sub-item thought.",
+    ].join("\n");
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    const first = tree.subItems?.[0];
+    expect(first).toBeDefined();
+    // sub-item text must be non-trivially sized (continuation was absorbed or root still present)
+    expect((first?.text.length ?? 0)).toBeGreaterThan(10);
+  });
+
+  it("blank lines between sub-items do not create phantom entries", () => {
+    const parentText = [
+      "5. Interpret the graph.",
+      "a) Identify the trend in the data.",
+      "",
+      "b) Explain a possible cause for the trend.",
+    ].join("\n");
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    expect(tree.subItems?.length).toBe(2);
+  });
+
+  it("attaches sub-subparts (Type I / Consequence pattern) to the correct sub-item", () => {
+    const parentText = [
+      "6. Answer both parts of the following.",
+      "a) Identify the main claim.",
+      "b) Evaluate the evidence provided below.",
+      "Type I Describe the first type of evidence.",
+      "Consequence Explain the consequence of this evidence.",
+      "Type II Describe the second type of evidence.",
+      "Consequence Explain the second consequence.",
+    ].join("\n");
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    const subItems = tree.subItems ?? [];
+    // Should have at least 2 sub-items (a and b)
+    expect(subItems.length).toBeGreaterThanOrEqual(2);
+    // The sub-item that contained the Type I / Consequence blocks should
+    // carry sub-subpart data on its nested structure.
+    const hasNestedMeta = subItems.some(
+      (si) => Array.isArray((si as { subSubParts?: unknown }).subSubParts)
+        && ((si as { subSubParts?: unknown[] }).subSubParts!.length > 0)
+    );
+    expect(hasNestedMeta).toBe(true);
+  });
+
+  it("computes sub-item metrics from child text instead of inheriting parent metrics", () => {
+    const parentText = [
+      "Create a full analysis based on the scenario and answer parts a-h.",
+      "a) State the null hypothesis.",
+      "b) Find the p-value using your calculator.",
+      "c) Evaluate whether the evidence supports the claim.",
+    ].join("\n");
+
+    const tree = buildItemTree(makeParentItem(parentText));
+    expect(tree.item.isMultiPartItem).toBe(true);
+    expect(tree.subItems).toBeDefined();
+    expect(tree.subItems?.length).toBe(3);
+
+    const subItems = tree.subItems ?? [];
+
+    // Child word counts should be local-sized and not inherited from parent.
+    subItems.forEach((sub) => {
+      expect(sub.wordCount).toBeLessThan(30);
+      expect(sub.wordCount).not.toBe(tree.item.wordCount);
+    });
+
+    // Bloom's should be computed per child text, not copied from parent.
+    const allMatchParentBloom = subItems.every((sub) => sub.bloomsLevel === tree.item.bloomsLevel);
+    expect(allMatchParentBloom).toBe(false);
+
+    const distinctBlooms = new Set(subItems.map((sub) => sub.bloomsLevel));
+    expect(distinctBlooms.size).toBeGreaterThan(1);
+
+    // Confusion and linguistic load should vary across different child prompts.
+    const distinctConfusion = new Set(subItems.map((sub) => sub.confusionScore.toFixed(4)));
+    const distinctLinguistic = new Set(subItems.map((sub) => sub.linguisticLoad.toFixed(4)));
+    expect(distinctConfusion.size).toBeGreaterThan(1);
+    expect(distinctLinguistic.size).toBeGreaterThan(1);
+  });
+
+  it("preserves stable multipart ids and logical labels instead of reindexing letters", () => {
+    const parentText = [
+      "1. Complete all parts.",
+      "a) Identify the trend.",
+      "b) Explain the trend.",
+      "e)",
+      "f) Justify your conclusion.",
+    ].join("\n");
+
+    const tree = buildItemTree(makeParentItem(parentText));
+    const subItems = tree.subItems ?? [];
+
+    expect(subItems.map((sub) => sub.itemId)).toEqual(["item-1a", "item-1b", "item-1f"]);
+    expect(subItems.map((sub) => sub.logicalLabel)).toEqual(["1a", "1b", "1f"]);
+    expect(subItems.map((sub) => sub.partIndex)).toEqual([1, 2, 6]);
+  });
+});

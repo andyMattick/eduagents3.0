@@ -35,7 +35,7 @@ export interface SegmentedItem {
 // ─── Regex patterns ────────────────────────────────────────────────────────────
 
 const PARENT_ITEM_RE = /^([0-9]+)\./;
-const SUB_ITEM_RE = /^\(?([a-zA-Z])\)?[.)]/;
+const SUB_ITEM_RE = /^([a-zA-Z])\)/;
 
 /**
  * Sub-subpart patterns checked in priority order.
@@ -211,4 +211,22 @@ export function segmentLines(lines: string[]): SegmentedItem[] {
  */
 export function segmentText(text: string): SegmentedItem[] {
   return segmentLines(text.split(/\r?\n/));
+}
+
+/**
+ * Deterministic debug helper for validating parent/sub-item boundaries.
+ */
+export function validateSegmentation(items: SegmentedItem[]): void {
+  // eslint-disable-next-line no-console
+  console.log("=== SEGMENTATION VALIDATOR ===");
+  for (const item of items) {
+    // eslint-disable-next-line no-console
+    console.log(`Item ${item.id || "(unlabeled)"}`);
+    // eslint-disable-next-line no-console
+    console.log(`  Parent: ${item.stem}`);
+    for (const sub of item.subItems) {
+      // eslint-disable-next-line no-console
+      console.log(`  ${sub.letter}) ${sub.text}`);
+    }
+  }
 }

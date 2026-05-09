@@ -142,12 +142,12 @@ function buildCanonicalItems(document: CanonicalDocument): CanonicalItem[] {
 		return [];
 	}
 
-	const segmented = segmentText(lines.join("\n"));
-	if (segmented.length === 0) {
+	const segmentedItems = segmentLinesByParent(lines);
+	if (segmentedItems.length === 0) {
 		return [];
 	}
 
-	return segmented.map((item, index) => {
+	return segmentedItems.map((item, index) => {
 		const numericId = item.id && item.id.trim().length > 0 ? item.id.trim() : String(index + 1);
 		const itemId = `item-${numericId}`;
 		const subItems = item.subItems.map((sub) => {
@@ -175,6 +175,45 @@ function buildCanonicalItems(document: CanonicalDocument): CanonicalItem[] {
 			subItems,
 		};
 	});
+}
+
+function segmentLinesByParent(lines: string[]) {
+	const items = [] as ReturnType<typeof segmentText>;
+	let currentBlock: string[] = [];
+	let hasActiveParent = false;
+
+	const flushCurrentBlock = () => {
+		if (currentBlock.length === 0) {
+			return;
+		}
+
+		const segmented = segmentText(currentBlock.join("\n"));
+		if (segmented.length > 0) {
+			items.push(segmented[0]);
+		}
+
+		currentBlock = [];
+	};
+
+	for (const line of lines) {
+		if (/^[0-9]+\./.test(line)) {
+			if (hasActiveParent) {
+				flushCurrentBlock();
+			}
+			hasActiveParent = true;
+			currentBlock.push(line);
+			continue;
+		}
+
+		if (hasActiveParent) {
+			currentBlock.push(line);
+		}
+	}
+
+	if (hasActiveParent) {
+		flushCurrentBlock();
+	}
+	return items;
 }
 
 type SessionRow = {

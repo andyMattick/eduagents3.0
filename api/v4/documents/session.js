@@ -9771,6 +9771,38 @@ function normalizeResourceDocumentText(rawText) {
   }
   return cleaned.join("\n").replace(/\n{3,}/g, "\n\n").replace(/[ \t]{2,}/g, " ").trim();
 }
+function extractRawResourceDocumentText(document) {
+  const sections = [];
+  const nodes = document?.canonical_document?.nodes;
+  if (Array.isArray(nodes) && nodes.length > 0) {
+    const nodeText = nodes.map((node) => node?.normalizedText ?? node?.text ?? "").filter(Boolean).join("\n");
+    if (nodeText.trim().length > 0) {
+      sections.push(nodeText);
+    }
+  }
+  if (typeof document?.azure_extract?.content === "string" && document.azure_extract.content.trim().length > 0) {
+    sections.push(document.azure_extract.content);
+  }
+  const paragraphs = document?.azure_extract?.paragraphs;
+  if (Array.isArray(paragraphs) && paragraphs.length > 0) {
+    const paragraphText = paragraphs.map((paragraph) => paragraph?.text ?? "").filter(Boolean).join("\n\n");
+    if (paragraphText.trim().length > 0) {
+      sections.push(paragraphText);
+    }
+  }
+  const pages = document?.azure_extract?.pages;
+  if (Array.isArray(pages) && pages.length > 0) {
+    const pageText = pages.map((page) => page?.text ?? "").filter(Boolean).join("\n\n");
+    if (pageText.trim().length > 0) {
+      sections.push(pageText);
+    }
+  }
+  const tableText = flattenAzureTables(document?.azure_extract);
+  if (tableText.trim().length > 0) {
+    sections.push(tableText);
+  }
+  return sections.join("\n\n").replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").trim();
+}
 function extractResourceDocumentText(document) {
   const nodes = document?.canonical_document?.nodes;
   if (Array.isArray(nodes) && nodes.length > 0) {
@@ -9806,6 +9838,18 @@ function extractResourceDocumentText(document) {
   }
   return "";
 }
+function resolveResourceContentText(document, resourceType) {
+  if (!document) {
+    return "";
+  }
+  if (resourceType === "prep-doc") {
+    const rawText = extractRawResourceDocumentText(document);
+    if (rawText.trim().length > 0) {
+      return rawText;
+    }
+  }
+  return extractResourceDocumentText(document);
+}
 async function withResourceContentText(resourceLinks) {
   const resourceIds = Array.from(new Set(resourceLinks.map((link) => link.resourceDocumentId).filter((id) => typeof id === "string" && id.trim().length > 0)));
   if (resourceIds.length === 0) {
@@ -9816,13 +9860,16 @@ async function withResourceContentText(resourceLinks) {
     select: "document_id,canonical_document,azure_extract",
     filters: { document_id: `in.(${escapedIds})` }
   });
-  const contentByDocumentId = /* @__PURE__ */ new Map();
+  const documentById = /* @__PURE__ */ new Map();
   for (const document of documents ?? []) {
-    contentByDocumentId.set(document.document_id, extractResourceDocumentText(document));
+    if (typeof document?.document_id !== "string") {
+      continue;
+    }
+    documentById.set(document.document_id, document);
   }
   return resourceLinks.map((link) => ({
     ...link,
-    contentText: contentByDocumentId.get(link.resourceDocumentId) ?? link.contentText
+    contentText: resolveResourceContentText(documentById.get(link.resourceDocumentId), link.resourceType) || link.contentText
   }));
 }
 function fromDocumentRow(row) {
@@ -10340,9 +10387,19 @@ async function applyWashoverToItems(sessionId) {
         filters: { document_id: `in.(${escapedIds})` }
       });
       const contentByResourceId = /* @__PURE__ */ new Map();
+      const preferredTypeByResourceId = /* @__PURE__ */ new Map();
+      for (const link of links) {
+        if (typeof link?.resource_document_id !== "string" || typeof link?.resource_type !== "string") {
+          continue;
+        }
+        if (!preferredTypeByResourceId.has(link.resource_document_id)) {
+          preferredTypeByResourceId.set(link.resource_document_id, link.resource_type);
+        }
+      }
       for (const doc of resourceDocs ?? []) {
         if (typeof doc?.document_id !== "string") continue;
-        const text = extractResourceDocumentText(doc);
+        const resourceType = preferredTypeByResourceId.get(doc.document_id);
+        const text = resolveResourceContentText(doc, resourceType);
         if (text.trim().length > 0) {
           contentByResourceId.set(doc.document_id, text);
         }
@@ -10488,11 +10545,11 @@ async function replaceDocumentResourceLinksStore(sessionId, resourceLinks) {
   if (resourceLinks.length === 0) {
     return;
   }
-  let linksWithContent = resourceLinks;
-  try {
-    linksWithContent = await withResourceContentText(resourceLinks);
-  } catch {
-    linksWithContent = resourceLinks;
+  const linksWithContent = await withResourceContentText(resourceLinks);
+  const missingPrepDocContent = linksWithContent.filter((link) => link.resourceType === "prep-doc" && (typeof link.contentText !== "string" || link.contentText.trim().length === 0));
+  if (missingPrepDocContent.length > 0) {
+    const missingIds = missingPrepDocContent.map((link) => link.resourceDocumentId).filter((id, index, all) => all.indexOf(id) === index);
+    throw new Error(`Missing prep-doc content_text at ingestion for resource_document_id(s): ${missingIds.join(",")}`);
   }
   try {
     await supabaseRest("v4_document_resource_links", {
