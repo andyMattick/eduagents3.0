@@ -12986,7 +12986,15 @@ async function handler(req, res) {
       return res.status(404).json({ error: "Document not found" });
     }
     let analyzedDocument = analysisTarget.analyzedDocument;
-    if (!analyzedDocument) {
+    const forceReanalyze = payload.forceReanalyze !== false;
+    const hasLLMStructuredItems = Array.isArray(analyzedDocument?.document?.items) && analyzedDocument.document.items.length > 0 && analyzedDocument.document.items.some((item) => Array.isArray(item.subItems));
+    const shouldReanalyze = forceReanalyze || !analyzedDocument || !hasLLMStructuredItems;
+    if (shouldReanalyze) {
+      if (analyzedDocument && !hasLLMStructuredItems) {
+        console.log(`[documents/analyze] refreshing legacy analysis for document=${payload.documentId} because canonical LLM items are missing`);
+      } else if (forceReanalyze && analyzedDocument) {
+        console.log(`[documents/analyze] forceReanalyze enabled for document=${payload.documentId}`);
+      }
       analyzedDocument = await analyzeRegisteredDocument({
         documentId: analysisTarget.registeredDocument.documentId,
         sourceFileName: analysisTarget.registeredDocument.sourceFileName,
