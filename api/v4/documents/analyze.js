@@ -12952,18 +12952,25 @@ function validateAzureOpenAIConfig() {
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
   const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
+  const present = {
+    apiKey: Boolean(String(apiKey ?? "").trim()),
+    endpoint: Boolean(String(endpoint ?? "").trim()),
+    deployment: Boolean(String(deployment ?? "").trim()),
+    apiVersion: Boolean(String(apiVersion ?? "").trim())
+  };
   const missing = [];
-  if (!apiKey)
+  if (!present.apiKey)
     missing.push("AZURE_OPENAI_API_KEY");
-  if (!endpoint)
+  if (!present.endpoint)
     missing.push("AZURE_OPENAI_ENDPOINT");
-  if (!deployment)
+  if (!present.deployment)
     missing.push("AZURE_OPENAI_DEPLOYMENT");
-  if (!apiVersion)
+  if (!present.apiVersion)
     missing.push("AZURE_OPENAI_API_VERSION");
   return {
     ok: missing.length === 0,
-    missing
+    missing,
+    present
   };
 }
 async function handler(req, res) {
@@ -12974,7 +12981,8 @@ async function handler(req, res) {
     const llmConfig = validateAzureOpenAIConfig();
     if (!llmConfig.ok) {
       return res.status(503).json({
-        error: `LLM segmentation is required before analysis. Missing Azure OpenAI config: ${llmConfig.missing.join(", ")}`
+        error: `LLM segmentation is required before analysis. Missing Azure OpenAI config: ${llmConfig.missing.join(", ")}`,
+        azureOpenAIEnvPresent: llmConfig.present
       });
     }
     const payload = parseBody(req.body ?? {});
