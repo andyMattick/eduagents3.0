@@ -168,6 +168,7 @@ async function buildCanonicalItems(document: CanonicalDocument): Promise<Canonic
 		const blockText = block.lines.join("\n");
 
 		console.log(`[buildCanonicalItems] block ${index + 1}/${blocks.length} — sending to OpenAI:\n"""\n${blockText}\n"""`);
+		console.log("[SEGMENTATION] about to call segmentParentBlockWithLLM");
 
 		const segmented = await segmentParentBlockWithLLM(blockText);
 		console.log(`[buildCanonicalItems] block ${index + 1} — OpenAI response:`, JSON.stringify(segmented));
