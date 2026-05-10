@@ -11544,7 +11544,6 @@ function getAzureOpenAIConfigOrThrow() {
   const apiKey = process.env.AZURE_OPENAI_API_KEY;
   const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
   const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
   const missing = [];
   if (!apiKey)
     missing.push("AZURE_OPENAI_API_KEY");
@@ -11552,12 +11551,10 @@ function getAzureOpenAIConfigOrThrow() {
     missing.push("AZURE_OPENAI_ENDPOINT");
   if (!deployment)
     missing.push("AZURE_OPENAI_DEPLOYMENT");
-  if (!apiVersion)
-    missing.push("AZURE_OPENAI_API_VERSION");
   if (missing.length > 0) {
     throw new Error(`Azure OpenAI segmentation configuration missing: ${missing.join(", ")}`);
   }
-  return { apiKey, endpoint, deployment, apiVersion };
+  return { apiKey, endpoint, deployment };
 }
 var SEGMENTATION_PROMPT = `You are a structure extractor.
 
@@ -11576,8 +11573,9 @@ Return ONLY valid JSON, no commentary.`;
 async function segmentParentBlockWithLLM(blockText) {
   const cfg = getAzureOpenAIConfigOrThrow();
   const base = cfg.endpoint.replace(/\/+$/, "");
-  const url = `${base}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+  const url = `${base}/openai/v1/chat/completions`;
   const body = JSON.stringify({
+    model: cfg.deployment,
     messages: [
       { role: "system", content: SEGMENTATION_PROMPT },
       { role: "user", content: `Text:\n"""\n${blockText}\n"""` }
