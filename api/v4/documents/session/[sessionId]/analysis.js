@@ -9460,7 +9460,7 @@ function mapAzureToCanonical(normalized, fileName) {
   };
 }
 function normalizeEndpoint(raw) {
-  let s = raw.trim().replace(/\.{2,}/g, "").replace(/^https:\/(?!\/)/, "https://").replace(/\/+$/, "");
+  let s = raw.trim().replace(/\.{2,}/g, "").replace(/\/openai\/?$/i, "").replace(/^https:\/(?!\/)/, "https://").replace(/\/+$/, "");
   if (!/^https?:\/\//.test(s)) {
     s = `https://${s}`;
   }

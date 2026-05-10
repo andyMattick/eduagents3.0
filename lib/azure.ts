@@ -16,6 +16,7 @@ function normalizeEndpoint(raw: string): string {
   let s = raw
     .trim()
     .replace(/\.{2,}/g, "")            // kill stray dots (e.g. "...https://")
+    .replace(/\/openai\/?$/i, "")     // tolerate an Azure OpenAI endpoint accidentally reused here
     .replace(/^https:\/(?!\/)/, "https://") // fix single-slash scheme
     .replace(/\/+$/, "");               // strip trailing slashes
 
