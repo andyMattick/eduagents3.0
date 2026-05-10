@@ -11638,6 +11638,7 @@ async function buildCanonicalItemsWithLLM(document) {
   for (let index = 0; index < blocks.length; index++) {
     const block = blocks[index];
     const blockText = block.lines.join("\n");
+    console.log("[SEGMENTATION] about to call segmentParentBlockWithLLM");
     const segmented = await segmentParentBlockWithLLM(blockText);
     const numericId = block.idGuess || String(index + 1);
     const itemId = `item-${numericId}`;
