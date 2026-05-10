@@ -84,7 +84,7 @@ describe("End-to-end simulation pipeline", () => {
 
     const simulationId = runRes.body.simulationId as string;
     const studentId = createRes.body.students[0].id as string;
-
+//test
     const studentView = createResponse();
     await simulationDetailHandler({
       method: "GET",
