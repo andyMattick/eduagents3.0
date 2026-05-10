@@ -13,7 +13,6 @@ type AzureOpenAIConfig = {
 	apiKey: string;
 	endpoint: string;
 	deployment: string;
-	apiVersion: string;
 };
 
 const SEGMENTATION_PROMPT = `You are a structure extractor.
@@ -41,15 +40,11 @@ function getAzureOpenAIConfig(): AzureOpenAIConfig {
 	const deployment =
 		import.meta.env?.VITE_AZURE_OPENAI_DEPLOYMENT
 		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_DEPLOYMENT : undefined);
-	const apiVersion =
-		import.meta.env?.VITE_AZURE_OPENAI_API_VERSION
-		?? (typeof process !== "undefined" ? process.env.AZURE_OPENAI_API_VERSION : undefined);
 
 	const missing = [
 		!apiKey ? "AZURE_OPENAI_API_KEY" : null,
 		!endpoint ? "AZURE_OPENAI_ENDPOINT" : null,
 		!deployment ? "AZURE_OPENAI_DEPLOYMENT" : null,
-		!apiVersion ? "AZURE_OPENAI_API_VERSION" : null,
 	].filter(Boolean);
 
 	if (missing.length > 0) {
@@ -58,17 +53,38 @@ function getAzureOpenAIConfig(): AzureOpenAIConfig {
 
 	return {
 		apiKey: apiKey as string,
-		endpoint: endpoint as string,
-		deployment: deployment as string,
-		apiVersion: apiVersion as string,
+		endpoint: String(endpoint).trim().replace(/\/+$/, ""),
+		deployment: String(deployment).trim(),
 	};
+}
+
+async function requestSegmentationWithV1Api(
+	config: AzureOpenAIConfig,
+	body: string,
+): Promise<Response> {
+	const parsed = JSON.parse(body) as {
+		messages: Array<{ role: string; content: string }>;
+		response_format?: { type: string };
+		temperature?: number;
+	};
+
+	return fetch(`${config.endpoint}/openai/v1/chat/completions`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"api-key": config.apiKey,
+		},
+		body: JSON.stringify({
+			model: config.deployment,
+			messages: parsed.messages,
+			response_format: parsed.response_format,
+			temperature: parsed.temperature,
+		}),
+	});
 }
 
 export async function segmentParentBlockWithLLM(blockText: string): Promise<SegmentedParent> {
 	const config = getAzureOpenAIConfig();
-	const base = config.endpoint.replace(/\/+$/, "");
-	const url = `${base}/openai/deployments/${encodeURIComponent(config.deployment)}/chat/completions?api-version=${encodeURIComponent(config.apiVersion)}`;
-
 	const body = JSON.stringify({
 		messages: [
 			{ role: "system", content: SEGMENTATION_PROMPT },
@@ -78,14 +94,12 @@ export async function segmentParentBlockWithLLM(blockText: string): Promise<Segm
 		temperature: 0,
 	});
 
-	const response = await fetch(url, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"api-key": config.apiKey,
-		},
-		body,
-	});
+	console.log("[SEGMENTATION] endpoint:", config.endpoint);
+	console.log("[SEGMENTATION] model:", config.deployment);
+	console.log("[SEGMENTATION] url:", `${config.endpoint}/openai/v1/chat/completions`);
+	console.log("[SEGMENTATION] block preview:", blockText.slice(0, 200));
+
+	const response = await requestSegmentationWithV1Api(config, body);
 
 	if (!response.ok) {
 		const errText = await response.text().catch(() => "(no body)");
