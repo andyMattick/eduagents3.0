@@ -11513,9 +11513,21 @@ Rules:
 
 Return ONLY valid JSON, no commentary.`;
 async function segmentParentBlockWithLLM(blockText) {
+  console.log("[SEGMENTATION] entering segmentParentBlockWithLLM");
   const cfg = getAzureOpenAIConfigOrThrow();
   const base = cfg.endpoint.replace(/\/+$/, "");
   const url = `${base}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion)}`;
+  console.log("[SEGMENTATION] config present:", {
+    apiKey: Boolean(String(cfg.apiKey ?? "").trim()),
+    endpoint: Boolean(String(cfg.endpoint ?? "").trim()),
+    deployment: Boolean(String(cfg.deployment ?? "").trim()),
+    apiVersion: Boolean(String(cfg.apiVersion ?? "").trim())
+  });
+  console.log("[SEGMENTATION] endpoint:", base);
+  console.log("[SEGMENTATION] deployment:", cfg.deployment);
+  console.log("[SEGMENTATION] apiVersion:", cfg.apiVersion);
+  console.log("[SEGMENTATION] url:", url);
+  console.log("[SEGMENTATION] block preview:", blockText.slice(0, 200));
   const body = JSON.stringify({
     messages: [
       { role: "system", content: SEGMENTATION_PROMPT },
@@ -11524,6 +11536,7 @@ async function segmentParentBlockWithLLM(blockText) {
     response_format: { type: "json_object" },
     temperature: 0
   });
+  console.log("[SEGMENTATION] dispatching Azure OpenAI request");
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -11532,8 +11545,10 @@ async function segmentParentBlockWithLLM(blockText) {
     },
     body
   });
+  console.log("[SEGMENTATION] response status:", response.status, response.statusText);
   if (!response.ok) {
     const errText = await response.text().catch(() => "(no body)");
+    console.log("[SEGMENTATION] response body:", errText);
     throw new Error(`Azure OpenAI segmentation request failed: ${response.status} ${errText}`);
   }
   const data = await response.json();
@@ -12979,6 +12994,7 @@ async function handler(req, res) {
   }
   try {
     const llmConfig = validateAzureOpenAIConfig();
+    console.log("[documents/analyze] Azure OpenAI env present:", llmConfig.present);
     if (!llmConfig.ok) {
       return res.status(503).json({
         error: `LLM segmentation is required before analysis. Missing Azure OpenAI config: ${llmConfig.missing.join(", ")}`,
