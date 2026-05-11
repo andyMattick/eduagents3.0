@@ -161,6 +161,7 @@ export function DocumentUpload() {
   const [answerKeyFiles, setAnswerKeyFiles] = useState<File[]>([]);
   const [workedSolutionFiles, setWorkedSolutionFiles] = useState<File[]>([]);
   const [rubricFiles, setRubricFiles] = useState<File[]>([]);
+  const [prepDocFiles, setPrepDocFiles] = useState<File[]>([]);
   const [uploadInputKey, setUploadInputKey] = useState(0);
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [primaryDocumentId, setPrimaryDocumentId] = useState<string | null>(null);
@@ -203,7 +204,7 @@ export function DocumentUpload() {
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles];
+    const allUploadFiles = [...selectedFiles, ...answerKeyFiles, ...workedSolutionFiles, ...rubricFiles, ...prepDocFiles];
 
     const uploadAttemptKey = allUploadFiles
       .map((file) => `${file.name}:${file.size}:${file.lastModified}`)
@@ -241,7 +242,7 @@ export function DocumentUpload() {
     logUploadTrace("upload started", { uploadAttemptKey, selectedFileCount: allUploadFiles.length });
 
     try {
-      const nextWorkspace = await createSessionFromFiles(selectedFiles, { answerKeyFiles, workedSolutionFiles, rubricFiles });
+      const nextWorkspace = await createSessionFromFiles(selectedFiles, { answerKeyFiles, workedSolutionFiles, rubricFiles, prepDocFiles });
       if (!nextWorkspace) {
         warnUploadGuard("upload:no-workspace-returned", { selectedFileCount: allUploadFiles.length });
         return;
@@ -379,11 +380,17 @@ export function DocumentUpload() {
     setError(null);
   }
 
+  function handlePrepDocFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setPrepDocFiles(Array.from(event.target.files ?? []));
+    setError(null);
+  }
+
   function resetSession() {
     setSelectedFiles([]);
     setAnswerKeyFiles([]);
     setWorkedSolutionFiles([]);
     setRubricFiles([]);
+    setPrepDocFiles([]);
     setUploadInputKey((current) => current + 1);
     clearSession();
     setSelectedDocumentIds([]);
@@ -419,7 +426,7 @@ export function DocumentUpload() {
     }
   }
 
-  const totalSelectedFiles = selectedFiles.length + answerKeyFiles.length + workedSolutionFiles.length + rubricFiles.length;
+  const totalSelectedFiles = selectedFiles.length + answerKeyFiles.length + workedSolutionFiles.length + rubricFiles.length + prepDocFiles.length;
   const uploadBlockedReason = getUploadBlockedReason(totalSelectedFiles, isUploading, uploadUsageToday?.remainingPages ?? null);
   const uploadUsagePct = uploadUsageToday && uploadUsageToday.maxPagesPerDay > 0
     ? Math.min(100, Math.round(uploadUsageToday.pagesUploaded / uploadUsageToday.maxPagesPerDay * 100))
@@ -508,6 +515,18 @@ export function DocumentUpload() {
               />
             </label>
 
+            <label className="v4-upload-field" htmlFor="v4-upload-prep-doc">
+              <span>Optional: prep document</span>
+              <input
+                key={`${uploadInputKey}-prep-doc`}
+                id="v4-upload-prep-doc"
+                type="file"
+                multiple
+                accept=".pdf,application/pdf,.doc,.docx,.txt,text/plain"
+                onChange={handlePrepDocFileChange}
+              />
+            </label>
+
             <div className="v4-upload-actions">
               <button className="v4-button" type="submit" disabled={Boolean(uploadBlockedReason)} title={uploadBlockedReason ?? undefined}>
                 {isUploading ? "Creating workspace..." : "Create workspace"}
@@ -528,6 +547,7 @@ export function DocumentUpload() {
                 {answerKeyFiles.map((file) => <li key={`${file.name}-${file.size}-answer`}>[Answer Key] {file.name}</li>)}
                 {workedSolutionFiles.map((file) => <li key={`${file.name}-${file.size}-solution`}>[Worked Solution] {file.name}</li>)}
                 {rubricFiles.map((file) => <li key={`${file.name}-${file.size}-rubric`}>[Rubric] {file.name}</li>)}
+                {prepDocFiles.map((file) => <li key={`${file.name}-${file.size}-prep-doc`}>[Prep Doc] {file.name}</li>)}
               </ul>
             )}
 

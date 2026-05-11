@@ -9936,14 +9936,338 @@ async function listDocumentResourceLinksStore(sessionId) {
 }
 // --- Washover pipeline: apply companion doc overrides to v4_items.metadata layers ---
 function washClamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+function washReadPath(source, path) {
+  if (!source || typeof source !== "object") return void 0;
+  return path.split(".").reduce((current, segment) => current && typeof current === "object" ? current[segment] : void 0, source);
+}
+function washReadString(source, paths) {
+  for (const path of paths) {
+    const value = washReadPath(source, path);
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return void 0;
+}
+function washReadNumber(source, paths) {
+  for (const path of paths) {
+    const value = washReadPath(source, path);
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function washReadBoolean(source, paths) {
+  for (const path of paths) {
+    const value = washReadPath(source, path);
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return void 0;
+}
+function washLetterToPartIndex(letter) {
+  if (typeof letter !== "string" || letter.length === 0) return 0;
+  const normalized = letter.trim().toLowerCase();
+  if (!/^[a-z]$/.test(normalized)) return 0;
+  return normalized.charCodeAt(0) - 96;
+}
+function washPartIndexToSuffix(partIndex) {
+  if (!Number.isFinite(partIndex) || partIndex <= 0) return "";
+  return String.fromCharCode(96 + Math.floor(partIndex));
+}
+function washNormalizeCompanionKey(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().toLowerCase().replace(/\s+/g, "");
+}
+function washSetCompanionEntry(target, key, value) {
+  const normalized = washNormalizeCompanionKey(key);
+  if (!normalized) return;
+  target[normalized] = value;
+}
+function washParseCompanionHeader(line) {
+  const direct = line.match(/^(?:item|problem|question|q)?\s*(\d{1,3})\s*([a-z])?\s*[\).:\-]\s*(.*)$/i);
+  if (direct?.[1]) {
+    return {
+      key: `${direct[1]}${direct[2] ? direct[2].toLowerCase() : ""}`,
+      rest: typeof direct[3] === "string" ? direct[3].trim() : ""
+    };
+  }
+  const spaced = line.match(/^(?:item|problem|question|q)?\s*(\d{1,3})\s*([a-z])\s+(.*)$/i);
+  if (spaced?.[1] && spaced[2]) {
+    return {
+      key: `${spaced[1]}${spaced[2].toLowerCase()}`,
+      rest: typeof spaced[3] === "string" ? spaced[3].trim() : ""
+    };
+  }
+  return null;
+}
+function washDeriveItemStructure(item) {
+  const meta = item?.metadata ?? {};
+  const structure = washReadPath(meta, "phaseB.structure") ?? {};
+  const groupId = washReadString({ meta, structure }, [
+    "structure.groupId",
+    "structure.group_id",
+    "meta.groupId",
+    "meta.group_id",
+    "meta.phaseB.groupId",
+    "meta.phaseB.group_id"
+  ]);
+  const logicalLabel = washReadString({ meta, structure }, [
+    "structure.logicalLabel",
+    "structure.logical_label",
+    "meta.logicalLabel",
+    "meta.logical_label",
+    "meta.phaseB.logicalLabel",
+    "meta.phaseB.logical_label"
+  ]);
+  const partIndexRaw = washReadNumber({ meta, structure }, [
+    "structure.partIndex",
+    "structure.part_index",
+    "meta.partIndex",
+    "meta.part_index",
+    "meta.phaseB.partIndex",
+    "meta.phaseB.part_index"
+  ]);
+  const isParent = washReadBoolean({ meta, structure }, [
+    "structure.isParent",
+    "structure.is_parent",
+    "meta.isParent",
+    "meta.is_parent",
+    "meta.phaseB.isParent",
+    "meta.phaseB.is_parent"
+  ]);
+  const itemNumber = typeof item?.item_number === "number" && Number.isFinite(item.item_number) ? item.item_number : null;
+  const normalizedPartIndex = typeof partIndexRaw === "number" && Number.isFinite(partIndexRaw) ? Math.max(0, Math.floor(partIndexRaw)) : null;
+  if (groupId || logicalLabel || normalizedPartIndex !== null || isParent !== void 0) {
+    const normalizedGroupId = groupId ?? (logicalLabel ? (logicalLabel.match(/^(\d+)/)?.[1] ?? logicalLabel) : itemNumber ? String(itemNumber) : String(item?.id ?? ""));
+    const normalizedLogicalLabel = logicalLabel ?? `${normalizedGroupId}${washPartIndexToSuffix(normalizedPartIndex ?? 0)}`;
+    return {
+      itemNumber,
+      groupId: normalizedGroupId,
+      partIndex: normalizedPartIndex ?? 0,
+      logicalLabel: normalizedLogicalLabel,
+      isParent: isParent ?? ((normalizedPartIndex ?? 0) === 0)
+    };
+  }
+  const stem = typeof item?.stem === "string" ? item.stem.trim() : "";
+  const alphaNumeric = stem.match(/^(\d+)\s*([a-z])[\).:\s]/i);
+  if (alphaNumeric?.[1] && alphaNumeric[2]) {
+    return {
+      itemNumber,
+      groupId: alphaNumeric[1],
+      partIndex: washLetterToPartIndex(alphaNumeric[2]),
+      logicalLabel: `${alphaNumeric[1]}${alphaNumeric[2].toLowerCase()}`,
+      isParent: false
+    };
+  }
+  const numeric = stem.match(/^(\d+)[\).:\s]/);
+  if (numeric?.[1]) {
+    return {
+      itemNumber,
+      groupId: numeric[1],
+      partIndex: 0,
+      logicalLabel: numeric[1],
+      isParent: true
+    };
+  }
+  const fallback = itemNumber ? String(itemNumber) : String(item?.id ?? "");
+  return {
+    itemNumber,
+    groupId: fallback,
+    partIndex: 0,
+    logicalLabel: fallback,
+    isParent: true
+  };
+}
+function washResolveLookupKeys(structure) {
+  const keys = [
+    structure?.logicalLabel,
+    structure?.groupId,
+    structure?.itemNumber
+  ].map((value) => washNormalizeCompanionKey(value)).filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
+  return keys;
+}
+function washLookupCompanionEntry(map, structure) {
+  if (!map) return null;
+  for (const key of washResolveLookupKeys(structure)) {
+    if (Object.prototype.hasOwnProperty.call(map, key)) {
+      return map[key];
+    }
+  }
+  return null;
+}
+function washAverage(values) {
+  const numeric = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (numeric.length === 0) return null;
+  return numeric.reduce((sum, value) => sum + value, 0) / numeric.length;
+}
+function washSum(values) {
+  const numeric = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (numeric.length === 0) return null;
+  return numeric.reduce((sum, value) => sum + value, 0);
+}
+function washMax(values) {
+  const numeric = values.filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (numeric.length === 0) return null;
+  return Math.max(...numeric);
+}
+function washAggregateBase(children, fallbackBase) {
+  if (!Array.isArray(children) || children.length === 0) return fallbackBase ?? null;
+  const aggregate = { ...(fallbackBase ?? {}) };
+  const bloomLevel = washMax(children.map((child) => child?.bloomLevel));
+  const cognitiveLoad = washAverage(children.map((child) => child?.cognitiveLoad));
+  const linguisticLoad = washAverage(children.map((child) => child?.linguisticLoad));
+  const representationLoad = washAverage(children.map((child) => child?.representationLoad));
+  const symbolDensity = washAverage(children.map((child) => child?.symbolDensity));
+  const stepCount = washSum(children.map((child) => child?.stepCount));
+  const vocabularyCount = washSum(children.map((child) => child?.vocabularyCount));
+  const difficultyScore = washAverage(children.map((child) => child?.difficultyScore));
+  const confusionScore = washAverage(children.map((child) => child?.confusionScore));
+  const timeSeconds = washSum(children.map((child) => child?.timeSeconds));
+  const branchingFactor = washMax(children.map((child) => child?.branchingFactor));
+  const errorOpportunityCount = washSum(children.map((child) => child?.errorOpportunityCount));
+  if (bloomLevel !== null) aggregate.bloomLevel = Number(bloomLevel.toFixed(4));
+  if (cognitiveLoad !== null) aggregate.cognitiveLoad = Number(cognitiveLoad.toFixed(4));
+  if (linguisticLoad !== null) aggregate.linguisticLoad = Number(linguisticLoad.toFixed(4));
+  if (representationLoad !== null) aggregate.representationLoad = Number(representationLoad.toFixed(4));
+  if (symbolDensity !== null) aggregate.symbolDensity = Number(symbolDensity.toFixed(4));
+  if (stepCount !== null) aggregate.stepCount = Math.max(1, Math.round(stepCount));
+  if (vocabularyCount !== null) aggregate.vocabularyCount = Math.max(1, Math.round(vocabularyCount));
+  if (difficultyScore !== null) aggregate.difficultyScore = Number(difficultyScore.toFixed(4));
+  if (confusionScore !== null) aggregate.confusionScore = Number(confusionScore.toFixed(4));
+  if (timeSeconds !== null) aggregate.timeSeconds = Number(timeSeconds.toFixed(1));
+  if (branchingFactor !== null) aggregate.branchingFactor = Math.max(1, Math.round(branchingFactor));
+  if (errorOpportunityCount !== null) aggregate.errorOpportunityCount = Math.max(1, Math.round(errorOpportunityCount));
+  aggregate.itemType = aggregate.itemType ?? "multipart";
+  aggregate.distractorStructure = aggregate.distractorStructure ?? "multipart";
+  return aggregate;
+}
+function washAggregateAnswerKey(children, structure) {
+  if (!Array.isArray(children) || children.length === 0) return null;
+  const labeledAnswers = children
+    .filter((child) => child?.layer)
+    .map((child) => `${child.structure?.logicalLabel ?? child.structure?.groupId ?? "item"}: ${child.layer.correctAnswer ?? ""}`.trim())
+    .filter((value) => value.length > 0);
+  return {
+    correctAnswer: labeledAnswers.length > 0 ? labeledAnswers.join(" | ") : `${structure?.groupId ?? "item"}: multipart`,
+    difficultyScore: Number((washAverage(children.map((child) => child?.layer?.difficultyScore)) ?? 0).toFixed(4)),
+    pCorrectAdjustment: Number((washAverage(children.map((child) => child?.layer?.pCorrectAdjustment)) ?? 0).toFixed(4)),
+    misconceptionLikelihood: Number((washMax(children.map((child) => child?.layer?.misconceptionLikelihood)) ?? 0).toFixed(4)),
+    stepCount: Math.max(1, Math.round(washSum(children.map((child) => child?.layer?.stepCount)) ?? children.length))
+  };
+}
+function washAggregateWorked(children) {
+  if (!Array.isArray(children) || children.length === 0) return null;
+  return {
+    reasoningComplexity: Number((washMax(children.map((child) => child?.layer?.reasoningComplexity)) ?? 0).toFixed(4)),
+    cognitiveSteps: Math.max(1, Math.round(washSum(children.map((child) => child?.layer?.cognitiveSteps)) ?? children.length)),
+    stepCount: Math.max(1, Math.round(washSum(children.map((child) => child?.layer?.stepCount)) ?? children.length)),
+    representationLoad: Number((washAverage(children.map((child) => child?.layer?.representationLoad)) ?? 0).toFixed(4)),
+    timeOnTaskAdjustment: Number((washSum(children.map((child) => child?.layer?.timeOnTaskAdjustment)) ?? 0).toFixed(4)),
+    bloomGapAdjustment: Number((washMax(children.map((child) => child?.layer?.bloomGapAdjustment)) ?? 0).toFixed(4)),
+    stepDifficultyCurve: children.flatMap((child) => Array.isArray(child?.layer?.stepDifficultyCurve) ? child.layer.stepDifficultyCurve : []),
+    stepTimeCurve: children.flatMap((child) => Array.isArray(child?.layer?.stepTimeCurve) ? child.layer.stepTimeCurve : []),
+    stepCognitiveLoadCurve: children.flatMap((child) => Array.isArray(child?.layer?.stepCognitiveLoadCurve) ? child.layer.stepCognitiveLoadCurve : []),
+    branchingFactor: Math.max(1, Math.round(washSum(children.map((child) => child?.layer?.branchingFactor)) ?? 1)),
+    errorOpportunityCount: Math.max(1, Math.round(washSum(children.map((child) => child?.layer?.errorOpportunityCount)) ?? 1))
+  };
+}
+function washAggregateRubric(children, fallbackBase) {
+  if (!Array.isArray(children) || children.length === 0) return null;
+  return {
+    rubricDifficulty: Number((washAverage(children.map((child) => child?.layer?.rubricDifficulty)) ?? (fallbackBase?.difficultyScore ?? 0.5)).toFixed(4)),
+    masteryThreshold: Number((washAverage(children.map((child) => child?.layer?.masteryThreshold)) ?? 0.65).toFixed(4)),
+    partialCreditEnabled: children.some((child) => child?.layer?.partialCreditEnabled === true),
+    requiredElementsCount: Math.max(0, Math.round(washSum(children.map((child) => child?.layer?.requiredElementsCount)) ?? 0)),
+    rubricStrictness: Number((washAverage(children.map((child) => child?.layer?.rubricStrictness)) ?? 0).toFixed(4)),
+    rubricTolerance: Number((washAverage(children.map((child) => child?.layer?.rubricTolerance)) ?? 0).toFixed(4)),
+    bloomAlignment: Number((washMax(children.map((child) => child?.layer?.bloomAlignment)) ?? (fallbackBase?.bloomLevel ?? 2)).toFixed(4))
+  };
+}
+function washAggregatePrep(children) {
+  if (!Array.isArray(children) || children.length === 0) return null;
+  const conceptMatch = washAverage(children.map((child) => child?.layer?.conceptMatch)) ?? 0;
+  const coveredConcepts = Array.from(new Set(children.flatMap((child) => Array.isArray(child?.layer?.coveredConcepts) ? child.layer.coveredConcepts : [])));
+  const strength = conceptMatch >= 0.85 ? "strong" : conceptMatch >= 0.5 ? "partial" : conceptMatch > 0 ? "weak" : "none";
+  const bloomAlignment = children.every((child) => child?.layer?.bloomAlignment === "aligned") ? "aligned" : "below";
+  const representationAlignment = children.every((child) => child?.layer?.representationAlignment === "aligned") ? "aligned" : "mismatch";
+  const stepAlignment = children.every((child) => child?.layer?.stepAlignment === "aligned") ? "aligned" : "mismatch";
+  return {
+    strength,
+    conceptMatch: Number(conceptMatch.toFixed(4)),
+    bloomAlignment,
+    representationAlignment,
+    stepAlignment,
+    coveredConcepts,
+    evidence: children.flatMap((child) => Array.isArray(child?.layer?.evidence) ? child.layer.evidence : []).filter((value, index, all) => all.indexOf(value) === index),
+    inferredOnly: children.every((child) => child?.layer?.inferredOnly === true),
+    difficultyAdjustment: Number((washAverage(children.map((child) => child?.layer?.difficultyAdjustment)) ?? 0).toFixed(4)),
+    confusionAdjustment: Number((washAverage(children.map((child) => child?.layer?.confusionAdjustment)) ?? 0).toFixed(4)),
+    timeMultiplier: Number((washAverage(children.map((child) => child?.layer?.timeMultiplier)) ?? 0).toFixed(4)),
+    bloomAdjustment: Number((washAverage(children.map((child) => child?.layer?.bloomAdjustment)) ?? 0).toFixed(4))
+  };
+}
+function washAggregateFinal(children, fallbackBase) {
+  if (!Array.isArray(children) || children.length === 0) return fallbackBase ?? null;
+  const aggregate = { ...(fallbackBase ?? {}) };
+  const numericAverages = [
+    "difficultyScore",
+    "cognitiveLoad",
+    "linguisticLoad",
+    "representationLoad",
+    "confusionScore",
+    "pCorrectAdjustment",
+    "rubricStrictness",
+    "rubricTolerance",
+    "qualityThreshold"
+  ];
+  for (const key of numericAverages) {
+    const value = washAverage(children.map((child) => child?.final?.[key]));
+    if (value !== null) aggregate[key] = Number(value.toFixed(4));
+  }
+  const bloomLevel = washMax(children.map((child) => child?.final?.bloomLevel));
+  if (bloomLevel !== null) aggregate.bloomLevel = Number(bloomLevel.toFixed(4));
+  const sums = {
+    stepCount: washSum(children.map((child) => child?.final?.stepCount)),
+    cognitiveSteps: washSum(children.map((child) => child?.final?.cognitiveSteps)),
+    requiredElementsCount: washSum(children.map((child) => child?.final?.requiredElementsCount)),
+    errorOpportunityCount: washSum(children.map((child) => child?.final?.errorOpportunityCount)),
+    timeSeconds: washSum(children.map((child) => child?.final?.timeSeconds)),
+    timeOnTaskAdjustment: washSum(children.map((child) => child?.final?.timeOnTaskAdjustment))
+  };
+  if (sums.stepCount !== null) aggregate.stepCount = Math.max(1, Math.round(sums.stepCount));
+  if (sums.cognitiveSteps !== null) aggregate.cognitiveSteps = Math.max(1, Math.round(sums.cognitiveSteps));
+  if (sums.requiredElementsCount !== null) aggregate.requiredElementsCount = Math.max(0, Math.round(sums.requiredElementsCount));
+  if (sums.errorOpportunityCount !== null) aggregate.errorOpportunityCount = Math.max(1, Math.round(sums.errorOpportunityCount));
+  if (sums.timeSeconds !== null) aggregate.timeSeconds = Number(Math.max(5, sums.timeSeconds).toFixed(4));
+  if (sums.timeOnTaskAdjustment !== null) aggregate.timeOnTaskAdjustment = Number(sums.timeOnTaskAdjustment.toFixed(4));
+  aggregate.partialCreditEnabled = children.some((child) => child?.final?.partialCreditEnabled === true);
+  const branchingFactor = washSum(children.map((child) => child?.final?.branchingFactor));
+  if (branchingFactor !== null) aggregate.branchingFactor = Math.max(1, Math.round(branchingFactor));
+  const misconceptionLikelihood = washMax(children.map((child) => child?.final?.misconceptionLikelihood));
+  if (misconceptionLikelihood !== null) aggregate.misconceptionLikelihood = Number(misconceptionLikelihood.toFixed(4));
+  const reasoningComplexity = washMax(children.map((child) => child?.final?.reasoningComplexity));
+  if (reasoningComplexity !== null) aggregate.reasoningComplexity = Number(reasoningComplexity.toFixed(4));
+  aggregate.stepDifficultyCurve = children.flatMap((child) => Array.isArray(child?.final?.stepDifficultyCurve) ? child.final.stepDifficultyCurve : []);
+  aggregate.stepTimeCurve = children.flatMap((child) => Array.isArray(child?.final?.stepTimeCurve) ? child.final.stepTimeCurve : []);
+  aggregate.stepCognitiveLoadCurve = children.flatMap((child) => Array.isArray(child?.final?.stepCognitiveLoadCurve) ? child.final.stepCognitiveLoadCurve : []);
+  aggregate.itemType = aggregate.itemType ?? "multipart";
+  return aggregate;
+}
 function washParseAnswerKey(text) {
   if (!text) return {};
   const result = {};
   for (const line of text.split("\n")) {
-    const m = line.match(/^[\s]*(\d+)[\s.)\-:]+(.+)$/i);
-    if (m?.[1] && m[2]) {
-      const n = Number(m[1]);
-      if (Number.isFinite(n)) result[n] = m[2].trim();
+    const parsed = washParseCompanionHeader(line.trim());
+    if (parsed?.key && parsed.rest) {
+      washSetCompanionEntry(result, parsed.key, parsed.rest);
     }
   }
   return result;
@@ -9953,16 +10277,17 @@ function washParseWorkedSolutions(text) {
   const result = {};
   let cur = null, steps = [];
   for (const line of text.split("\n")) {
-    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
-    if (m) {
-      if (cur !== null && steps.length) result[cur] = steps;
-      cur = Number(m[1] ?? m[2]); steps = [];
+    const parsed = washParseCompanionHeader(line.trim());
+    if (parsed) {
+      if (cur !== null && steps.length) washSetCompanionEntry(result, cur, steps);
+      cur = parsed.key; steps = [];
+      if (parsed.rest) steps.push(parsed.rest);
     } else if (cur !== null) {
       const s = line.replace(/^[\s•\-*]+/, "").trim();
       if (s) steps.push(s);
     }
   }
-  if (cur !== null && steps.length) result[cur] = steps;
+  if (cur !== null && steps.length) washSetCompanionEntry(result, cur, steps);
   return result;
 }
 function washParseRubric(text) {
@@ -9972,17 +10297,16 @@ function washParseRubric(text) {
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
-    const m = line.match(/^(?:Item|Problem|Q)\s+(\d+)[.:\s]|^(\d+)[.)\s]/i);
-    if (m) {
-      if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
-      cur = Number(m[1] ?? m[2]); lines2 = [];
-      const rest = line.replace(m[0], "").trim();
-      if (rest) lines2.push(rest);
+    const parsed = washParseCompanionHeader(line);
+    if (parsed) {
+      if (cur !== null && lines2.length) washSetCompanionEntry(result, cur, lines2.join(" "));
+      cur = parsed.key; lines2 = [];
+      if (parsed.rest) lines2.push(parsed.rest);
     } else if (cur !== null) {
       lines2.push(line.replace(/^[\s•\-*]+/, "").trim());
     }
   }
-  if (cur !== null && lines2.length) result[cur] = lines2.join(" ");
+  if (cur !== null && lines2.length) washSetCompanionEntry(result, cur, lines2.join(" "));
   return result;
 }
 function washBuildBaseFromMetadata(meta) {
@@ -10477,8 +10801,11 @@ async function applyWashoverToItems(sessionId) {
     const rbByItem = washParseRubric(rbText);
     const testItems = items.map((row) => {
       const meta = row.metadata ?? {};
+      const structure = washDeriveItemStructure(row);
       return {
         itemNumber: row.item_number,
+        itemKey: washNormalizeCompanionKey(structure.logicalLabel) || washNormalizeCompanionKey(structure.groupId) || washNormalizeCompanionKey(row.item_number),
+        structure,
         stem: typeof row.stem === "string" ? row.stem : "",
         concepts: Array.isArray(meta.concepts) ? meta.concepts : [],
         representations: Array.isArray(meta.representations) ? meta.representations : [],
@@ -10496,36 +10823,81 @@ async function applyWashoverToItems(sessionId) {
     );
     const prepByItem = hasConceptPrepCoverage ? conceptPrepByItem : prepTexts.length > 0 ? washBuildFallbackPrepByItem(prepTexts, testItems) : {};
     const hasAnyPrepCoverage = prepTexts.length > 0 && Object.keys(prepByItem).length > 0;
-    for (const item of items) {
-      const n = item.item_number;
+    const contexts = items.map((item) => {
+      const structure = washDeriveItemStructure(item);
       const existingMeta = item.metadata ?? {};
       const base = existingMeta.base ?? washBuildBaseFromMetadata(existingMeta);
-      const akLayer = akByItem[n] ? washAnswerKeyLayer(akByItem[n], base) : null;
-      const wkLayer = wkByItem[n]?.length ? washWorkedLayer(wkByItem[n], base) : null;
-      const rbLayer = rbByItem[n] ? washRubricLayer(rbByItem[n], base) : null;
+      const answerEntry = washLookupCompanionEntry(akByItem, structure);
+      const workedEntry = washLookupCompanionEntry(wkByItem, structure);
+      const rubricEntry = washLookupCompanionEntry(rbByItem, structure);
+      const prepEntry = hasAnyPrepCoverage ? (washLookupCompanionEntry(prepByItem, structure) ?? null) : null;
+      const akLayer = answerEntry ? washAnswerKeyLayer(answerEntry, base) : null;
+      const wkLayer = Array.isArray(workedEntry) && workedEntry.length ? washWorkedLayer(workedEntry, base) : null;
+      const rbLayer = typeof rubricEntry === "string" && rubricEntry ? washRubricLayer(rubricEntry, base) : null;
       const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
-      const prepAlignment = hasAnyPrepCoverage ? prepByItem[n] ?? null : null;
-      const prepDelta = prepAlignment && !prepAlignment.inferredOnly ? washComputePrepDeltas(prepAlignment) : null;
-      const prepLayer = prepAlignment ? {
-        strength: prepAlignment.strength,
-        conceptMatch: prepAlignment.conceptMatch,
-        bloomAlignment: prepAlignment.bloomAlignment,
-        representationAlignment: prepAlignment.representationAlignment,
-        stepAlignment: prepAlignment.stepAlignment,
-        coveredConcepts: prepAlignment.coveredConcepts,
-        evidence: prepAlignment.evidence,
-        inferredOnly: prepAlignment.inferredOnly === true,
+      const prepDelta = prepEntry && !prepEntry.inferredOnly ? washComputePrepDeltas(prepEntry) : null;
+      const prepLayer = prepEntry ? {
+        strength: prepEntry.strength,
+        conceptMatch: prepEntry.conceptMatch,
+        bloomAlignment: prepEntry.bloomAlignment,
+        representationAlignment: prepEntry.representationAlignment,
+        stepAlignment: prepEntry.stepAlignment,
+        coveredConcepts: prepEntry.coveredConcepts,
+        evidence: prepEntry.evidence,
+        inferredOnly: prepEntry.inferredOnly === true,
         difficultyAdjustment: prepDelta?.difficultyAdjustment ?? 0,
         confusionAdjustment: prepDelta?.confusionAdjustment ?? 0,
         timeMultiplier: prepDelta?.timeMultiplier ?? 0,
         bloomAdjustment: prepDelta?.bloomAdjustment ?? 0
       } : null;
       const mergedFinalTraits = prepDelta ? washMergePrepIntoFinal(finalTraits, prepDelta) : finalTraits;
-      const updatedMeta = { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, prep: prepLayer, final: mergedFinalTraits };
+      return {
+        item,
+        structure,
+        existingMeta,
+        base,
+        akLayer,
+        wkLayer,
+        rbLayer,
+        prepLayer,
+        final: mergedFinalTraits,
+        updatedMeta: { ...existingMeta, base, answerKey: akLayer, worked: wkLayer, rubric: rbLayer, prep: prepLayer, final: mergedFinalTraits }
+      };
+    });
+    const groupedContexts = new Map();
+    for (const context of contexts) {
+      const groupId = context.structure?.groupId ?? String(context.item?.item_number ?? context.item?.id ?? "");
+      if (!groupedContexts.has(groupId)) groupedContexts.set(groupId, []);
+      groupedContexts.get(groupId).push(context);
+    }
+    for (const [, group] of groupedContexts.entries()) {
+      const sorted = [...group].sort((left, right) => (left.structure?.partIndex ?? 0) - (right.structure?.partIndex ?? 0));
+      const children = sorted.filter((context) => (context.structure?.partIndex ?? 0) > 0);
+      const parent = sorted.find((context) => (context.structure?.partIndex ?? 0) === 0 || context.structure?.isParent === true);
+      if (!parent || children.length === 0) continue;
+      const answerChildren = children.filter((context) => context.akLayer);
+      const workedChildren = children.filter((context) => context.wkLayer);
+      const rubricChildren = children.filter((context) => context.rbLayer);
+      const prepChildren = children.filter((context) => context.prepLayer);
+      const aggregateBase = washAggregateBase(children.map((context) => context.base).filter(Boolean), parent.base);
+      const aggregateAnswerKey = answerChildren.length > 0 ? washAggregateAnswerKey(answerChildren.map((context) => ({ layer: context.akLayer, structure: context.structure })), parent.structure) : null;
+      const aggregateWorked = workedChildren.length > 0 ? washAggregateWorked(workedChildren.map((context) => ({ layer: context.wkLayer, structure: context.structure }))) : null;
+      const aggregateRubric = rubricChildren.length > 0 ? washAggregateRubric(rubricChildren.map((context) => ({ layer: context.rbLayer, structure: context.structure })), aggregateBase) : null;
+      const aggregatePrep = prepChildren.length > 0 ? washAggregatePrep(prepChildren.map((context) => ({ layer: context.prepLayer, structure: context.structure }))) : null;
+      const aggregateFinal = washAggregateFinal(children.map((context) => ({ final: context.final, structure: context.structure })), aggregateBase);
+      parent.base = aggregateBase;
+      parent.akLayer = aggregateAnswerKey;
+      parent.wkLayer = aggregateWorked;
+      parent.rbLayer = aggregateRubric;
+      parent.prepLayer = aggregatePrep;
+      parent.final = aggregatePrep && !aggregatePrep.inferredOnly ? washMergePrepIntoFinal(aggregateFinal, aggregatePrep) : aggregateFinal;
+      parent.updatedMeta = { ...parent.existingMeta, base: parent.base, answerKey: parent.akLayer, worked: parent.wkLayer, rubric: parent.rbLayer, prep: parent.prepLayer, final: parent.final };
+    }
+    for (const context of contexts) {
       await supabaseRest("v4_items", {
         method: "PATCH",
-        filters: { id: `eq.${item.id}` },
-        body: { metadata: updatedMeta, updated_at: new Date().toISOString() },
+        filters: { id: `eq.${context.item.id}` },
+        body: { metadata: context.updatedMeta, updated_at: new Date().toISOString() },
         prefer: "return=minimal"
       }).catch(() => {});
     }

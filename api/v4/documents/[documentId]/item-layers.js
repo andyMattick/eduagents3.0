@@ -61,6 +61,7 @@ async function handler(req, res) {
         answerKey: row.metadata?.answerKey ?? null,
         worked: row.metadata?.worked ?? null,
         rubric: row.metadata?.rubric ?? null,
+        prep: row.metadata?.prep ?? null,
         final: row.metadata?.final ?? null
       }
     }));
