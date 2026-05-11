@@ -147,7 +147,15 @@ async function buildCanonicalItems(document: CanonicalDocument): Promise<Canonic
 	for (const p of paragraphs) {
 		const text = (p.normalizedText ?? p.text ?? "").trim();
 		if (!text) continue;
-		const m = text.match(/^([0-9]+)\./);
+// Normalize OCR junk before number detection
+		const cleaned = text
+		.replace(/^[^\d]+/, "")        // strip leading garbage
+		.replace(/\s+/g, " ")          // collapse weird spaces
+		.trim();
+
+		// Match "1.", "1 .", "1)", "(1)", "1．", "1‧", etc.
+		const m = cleaned.match(/^(\d+)\s*[\.\)]/);
+
 		if (m) {
 			if (current) blocks.push(current);
 			current = { idGuess: m[1], lines: [text] };
