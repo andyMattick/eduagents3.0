@@ -64,7 +64,7 @@ async function supabaseRest(table, options = {}) {
   return null;
 }
 var runtime = "nodejs";
-var DAILY_TOKEN_LIMIT = 25e3;
+var DAILY_TOKEN_LIMIT = Number(process.env.TOKEN_DAILY_LIMIT ?? 4e4);
 function getClientIp(req) {
   const forwarded = req.headers["x-forwarded-for"];
   const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
@@ -109,9 +109,9 @@ async function handler(req, res) {
     }).catch(() => null);
     const legacyCount = Array.isArray(legacyRows) && legacyRows.length > 0 ? Number(legacyRows[0].tokens_used ?? 0) : 0;
     const count = Math.max(usageCount, legacyCount);
-    return res.status(200).json({ count, limit: DAILY_TOKEN_LIMIT });
+    return res.status(200).json({ count, limit: DAILY_TOKEN_LIMIT, remaining: Math.max(0, DAILY_TOKEN_LIMIT - count) });
   } catch {
-    return res.status(200).json({ count: 0, limit: DAILY_TOKEN_LIMIT });
+    return res.status(200).json({ count: 0, limit: DAILY_TOKEN_LIMIT, remaining: DAILY_TOKEN_LIMIT });
   }
 }
 export {

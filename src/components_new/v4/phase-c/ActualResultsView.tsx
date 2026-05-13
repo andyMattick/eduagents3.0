@@ -4,6 +4,7 @@ import { getClassActualResultsApi, type ClassActualResultsResponse } from "../..
 
 type Props = {
   classId: string;
+  assessmentId?: string;
 };
 
 function average(values: number[]): number {
@@ -13,7 +14,7 @@ function average(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function ActualResultsView({ classId }: Props) {
+export function ActualResultsView({ classId, assessmentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ClassActualResultsResponse | null>(null);
@@ -24,7 +25,7 @@ export function ActualResultsView({ classId }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const response = await getClassActualResultsApi(classId);
+        const response = await getClassActualResultsApi(classId, assessmentId);
         if (!cancelled) {
           setData(response);
         }
@@ -42,7 +43,7 @@ export function ActualResultsView({ classId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [classId]);
+  }, [assessmentId, classId]);
 
   const itemCorrectness = useMemo(() => {
     const byItem = new Map<string, { correct: number; total: number }>();

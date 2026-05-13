@@ -145,6 +145,16 @@ export type ActualStudentResult = {
   };
 };
 
+export type ClassActualResultRowInput = {
+  studentId?: string;
+  externalId?: string;
+  itemNumber: string | number;
+  partLabel?: string | null;
+  correct: number | boolean;
+  timeSeconds?: number | null;
+  confusion?: number | null;
+};
+
 export type ClassActualResultsResponse = {
   classId: string;
   assessmentId: string | null;
@@ -423,6 +433,29 @@ export function listClassResultsHistoryApi(classId: string) {
 export function getClassActualResultsApi(classId: string, assessmentId?: string) {
   const query = assessmentId ? `?assessmentId=${encodeURIComponent(assessmentId)}` : "";
   return fetchJson<ClassActualResultsResponse>(`/api/v4/classes/${encodeURIComponent(classId)}/results/actual${query}`);
+}
+
+export function submitClassActualResultsApi(input: {
+  classId: string;
+  assessmentId: string;
+  rows: ClassActualResultRowInput[];
+  applyCalibration?: boolean;
+}) {
+  return fetchJson<{
+    classId: string;
+    assessmentId: string;
+    studentCount: number;
+    rowCount: number;
+    calibrationApplied: boolean;
+  }>(`/api/v4/classes/${encodeURIComponent(input.classId)}/results/actual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      assessmentId: input.assessmentId,
+      rows: input.rows,
+      applyCalibration: input.applyCalibration !== false,
+    }),
+  });
 }
 
 export function getClassCompareResultsApi(classId: string, assessmentId?: string) {

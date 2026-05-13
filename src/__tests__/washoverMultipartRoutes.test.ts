@@ -525,42 +525,56 @@ function buildMultipartFixture(includeParentRow = true) {
 	});
 }
 
-async function bindSession(db: MockDb, sessionId: string, logicalGroup = "1") {
+async function bindSession(
+	db: MockDb,
+	sessionId: string,
+	logicalGroup = "1",
+	overrides?: {
+		documentIds?: string[];
+		documentRoles?: Record<string, string[]>;
+		sessionRoles?: Record<string, string[]>;
+		resourceLinks?: Array<{ documentId: string; resourceDocumentId: string; resourceType: string }>;
+	},
+) {
 	installSupabaseFetchMock(db);
 	const response = createResponse();
+	const documentIds = overrides?.documentIds ?? ["doc-test", "doc-answer", "doc-worked", "doc-rubric", "doc-prep"];
+	const documentRoles = overrides?.documentRoles ?? {
+		"doc-test": ["test"],
+		"doc-answer": ["answer-key"],
+		"doc-worked": ["worked-solution"],
+		"doc-rubric": ["rubric"],
+		"doc-prep": ["prep-doc"],
+	};
+	const sessionRoles = overrides?.sessionRoles ?? {
+		"doc-test": ["target-assessment"],
+		"doc-answer": ["unit-member"],
+		"doc-worked": ["unit-member"],
+		"doc-rubric": ["unit-member"],
+		"doc-prep": ["unit-member"],
+	};
+	const resourceLinks = overrides?.resourceLinks ?? [
+		{ documentId: "doc-test", resourceDocumentId: "doc-answer", resourceType: "answer-key" },
+		{ documentId: "doc-test", resourceDocumentId: "doc-worked", resourceType: "worked-solution" },
+		{ documentId: "doc-test", resourceDocumentId: "doc-rubric", resourceType: "rubric" },
+		{ documentId: "doc-test", resourceDocumentId: "doc-prep", resourceType: "prep-doc" },
+	];
 	await sessionHandler(
 		{
 			method: "POST",
 			body: {
 				sessionId,
-				documentIds: ["doc-test", "doc-answer", "doc-worked", "doc-rubric", "doc-prep"],
-				documentRoles: {
-					"doc-test": ["test"],
-					"doc-answer": ["answer-key"],
-					"doc-worked": ["worked-solution"],
-					"doc-rubric": ["rubric"],
-					"doc-prep": ["prep-doc"],
-				},
-				sessionRoles: {
-					"doc-test": ["target-assessment"],
-					"doc-answer": ["unit-member"],
-					"doc-worked": ["unit-member"],
-					"doc-rubric": ["unit-member"],
-					"doc-prep": ["unit-member"],
-				},
-				resourceLinks: [
-					{ documentId: "doc-test", resourceDocumentId: "doc-answer", resourceType: "answer-key" },
-					{ documentId: "doc-test", resourceDocumentId: "doc-worked", resourceType: "worked-solution" },
-					{ documentId: "doc-test", resourceDocumentId: "doc-rubric", resourceType: "rubric" },
-					{ documentId: "doc-test", resourceDocumentId: "doc-prep", resourceType: "prep-doc" },
-				],
+				documentIds,
+				documentRoles,
+				sessionRoles,
+				resourceLinks,
 			},
 		} as any,
 		response as any,
 	);
 
 	expect(response.statusCode).toBe(200);
-	expect(response.body.resourceLinks).toHaveLength(4);
+	expect(response.body.resourceLinks).toHaveLength(resourceLinks.length);
 	expect(db.resourceLinks.every((row) => row.session_id === sessionId)).toBe(true);
 	if (logicalGroup !== "1") {
 		expect(db.items.every((item) => item.metadata.phaseB.structure.groupId === logicalGroup)).toBe(true);
@@ -636,6 +650,98 @@ describe("multipart washover regressions", () => {
 		expect(childB?.metadata.final.stepDifficultyCurve).toHaveLength(3);
 		expect(childA?.metadata.prep).not.toBeNull();
 		expect(childB?.metadata.prep).not.toBeNull();
+	});
+
+	it("does not smear parent-level companion rows across explicit subparts", async () => {
+		const db = buildMultipartFixture(true);
+		const replaceDocumentContent = (document: DocumentRow, content: string): DocumentRow => ({
+			...document,
+			azure_extract: {
+				content,
+				pages: [{ pageNumber: 1, text: content }],
+				paragraphs: [{ text: content, pageNumber: 1 }],
+				tables: [],
+				readingOrder: [content],
+			},
+		});
+		db.documents = db.documents.map((document) => {
+			if (document.document_id === "doc-answer") {
+				return replaceDocumentContent(document, "1. Combined parent answer only.");
+			}
+			if (document.document_id === "doc-worked") {
+				return replaceDocumentContent(document, "1. Parent worked explanation only.");
+			}
+			if (document.document_id === "doc-rubric") {
+				return replaceDocumentContent(document, "1. Parent rubric only.");
+			}
+			return document;
+		});
+
+		await bindSession(db, "session-no-parent-smear");
+
+		const parent = db.items.find((item) => item.id === "item-parent");
+		const childA = db.items.find((item) => item.id === "item-child-a");
+		const childB = db.items.find((item) => item.id === "item-child-b");
+
+		expect(childA?.metadata.answerKey).toBeNull();
+		expect(childB?.metadata.answerKey).toBeNull();
+		expect(childA?.metadata.worked).toBeNull();
+		expect(childB?.metadata.worked).toBeNull();
+		expect(childA?.metadata.rubric).toBeNull();
+		expect(childB?.metadata.rubric).toBeNull();
+		expect(parent?.metadata.answerKey).toBeNull();
+		expect(parent?.metadata.worked).toBeNull();
+		expect(parent?.metadata.rubric).toBeNull();
+	});
+
+	it("merges multi-prep coverage by union and keeps low-signal stopwords out of concept matches", async () => {
+		const db = buildMultipartFixture(true);
+		db.documents.push(
+			buildDocumentRow(
+				"doc-prep-2",
+				"prep-2.pdf",
+				"Students will practice equivalent fractions with strip models. They will compare unlike denominators, justify the equivalent fractions, and annotate the diagram before solving.",
+			),
+		);
+
+		await bindSession(db, "session-multi-prep", "1", {
+			documentIds: ["doc-test", "doc-answer", "doc-worked", "doc-rubric", "doc-prep", "doc-prep-2"],
+			documentRoles: {
+				"doc-test": ["test"],
+				"doc-answer": ["answer-key"],
+				"doc-worked": ["worked-solution"],
+				"doc-rubric": ["rubric"],
+				"doc-prep": ["prep-doc"],
+				"doc-prep-2": ["prep-doc"],
+			},
+			sessionRoles: {
+				"doc-test": ["target-assessment"],
+				"doc-answer": ["unit-member"],
+				"doc-worked": ["unit-member"],
+				"doc-rubric": ["unit-member"],
+				"doc-prep": ["unit-member"],
+				"doc-prep-2": ["unit-member"],
+			},
+			resourceLinks: [
+				{ documentId: "doc-test", resourceDocumentId: "doc-answer", resourceType: "answer-key" },
+				{ documentId: "doc-test", resourceDocumentId: "doc-worked", resourceType: "worked-solution" },
+				{ documentId: "doc-test", resourceDocumentId: "doc-rubric", resourceType: "rubric" },
+				{ documentId: "doc-test", resourceDocumentId: "doc-prep", resourceType: "prep-doc" },
+				{ documentId: "doc-test", resourceDocumentId: "doc-prep-2", resourceType: "prep-doc" },
+			],
+		});
+
+		const parent = db.items.find((item) => item.id === "item-parent");
+		const childA = db.items.find((item) => item.id === "item-child-a");
+		const childB = db.items.find((item) => item.id === "item-child-b");
+
+		expect(childA?.metadata.prep.coveredConcepts).toContain("fraction addition");
+		expect(childB?.metadata.prep.coveredConcepts).toContain("equivalent fractions");
+		expect(parent?.metadata.prep.coveredConcepts).toEqual(
+			expect.arrayContaining(["fraction addition", "equivalent fractions"]),
+		);
+		expect(parent?.metadata.prep.coveredConcepts).not.toContain("will");
+		expect(parent?.metadata.prep.evidence).toEqual(expect.arrayContaining([expect.stringContaining("Prep doc —") ]));
 	});
 
 	it("uses the recomputed aggregate final traits in the simulation runtime", async () => {

@@ -11,7 +11,15 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { ShortCircuitGraph } from "./ShortCircuitGraph";
 import { StudentSummaryTable, type StudentSummaryRow } from "./StudentSummaryTable";
 import { DocumentPicker, type PublicDocument } from "./DocumentPicker";
-import { bindDocumentsToSessionApi, createStudioSessionFromFilesApi } from "../../lib/teacherStudioApi";
+import {
+  attachSavedCompanionDocumentsApi,
+  bindDocumentsToSessionApi,
+  createStudioSessionFromFilesApi,
+  listSavedDocumentsApi,
+  loadDocumentStatusApi,
+  loadSessionDocumentsApi,
+  type SavedDocumentSummary,
+} from "../../lib/teacherStudioApi";
 import { getClassDetailApi, getSimulationViewApi, listClassesApi, runSimulationUnifiedApi, type PhaseCClass, type SyntheticStudent } from "../../lib/phaseCApi";
 import { useAuth } from "../Auth/useAuth";
 import type { SimulationItem as ShortCircuitItem, SimulationItemTree } from "../../prism-v4/schema";
@@ -71,6 +79,12 @@ type UploadUsageToday = {
   remainingPages: number;
 };
 
+type TokenUsageToday = {
+  count: number;
+  limit: number;
+  remaining: number;
+};
+
 type VerificationItemType = "mc" | "free_response" | "multipart_parent" | "multipart_child" | "other" | "ignore";
 
 type VerificationItem = {
@@ -85,6 +99,60 @@ type VerificationItem = {
   type: VerificationItemType;
   confidence: number;
 };
+
+type CompanionResourceType = "answer-key" | "worked-solution" | "rubric" | "prep-doc";
+
+const EMPTY_COMPANION_SELECTIONS: Record<CompanionResourceType, string[]> = {
+  "answer-key": [],
+  "worked-solution": [],
+  rubric: [],
+  "prep-doc": [],
+};
+
+const SAVED_COMPANION_ATTACH_ENABLED = import.meta.env.DEV
+  || (import.meta.env as Record<string, string | boolean | undefined>).VITE_ENABLE_SAVED_COMPANION_ATTACH === "true";
+
+function cloneCompanionSelections(source: Record<CompanionResourceType, string[]> = EMPTY_COMPANION_SELECTIONS): Record<CompanionResourceType, string[]> {
+  return {
+    "answer-key": [...(source["answer-key"] ?? [])],
+    "worked-solution": [...(source["worked-solution"] ?? [])],
+    rubric: [...(source.rubric ?? [])],
+    "prep-doc": [...(source["prep-doc"] ?? [])],
+  };
+}
+
+function isCompanionResourceType(value: string | null | undefined): value is CompanionResourceType {
+  return value === "answer-key" || value === "worked-solution" || value === "rubric" || value === "prep-doc";
+}
+
+function companionTypeLabel(value: CompanionResourceType): string {
+  switch (value) {
+    case "answer-key":
+      return "Answer Keys";
+    case "worked-solution":
+      return "Worked Solutions";
+    case "rubric":
+      return "Rubrics";
+    case "prep-doc":
+      return "Prep Docs";
+  }
+}
+
+function buildCompanionSelections(resourceLinks: Array<{ documentId: string; resourceDocumentId: string; resourceType: string }> | undefined, targetDocumentId: string | null): Record<CompanionResourceType, string[]> {
+  const next = cloneCompanionSelections();
+  if (!targetDocumentId || !Array.isArray(resourceLinks)) {
+    return next;
+  }
+  for (const link of resourceLinks) {
+    if (link?.documentId !== targetDocumentId || !isCompanionResourceType(link?.resourceType)) {
+      continue;
+    }
+    if (!next[link.resourceType].includes(link.resourceDocumentId)) {
+      next[link.resourceType].push(link.resourceDocumentId);
+    }
+  }
+  return next;
+}
 
 const MC_STEM_PHRASES = [
   "which of the following",
@@ -253,6 +321,7 @@ export function ShortCircuitPage() {
   const [phaseCStudents, setPhaseCStudents] = useState<SyntheticStudent[]>([]);
   const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageToday | null>(null);
   const [uploadUsageToday, setUploadUsageToday] = useState<UploadUsageToday | null>(null);
+  const [tokenUsageToday, setTokenUsageToday] = useState<TokenUsageToday | null>(null);
 
   const [items, setItems] = useState<ShortCircuitItem[] | null>(null);
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
@@ -275,6 +344,14 @@ export function ShortCircuitPage() {
   const [prepDocFile, setPrepDocFile] = useState<File | null>(null);
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [queryLoadedDocumentId, setQueryLoadedDocumentId] = useState<string | null>(null);
+  const [savedDocuments, setSavedDocuments] = useState<SavedDocumentSummary[]>([]);
+  const [savedDocumentsLoading, setSavedDocumentsLoading] = useState(false);
+  const [savedDocumentSession, setSavedDocumentSession] = useState<Awaited<ReturnType<typeof loadSessionDocumentsApi>> | null>(null);
+  const [savedCompanionSelections, setSavedCompanionSelections] = useState<Record<CompanionResourceType, string[]>>(cloneCompanionSelections());
+  const [savedCompanionLoading, setSavedCompanionLoading] = useState(false);
+  const [savedCompanionSaving, setSavedCompanionSaving] = useState(false);
+  const [savedCompanionError, setSavedCompanionError] = useState<string | null>(null);
+  const [savedCompanionMessage, setSavedCompanionMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const answerKeyInputRef = useRef<HTMLInputElement>(null);
   const workedSolutionInputRef = useRef<HTMLInputElement>(null);
@@ -342,6 +419,13 @@ export function ShortCircuitPage() {
     setWorkedSolutionFile(null);
     setRubricFile(null);
     setPrepDocFile(null);
+    setSavedDocumentSession(null);
+    setSavedCompanionSelections(cloneCompanionSelections());
+    setSavedCompanionLoading(false);
+    setSavedCompanionSaving(false);
+    setSavedCompanionError(null);
+    setSavedCompanionMessage(null);
+    setTokenUsageToday(null);
     if (answerKeyInputRef.current) answerKeyInputRef.current.value = "";
     if (workedSolutionInputRef.current) workedSolutionInputRef.current.value = "";
     if (rubricInputRef.current) rubricInputRef.current.value = "";
@@ -738,6 +822,109 @@ export function ShortCircuitPage() {
     }
   }, [user?.id]);
 
+  const loadTokenUsage = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v4/usage/today", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          ...(user?.id ? { "x-user-id": user.id, "x-auth-user-id": user.id } : {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Failed to load token usage.");
+      }
+      setTokenUsageToday({
+        count: Number(payload.count ?? 0),
+        limit: Number(payload.limit ?? 40000),
+        remaining: Number(payload.remaining ?? Math.max(0, Number(payload.limit ?? 40000) - Number(payload.count ?? 0))),
+      });
+    } catch {
+      setTokenUsageToday(null);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!SAVED_COMPANION_ATTACH_ENABLED) {
+      return;
+    }
+
+    let cancelled = false;
+    setSavedDocumentsLoading(true);
+    void listSavedDocumentsApi()
+      .then((payload) => {
+        if (!cancelled) {
+          setSavedDocuments(payload.documents ?? []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSavedDocuments([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSavedDocumentsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!SAVED_COMPANION_ATTACH_ENABLED || !documentId) {
+      setSavedDocumentSession(null);
+      setSavedCompanionSelections(cloneCompanionSelections());
+      setSavedCompanionError(null);
+      setSavedCompanionMessage(null);
+      return;
+    }
+
+    let cancelled = false;
+    setSavedCompanionLoading(true);
+    setSavedCompanionError(null);
+    void loadDocumentStatusApi(documentId)
+      .then(async (status) => {
+        const resolvedSessionId = typeof status.sessionId === "string" && status.sessionId.length > 0
+          ? status.sessionId
+          : sessionId;
+        if (resolvedSessionId) {
+          setSessionId(resolvedSessionId);
+        }
+        if (!resolvedSessionId) {
+          if (!cancelled) {
+            setSavedDocumentSession(null);
+            setSavedCompanionSelections(cloneCompanionSelections());
+          }
+          return;
+        }
+        const payload = await loadSessionDocumentsApi(resolvedSessionId);
+        if (!cancelled) {
+          setSavedDocumentSession(payload);
+          setSavedCompanionSelections(buildCompanionSelections(payload.session?.resourceLinks, documentId));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSavedDocumentSession(null);
+          setSavedCompanionSelections(cloneCompanionSelections());
+          setSavedCompanionError(error instanceof Error ? error.message : "Failed to load saved companion docs.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSavedCompanionLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, sessionId]);
+
   useEffect(() => {
     if (phase !== "upload") {
       return;
@@ -752,9 +939,108 @@ export function ShortCircuitPage() {
 
     void loadClasses();
     void loadSimulationUsage();
-  }, [phase, loadClasses, loadSimulationUsage]);
+    void loadTokenUsage();
+  }, [phase, loadClasses, loadSimulationUsage, loadTokenUsage]);
 
-  const handleRunPhaseC = async () => {
+  const savedCompanionOptions = useMemo(() => {
+    const grouped: Record<CompanionResourceType, SavedDocumentSummary[]> = {
+      "answer-key": [],
+      "worked-solution": [],
+      rubric: [],
+      "prep-doc": [],
+    };
+    for (const doc of savedDocuments) {
+      if (doc.documentId === documentId) {
+        continue;
+      }
+      if (!isCompanionResourceType(doc.declaredRole)) {
+        continue;
+      }
+      grouped[doc.declaredRole].push(doc);
+    }
+    return grouped;
+  }, [documentId, savedDocuments]);
+
+  const toggleSavedCompanionSelection = useCallback((resourceType: CompanionResourceType, resourceDocumentId: string) => {
+    setSavedCompanionSelections((current) => {
+      const next = cloneCompanionSelections(current);
+      if (next[resourceType].includes(resourceDocumentId)) {
+        next[resourceType] = next[resourceType].filter((value) => value !== resourceDocumentId);
+      } else {
+        next[resourceType].push(resourceDocumentId);
+      }
+      return next;
+    });
+    setSavedCompanionMessage(null);
+  }, []);
+
+  const handleAttachSavedCompanions = useCallback(async () => {
+    if (!documentId) {
+      setSavedCompanionError("Choose a saved document before attaching companion docs.");
+      return;
+    }
+
+    setSavedCompanionSaving(true);
+    setSavedCompanionError(null);
+    setSavedCompanionMessage(null);
+
+    try {
+      const status = await loadDocumentStatusApi(documentId);
+      const nextSessionId = typeof status.sessionId === "string" && status.sessionId.length > 0
+        ? status.sessionId
+        : (savedDocumentSession?.session.sessionId ?? sessionId ?? globalThis.crypto?.randomUUID?.() ?? `session-${Date.now()}`);
+      const sessionDocumentIds = savedDocumentSession?.session.documentIds?.length
+        ? savedDocumentSession.session.documentIds
+        : [documentId];
+      const documentRoles = {
+        ...(savedDocumentSession?.session.documentRoles ?? {}),
+        [documentId]: savedDocumentSession?.session.documentRoles?.[documentId] ?? ["test"],
+      };
+      const sessionRoles = {
+        ...(savedDocumentSession?.session.sessionRoles ?? {}),
+        [documentId]: savedDocumentSession?.session.sessionRoles?.[documentId] ?? ["target-assessment"],
+      };
+      const resourceLinks = (Object.entries(savedCompanionSelections) as Array<[CompanionResourceType, string[]]>)
+        .flatMap(([resourceType, resourceDocumentIds]) => resourceDocumentIds.map((resourceDocumentId) => ({
+          documentId,
+          resourceDocumentId,
+          resourceType,
+        })));
+
+      await attachSavedCompanionDocumentsApi({
+        sessionId: nextSessionId,
+        targetDocumentId: documentId,
+        documentIds: sessionDocumentIds,
+        documentRoles,
+        sessionRoles,
+        resourceLinks,
+      });
+
+      const refreshedSession = await loadSessionDocumentsApi(nextSessionId);
+      setSessionId(nextSessionId);
+      setSavedDocumentSession(refreshedSession);
+      setSavedCompanionSelections(buildCompanionSelections(refreshedSession.session?.resourceLinks, documentId));
+      const phaseBOk = await runPhaseB({ nextSessionId, nextDocumentId: documentId });
+      if (!phaseBOk) {
+        throw new Error("Companion docs were attached, but analysis refresh failed.");
+      }
+      if (selectedClassId) {
+        setPhaseCSimulationId(null);
+        setPhaseCClassView(null);
+        setPhaseCStudentView(null);
+        await handleRunPhaseC();
+      }
+      setSavedCompanionMessage(resourceLinks.length > 0
+        ? "Attached saved companion docs and reran washover."
+        : "Cleared companion docs and reran washover.");
+    } catch (error) {
+      setSavedCompanionError(error instanceof Error ? error.message : "Failed to attach saved companion docs.");
+    } finally {
+      setSavedCompanionSaving(false);
+    }
+  }, [documentId, runPhaseB, savedCompanionSelections, savedDocumentSession, selectedClassId, sessionId]);
+
+  async function handleRunPhaseC() {
     if (!selectedClassId || !documentId) {
       setPhaseCRunError("Choose a class and ensure a document is uploaded.");
       return;
@@ -813,12 +1099,13 @@ export function ShortCircuitPage() {
       setPhaseCStudentView(null);
       await loadSimulationUsage();
       await loadUploadUsage();
+      await loadTokenUsage();
     } catch (err) {
       setPhaseCRunError(err instanceof Error ? err.message : "Failed to run simulation.");
     } finally {
       setPhaseCRunLoading(false);
     }
-  };
+  }
 
   const handleStudentChange = async (studentId: string) => {
     setSelectedStudentId(studentId);
@@ -1413,6 +1700,100 @@ export function ShortCircuitPage() {
               </div>
             )}
           </div>
+
+          {tokenUsageToday && (
+            <div className="v4-shortcircuit-result-card">
+              <h3 className="v4-shortcircuit-tree-title">Token Budget</h3>
+              <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
+                {tokenUsageToday.remaining.toLocaleString()} tokens remaining today.
+              </p>
+              <div style={{ marginTop: "0.35rem", width: "100%", height: "8px", borderRadius: "999px", background: "rgba(40,93,122,0.16)", overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (tokenUsageToday.count / Math.max(1, tokenUsageToday.limit)) * 100))}%`,
+                    height: "100%",
+                    background: tokenUsageToday.remaining === 0 ? "#b45309" : "#285d7a",
+                  }}
+                />
+              </div>
+              <p className="phasec-copy" style={{ marginBottom: 0 }}>
+                Used {tokenUsageToday.count.toLocaleString()} of {tokenUsageToday.limit.toLocaleString()} daily tokens for narrative and metered calls.
+              </p>
+            </div>
+          )}
+
+          {SAVED_COMPANION_ATTACH_ENABLED && documentId && (
+            <div className="v4-shortcircuit-result-card">
+              <h3 className="v4-shortcircuit-tree-title">Attach Existing Companion Docs</h3>
+              <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
+                Attach saved answer keys, worked solutions, rubrics, and prep docs to this saved test, then rerun washover and refresh simulation outputs.
+              </p>
+              {savedCompanionLoading || savedDocumentsLoading ? (
+                <p className="phasec-copy">Loading saved companion docs...</p>
+              ) : (
+                <div style={{ display: "grid", gap: "0.9rem" }}>
+                  {(Object.keys(savedCompanionOptions) as CompanionResourceType[]).map((resourceType) => {
+                    const docs = savedCompanionOptions[resourceType];
+                    return (
+                      <section key={resourceType} style={{ border: "1px solid rgba(86,57,32,0.12)", borderRadius: "12px", padding: "0.85rem" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", marginBottom: "0.5rem" }}>
+                          <strong style={{ color: "#1f1a17" }}>{companionTypeLabel(resourceType)}</strong>
+                          <span className="v4-pill">{savedCompanionSelections[resourceType].length} selected</span>
+                        </div>
+                        {docs.length === 0 ? (
+                          <p className="phasec-copy" style={{ margin: 0 }}>No saved {companionTypeLabel(resourceType).toLowerCase()} available yet.</p>
+                        ) : (
+                          <div style={{ display: "grid", gap: "0.45rem" }}>
+                            {docs.map((doc) => {
+                              const checked = savedCompanionSelections[resourceType].includes(doc.documentId);
+                              return (
+                                <label key={`${resourceType}-${doc.documentId}`} style={{ display: "flex", alignItems: "flex-start", gap: "0.55rem", cursor: "pointer" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleSavedCompanionSelection(resourceType, doc.documentId)}
+                                  />
+                                  <span>
+                                    <strong style={{ display: "block", color: "#1f1a17" }}>{doc.sourceFileName}</strong>
+                                    <span style={{ fontSize: "0.78rem", color: "#6b7280" }}>
+                                      Added {new Date(doc.createdAt).toLocaleDateString()} · {doc.documentId.slice(0, 8)}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", marginTop: "0.9rem" }}>
+                <button
+                  type="button"
+                  className="v4-button"
+                  disabled={savedCompanionLoading || savedCompanionSaving}
+                  onClick={() => void handleAttachSavedCompanions()}
+                >
+                  {savedCompanionSaving ? "Rerunning..." : "Attach and rerun washover"}
+                </button>
+                <button
+                  type="button"
+                  className="v4-button v4-button-secondary"
+                  disabled={savedCompanionSaving}
+                  onClick={() => {
+                    setSavedCompanionSelections(cloneCompanionSelections());
+                    setSavedCompanionMessage(null);
+                  }}
+                >
+                  Clear selections
+                </button>
+              </div>
+              {savedCompanionError && <p className="phasec-error">{savedCompanionError}</p>}
+              {savedCompanionMessage && !savedCompanionError && <p className="phasec-copy">{savedCompanionMessage}</p>}
+            </div>
+          )}
 
           <div className="v4-shortcircuit-result-card">
             <div className="v4-shortcircuit-graph-toggle-row">

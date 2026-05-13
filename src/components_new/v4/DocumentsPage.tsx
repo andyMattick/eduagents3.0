@@ -8,6 +8,7 @@ type DocumentRecord = {
   sourceFileName: string;
   createdAt: string;
   docType?: string | null;
+  declaredRole?: string | null;
 };
 
 type GroupConfig = {
@@ -71,6 +72,10 @@ function formatDocType(docType?: string | null): string {
   return docType
     .replace(/[_-]/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function canAttachCompanions(doc: DocumentRecord): boolean {
+  return doc.declaredRole === "test" || classifyGroup(doc) === "test";
 }
 
 export function DocumentsPage({ navigate }: DocumentsPageProps) {
@@ -206,23 +211,35 @@ export function DocumentsPage({ navigate }: DocumentsPageProps) {
                       <ul className="documents-list">
                         {sectionDocs.map((doc) => (
                           <li key={doc.documentId} className="documents-list-row">
-                            <button
-                              type="button"
-                              className="documents-list-action"
-                              onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
-                              aria-label={`Open ${doc.sourceFileName} in simulation`}
-                            >
+                            <div className="documents-list-action">
                               <div>
                                 <p className="documents-file-name">{doc.sourceFileName}</p>
                                 <p className="documents-file-meta">
                                   {formatDocType(doc.docType)} · Added {new Date(doc.createdAt).toLocaleDateString()}
                                 </p>
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
                                 <span className="documents-id-chip">{doc.documentId.slice(0, 8)}</span>
-                                <span className="documents-open-hint">Open</span>
+                                <button
+                                  type="button"
+                                  className="documents-open-hint"
+                                  onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
+                                  aria-label={`Open ${doc.sourceFileName} in simulation`}
+                                >
+                                  Open
+                                </button>
+                                {canAttachCompanions(doc) && (
+                                  <button
+                                    type="button"
+                                    className="documents-open-hint"
+                                    onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
+                                    aria-label={`Attach saved companion docs to ${doc.sourceFileName}`}
+                                  >
+                                    Attach companions
+                                  </button>
+                                )}
                               </div>
-                            </button>
+                            </div>
                           </li>
                         ))}
                       </ul>

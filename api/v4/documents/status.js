@@ -12945,7 +12945,8 @@ async function handler(req, res) {
       documentId,
       docType: inferredDocType,
       analysisAvailable,
-      rewriteEligible: isRewriteEligible(inferredDocType)
+      rewriteEligible: isRewriteEligible(inferredDocType),
+      sessionId
     };
     return res.status(200).json(payload);
   } catch {
@@ -12953,7 +12954,8 @@ async function handler(req, res) {
       documentId,
       docType: null,
       analysisAvailable: false,
-      rewriteEligible: false
+      rewriteEligible: false,
+      sessionId: null
     };
     return res.status(200).json(fallback);
   }

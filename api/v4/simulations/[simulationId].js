@@ -65,6 +65,70 @@ async function supabaseRest(table, options = {}) {
   }
   return null;
 }
+var DAILY_TOKEN_LIMIT = Number(process.env.TOKEN_DAILY_LIMIT ?? 4e4);
+var NARRATIVE_RUN_TOKEN_LIMIT = Number(process.env.TOKEN_NARRATIVE_RUN_LIMIT ?? 8e3);
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded ?? "";
+  const ip = raw.split(",")[0].trim();
+  return ip || "unknown";
+}
+function getSingleHeaderValue(header) {
+  return Array.isArray(header) ? header[0] ?? "" : header ?? "";
+}
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+function resolveTokenActor(req) {
+  const claimed = getSingleHeaderValue(req.headers["x-user-id"]) || getSingleHeaderValue(req.headers["x-auth-user-id"]);
+  const userId = isUuid(claimed) ? claimed : null;
+  return {
+    actorKey: userId ?? `ip:${getClientIp(req)}`,
+    userId
+  };
+}
+function estimateTokenCount(value) {
+  return Math.max(1, Math.ceil(String(value ?? "").length / 4));
+}
+async function getDailyTokenUsage(actorKey) {
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const usageRows = await supabaseRest("user_daily_usage", {
+    method: "GET",
+    select: "tokens_used",
+    filters: { actor_key: `eq.${actorKey}`, usage_date: `eq.${today}` }
+  }).catch(() => null);
+  const usageCount = Array.isArray(usageRows) && usageRows.length > 0 ? Number(usageRows[0].tokens_used ?? 0) : 0;
+  const legacyRows = await supabaseRest("user_daily_tokens", {
+    method: "GET",
+    select: "tokens_used",
+    filters: { actor_key: `eq.${actorKey}`, date: `eq.${today}` }
+  }).catch(() => null);
+  const legacyCount = Array.isArray(legacyRows) && legacyRows.length > 0 ? Number(legacyRows[0].tokens_used ?? 0) : 0;
+  return Math.max(usageCount, legacyCount);
+}
+async function incrementTokenUsage(actorKey, userId, tokens) {
+  if (!Number.isFinite(tokens) || tokens <= 0 || !actorKey || actorKey === "ip:unknown") {
+    return;
+  }
+  try {
+    const { url, key } = supabaseAdmin();
+    await fetch(`${url}/rest/v1/rpc/increment_token_usage`, {
+      method: "POST",
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        p_actor_key: actorKey,
+        p_tokens: Math.max(1, Math.round(tokens)),
+        p_user_id: userId
+      })
+    });
+  } catch {
+    console.warn("[simulation/get] increment_token_usage RPC failed (non-fatal)");
+  }
+}
 var studentsMemory = /* @__PURE__ */ new Map();
 var simulationRunsMemory = /* @__PURE__ */ new Map();
 var simulationResultsMemory = /* @__PURE__ */ new Map();
@@ -380,7 +444,7 @@ function buildHardestItems(results, itemTraits) {
   }).sort((left, right) => left.pCorrect - right.pCorrect).slice(0, 5);
 }
 
-async function buildNarrativePayload(params) {
+async function buildNarrativePayload(params, actor) {
   const azureToggle = String(process.env.USE_AZURE_NARRATIVE ?? "").trim().toLowerCase();
   console.log("[narrative env check]", {
     endpoint: process.env.AZURE_OPENAI_ENDPOINT,
@@ -393,6 +457,13 @@ async function buildNarrativePayload(params) {
   const apiKeyConfigured = Boolean(String(process.env.AZURE_OPENAI_API_KEY ?? "").trim());
   const hasAzureConfig = endpointConfigured && deploymentConfigured && apiKeyConfigured;
   const useAzure = azureToggle === "false" ? false : hasAzureConfig;
+  const estimatedPromptTokens = estimateTokenCount(JSON.stringify(params));
+  const usedToday = actor?.actorKey ? await getDailyTokenUsage(actor.actorKey).catch(() => 0) : 0;
+  const tokenUsage = {
+    used: usedToday,
+    remaining: Math.max(0, DAILY_TOKEN_LIMIT - usedToday),
+    limit: DAILY_TOKEN_LIMIT
+  };
   if (!useAzure) {
     const missingConfig = [
       !endpointConfigured ? "AZURE_OPENAI_ENDPOINT" : null,
@@ -404,15 +475,50 @@ async function buildNarrativePayload(params) {
       text: azureToggle === "false"
         ? "Narrative running in deterministic mode. Azure narrative generation is disabled by configuration."
         : `Narrative running in deterministic mode. Configure ${missingConfig.join(", ")} to enable Azure narrative generation.`,
-      usage: void 0
+      usage: void 0,
+      tokenUsage,
+      budget: { runLimit: NARRATIVE_RUN_TOKEN_LIMIT, estimatedPromptTokens }
+    };
+  }
+  if (usedToday >= DAILY_TOKEN_LIMIT) {
+    return {
+      provider: "deterministic-fallback",
+      text: "Narrative unavailable because today\'s token limit has been reached. Please retry tomorrow.",
+      usage: void 0,
+      tokenUsage,
+      budget: { runLimit: NARRATIVE_RUN_TOKEN_LIMIT, estimatedPromptTokens }
+    };
+  }
+  if (estimatedPromptTokens > NARRATIVE_RUN_TOKEN_LIMIT) {
+    return {
+      provider: "deterministic-fallback",
+      text: "Narrative skipped because this request exceeds the per-run token budget.",
+      usage: {
+        promptTokens: estimatedPromptTokens,
+        completionTokens: 0,
+        totalTokens: estimatedPromptTokens
+      },
+      tokenUsage,
+      budget: { runLimit: NARRATIVE_RUN_TOKEN_LIMIT, estimatedPromptTokens }
     };
   }
   try {
     const narrative = await buildTeacherNarrativeFromSimulation(params);
+    const totalTokens = Number(narrative.usage?.totalTokens ?? estimatedPromptTokens);
+    if (actor?.actorKey) {
+      await incrementTokenUsage(actor.actorKey, actor.userId, totalTokens);
+    }
+    const nextUsed = usedToday + totalTokens;
     return {
       provider: "azure",
       text: narrative.text,
-      usage: narrative.usage
+      usage: narrative.usage,
+      tokenUsage: {
+        used: nextUsed,
+        remaining: Math.max(0, DAILY_TOKEN_LIMIT - nextUsed),
+        limit: DAILY_TOKEN_LIMIT
+      },
+      budget: { runLimit: NARRATIVE_RUN_TOKEN_LIMIT, estimatedPromptTokens }
     };
   } catch (error) {
     console.warn("[simulation/get] Azure narrative failed; returning deterministic fallback.", {
@@ -425,7 +531,9 @@ async function buildNarrativePayload(params) {
     return {
       provider: "deterministic-fallback",
       text: "Narrative temporarily unavailable. Please retry in a moment.",
-      usage: void 0
+      usage: void 0,
+      tokenUsage,
+      budget: { runLimit: NARRATIVE_RUN_TOKEN_LIMIT, estimatedPromptTokens }
     };
   }
 }
@@ -822,7 +930,7 @@ async function handler(req, res) {
           summary: aggregateClass(results),
           hardestItems,
           predictedVsActual
-        });
+        }, resolveTokenActor(req));
       return res.status(200).json({
         simulationId,
         classId: run.classId,
@@ -832,6 +940,7 @@ async function handler(req, res) {
           rubricSummary,
           students: roster,
           narrative,
+          tokenUsage: narrative.tokenUsage,
           rubricNarrative: rubricSummary.notes,
           suggestions: { hardestItems },
         availableStudentIds

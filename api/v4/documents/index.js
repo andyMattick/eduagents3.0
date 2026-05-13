@@ -92,17 +92,34 @@ async function handler(req, res) {
     }
     const rows = await supabaseRest("prism_v4_documents", {
       method: "GET",
-      select: "document_id,source_file_name,created_at,doc_type",
+      select: "document_id,source_file_name,created_at,doc_type,session_id",
       filters: {
         order: "created_at.desc",
         limit: "100"
       }
     });
+    const sessionIds = Array.from(new Set((rows ?? []).map((row) => typeof row.session_id === "string" ? row.session_id : "").filter((sessionId) => sessionId.length > 0)));
+    let sessionRoleRows = [];
+    if (sessionIds.length > 0) {
+      const escapedIds = sessionIds.map((sessionId) => `"${sessionId}"`).join(",");
+      sessionRoleRows = await supabaseRest("prism_v4_sessions", {
+        method: "GET",
+        select: "session_id,document_roles",
+        filters: {
+          session_id: `in.(${escapedIds})`
+        }
+      }).catch(() => []);
+    }
+    const documentRolesBySessionId = new Map((Array.isArray(sessionRoleRows) ? sessionRoleRows : []).map((row) => [row.session_id, row.document_roles ?? {}]));
     const documents = (rows ?? []).map((row) => ({
       documentId: row.document_id,
       sourceFileName: row.source_file_name ?? row.document_id,
       createdAt: row.created_at,
-      docType: row.doc_type ?? null
+      docType: row.doc_type ?? null,
+      sessionId: row.session_id ?? null,
+      declaredRole: Array.isArray(documentRolesBySessionId.get(row.session_id)?.[row.document_id])
+        ? documentRolesBySessionId.get(row.session_id)?.[row.document_id]?.[0] ?? null
+        : null
     }));
     return res.status(200).json({ documents });
   } catch (error) {

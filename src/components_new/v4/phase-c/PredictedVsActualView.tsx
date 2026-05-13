@@ -4,9 +4,10 @@ import { getClassCompareResultsApi, type ClassCompareResultsResponse } from "../
 
 type Props = {
   classId: string;
+  assessmentId?: string;
 };
 
-export function PredictedVsActualView({ classId }: Props) {
+export function PredictedVsActualView({ classId, assessmentId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ClassCompareResultsResponse | null>(null);
@@ -17,7 +18,7 @@ export function PredictedVsActualView({ classId }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const response = await getClassCompareResultsApi(classId);
+        const response = await getClassCompareResultsApi(classId, assessmentId);
         if (!cancelled) {
           setData(response);
         }
@@ -35,7 +36,7 @@ export function PredictedVsActualView({ classId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [classId]);
+  }, [assessmentId, classId]);
 
   if (loading) {
     return <p className="phasec-copy">Loading predicted-vs-actual comparison...</p>;

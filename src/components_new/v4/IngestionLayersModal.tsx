@@ -7,6 +7,8 @@ type PrepLayer = {
   representationAlignment: "aligned" | "mismatch";
   stepAlignment: "aligned" | "mismatch";
   coveredConcepts: string[];
+  evidence?: string[];
+  inferredOnly?: boolean;
   difficultyAdjustment: number;
   confusionAdjustment: number;
   timeMultiplier: number;
@@ -201,6 +203,12 @@ function PrepLayerPanel({ prep }: { prep: PrepLayer }) {
     );
   }
   const meta = PREP_STRENGTH_META[prep.strength] ?? PREP_STRENGTH_META.none;
+  const deltaRows = [
+    ["Difficulty Adjustment", `${prep.difficultyAdjustment > 0 ? "+" : ""}${(prep.difficultyAdjustment * 100).toFixed(0)}%`],
+    ["Confusion Adjustment", `${prep.confusionAdjustment > 0 ? "+" : ""}${(prep.confusionAdjustment * 100).toFixed(0)}%`],
+    ["Time Multiplier", `${prep.timeMultiplier > 0 ? "+" : ""}${(prep.timeMultiplier * 100).toFixed(0)}%`],
+    ["Bloom Adjustment", `${prep.bloomAdjustment > 0 ? "+" : ""}${prep.bloomAdjustment.toFixed(2)}`],
+  ];
   return (
     <div style={{ borderLeft: "3px solid #0d9488", paddingLeft: "0.75rem", marginBottom: "0.75rem" }}>
       <button
@@ -218,26 +226,48 @@ function PrepLayerPanel({ prep }: { prep: PrepLayer }) {
               display: "inline-block", padding: "0.12rem 0.5rem", borderRadius: "9999px",
               fontSize: "0.72rem", fontWeight: 600, background: meta.bg, color: meta.fg,
             }}>{meta.label}</span>
+            <span style={{ fontSize: "0.72rem", color: prep.inferredOnly ? "#9a3412" : "#0f766e", fontWeight: 600 }}>
+              {prep.inferredOnly ? "Inferred from prep language" : "Explicit concept coverage"}
+            </span>
           </div>
           {[
             ["Concept Match",            `${(prep.conceptMatch * 100).toFixed(0)}%`],
             ["Bloom Alignment",          prep.bloomAlignment],
             ["Representation Alignment", prep.representationAlignment],
             ["Step Alignment",           prep.stepAlignment],
-            ["Difficulty Adjustment",    `${prep.difficultyAdjustment > 0 ? "+" : ""}${(prep.difficultyAdjustment * 100).toFixed(0)}%`],
-            ["Confusion Adjustment",     `${prep.confusionAdjustment > 0 ? "+" : ""}${(prep.confusionAdjustment * 100).toFixed(0)}%`],
-            ["Time Multiplier",          `${prep.timeMultiplier > 0 ? "+" : ""}${(prep.timeMultiplier * 100).toFixed(0)}%`],
-            ["Bloom Adjustment",         `${prep.bloomAdjustment > 0 ? "+" : ""}${prep.bloomAdjustment.toFixed(2)}`],
           ].map(([label, value]) => (
             <div key={label} style={{ display: "flex", gap: "0.5rem", fontSize: "0.82rem", padding: "0.15rem 0" }}>
               <span style={{ color: "#64748b", minWidth: "11rem", flexShrink: 0 }}>{label}:</span>
               <span style={{ color: "#0f172a", fontWeight: 500 }}>{value}</span>
             </div>
           ))}
+          <div style={{ marginTop: "0.45rem", padding: "0.5rem 0.6rem", background: "rgba(13,148,136,0.05)", borderRadius: "0.4rem" }}>
+            <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "#0f766e", marginBottom: "0.25rem" }}>
+              Applied deltas
+            </div>
+            {deltaRows.map(([label, value]) => (
+              <div key={label} style={{ display: "flex", gap: "0.5rem", fontSize: "0.8rem", padding: "0.1rem 0" }}>
+                <span style={{ color: "#64748b", minWidth: "11rem", flexShrink: 0 }}>{label}:</span>
+                <span style={{ color: "#0f172a", fontWeight: 600 }}>{value}</span>
+              </div>
+            ))}
+          </div>
           {prep.coveredConcepts.length > 0 && (
             <div style={{ marginTop: "0.35rem", fontSize: "0.78rem", color: "#475569" }}>
               <span style={{ fontWeight: 600 }}>Covered concepts: </span>
               {prep.coveredConcepts.join(", ")}
+            </div>
+          )}
+          {Array.isArray(prep.evidence) && prep.evidence.length > 0 && (
+            <div style={{ marginTop: "0.45rem" }}>
+              <div style={{ fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", color: "#64748b", marginBottom: "0.2rem" }}>
+                Evidence
+              </div>
+              {prep.evidence.slice(0, 6).map((line) => (
+                <div key={line} style={{ fontSize: "0.78rem", color: "#334155", padding: "0.08rem 0" }}>
+                  {line}
+                </div>
+              ))}
             </div>
           )}
         </div>

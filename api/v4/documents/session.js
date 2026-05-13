@@ -9991,6 +9991,9 @@ function washSetCompanionEntry(target, key, value) {
   if (!normalized) return;
   target[normalized] = value;
 }
+function washUniqueStrings(values) {
+  return [...new Set((values ?? []).filter((value) => typeof value === "string" && value.trim().length > 0).map((value) => value.trim()))];
+}
 function washParseCompanionHeader(line) {
   const direct = line.match(/^(?:item|problem|question|q)?\s*(\d{1,3})\s*([a-z])?\s*[\).:\-]\s*(.*)$/i);
   if (direct?.[1]) {
@@ -10087,11 +10090,13 @@ function washDeriveItemStructure(item) {
   };
 }
 function washResolveLookupKeys(structure) {
-  const keys = [
-    structure?.logicalLabel,
-    structure?.groupId,
-    structure?.itemNumber
-  ].map((value) => washNormalizeCompanionKey(value)).filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
+  const keys = [structure?.logicalLabel, structure?.itemNumber].map((value) => washNormalizeCompanionKey(value)).filter((value, index, all) => value.length > 0 && all.indexOf(value) === index);
+  if ((structure?.partIndex ?? 0) === 0 || structure?.isParent === true) {
+    const groupKey = washNormalizeCompanionKey(structure?.groupId);
+    if (groupKey.length > 0 && !keys.includes(groupKey)) {
+      keys.push(groupKey);
+    }
+  }
   return keys;
 }
 function washLookupCompanionEntry(map, structure) {
@@ -10448,23 +10453,65 @@ var WASH_PREP_STOPWORDS = /* @__PURE__ */ new Set([
   "when",
   "where",
   "which",
+  "will",
   "with",
   "would",
   "your"
 ]);
+function washIsMeaningfulConceptLabel(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (WASH_PREP_STOPWORDS.has(normalized)) return false;
+  const tokens = normalized.split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 4 && !WASH_PREP_STOPWORDS.has(token));
+  return tokens.length > 0;
+}
+var WASHOVER_RUN_TOKEN_LIMIT = Number(process.env.TOKEN_WASHOVER_RUN_LIMIT ?? 12e3);
+var PREP_DOC_TOKEN_LIMIT = Number(process.env.TOKEN_PREP_DOC_LIMIT ?? 8e3);
+function washEstimateTokenCount(text) {
+  return Math.max(1, Math.ceil(String(text ?? "").length / 4));
+}
+function washTrimTextToTokenLimit(text, tokenLimit) {
+  const normalized = String(text ?? "");
+  if (!normalized || !Number.isFinite(tokenLimit) || tokenLimit <= 0) {
+    return "";
+  }
+  const maxChars = Math.max(1, Math.floor(tokenLimit * 4));
+  return normalized.length <= maxChars ? normalized : normalized.slice(0, maxChars);
+}
+function washApplyPrepTokenBudget(prepTexts) {
+  let remainingRunTokens = WASHOVER_RUN_TOKEN_LIMIT;
+  const boundedTexts = [];
+  for (const prepText of prepTexts ?? []) {
+    if (remainingRunTokens <= 0) {
+      break;
+    }
+    const perDocTrimmed = washTrimTextToTokenLimit(prepText, PREP_DOC_TOKEN_LIMIT);
+    const perDocTokens = washEstimateTokenCount(perDocTrimmed);
+    const boundedText = perDocTokens > remainingRunTokens ? washTrimTextToTokenLimit(perDocTrimmed, remainingRunTokens) : perDocTrimmed;
+    const boundedTokens = washEstimateTokenCount(boundedText);
+    if (boundedText.trim().length === 0 || boundedTokens <= 0) {
+      continue;
+    }
+    boundedTexts.push(boundedText);
+    remainingRunTokens = Math.max(0, remainingRunTokens - boundedTokens);
+  }
+  return boundedTexts;
+}
 function washPrepKeywords(text) {
   const tokens = String(text ?? "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 4 && !WASH_PREP_STOPWORDS.has(token));
   return [...new Set(tokens)];
 }
-function washBuildFallbackPrepByItem(prepTexts, testItems) {
-  const combined = (prepTexts ?? []).join("\n\n");
+function washBuildFallbackPrepByItem(prepText, testItems) {
+  const combined = String(prepText ?? "");
   const prepBloom = washDetectBloomLevel(combined);
   const prepRepresentations = washDetectRepresentations(combined);
   const hasWorkedSignal = /step\s*\d|worked\s+example|example\s*\d|\bsolution\b/i.test(combined);
   const result = {};
   for (const item of testItems ?? []) {
-    const n = item.itemNumber;
-    const keywords = washPrepKeywords(item.stem ?? "").slice(0, 12);
+    const n = item.itemKey ?? item.itemNumber;
+    const conceptKeywords = washUniqueStrings((item.concepts ?? []).filter((concept) => washIsMeaningfulConceptLabel(concept)));
+    const stemKeywords = washPrepKeywords(item.prepStemContext ?? item.stem ?? "").slice(0, 8);
+    const keywords = washUniqueStrings([...conceptKeywords, ...stemKeywords]).slice(0, 12);
     const matchedKeywords = keywords.filter((keyword) => washCountOccurrences(combined, keyword) > 0);
     const conceptMatch = keywords.length === 0 ? 0 : matchedKeywords.length / keywords.length;
     const repsRequired = item.representations ?? [];
@@ -10483,7 +10530,7 @@ function washBuildFallbackPrepByItem(prepTexts, testItems) {
       bloomAlignment,
       representationAlignment,
       stepAlignment: hasWorkedSignal ? "aligned" : "mismatch",
-      coveredConcepts: matchedKeywords.slice(0, 5),
+      coveredConcepts: matchedKeywords.filter((keyword) => washIsMeaningfulConceptLabel(keyword)).slice(0, 5),
       evidence: matchedKeywords.slice(0, 5).map((keyword) => `Prep doc keyword match — "${keyword}"`),
       inferredOnly: true
     };
@@ -10525,7 +10572,7 @@ function washDetectRepresentations(text) {
   return found;
 }
 function washExtractPrepCoverage(prepTexts, testConcepts) {
-  const combined = (prepTexts ?? []).join("\n\n");
+  const combined = String(prepTexts ?? "");
   const conceptsTaught = [];
   const bloomTaughtByConcept = {};
   const representationsUsedByConcept = {};
@@ -10538,7 +10585,7 @@ function washExtractPrepCoverage(prepTexts, testConcepts) {
     if (occ >= 2 || worked) return "medium";
     return "light";
   };
-  for (const concept of testConcepts ?? []) {
+  for (const concept of (testConcepts ?? []).filter((candidate) => washIsMeaningfulConceptLabel(candidate))) {
     let occ = washCountOccurrences(combined, concept);
     if (occ === 0) {
       const words = String(concept ?? "").toLowerCase().split(/\s+/).filter((w) => w.length > 3);
@@ -10568,8 +10615,8 @@ function washExtractPrepCoverage(prepTexts, testConcepts) {
 function washAlignPrepToTest(coverageMap, testItems) {
   const byItem = {};
   for (const item of testItems ?? []) {
-    const n = item.itemNumber;
-    const conceptsRequired = item.concepts ?? [];
+    const n = item.itemKey ?? item.itemNumber;
+    const conceptsRequired = washUniqueStrings((item.concepts ?? []).filter((concept) => washIsMeaningfulConceptLabel(concept)));
     const bloomRequired = typeof item.bloomLevel === "number" ? item.bloomLevel : 2;
     const repsRequired = item.representations ?? [];
     const coveredConcepts = conceptsRequired.filter((c) => washFindCoverageKey(coverageMap, c));
@@ -10619,6 +10666,10 @@ function washAlignPrepToTest(coverageMap, testItems) {
   }
   return byItem;
 }
+function washCapPrepDelta(value, min, max) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+  return Number(washClamp(value, min, max).toFixed(4));
+}
 function washComputePrepDeltas(alignment) {
   const base = {
     strong: { difficultyDelta: -0.15, confusionDelta: -0.2, timeDelta: -0.1, bloomDelta: -0.2 },
@@ -10644,11 +10695,43 @@ function washComputePrepDeltas(alignment) {
     timeDelta += 0.05;
   }
   return {
-    difficultyAdjustment: difficultyDelta,
-    confusionAdjustment: confusionDelta,
-    timeMultiplier: timeDelta,
-    bloomAdjustment: bloomDelta
+    difficultyAdjustment: washCapPrepDelta(difficultyDelta, -0.2, 0.2),
+    confusionAdjustment: washCapPrepDelta(confusionDelta, -0.2, 0.2),
+    timeMultiplier: washCapPrepDelta(timeDelta, -0.15, 0.15),
+    bloomAdjustment: washCapPrepDelta(bloomDelta, -0.3, 0.3)
   };
+}
+function washMergePrepEntries(entries) {
+  const validEntries = (entries ?? []).filter((entry) => entry && typeof entry === "object");
+  if (validEntries.length === 0) return null;
+  const conceptMatch = washAverage(validEntries.map((entry) => entry.conceptMatch)) ?? 0;
+  const strength = conceptMatch >= 0.85 ? "strong" : conceptMatch >= 0.5 ? "partial" : conceptMatch > 0 ? "weak" : "none";
+  return {
+    strength,
+    conceptMatch: Number(conceptMatch.toFixed(4)),
+    bloomAlignment: validEntries.some((entry) => entry.bloomAlignment === "aligned") ? "aligned" : "below",
+    representationAlignment: validEntries.some((entry) => entry.representationAlignment === "aligned") ? "aligned" : "mismatch",
+    stepAlignment: validEntries.some((entry) => entry.stepAlignment === "aligned") ? "aligned" : "mismatch",
+    coveredConcepts: washUniqueStrings(validEntries.flatMap((entry) => Array.isArray(entry.coveredConcepts) ? entry.coveredConcepts : []).filter((concept) => washIsMeaningfulConceptLabel(concept))),
+    evidence: washUniqueStrings(validEntries.flatMap((entry) => Array.isArray(entry.evidence) ? entry.evidence : [])),
+    inferredOnly: validEntries.every((entry) => entry.inferredOnly === true),
+    difficultyAdjustment: washCapPrepDelta(washAverage(validEntries.map((entry) => entry.difficultyAdjustment)) ?? 0, -0.2, 0.2),
+    confusionAdjustment: washCapPrepDelta(washAverage(validEntries.map((entry) => entry.confusionAdjustment)) ?? 0, -0.2, 0.2),
+    timeMultiplier: washCapPrepDelta(washAverage(validEntries.map((entry) => entry.timeMultiplier)) ?? 0, -0.15, 0.15),
+    bloomAdjustment: washCapPrepDelta(washAverage(validEntries.map((entry) => entry.bloomAdjustment)) ?? 0, -0.3, 0.3)
+  };
+}
+function washMergePrepMaps(maps, testItems) {
+  const merged = {};
+  for (const item of testItems ?? []) {
+    const key = item.itemKey ?? item.itemNumber;
+    const entries = (maps ?? []).map((map) => map?.[key]).filter(Boolean);
+    const next = washMergePrepEntries(entries);
+    if (next) {
+      merged[key] = next;
+    }
+  }
+  return merged;
 }
 function washMergePrepIntoFinal(existingFinal, delta) {
   const f = { ...(existingFinal ?? {}) };
@@ -10790,7 +10873,7 @@ async function applyWashoverToItems(sessionId) {
     const akText = docLinks.filter((l) => l.resource_type === "answer-key").map((l) => l.content_text ?? "").join("\n");
     const wkText = docLinks.filter((l) => l.resource_type === "worked-solution").map((l) => l.content_text ?? "").join("\n");
     const rbText = docLinks.filter((l) => l.resource_type === "rubric").map((l) => l.content_text ?? "").join("\n");
-    const prepTexts = docLinks.filter((l) => l.resource_type === "prep-doc").map((l) => l.content_text ?? "").filter((t) => String(t).trim().length > 0);
+    const prepTexts = washApplyPrepTokenBudget(docLinks.filter((l) => l.resource_type === "prep-doc").map((l) => l.content_text ?? "").filter((t) => String(t).trim().length > 0));
     console.log("prepTexts length:", prepTexts.length);
     console.log("prepTexts preview:", prepTexts.map((text, index) => ({
       index,
@@ -10799,7 +10882,7 @@ async function applyWashoverToItems(sessionId) {
     const akByItem = washParseAnswerKey(akText);
     const wkByItem = washParseWorkedSolutions(wkText);
     const rbByItem = washParseRubric(rbText);
-    const testItems = items.map((row) => {
+    const rawTestItems = items.map((row) => {
       const meta = row.metadata ?? {};
       const structure = washDeriveItemStructure(row);
       return {
@@ -10812,16 +10895,32 @@ async function applyWashoverToItems(sessionId) {
         bloomLevel: meta.base?.bloomLevel ?? meta.bloomLevel ?? 2
       };
     });
-    const allTestConcepts = [...new Set(testItems.flatMap((i) => i.concepts ?? []))];
-    const prepCoverageMap = prepTexts.length > 0 && allTestConcepts.length > 0 ? washExtractPrepCoverage(prepTexts, allTestConcepts) : null;
-    const conceptPrepByItem = prepCoverageMap ? washAlignPrepToTest(prepCoverageMap, testItems) : {};
-    const hasConceptPrepCoverage = Boolean(
-      prepCoverageMap &&
-      Array.isArray(prepCoverageMap.conceptsTaught) &&
-      prepCoverageMap.conceptsTaught.length > 0 &&
-      Object.values(conceptPrepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0)
-    );
-    const prepByItem = hasConceptPrepCoverage ? conceptPrepByItem : prepTexts.length > 0 ? washBuildFallbackPrepByItem(prepTexts, testItems) : {};
+    const testItemsByGroup = new Map();
+    for (const item of rawTestItems) {
+      const key = item.structure?.groupId ?? item.itemKey;
+      if (!testItemsByGroup.has(key)) testItemsByGroup.set(key, []);
+      testItemsByGroup.get(key).push(item);
+    }
+    const testItems = rawTestItems.map((item) => {
+      const group = testItemsByGroup.get(item.structure?.groupId ?? item.itemKey) ?? [];
+      const parent = group.find((candidate) => candidate.structure?.partIndex === 0 || candidate.structure?.isParent === true) ?? null;
+      return {
+        ...item,
+        concepts: washUniqueStrings([
+          ...(Array.isArray(item.concepts) ? item.concepts : []),
+          ...((item.structure?.partIndex ?? 0) > 0 && parent && Array.isArray(parent.concepts) ? parent.concepts : [])
+        ]).filter((concept) => washIsMeaningfulConceptLabel(concept)),
+        prepStemContext: ((item.structure?.partIndex ?? 0) > 0 && parent ? `${parent.stem} ${item.stem}` : item.stem).trim()
+      };
+    });
+    const allTestConcepts = washUniqueStrings(testItems.flatMap((i) => i.concepts ?? [])).filter((concept) => washIsMeaningfulConceptLabel(concept));
+    const prepCoverageMaps = prepTexts.length > 0 && allTestConcepts.length > 0 ? prepTexts.map((prepText) => washExtractPrepCoverage(prepText, allTestConcepts)) : [];
+    const conceptPrepMaps = prepCoverageMaps.map((prepCoverageMap) => washAlignPrepToTest(prepCoverageMap, testItems));
+    const mergedConceptPrepByItem = washMergePrepMaps(conceptPrepMaps, testItems);
+    const hasConceptPrepCoverage = Object.values(mergedConceptPrepByItem).some((entry) => Array.isArray(entry?.coveredConcepts) && entry.coveredConcepts.length > 0);
+    const fallbackPrepMaps = prepTexts.map((prepText) => washBuildFallbackPrepByItem(prepText, testItems));
+    const mergedFallbackPrepByItem = washMergePrepMaps(fallbackPrepMaps, testItems);
+    const prepByItem = hasConceptPrepCoverage ? mergedConceptPrepByItem : mergedFallbackPrepByItem;
     const hasAnyPrepCoverage = prepTexts.length > 0 && Object.keys(prepByItem).length > 0;
     const contexts = items.map((item) => {
       const structure = washDeriveItemStructure(item);

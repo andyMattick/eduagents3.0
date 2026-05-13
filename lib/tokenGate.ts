@@ -15,7 +15,15 @@ import { supabaseAdmin, supabaseRest } from "./supabase";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const DAILY_TOKEN_LIMIT = 25_000;
+function readTokenLimit(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw ?? "");
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+export const DAILY_TOKEN_LIMIT = readTokenLimit(process.env.TOKEN_DAILY_LIMIT, 40_000);
+export const NARRATIVE_RUN_TOKEN_LIMIT = readTokenLimit(process.env.TOKEN_NARRATIVE_RUN_LIMIT, 8_000);
+export const WASHOVER_RUN_TOKEN_LIMIT = readTokenLimit(process.env.TOKEN_WASHOVER_RUN_LIMIT, 12_000);
+export const PREP_DOC_TOKEN_LIMIT = readTokenLimit(process.env.TOKEN_PREP_DOC_LIMIT, 8_000);
 
 export const TOKEN_LIMIT_ERROR = "TOKEN_LIMIT_REACHED" as const;
 

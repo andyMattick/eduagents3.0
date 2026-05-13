@@ -9,6 +9,24 @@ export type RegisteredDocumentSummary = {
 	sourceFileName: string;
 	sourceMimeType: string;
 	createdAt: string;
+	docType?: string | null;
+};
+
+export type SavedDocumentSummary = {
+	documentId: string;
+	sourceFileName: string;
+	createdAt: string;
+	docType?: string | null;
+	sessionId?: string | null;
+	declaredRole?: string | null;
+};
+
+export type DocumentStatusSummary = {
+	documentId: string;
+	docType: string | null;
+	analysisAvailable: boolean;
+	rewriteEligible: boolean;
+	sessionId?: string | null;
 };
 
 type UploadDocumentResponse = {
@@ -229,6 +247,35 @@ export function bindDocumentsToSessionApi(args: {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(args),
+	});
+}
+
+export function listSavedDocumentsApi() {
+	return fetchJson<{ documents: SavedDocumentSummary[] }>("/api/v4/documents");
+}
+
+export function loadDocumentStatusApi(documentId: string) {
+	return fetchJson<DocumentStatusSummary>(`/api/v4/documents/status?documentId=${encodeURIComponent(documentId)}`);
+}
+
+export function attachSavedCompanionDocumentsApi(args: {
+	sessionId: string;
+	targetDocumentId: string;
+	documentIds: string[];
+	documentRoles: Record<string, string[]>;
+	sessionRoles: Record<string, string[]>;
+	resourceLinks: Array<{
+		documentId: string;
+		resourceDocumentId: string;
+		resourceType: "answer-key" | "worked-solution" | "rubric" | "prep-doc";
+	}>;
+}) {
+	return bindDocumentsToSessionApi({
+		sessionId: args.sessionId,
+		documentIds: Array.from(new Set(args.documentIds.length > 0 ? args.documentIds : [args.targetDocumentId])),
+		documentRoles: args.documentRoles,
+		sessionRoles: args.sessionRoles,
+		resourceLinks: args.resourceLinks,
 	});
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { deleteClassApi, getClassDetailApi, getSimulationUsageTodayApi, regenerateClassApi, type SimulationUsageTodayResponse } from "../../../lib/phaseCApi";
+import { deleteClassApi, getClassDetailApi, getSimulationUsageTodayApi, regenerateClassApi, submitClassActualResultsApi, type SimulationUsageTodayResponse } from "../../../lib/phaseCApi";
 import { useAuth } from "../../Auth/useAuth";
 
 import { StudentProfileTooltip } from "./StudentProfileTooltip";
@@ -17,6 +17,26 @@ type Props = {
 
 type Tab = "overview" | "students" | "simulations";
 
+function parseActualResultsCsv(text: string) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length < 2) {
+    return [];
+  }
+  const headers = lines[0].split(",").map((value) => value.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const values = line.split(",").map((value) => value.trim());
+    const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+    return {
+      studentId: row.student_id || row.external_id,
+      itemNumber: row.item_number,
+      partLabel: row.part_label || null,
+      correct: row.correct === "1" || row.correct?.toLowerCase?.() === "true" ? 1 : 0,
+      timeSeconds: row.time_seconds ? Number(row.time_seconds) : null,
+      confusion: row.confusion ? Number(row.confusion) : null,
+    };
+  }).filter((row) => row.studentId && row.itemNumber !== "");
+}
+
 export function ClassDetailPage({ classId, navigate }: Props) {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
@@ -26,6 +46,11 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   const [regenerating, setRegenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [simulationUsageToday, setSimulationUsageToday] = useState<SimulationUsageTodayResponse | null>(null);
+  const [actualResultsAssessmentId, setActualResultsAssessmentId] = useState("");
+  const [actualResultsText, setActualResultsText] = useState("");
+  const [actualResultsSubmitting, setActualResultsSubmitting] = useState(false);
+  const [actualResultsMessage, setActualResultsMessage] = useState<string | null>(null);
+  const [actualResultsRefreshKey, setActualResultsRefreshKey] = useState(0);
 
   const [data, setData] = useState<Awaited<ReturnType<typeof getClassDetailApi>> | null>(null);
 
@@ -45,6 +70,12 @@ export function ClassDetailPage({ classId, navigate }: Props) {
   useEffect(() => {
     void load();
   }, [classId]);
+
+  useEffect(() => {
+    if (!actualResultsAssessmentId && (data?.simulations?.[0]?.documentId ?? "").length > 0) {
+      setActualResultsAssessmentId(data?.simulations?.[0]?.documentId ?? "");
+    }
+  }, [actualResultsAssessmentId, data?.simulations]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -117,6 +148,46 @@ export function ClassDetailPage({ classId, navigate }: Props) {
       setError(caught instanceof Error ? caught.message : "Class deletion failed");
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleActualResultsFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const text = await file.text();
+    setActualResultsText(text);
+    setActualResultsMessage(null);
+  }
+
+  async function handleSubmitActualResults() {
+    if (!actualResultsAssessmentId.trim()) {
+      setError("Assessment ID is required for actual results ingestion.");
+      return;
+    }
+    const rows = parseActualResultsCsv(actualResultsText);
+    if (rows.length === 0) {
+      setError("Provide at least one actual-results row using the CSV contract.");
+      return;
+    }
+    setActualResultsSubmitting(true);
+    setError(null);
+    setActualResultsMessage(null);
+    try {
+      const response = await submitClassActualResultsApi({
+        classId,
+        assessmentId: actualResultsAssessmentId.trim(),
+        rows,
+        applyCalibration: true,
+      });
+      setActualResultsMessage(`Ingested ${response.rowCount} rows across ${response.studentCount} students${response.calibrationApplied ? " and refreshed calibration." : "."}`);
+      setActualResultsRefreshKey((value) => value + 1);
+      setSelectedResultType("actual");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Actual results ingestion failed");
+    } finally {
+      setActualResultsSubmitting(false);
     }
   }
 
@@ -266,6 +337,42 @@ export function ClassDetailPage({ classId, navigate }: Props) {
           <h3>Class results</h3>
           <ClassResultsSelector selected={selectedResultType} onChange={setSelectedResultType} />
 
+          <div className="phasec-card" style={{ marginTop: "1rem" }}>
+            <h4>Add Real Results</h4>
+            <p className="phasec-copy">Paste CSV rows or load a CSV file using: student_id, item_number, part_label, correct, time_seconds, confusion.</p>
+            <div style={{ display: "grid", gap: "0.75rem" }}>
+              <label>
+                <span className="phasec-stat-label">Assessment ID</span>
+                <input
+                  value={actualResultsAssessmentId}
+                  onChange={(event) => setActualResultsAssessmentId(event.target.value)}
+                  placeholder="Assessment document ID"
+                  style={{ width: "100%", marginTop: "0.35rem", padding: "0.55rem 0.7rem", borderRadius: "8px", border: "1px solid rgba(86,57,32,0.18)" }}
+                />
+              </label>
+              <label>
+                <span className="phasec-stat-label">CSV or manual rows</span>
+                <textarea
+                  value={actualResultsText}
+                  onChange={(event) => setActualResultsText(event.target.value)}
+                  rows={8}
+                  placeholder={"student_id,item_number,part_label,correct,time_seconds,confusion\nstudent-1,1,,1,48,0.12\nstudent-1,2,a,0,75,0.44"}
+                  style={{ width: "100%", marginTop: "0.35rem", padding: "0.7rem", borderRadius: "8px", border: "1px solid rgba(86,57,32,0.18)", fontFamily: "monospace" }}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}>
+                <label className="phasec-button" style={{ cursor: "pointer" }}>
+                  Load CSV file
+                  <input type="file" accept=".csv,text/csv" style={{ display: "none" }} onChange={(event) => void handleActualResultsFileChange(event)} />
+                </label>
+                <button className="phasec-button" onClick={() => void handleSubmitActualResults()} disabled={actualResultsSubmitting}>
+                  {actualResultsSubmitting ? "Ingesting..." : "Ingest and calibrate"}
+                </button>
+              </div>
+              {actualResultsMessage && <p className="phasec-copy" style={{ marginBottom: 0 }}>{actualResultsMessage}</p>}
+            </div>
+          </div>
+
           {selectedResultType === "predicted" && (
             <>
               <h4>Simulation runs (predicted)</h4>
@@ -284,8 +391,8 @@ export function ClassDetailPage({ classId, navigate }: Props) {
             </>
           )}
 
-          {selectedResultType === "actual" && <ActualResultsView classId={classId} />}
-          {selectedResultType === "compare" && <PredictedVsActualView classId={classId} />}
+          {selectedResultType === "actual" && <ActualResultsView key={`actual-${actualResultsRefreshKey}-${actualResultsAssessmentId}`} classId={classId} assessmentId={actualResultsAssessmentId || undefined} />}
+          {selectedResultType === "compare" && <PredictedVsActualView key={`compare-${actualResultsRefreshKey}-${actualResultsAssessmentId}`} classId={classId} assessmentId={actualResultsAssessmentId || undefined} />}
 
           <ClassResultsHistory classId={classId} />
         </div>
