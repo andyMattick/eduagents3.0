@@ -157,7 +157,7 @@ describe("ShortCircuitPage saved companions", () => {
 
     render(<ShortCircuitPage />);
 
-    await waitFor(() => expect(screen.getByText("Attach Existing Companion Docs")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Companion Documents")).toBeInTheDocument());
     expect(await screen.findByText("7,500 tokens remaining today.")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Unit 4 Answer Key.pdf")).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText(/Unit 4 Answer Key.pdf/i));

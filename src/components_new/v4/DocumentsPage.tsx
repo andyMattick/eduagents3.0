@@ -34,6 +34,11 @@ interface DocumentsPageProps {
   navigate: (path: string) => void;
 }
 
+function buildSimulationPath(documentId: string, mode: "base" | "companions"): string {
+  const params = new URLSearchParams({ documentId, mode });
+  return `/simulation?${params.toString()}`;
+}
+
 function classifyGroup(doc: DocumentRecord): GroupId {
   const type = (doc.docType ?? "").toLowerCase();
   const name = (doc.sourceFileName ?? "").toLowerCase();
@@ -223,7 +228,7 @@ export function DocumentsPage({ navigate }: DocumentsPageProps) {
                                 <button
                                   type="button"
                                   className="documents-open-hint"
-                                  onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
+                                  onClick={() => navigate(buildSimulationPath(doc.documentId, "base"))}
                                   aria-label={`Open ${doc.sourceFileName} in simulation`}
                                 >
                                   Open
@@ -232,7 +237,7 @@ export function DocumentsPage({ navigate }: DocumentsPageProps) {
                                   <button
                                     type="button"
                                     className="documents-open-hint"
-                                    onClick={() => navigate(`/simulation?documentId=${encodeURIComponent(doc.documentId)}`)}
+                                    onClick={() => navigate(buildSimulationPath(doc.documentId, "companions"))}
                                     aria-label={`Attach saved companion docs to ${doc.sourceFileName}`}
                                   >
                                     Attach companions

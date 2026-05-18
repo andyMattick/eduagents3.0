@@ -622,6 +622,15 @@ describe("multipart washover regressions", () => {
 		expect(childA?.metadata.prep.inferredOnly).toBe(false);
 		expect(childB?.metadata.prep.inferredOnly).toBe(false);
 		expect(parent?.metadata.prep.inferredOnly).toBe(false);
+		expect(childA?.metadata.prep.difficultyAdjustment).toBeLessThan(0);
+		expect(childA?.metadata.prep.confusionAdjustment).toBeLessThan(0);
+		expect(childA?.metadata.prep.timeMultiplier).toBeLessThan(0);
+		expect(childB?.metadata.prep.difficultyAdjustment).toBeLessThan(0);
+		expect(childB?.metadata.prep.confusionAdjustment).toBeLessThan(0);
+		expect(childB?.metadata.prep.timeMultiplier).toBeLessThan(0);
+		expect(parent?.metadata.prep.difficultyAdjustment).toBeLessThan(0);
+		expect(parent?.metadata.prep.confusionAdjustment).toBeLessThan(0);
+		expect(parent?.metadata.prep.timeMultiplier).toBeLessThan(0);
 		expect(parent?.metadata.prep.coveredConcepts).toEqual(
 			expect.arrayContaining(["fraction addition", "equivalent fractions"]),
 		);
@@ -631,6 +640,35 @@ describe("multipart washover regressions", () => {
 		expect(parent?.metadata.final.stepDifficultyCurve).toHaveLength(5);
 		expect(parent?.metadata.final.timeSeconds).toBeGreaterThan(childA!.metadata.final.timeSeconds);
 		expect(parent?.metadata.final.timeSeconds).toBeGreaterThan(childB!.metadata.final.timeSeconds);
+	});
+
+	it("makes items harder when prep docs do not cover the tested concepts", async () => {
+		const db = buildMultipartFixture(true);
+		db.documents = db.documents.map((document) => document.document_id === "doc-prep"
+			? buildDocumentRow("doc-prep", "prep.pdf", "Students review classroom norms, attendance routines, and note-taking expectations before the unit quiz.")
+			: document);
+
+		await bindSession(db, "session-prep-none");
+
+		const parent = db.items.find((item) => item.id === "item-parent");
+		const childA = db.items.find((item) => item.id === "item-child-a");
+		const childB = db.items.find((item) => item.id === "item-child-b");
+
+		expect(childA?.metadata.prep.strength).toBe("none");
+		expect(childB?.metadata.prep.strength).toBe("none");
+		expect(parent?.metadata.prep.strength).toBe("none");
+		expect(childA?.metadata.prep.difficultyAdjustment).toBeGreaterThan(0);
+		expect(childA?.metadata.prep.confusionAdjustment).toBeGreaterThan(0);
+		expect(childA?.metadata.prep.timeMultiplier).toBeGreaterThan(0);
+		expect(childA?.metadata.prep.bloomAdjustment).toBeGreaterThan(0);
+		expect(childB?.metadata.prep.difficultyAdjustment).toBeGreaterThan(0);
+		expect(childB?.metadata.prep.confusionAdjustment).toBeGreaterThan(0);
+		expect(childB?.metadata.prep.timeMultiplier).toBeGreaterThan(0);
+		expect(childB?.metadata.prep.bloomAdjustment).toBeGreaterThan(0);
+		expect(parent?.metadata.prep.difficultyAdjustment).toBeGreaterThan(0);
+		expect(parent?.metadata.prep.confusionAdjustment).toBeGreaterThan(0);
+		expect(parent?.metadata.prep.timeMultiplier).toBeGreaterThan(0);
+		expect(parent?.metadata.prep.bloomAdjustment).toBeGreaterThan(0);
 	});
 
 	it("keeps child updates intact when a multipart group has no explicit parent row", async () => {

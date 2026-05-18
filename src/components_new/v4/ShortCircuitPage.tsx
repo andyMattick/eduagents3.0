@@ -102,6 +102,8 @@ type VerificationItem = {
 
 type CompanionResourceType = "answer-key" | "worked-solution" | "rubric" | "prep-doc";
 
+type SavedDocumentOpenMode = "base" | "companions";
+
 const EMPTY_COMPANION_SELECTIONS: Record<CompanionResourceType, string[]> = {
   "answer-key": [],
   "worked-solution": [],
@@ -135,6 +137,19 @@ function companionTypeLabel(value: CompanionResourceType): string {
       return "Rubrics";
     case "prep-doc":
       return "Prep Docs";
+  }
+}
+
+function companionTypeSingularLabel(value: CompanionResourceType): string {
+  switch (value) {
+    case "answer-key":
+      return "Answer Key";
+    case "worked-solution":
+      return "Worked Solution";
+    case "rubric":
+      return "Rubric";
+    case "prep-doc":
+      return "Prep Doc";
   }
 }
 
@@ -344,9 +359,11 @@ export function ShortCircuitPage() {
   const [prepDocFile, setPrepDocFile] = useState<File | null>(null);
   const [showLayersModal, setShowLayersModal] = useState(false);
   const [queryLoadedDocumentId, setQueryLoadedDocumentId] = useState<string | null>(null);
+  const [queryLoadedDocumentMode, setQueryLoadedDocumentMode] = useState<SavedDocumentOpenMode>("base");
   const [savedDocuments, setSavedDocuments] = useState<SavedDocumentSummary[]>([]);
   const [savedDocumentsLoading, setSavedDocumentsLoading] = useState(false);
   const [savedDocumentSession, setSavedDocumentSession] = useState<Awaited<ReturnType<typeof loadSessionDocumentsApi>> | null>(null);
+  const [savedDocumentOpenMode, setSavedDocumentOpenMode] = useState<SavedDocumentOpenMode>("base");
   const [savedCompanionSelections, setSavedCompanionSelections] = useState<Record<CompanionResourceType, string[]>>(cloneCompanionSelections());
   const [savedCompanionLoading, setSavedCompanionLoading] = useState(false);
   const [savedCompanionSaving, setSavedCompanionSaving] = useState(false);
@@ -419,6 +436,9 @@ export function ShortCircuitPage() {
     setWorkedSolutionFile(null);
     setRubricFile(null);
     setPrepDocFile(null);
+    setQueryLoadedDocumentId(null);
+    setQueryLoadedDocumentMode("base");
+    setSavedDocumentOpenMode("base");
     setSavedDocumentSession(null);
     setSavedCompanionSelections(cloneCompanionSelections());
     setSavedCompanionLoading(false);
@@ -689,12 +709,16 @@ export function ShortCircuitPage() {
   }, [runPhaseB]);
 
   useEffect(() => {
-    const requestedDocumentId = new URLSearchParams(window.location.search).get("documentId");
-    if (!requestedDocumentId || requestedDocumentId === queryLoadedDocumentId) {
+    const searchParams = new URLSearchParams(window.location.search);
+    const requestedDocumentId = searchParams.get("documentId");
+    const requestedMode = searchParams.get("mode") === "companions" ? "companions" : "base";
+    if (!requestedDocumentId || (requestedDocumentId === queryLoadedDocumentId && requestedMode === queryLoadedDocumentMode)) {
       return;
     }
 
     setQueryLoadedDocumentId(requestedDocumentId);
+    setQueryLoadedDocumentMode(requestedMode);
+    setSavedDocumentOpenMode(requestedMode);
     setSessionId(null);
     setDocumentId(requestedDocumentId);
     setIsPublicDocument(false);
@@ -721,8 +745,10 @@ export function ShortCircuitPage() {
         setFile(new File([], fallbackName, { type: "application/pdf" }));
       });
 
-    void runPhaseB({ nextDocumentId: requestedDocumentId, nextSessionId: null });
-  }, [queryLoadedDocumentId, runPhaseB]);
+    if (requestedMode === "base") {
+      void runPhaseB({ nextDocumentId: requestedDocumentId, nextSessionId: null });
+    }
+  }, [queryLoadedDocumentId, queryLoadedDocumentMode, runPhaseB]);
 
   const toggleDocumentVisibility = useCallback(async () => {
     if (!documentId || visibilitySaving) {
@@ -898,6 +924,9 @@ export function ShortCircuitPage() {
           if (!cancelled) {
             setSavedDocumentSession(null);
             setSavedCompanionSelections(cloneCompanionSelections());
+            if (savedDocumentOpenMode === "companions") {
+              void runPhaseB({ nextDocumentId: documentId, nextSessionId: null });
+            }
           }
           return;
         }
@@ -905,6 +934,9 @@ export function ShortCircuitPage() {
         if (!cancelled) {
           setSavedDocumentSession(payload);
           setSavedCompanionSelections(buildCompanionSelections(payload.session?.resourceLinks, documentId));
+          if (savedDocumentOpenMode === "companions") {
+            void runPhaseB({ nextSessionId: resolvedSessionId, nextDocumentId: documentId });
+          }
         }
       })
       .catch((error) => {
@@ -923,7 +955,7 @@ export function ShortCircuitPage() {
     return () => {
       cancelled = true;
     };
-  }, [documentId, sessionId]);
+  }, [documentId, runPhaseB, savedDocumentOpenMode, sessionId]);
 
   useEffect(() => {
     if (phase !== "upload") {
@@ -960,6 +992,30 @@ export function ShortCircuitPage() {
     }
     return grouped;
   }, [documentId, savedDocuments]);
+
+  const attachedCompanionDocs = useMemo(() => {
+    if (!documentId || !savedDocumentSession?.session?.resourceLinks?.length) {
+      return [] as Array<{
+        documentId: string;
+        resourceType: CompanionResourceType;
+        sourceFileName: string;
+        createdAt: string;
+      }>;
+    }
+
+    const documentsById = new Map(savedDocumentSession.documents.map((doc) => [doc.documentId, doc]));
+    return savedDocumentSession.session.resourceLinks
+      .filter((link) => link.documentId === documentId && isCompanionResourceType(link.resourceType))
+      .map((link) => {
+        const resourceDoc = documentsById.get(link.resourceDocumentId);
+        return {
+          documentId: link.resourceDocumentId,
+          resourceType: link.resourceType,
+          sourceFileName: resourceDoc?.sourceFileName ?? link.resourceDocumentId,
+          createdAt: resourceDoc?.createdAt ?? savedDocumentSession.session.updatedAt,
+        };
+      });
+  }, [documentId, savedDocumentSession]);
 
   const toggleSavedCompanionSelection = useCallback((resourceType: CompanionResourceType, resourceDocumentId: string) => {
     setSavedCompanionSelections((current) => {
@@ -1724,14 +1780,58 @@ export function ShortCircuitPage() {
 
           {SAVED_COMPANION_ATTACH_ENABLED && documentId && (
             <div className="v4-shortcircuit-result-card">
-              <h3 className="v4-shortcircuit-tree-title">Attach Existing Companion Docs</h3>
+              <h3 className="v4-shortcircuit-tree-title">Companion Documents</h3>
               <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
-                Attach saved answer keys, worked solutions, rubrics, and prep docs to this saved test, then rerun washover and refresh simulation outputs.
+                Review what is already attached to this saved test, then detach or replace companions before rerunning washover and refreshing simulation outputs.
               </p>
               {savedCompanionLoading || savedDocumentsLoading ? (
                 <p className="phasec-copy">Loading saved companion docs...</p>
               ) : (
                 <div style={{ display: "grid", gap: "0.9rem" }}>
+                  <section style={{ border: "1px solid rgba(86,57,32,0.12)", borderRadius: "12px", padding: "0.85rem", background: "rgba(255,251,235,0.55)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: "0.6rem", alignItems: "center", marginBottom: "0.5rem" }}>
+                      <strong style={{ color: "#1f1a17" }}>Currently Attached</strong>
+                      <span className="v4-pill">{attachedCompanionDocs.length} attached</span>
+                    </div>
+                    {attachedCompanionDocs.length === 0 ? (
+                      <p className="phasec-copy" style={{ margin: 0 }}>
+                        No companion docs are attached yet. Choose saved resources below to add answer keys, worked solutions, rubrics, or prep docs.
+                      </p>
+                    ) : (
+                      <div style={{ display: "grid", gap: "0.55rem" }}>
+                        {attachedCompanionDocs.map((doc) => (
+                          <div
+                            key={`${doc.resourceType}-${doc.documentId}`}
+                            style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start", border: "1px solid rgba(148,163,184,0.22)", borderRadius: "10px", padding: "0.7rem 0.8rem", background: "#fff" }}
+                          >
+                            <div>
+                              <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
+                                <strong style={{ color: "#1f1a17" }}>{doc.sourceFileName}</strong>
+                                <span className="v4-pill">{companionTypeSingularLabel(doc.resourceType)}</span>
+                              </div>
+                              <div style={{ fontSize: "0.78rem", color: "#6b7280", marginTop: "0.2rem" }}>
+                                Uploaded {new Date(doc.createdAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className="v4-button v4-button-secondary"
+                              style={{ padding: "0.45rem 0.7rem" }}
+                              onClick={() => toggleSavedCompanionSelection(doc.resourceType, doc.documentId)}
+                            >
+                              Detach
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="phasec-copy" style={{ marginBottom: 0, marginTop: "0.6rem" }}>
+                      Detach and replace actions are staged here, then applied when you rerun washover.
+                    </p>
+                  </section>
+
+                  <section>
+                    <h4 style={{ margin: "0 0 0.5rem", color: "#1f1a17", fontSize: "0.95rem" }}>Replace Or Add Saved Companion Docs</h4>
                   {(Object.keys(savedCompanionOptions) as CompanionResourceType[]).map((resourceType) => {
                     const docs = savedCompanionOptions[resourceType];
                     return (
@@ -1767,6 +1867,7 @@ export function ShortCircuitPage() {
                       </section>
                     );
                   })}
+                  </section>
                 </div>
               )}
               <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", marginTop: "0.9rem" }}>
@@ -1967,16 +2068,42 @@ export function ShortCircuitPage() {
           <div className="v4-shortcircuit-result-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
               <h3 className="v4-shortcircuit-tree-title" style={{ marginBottom: 0 }}>Student Simulation</h3>
-              <button
-                type="button"
-                className="v4-button v4-button-secondary"
-                onClick={() => {
-                  window.history.pushState({}, "", "/classes/new");
-                  window.dispatchEvent(new PopStateEvent("popstate"));
-                }}
-              >
-                Create a Class
-              </button>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="v4-button v4-button-secondary"
+                  onClick={() => {
+                    window.history.pushState({}, "", "/classes");
+                    window.dispatchEvent(new PopStateEvent("popstate"));
+                  }}
+                >
+                  View All Classes
+                </button>
+                <button
+                  type="button"
+                  className="v4-button v4-button-secondary"
+                  disabled={!selectedClassId}
+                  onClick={() => {
+                    if (!selectedClassId) {
+                      return;
+                    }
+                    window.history.pushState({}, "", `/classes/${encodeURIComponent(selectedClassId)}`);
+                    window.dispatchEvent(new PopStateEvent("popstate"));
+                  }}
+                >
+                  Open Class History
+                </button>
+                <button
+                  type="button"
+                  className="v4-button v4-button-secondary"
+                  onClick={() => {
+                    window.history.pushState({}, "", "/classes/new");
+                    window.dispatchEvent(new PopStateEvent("popstate"));
+                  }}
+                >
+                  Create a Class
+                </button>
+              </div>
             </div>
             <p style={{ marginTop: 0, fontSize: "0.85rem", color: "#6b5040" }}>
               Run Phase C directly from this page and inspect real student-level outputs inline.

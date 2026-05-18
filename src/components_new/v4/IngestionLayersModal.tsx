@@ -19,6 +19,10 @@ type ItemLayer = {
   id: string;
   itemNumber: number;
   type: string;
+  logicalLabel?: string | null;
+  groupId?: string | null;
+  partIndex?: number;
+  isParent?: boolean;
   stem: string;
   metadata: {
     base: Record<string, unknown> | null;
@@ -33,6 +37,12 @@ type ItemLayer = {
 type ItemLayersResponse = {
   documentId: string;
   items: ItemLayer[];
+};
+
+type ItemLayerGroup = {
+  id: string;
+  parent: ItemLayer | null;
+  children: ItemLayer[];
 };
 
 type Props = {
@@ -327,7 +337,46 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
       .catch((e) => { setError(e instanceof Error ? e.message : "Load failed"); setLoading(false); });
   }, [documentId]);
 
-  const selectedItem = data?.items[selectedItemIndex] ?? null;
+  const groupedItems: ItemLayerGroup[] = (() => {
+    if (!data?.items?.length) {
+      return [];
+    }
+
+    const groups = new Map<string, ItemLayerGroup>();
+    for (const item of data.items) {
+      const groupKey = item.groupId ?? String(item.itemNumber);
+      const current = groups.get(groupKey) ?? { id: groupKey, parent: null, children: [] };
+      const isChild = (item.partIndex ?? 0) > 0 || item.isParent === false;
+      if (isChild) {
+        current.children.push(item);
+      } else if (!current.parent) {
+        current.parent = item;
+      } else {
+        current.children.push(item);
+      }
+      groups.set(groupKey, current);
+    }
+
+    return [...groups.values()].sort((left, right) => {
+      const leftNumber = left.parent?.itemNumber ?? left.children[0]?.itemNumber ?? 0;
+      const rightNumber = right.parent?.itemNumber ?? right.children[0]?.itemNumber ?? 0;
+      return leftNumber - rightNumber;
+    }).map((group) => ({
+      ...group,
+      children: [...group.children].sort((left, right) => (left.partIndex ?? 0) - (right.partIndex ?? 0)),
+    }));
+  })();
+
+  const selectableItems = groupedItems.flatMap((group) => {
+    const ordered: ItemLayer[] = [];
+    if (group.parent) {
+      ordered.push(group.parent);
+    }
+    ordered.push(...group.children);
+    return ordered;
+  });
+
+  const selectedItem = selectableItems[selectedItemIndex] ?? null;
 
   return (
     <div
@@ -366,33 +415,55 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
         {/* Body */}
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* Item list */}
-          <div style={{ width: "160px", borderRight: "1px solid #e2e8f0", overflowY: "auto", background: "#f8fafc", flexShrink: 0 }}>
+          <div style={{ width: "220px", borderRight: "1px solid #e2e8f0", overflowY: "auto", background: "#f8fafc", flexShrink: 0 }}>
             {loading && <p style={{ padding: "0.75rem", fontSize: "0.8rem", color: "#94a3b8" }}>Loading…</p>}
-            {!loading && !error && data?.items.map((item, idx) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedItemIndex(idx)}
-                style={{
-                  display: "block", width: "100%", textAlign: "left",
-                  padding: "0.6rem 0.75rem", border: "none", cursor: "pointer",
-                  background: idx === selectedItemIndex ? "#dbeafe" : "transparent",
-                  color: idx === selectedItemIndex ? "#1e40af" : "#374151",
-                  fontWeight: idx === selectedItemIndex ? 600 : 400,
-                  fontSize: "0.82rem", borderBottom: "1px solid #e2e8f0"
-                }}
-              >
-                Item {item.itemNumber}
-                {item.metadata.final && <span style={{ display: "block", fontSize: "0.7rem", color: "#64748b" }}>{item.type}</span>}
-              </button>
-            ))}
+            {!loading && !error && groupedItems.map((group) => {
+              const orderedItems = [
+                ...(group.parent ? [group.parent] : []),
+                ...group.children,
+              ];
+
+              return (
+                <div key={group.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                  {orderedItems.map((item) => {
+                    const idx = selectableItems.findIndex((candidate) => candidate.id === item.id);
+                    const isChild = (item.partIndex ?? 0) > 0 || item.isParent === false;
+                    const label = item.logicalLabel ?? (isChild ? `${item.itemNumber}` : String(item.itemNumber));
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setSelectedItemIndex(idx)}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: isChild ? "0.55rem 0.75rem 0.55rem 1.35rem" : "0.6rem 0.75rem",
+                          border: "none",
+                          cursor: "pointer",
+                          background: idx === selectedItemIndex ? "#dbeafe" : "transparent",
+                          color: idx === selectedItemIndex ? "#1e40af" : "#374151",
+                          fontWeight: idx === selectedItemIndex ? 600 : (isChild ? 500 : 700),
+                          fontSize: "0.82rem",
+                          borderTop: isChild ? "1px solid rgba(226,232,240,0.6)" : "none"
+                        }}
+                      >
+                        <span style={{ display: "block" }}>{isChild ? `Sub-item ${label}` : `Item ${label}`}</span>
+                        <span style={{ display: "block", fontSize: "0.7rem", color: idx === selectedItemIndex ? "#2563eb" : "#64748b" }}>{item.type || "assessment item"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
 
           {/* Layer panel */}
           <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.25rem" }}>
             {loading && <p style={{ color: "#64748b" }}>Loading ingestion layers…</p>}
             {error && <p style={{ color: "#dc2626" }}>{error}</p>}
-            {!loading && !error && !data?.items.length && (
+            {!loading && !error && !selectableItems.length && (
               <p style={{ color: "#64748b" }}>
                 No items found for this document. Upload and ingest the test document first, then run the washover pipeline by creating a session with companion documents.
               </p>
@@ -400,7 +471,7 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
             {!loading && !error && selectedItem && (
               <>
                 <p style={{ margin: "0 0 0.75rem", fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  Item {selectedItem.itemNumber}: {selectedItem.stem.slice(0, 120)}{selectedItem.stem.length > 120 ? "…" : ""}
+                  {((selectedItem.partIndex ?? 0) > 0 || selectedItem.isParent === false) ? "Sub-item" : "Item"} {selectedItem.logicalLabel ?? selectedItem.itemNumber}: {selectedItem.stem.slice(0, 120)}{selectedItem.stem.length > 120 ? "…" : ""}
                 </p>
                 <BaseLayerPanel base={selectedItem.metadata.base} />
                 <OverrideLayerPanel

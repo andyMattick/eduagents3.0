@@ -1,4 +1,30 @@
 /* Item-layers route — returns v4_items metadata layers for the Ingestion Layer Visualizer */
+function readItemStructure(metadata, itemNumber) {
+  const structure = metadata?.phaseB?.structure;
+  if (!structure || typeof structure !== "object") {
+    return {
+      logicalLabel: typeof itemNumber === "number" ? String(itemNumber) : null,
+      groupId: typeof itemNumber === "number" ? String(itemNumber) : null,
+      partIndex: 0,
+      isParent: true,
+    };
+  }
+
+  const rawGroupId = structure.groupId;
+  const normalizedGroupId = typeof rawGroupId === "string" || typeof rawGroupId === "number"
+    ? String(rawGroupId)
+    : (typeof itemNumber === "number" ? String(itemNumber) : null);
+
+  return {
+    logicalLabel: typeof structure.logicalLabel === "string" && structure.logicalLabel.trim().length > 0
+      ? structure.logicalLabel.trim()
+      : (typeof itemNumber === "number" ? String(itemNumber) : null),
+    groupId: normalizedGroupId,
+    partIndex: typeof structure.partIndex === "number" && Number.isFinite(structure.partIndex) ? structure.partIndex : 0,
+    isParent: structure.isParent !== false,
+  };
+}
+
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
@@ -52,9 +78,15 @@ async function handler(req, res) {
       filters: { document_id: `eq.${documentId}`, order: "item_number.asc" }
     });
     const items = (Array.isArray(rows) ? rows : []).map((row) => ({
+      const structure = readItemStructure(row.metadata, row.item_number);
+      return {
       id: row.id,
       itemNumber: row.item_number,
       type: row.type,
+      logicalLabel: structure.logicalLabel,
+      groupId: structure.groupId,
+      partIndex: structure.partIndex,
+      isParent: structure.isParent,
       stem: row.stem,
       metadata: {
         base: row.metadata?.base ?? null,
@@ -64,7 +96,8 @@ async function handler(req, res) {
         prep: row.metadata?.prep ?? null,
         final: row.metadata?.final ?? null
       }
-    }));
+    };
+    });
     return res.status(200).json({ documentId, items });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Failed to load item layers";

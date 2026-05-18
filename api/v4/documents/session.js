@@ -10701,6 +10701,18 @@ function washComputePrepDeltas(alignment) {
     bloomAdjustment: washCapPrepDelta(bloomDelta, -0.3, 0.3)
   };
 }
+function washScalePrepDeltas(delta, scale) {
+  if (!delta || typeof delta !== "object") {
+    return null;
+  }
+  const factor = typeof scale === "number" && Number.isFinite(scale) ? scale : 1;
+  return {
+    difficultyAdjustment: washCapPrepDelta((delta.difficultyAdjustment ?? 0) * factor, -0.2, 0.2),
+    confusionAdjustment: washCapPrepDelta((delta.confusionAdjustment ?? 0) * factor, -0.2, 0.2),
+    timeMultiplier: washCapPrepDelta((delta.timeMultiplier ?? 0) * factor, -0.15, 0.15),
+    bloomAdjustment: washCapPrepDelta((delta.bloomAdjustment ?? 0) * factor, -0.3, 0.3)
+  };
+}
 function washMergePrepEntries(entries) {
   const validEntries = (entries ?? []).filter((entry) => entry && typeof entry === "object");
   if (validEntries.length === 0) return null;
@@ -10934,7 +10946,9 @@ async function applyWashoverToItems(sessionId) {
       const wkLayer = Array.isArray(workedEntry) && workedEntry.length ? washWorkedLayer(workedEntry, base) : null;
       const rbLayer = typeof rubricEntry === "string" && rubricEntry ? washRubricLayer(rubricEntry, base) : null;
       const finalTraits = washMergeTraits(base, akLayer, wkLayer, rbLayer);
-      const prepDelta = prepEntry && !prepEntry.inferredOnly ? washComputePrepDeltas(prepEntry) : null;
+      const prepDelta = prepEntry
+        ? (prepEntry.inferredOnly ? washScalePrepDeltas(washComputePrepDeltas(prepEntry), 0.6) : washComputePrepDeltas(prepEntry))
+        : null;
       const prepLayer = prepEntry ? {
         strength: prepEntry.strength,
         conceptMatch: prepEntry.conceptMatch,
