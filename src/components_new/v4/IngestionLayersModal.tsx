@@ -376,7 +376,32 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
     return ordered;
   });
 
+  const hasPrepLayerData = selectableItems.some((item) => item.metadata.prep !== null);
+  const uncoveredByPrepItems = hasPrepLayerData
+    ? selectableItems.filter((item) => {
+      const prep = item.metadata.prep;
+      if (!prep) {
+        return true;
+      }
+      if (prep.strength === "none") {
+        return true;
+      }
+      return prep.coveredConcepts.length === 0 && prep.conceptMatch <= 0.05;
+    })
+    : [];
+  const prepGapAddendumLines = uncoveredByPrepItems.map((item) => {
+    const isChild = (item.partIndex ?? 0) > 0 || item.isParent === false;
+    const label = item.logicalLabel ?? String(item.itemNumber);
+    const stemPreview = item.stem.trim().replace(/\s+/g, " ").slice(0, 140);
+    return `${isChild ? "Sub-item" : "Item"} ${label}: ${stemPreview}${item.stem.length > 140 ? "..." : ""}`;
+  });
+  const prepGapAddendumText = prepGapAddendumLines.length > 0
+    ? `Addendum: Topics/items missing from prep coverage\n\n${prepGapAddendumLines.map((line, index) => `${index + 1}. ${line}`).join("\n")}`
+    : "";
+
   const selectedItem = selectableItems[selectedItemIndex] ?? null;
+  const hasOnlyParentRows = selectableItems.length > 0
+    && selectableItems.every((item) => (item.partIndex ?? 0) === 0 && item.isParent !== false);
 
   return (
     <div
@@ -463,6 +488,66 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
           <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.25rem" }}>
             {loading && <p style={{ color: "#64748b" }}>Loading ingestion layers…</p>}
             {error && <p style={{ color: "#dc2626" }}>{error}</p>}
+            {!loading && !error && hasOnlyParentRows && (
+              <div style={{
+                marginBottom: "0.9rem",
+                border: "1px solid #bfdbfe",
+                background: "#eff6ff",
+                borderRadius: "0.6rem",
+                padding: "0.7rem 0.8rem"
+              }}>
+                <p style={{ margin: 0, fontSize: "0.8rem", fontWeight: 700, color: "#1e3a8a" }}>
+                  Why only parent items appear here
+                </p>
+                <p style={{ margin: "0.35rem 0 0", fontSize: "0.78rem", color: "#1e40af" }}>
+                  The structured item tree can show inferred sub-parts from segmentation, but this panel reads persisted v4 item-layer rows.
+                  If child rows are not saved to v4 items, Layer 2-5 data is available only at parent level.
+                </p>
+              </div>
+            )}
+            {!loading && !error && hasPrepLayerData && uncoveredByPrepItems.length > 0 && (
+              <div style={{
+                marginBottom: "0.9rem",
+                border: "1px solid #fca5a5",
+                background: "#fff1f2",
+                borderRadius: "0.6rem",
+                padding: "0.7rem 0.8rem"
+              }}>
+                <p style={{ margin: 0, fontSize: "0.8rem", fontWeight: 700, color: "#9f1239" }}>
+                  Prep coverage gaps: {uncoveredByPrepItems.length} test item{uncoveredByPrepItems.length !== 1 ? "s" : ""} not found in prep docs
+                </p>
+                <p style={{ margin: "0.35rem 0 0", fontSize: "0.78rem", color: "#7f1d1d" }}>
+                  Use this as an addendum checklist before merging into a single review document.
+                </p>
+                <div style={{ marginTop: "0.45rem", maxHeight: "7.2rem", overflowY: "auto", paddingLeft: "1rem" }}>
+                  {uncoveredByPrepItems.map((item) => {
+                    const isChild = (item.partIndex ?? 0) > 0 || item.isParent === false;
+                    const label = item.logicalLabel ?? String(item.itemNumber);
+                    return (
+                      <div key={`prep-gap-${item.id}`} style={{ fontSize: "0.76rem", color: "#7f1d1d", padding: "0.08rem 0" }}>
+                        {isChild ? "Sub-item" : "Item"} {label}: {item.stem.slice(0, 95)}{item.stem.length > 95 ? "…" : ""}
+                      </div>
+                    );
+                  })}
+                </div>
+                <textarea
+                  readOnly
+                  value={prepGapAddendumText}
+                  style={{
+                    marginTop: "0.5rem",
+                    width: "100%",
+                    minHeight: "6rem",
+                    resize: "vertical",
+                    border: "1px solid #fecdd3",
+                    borderRadius: "0.5rem",
+                    padding: "0.5rem",
+                    fontSize: "0.75rem",
+                    color: "#881337",
+                    background: "#fff"
+                  }}
+                />
+              </div>
+            )}
             {!loading && !error && !selectableItems.length && (
               <p style={{ color: "#64748b" }}>
                 No items found for this document. Upload and ingest the test document first, then run the washover pipeline by creating a session with companion documents.

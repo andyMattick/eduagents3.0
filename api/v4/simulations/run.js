@@ -599,6 +599,162 @@ function buildMeasurableFromDbItem(row) {
     errorOpportunityCount
   };
 }
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+function readNestedNumber(source, path) {
+  let current = source;
+  for (const segment of path) {
+    if (!current || typeof current !== "object") {
+      return null;
+    }
+    current = current[segment];
+  }
+  return toFiniteNumber(current);
+}
+function readCurve(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return null;
+  }
+  const curve = values.map((value) => Number(clamp(Number(value), 0, 1).toFixed(4))).filter((value) => Number.isFinite(value));
+  return curve.length > 0 ? curve : null;
+}
+function buildMeasurableFromPhaseBItem(item, index) {
+  const measurables = item?.measurables && typeof item.measurables === "object" ? item.measurables : {};
+  const logicalLabel = typeof item?.logicalLabel === "string" && item.logicalLabel.trim().length > 0 ? item.logicalLabel.trim() : null;
+  const itemId = typeof item?.itemId === "string" && item.itemId.trim().length > 0
+    ? item.itemId.trim()
+    : logicalLabel ?? `item-${index + 1}`;
+  const bloomLevel = clamp(
+    Number(
+      item?.bloomLevel
+      ?? item?.ingestionBloomLevel
+      ?? readNestedNumber(measurables, ["final", "bloomLevel"])
+      ?? readNestedNumber(measurables, ["base", "bloomLevel"])
+      ?? 2
+    ),
+    1,
+    6
+  );
+  const linguisticLoad = clamp(
+    Number(
+      item?.linguisticLoad
+      ?? readNestedNumber(measurables, ["final", "linguisticLoad"])
+      ?? readNestedNumber(measurables, ["base", "linguisticLoad"])
+      ?? 0.5
+    ),
+    0,
+    1
+  );
+  const cognitiveLoad = clamp(
+    Number(
+      item?.cognitiveLoad
+      ?? readNestedNumber(measurables, ["final", "cognitiveLoad"])
+      ?? readNestedNumber(measurables, ["base", "cognitiveLoad"])
+      ?? 0.5
+    ),
+    0,
+    1
+  );
+  const representationLoad = clamp(
+    Number(
+      item?.representationLoad
+      ?? readNestedNumber(measurables, ["final", "representationLoad"])
+      ?? readNestedNumber(measurables, ["base", "representationLoad"])
+      ?? 0.4
+    ),
+    0,
+    1
+  );
+  const confusionScore = clamp(
+    Number(
+      readNestedNumber(measurables, ["final", "confusionScore"])
+      ?? readNestedNumber(measurables, ["base", "confusionScore"])
+      ?? cognitiveLoad * 0.5 + linguisticLoad * 0.3
+    ),
+    0,
+    1
+  );
+  const baseTimeSeconds = Number(
+    readNestedNumber(measurables, ["final", "timeSeconds"])
+    ?? readNestedNumber(measurables, ["base", "timeSeconds"])
+    ?? Math.max(20, 21 + 20 * linguisticLoad + 10 * representationLoad)
+  );
+  const stepCount = Math.max(
+    1,
+    Number(
+      readNestedNumber(measurables, ["final", "stepCount"])
+      ?? readNestedNumber(measurables, ["base", "stepCount"])
+      ?? 2
+    )
+  );
+  const branchingFactor = Math.max(
+    1,
+    Number(
+      readNestedNumber(measurables, ["final", "branchingFactor"])
+      ?? readNestedNumber(measurables, ["base", "branchingFactor"])
+      ?? 1
+    )
+  );
+  const errorOpportunityCount = Math.max(
+    1,
+    Number(
+      readNestedNumber(measurables, ["final", "errorOpportunityCount"])
+      ?? readNestedNumber(measurables, ["base", "errorOpportunityCount"])
+      ?? Math.max(1, stepCount - 1)
+    )
+  );
+  const answerKeyDifficultyAdjustment = Number(
+    readNestedNumber(measurables, ["final", "difficultyScore"])
+    && readNestedNumber(measurables, ["base", "difficultyScore"])
+      ? Math.max(
+        0,
+        (readNestedNumber(measurables, ["final", "difficultyScore"]) ?? 0)
+        - (readNestedNumber(measurables, ["base", "difficultyScore"]) ?? 0)
+      )
+      : 0
+  );
+  const answerKeyPCorrectAdjustment = Number(readNestedNumber(measurables, ["final", "pCorrectAdjustment"]) ?? 0);
+  const rubricStrictness = Number(readNestedNumber(measurables, ["final", "rubricStrictness"]) ?? 0);
+  const rubricTolerance = Number(readNestedNumber(measurables, ["final", "rubricTolerance"]) ?? 0);
+  const partialCreditEnabled = Boolean(readNestedNumber(measurables, ["final", "partialCreditEnabled"]) ?? false);
+  const requiredElementsCount = Number(readNestedNumber(measurables, ["final", "requiredElementsCount"]) ?? 0);
+  const qualityThreshold = Number(readNestedNumber(measurables, ["final", "qualityThreshold"]) ?? 0.65);
+  const stepDifficultyCurve = readCurve(measurables?.final?.stepDifficultyCurve)
+    ?? readCurve(measurables?.base?.stepDifficultyCurve)
+    ?? Array.from({ length: stepCount }, (_, curveIndex) => Number(clamp(confusionScore + 0.15 + curveIndex * 0.06, 0, 1).toFixed(4)));
+  const stepTimeCurve = Array.isArray(measurables?.final?.stepTimeCurve) && measurables.final.stepTimeCurve.length > 0
+    ? measurables.final.stepTimeCurve
+    : Array.isArray(measurables?.base?.stepTimeCurve) && measurables.base.stepTimeCurve.length > 0
+      ? measurables.base.stepTimeCurve
+      : Array.from({ length: stepCount }, (_, curveIndex) => Number(Math.max(8, baseTimeSeconds / stepCount + curveIndex * 2.4).toFixed(4)));
+  const stepCognitiveLoadCurve = readCurve(measurables?.final?.stepCognitiveLoadCurve)
+    ?? readCurve(measurables?.base?.stepCognitiveLoadCurve)
+    ?? Array.from({ length: stepCount }, (_, curveIndex) => Number(clamp(cognitiveLoad + curveIndex * 0.03, 0, 1).toFixed(4)));
+  return {
+    itemId,
+    dbItemId: typeof item?.itemId === "string" ? item.itemId : void 0,
+    bloomLevel,
+    linguisticLoad,
+    cognitiveLoad,
+    representationLoad,
+    confusionScore,
+    timeSeconds: baseTimeSeconds,
+    stepDifficultyCurve,
+    stepTimeCurve,
+    stepCognitiveLoadCurve,
+    answerKeyDifficultyAdjustment,
+    answerKeyPCorrectAdjustment,
+    rubricStrictness,
+    rubricTolerance,
+    partialCreditEnabled,
+    requiredElementsCount,
+    qualityThreshold,
+    branchingFactor,
+    errorOpportunityCount
+  };
+}
 function simulateItem(students, baseTraitDeltas, index, previous, measurable) {
   const cfg = PHASE_C_CONFIG.formula;
   let pCorrectTotal = 0;
@@ -710,10 +866,15 @@ async function simulateAssessment(input) {
     }
   }));
   const baseTraitDeltas = buildTraitDeltas(classStudents);
-  const dbRows = await loadItemTraitsFromDb(input.documentId);
-  const measurables = dbRows.length > 0
-    ? dbRows.map((row) => buildMeasurableFromDbItem(row))
+  const providedPhaseBItems = Array.isArray(input.phaseBItems) && input.phaseBItems.length > 0
+    ? input.phaseBItems.map((item, index) => buildMeasurableFromPhaseBItem(item, index))
     : [];
+  const dbRows = providedPhaseBItems.length === 0 ? await loadItemTraitsFromDb(input.documentId) : [];
+  const measurables = providedPhaseBItems.length > 0
+    ? providedPhaseBItems
+    : dbRows.length > 0
+      ? dbRows.map((row) => buildMeasurableFromDbItem(row))
+      : [];
   if (measurables.length === 0) {
     return {
       engineVersion: ENGINE_VERSION,
@@ -1191,7 +1352,8 @@ async function handler(req, res) {
       seed: combinedSeed,
       documentId: payload.documentId,
       studentCount: payload.studentCount,
-      students: existingStudents.length > 0 ? existingStudents : void 0
+      students: existingStudents.length > 0 ? existingStudents : void 0,
+      phaseBItems: Array.isArray(payload.phaseBItems) ? payload.phaseBItems : void 0
     });
     const simulationId = randomUUID();
     const createdAt = new Date().toISOString();
