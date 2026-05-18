@@ -23,6 +23,7 @@ type ItemLayer = {
   groupId?: string | null;
   partIndex?: number;
   isParent?: boolean;
+  inferredFromParent?: boolean;
   stem: string;
   metadata: {
     base: Record<string, unknown> | null;
@@ -474,7 +475,14 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
                           borderTop: isChild ? "1px solid rgba(226,232,240,0.6)" : "none"
                         }}
                       >
-                        <span style={{ display: "block" }}>{isChild ? `Sub-item ${label}` : `Item ${label}`}</span>
+                        <span style={{ display: "block" }}>
+                          {isChild ? `Sub-item ${label}` : `Item ${label}`}
+                          {item.inferredFromParent && (
+                            <span style={{ marginLeft: "0.35rem", fontSize: "0.66rem", color: "#7c3aed", fontWeight: 700 }}>
+                              inferred
+                            </span>
+                          )}
+                        </span>
                         <span style={{ display: "block", fontSize: "0.7rem", color: idx === selectedItemIndex ? "#2563eb" : "#64748b" }}>{item.type || "assessment item"}</span>
                       </button>
                     );
@@ -558,6 +566,11 @@ export function IngestionLayersModal({ documentId, documentName, onClose }: Prop
                 <p style={{ margin: "0 0 0.75rem", fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {((selectedItem.partIndex ?? 0) > 0 || selectedItem.isParent === false) ? "Sub-item" : "Item"} {selectedItem.logicalLabel ?? selectedItem.itemNumber}: {selectedItem.stem.slice(0, 120)}{selectedItem.stem.length > 120 ? "…" : ""}
                 </p>
+                {selectedItem.inferredFromParent && (
+                  <p style={{ margin: "-0.35rem 0 0.7rem", fontSize: "0.74rem", color: "#6d28d9" }}>
+                    This sub-item is inferred from segmentation and inherits Layer 2-5 values from its parent item until persisted child rows are saved.
+                  </p>
+                )}
                 <BaseLayerPanel base={selectedItem.metadata.base} />
                 <OverrideLayerPanel
                   title="Layer 2 — Answer Key Overrides"
