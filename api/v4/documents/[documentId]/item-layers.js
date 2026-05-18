@@ -77,7 +77,7 @@ async function handler(req, res) {
       select: "id,item_number,type,stem,metadata",
       filters: { document_id: `eq.${documentId}`, order: "item_number.asc" }
     });
-    const items = (Array.isArray(rows) ? rows : []).map((row) => ({
+    const items = (Array.isArray(rows) ? rows : []).map((row) => {
       const structure = readItemStructure(row.metadata, row.item_number);
       return {
       id: row.id,

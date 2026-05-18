@@ -342,7 +342,7 @@ export function ShortCircuitPage() {
   const [itemTrees, setItemTrees] = useState<SimulationItemTree[] | null>(null);
   const [sections, setSections] = useState<SimulationSectionView[] | null>(null);
   const [phaseBDocumentConfidence, setPhaseBDocumentConfidence] = useState<number | null>(null);
-  const [expandedGraph, setExpandedGraph] = useState(false);
+  const [expandedGraph, setExpandedGraph] = useState(true);
   const [verificationItems, setVerificationItems] = useState<VerificationItem[]>([]);
   const [verificationDismissed, setVerificationDismissed] = useState(false);
   const [structureSaving, setStructureSaving] = useState(false);
@@ -421,7 +421,7 @@ export function ShortCircuitPage() {
     setItemTrees(null);
     setSections(null);
     setPhaseBDocumentConfidence(null);
-    setExpandedGraph(false);
+    setExpandedGraph(true);
     setVerificationItems([]);
     setVerificationDismissed(false);
     setStructureSaving(false);
@@ -554,7 +554,7 @@ export function ShortCircuitPage() {
     setItemTrees(null);
     setSections(null);
     setPhaseBDocumentConfidence(null);
-    setExpandedGraph(false);
+    setExpandedGraph(true);
 
     try {
       const res = await fetch("/api/v4/simulator/shortcircuit", {
